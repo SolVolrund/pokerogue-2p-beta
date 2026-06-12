@@ -275,6 +275,41 @@ export function getWavePartyTemplate(...templates: TrainerPartyTemplate[]) {
   return templates[Phaser.Math.Clamp(templateIndex, 0, templates.length - 1)];
 }
 
+function repeatTrainerPartyTemplate(template: TrainerPartyTemplate, repeatCount: number): TrainerPartyTemplate {
+  if (repeatCount <= 1) {
+    return template;
+  }
+
+  return new TrainerPartyCompoundTemplate(...Array.from({ length: repeatCount }, () => template));
+}
+
+export function getTwoPlayerDoubleTrainerPartyTemplate(...templates: TrainerPartyTemplate[]): TrainerPartyTemplate {
+  const template = getWavePartyTemplate(...templates);
+
+  if (!globalScene.twoPlayerMode || globalScene.twoPlayerPartySize !== 6) {
+    return template;
+  }
+
+  if (globalScene.twoPlayerDoubleOnlyTestPairs > 0) {
+    return repeatTrainerPartyTemplate(template, globalScene.twoPlayerDoubleOnlyTestPairs);
+  }
+
+  const { currentBattle, gameMode } = globalScene;
+  const wave = gameMode.getWaveForDifficulty(currentBattle?.waveIndex || STARTING_WAVE, true);
+
+  if (wave > 110) {
+    return repeatTrainerPartyTemplate(template, 4);
+  }
+  if (wave > 80) {
+    return repeatTrainerPartyTemplate(template, 3);
+  }
+  if (wave > 50) {
+    return repeatTrainerPartyTemplate(template, 2);
+  }
+
+  return template;
+}
+
 export function getGymLeaderPartyTemplate() {
   const { currentBattle, gameMode } = globalScene;
   switch (gameMode.modeId) {

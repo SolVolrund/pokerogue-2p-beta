@@ -164,6 +164,7 @@ import Phaser from "phaser";
 export type PokeballCounts = Record<Exclude<PokeballType, PokeballType.LUXURY_BALL>, number>;
 export type PlayerIndex = 0 | 1;
 const TWO_PLAYER_GUEST_SYSTEM_SAVE_KEY = "pokerogue_2p_guest_system_save";
+const TWO_PLAYER_DOUBLE_ONLY_TEST_PAIRS = 3;
 
 export interface PlayerRunState {
   party: PlayerPokemon[];
@@ -364,6 +365,7 @@ export class BattleScene extends SceneBase {
   private party: PlayerPokemon[];
   public twoPlayerMode: boolean = isTwoPlayerPrototypeEnabled();
   public twoPlayerPartySize: 3 | 6 = getTwoPlayerPartySize();
+  public twoPlayerDoubleOnlyTestPairs = 0;
   private readonly twoPlayerEggVoucherGrant: number | undefined = getTwoPlayerEggVoucherGrant();
   public activePlayerIndex: PlayerIndex = 0;
   public readonly fieldSlotOwners: [PlayerIndex, PlayerIndex] = [0, 1];
@@ -1582,6 +1584,13 @@ export class BattleScene extends SceneBase {
       );
     }
     resolved.double = this.checkIsDouble(resolved as NewBattleConstructedProps);
+    this.twoPlayerDoubleOnlyTestPairs =
+      !fromSession
+      && this.shouldForceTwoPlayerDoubleOnlyTestBattle(waveIndex)
+      && resolved.battleType === BattleType.TRAINER
+      && !!resolved.trainer?.config.doubleOnly
+        ? TWO_PLAYER_DOUBLE_ONLY_TEST_PAIRS
+        : 0;
 
     const lastBattle: Battle | null = this.currentBattle;
     const maxExpLevel = this.getMaxExpLevel();
@@ -1727,6 +1736,15 @@ export class BattleScene extends SceneBase {
    */
   private handleNonFixedBattle(resolved: NewBattleInitialProps): void {
     const { waveIndex } = resolved;
+
+    if (this.shouldForceTwoPlayerDoubleOnlyTestBattle(waveIndex)) {
+      resolved.battleType = BattleType.TRAINER;
+      const trainer = new Trainer(TrainerType.TWINS, TrainerVariant.DOUBLE);
+      this.field.add(trainer);
+      resolved.trainer = trainer;
+      return;
+    }
+
     resolved.battleType =
       !this.gameMode.hasTrainers || activeOverrides.DISABLE_STANDARD_TRAINERS_OVERRIDE
         ? BattleType.WILD
@@ -1755,6 +1773,10 @@ export class BattleScene extends SceneBase {
     const trainer = this.generateNewBattleTrainer(waveIndex);
     this.field.add(trainer);
     resolved.trainer = trainer;
+  }
+
+  private shouldForceTwoPlayerDoubleOnlyTestBattle(waveIndex: number): boolean {
+    return this.twoPlayerMode && this.twoPlayerPartySize === 6 && waveIndex === STARTING_WAVE;
   }
 
   /**

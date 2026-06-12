@@ -34,6 +34,7 @@ import {
 import {
   getEvilGruntPartyTemplate,
   getGymLeaderPartyTemplate,
+  getTwoPlayerDoubleTrainerPartyTemplate,
   getWavePartyTemplate,
   TrainerPartyCompoundTemplate,
   TrainerPartyTemplate,
@@ -1103,6 +1104,7 @@ export const trainerConfigs: TrainerConfigs = {
   [TrainerType.BACKERS]: new TrainerConfig(++t)
     .setHasGenders("Backers")
     .setDoubleOnly()
+    .setPartyTemplateFunc(() => getTwoPlayerDoubleTrainerPartyTemplate(trainerPartyTemplates.TWO_AVG))
     .setEncounterBgm(TrainerType.CYCLIST),
   [TrainerType.BACKPACKER]: new TrainerConfig(++t)
     .setHasGenders("Backpacker Female")
@@ -1690,7 +1692,7 @@ export const trainerConfigs: TrainerConfigs = {
     .setMoneyMultiplier(1.5)
     .setEncounterBgm(TrainerType.ROUGHNECK)
     .setPartyTemplateFunc(() =>
-      getWavePartyTemplate(
+      getTwoPlayerDoubleTrainerPartyTemplate(
         trainerPartyTemplates.TWO_WEAK,
         trainerPartyTemplates.TWO_AVG,
         trainerPartyTemplates.ONE_AVG_ONE_STRONG,
@@ -1704,7 +1706,7 @@ export const trainerConfigs: TrainerConfigs = {
     .setMoneyMultiplier(1.75)
     .setEncounterBgm(TrainerType.CYCLIST)
     .setPartyTemplateFunc(() =>
-      getWavePartyTemplate(
+      getTwoPlayerDoubleTrainerPartyTemplate(
         trainerPartyTemplates.TWO_WEAK,
         trainerPartyTemplates.TWO_AVG,
         trainerPartyTemplates.ONE_AVG_ONE_STRONG,
@@ -1728,7 +1730,9 @@ export const trainerConfigs: TrainerConfigs = {
     .setMoneyMultiplier(1.6)
     .setEncounterBgm(TrainerType.PSYCHIC)
     .setUseSameSeedForAllMembers()
-    .setPartyTemplateFunc(() => getWavePartyTemplate(trainerPartyTemplates.TWO_AVG, trainerPartyTemplates.TWO_STRONG))
+    .setPartyTemplateFunc(() =>
+      getTwoPlayerDoubleTrainerPartyTemplate(trainerPartyTemplates.TWO_AVG, trainerPartyTemplates.TWO_STRONG),
+    )
     .setPartyMemberFunc(
       0,
       getRandomPartyMemberFunc([
@@ -2230,7 +2234,7 @@ export const trainerConfigs: TrainerConfigs = {
     .setMoneyMultiplier(0.65)
     .setUseSameSeedForAllMembers()
     .setPartyTemplateFunc(() =>
-      getWavePartyTemplate(
+      getTwoPlayerDoubleTrainerPartyTemplate(
         trainerPartyTemplates.TWO_WEAK,
         trainerPartyTemplates.TWO_AVG,
         trainerPartyTemplates.TWO_STRONG,
@@ -2327,7 +2331,7 @@ export const trainerConfigs: TrainerConfigs = {
     .setMoneyMultiplier(1.25)
     .setUseSameSeedForAllMembers()
     .setPartyTemplateFunc(() =>
-      getWavePartyTemplate(
+      getTwoPlayerDoubleTrainerPartyTemplate(
         trainerPartyTemplates.TWO_WEAK,
         trainerPartyTemplates.TWO_AVG,
         trainerPartyTemplates.TWO_STRONG,
