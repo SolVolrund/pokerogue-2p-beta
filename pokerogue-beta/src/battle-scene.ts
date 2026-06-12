@@ -361,8 +361,8 @@ export class BattleScene extends SceneBase {
   public money: number;
   public pokemonInfoContainer: PokemonInfoContainer;
   private party: PlayerPokemon[];
-  public readonly twoPlayerMode: boolean = isTwoPlayerPrototypeEnabled();
-  public readonly twoPlayerPartySize: 3 | 6 = getTwoPlayerPartySize();
+  public twoPlayerMode: boolean = isTwoPlayerPrototypeEnabled();
+  public twoPlayerPartySize: 3 | 6 = getTwoPlayerPartySize();
   private readonly twoPlayerEggVoucherGrant: number | undefined = getTwoPlayerEggVoucherGrant();
   public activePlayerIndex: PlayerIndex = 0;
   public readonly fieldSlotOwners: [PlayerIndex, PlayerIndex] = [0, 1];
@@ -816,6 +816,29 @@ export class BattleScene extends SceneBase {
   private initializePlayerSystemSaves(): void {
     this.systemSaves = [this.gameData, this.loadGuestSystemSave()];
     this.applyTwoPlayerEggVoucherGrant();
+  }
+
+  public configureTwoPlayerMode(enabled: boolean, partySize: 3 | 6 = 6): void {
+    if (this.systemSaves?.[0]) {
+      this.gameData = this.systemSaves[0];
+    }
+
+    this.twoPlayerMode = enabled;
+    this.twoPlayerPartySize = enabled ? partySize : 6;
+    this.activePlayerIndex = 0;
+
+    if (enabled) {
+      if (!this.systemSaves) {
+        this.initializePlayerSystemSaves();
+      }
+      this.syncLegacyStateForActivePlayer();
+    } else {
+      this.systemSaves = undefined;
+      this.syncSinglePlayerStateReference();
+    }
+
+    this.updateMoneyText(false);
+    this.refreshPlayerModifierBar();
   }
 
   public applyTwoPlayerEggVoucherGrant(): void {
@@ -1729,6 +1752,8 @@ export class BattleScene extends SceneBase {
 
     let doubleTrainer: boolean;
     if (config.doubleOnly) {
+      doubleTrainer = true;
+    } else if (this.twoPlayerMode && this.twoPlayerPartySize === 6 && config.hasDouble && config.trainerTypeDouble) {
       doubleTrainer = true;
     } else if (
       // Add a check that special trainers can't be double except for tate and liza - they should use the normal double chance

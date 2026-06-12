@@ -14,7 +14,6 @@ import { BattleType } from "#enums/battle-type";
 import { GameModes } from "#enums/game-modes";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import { UiMode } from "#enums/ui-mode";
-import { Unlockables } from "#enums/unlockables";
 import { getBiomeKey } from "#field/arena";
 import type { Modifier } from "#modifiers/modifier";
 import { getDailyRunStarterModifiers, regenerateModifierPoolThresholds } from "#modifiers/modifier-type";
@@ -95,67 +94,7 @@ export class TitlePhase extends Phase {
       {
         label: i18next.t("menu:newGame"),
         handler: () => {
-          const setModeAndEnd = (gameMode: GameModes) => {
-            this.gameMode = gameMode;
-            globalScene.ui.setMode(UiMode.MESSAGE);
-            globalScene.ui.clearText();
-            this.end();
-          };
-          const { gameData } = globalScene;
-          const options: OptionSelectItem[] = [];
-          options.push({
-            label: GameMode.getModeName(GameModes.CLASSIC),
-            handler: () => {
-              setModeAndEnd(GameModes.CLASSIC);
-              return true;
-            },
-          });
-          options.push({
-            label: i18next.t("menu:dailyRun"),
-            handler: () => {
-              this.initDailyRun();
-              return true;
-            },
-          });
-          if (gameData.isUnlocked(Unlockables.ENDLESS_MODE)) {
-            options.push({
-              label: GameMode.getModeName(GameModes.CHALLENGE),
-              handler: () => {
-                setModeAndEnd(GameModes.CHALLENGE);
-                return true;
-              },
-            });
-            options.push({
-              label: GameMode.getModeName(GameModes.ENDLESS),
-              handler: () => {
-                setModeAndEnd(GameModes.ENDLESS);
-                return true;
-              },
-            });
-            if (gameData.isUnlocked(Unlockables.SPLICED_ENDLESS_MODE)) {
-              options.push({
-                label: GameMode.getModeName(GameModes.SPLICED_ENDLESS),
-                handler: () => {
-                  setModeAndEnd(GameModes.SPLICED_ENDLESS);
-                  return true;
-                },
-              });
-            }
-          }
-          // Cancel button = back to title
-          options.push({
-            label: i18next.t("menu:cancel"),
-            handler: () => {
-              globalScene.phaseManager.toTitleScreen();
-              super.end();
-              return true;
-            },
-          });
-          globalScene.ui.showText(i18next.t("menu:selectGameMode"), null, () =>
-            globalScene.ui.setOverlayMode(UiMode.OPTION_SELECT, {
-              options,
-            }),
-          );
+          this.showNewGameModeSelect();
           return true;
         },
       },
@@ -195,6 +134,137 @@ export class TitlePhase extends Phase {
       yOffset: 47,
     };
     await globalScene.ui.setMode(UiMode.TITLE, config);
+  }
+
+  private setModeAndEnd(gameMode: GameModes): void {
+    this.gameMode = gameMode;
+    globalScene.ui.setMode(UiMode.MESSAGE);
+    globalScene.ui.clearText();
+    this.end();
+  }
+
+  private showOptionSelect(options: OptionSelectItem[]): void {
+    const config: OptionSelectConfig = { options };
+    const showOptions = () => {
+      if (globalScene.ui.getMode() === UiMode.OPTION_SELECT) {
+        globalScene.ui.handlers[UiMode.OPTION_SELECT].show([config]);
+        return;
+      }
+      globalScene.ui.setOverlayMode(UiMode.OPTION_SELECT, config);
+    };
+
+    showOptions();
+  }
+
+  private showOptionSelectWithText(text: string, options: OptionSelectItem[]): void {
+    globalScene.ui.showText(text, null, () => this.showOptionSelect(options));
+  }
+
+  private showNewGameModeSelect(): void {
+    const options: OptionSelectItem[] = [
+      {
+        label: GameMode.getModeName(GameModes.CLASSIC),
+        handler: () => {
+          this.showPlayerCountSelect(GameModes.CLASSIC);
+          return true;
+        },
+        keepOpen: true,
+      },
+      {
+        label: i18next.t("menu:dailyRun"),
+        handler: () => {
+          this.showPlayerCountSelect(GameModes.DAILY);
+          return true;
+        },
+        keepOpen: true,
+      },
+      {
+        label: i18next.t("menu:cancel"),
+        handler: () => {
+          globalScene.phaseManager.toTitleScreen();
+          super.end();
+          return true;
+        },
+      },
+    ];
+
+    this.showOptionSelectWithText(i18next.t("menu:selectGameMode"), options);
+  }
+
+  private showPlayerCountSelect(gameMode: GameModes): void {
+    const options: OptionSelectItem[] = [
+      {
+        label: i18next.t("menu:onePlayer"),
+        handler: () => {
+          globalScene.configureTwoPlayerMode(false);
+          if (gameMode === GameModes.DAILY) {
+            this.initDailyRun();
+          } else {
+            this.setModeAndEnd(gameMode);
+          }
+          return true;
+        },
+      },
+      {
+        label: i18next.t("menu:twoPlayer"),
+        handler: () => {
+          this.showTwoPlayerModeSelect(gameMode);
+          return true;
+        },
+        keepOpen: true,
+      },
+      {
+        label: i18next.t("menu:cancel"),
+        handler: () => {
+          this.showNewGameModeSelect();
+          return true;
+        },
+        keepOpen: true,
+      },
+    ];
+
+    this.showOptionSelectWithText(i18next.t("menu:selectPlayerCount"), options);
+  }
+
+  private showTwoPlayerModeSelect(gameMode: GameModes): void {
+    const startTwoPlayer = (partySize: 3 | 6) => {
+      if (gameMode === GameModes.DAILY) {
+        globalScene.ui.setMode(UiMode.MESSAGE);
+        globalScene.ui.showText(i18next.t("menu:twoPlayerDailyUnavailable"), null, () =>
+          this.showPlayerCountSelect(gameMode),
+        );
+      } else {
+        globalScene.configureTwoPlayerMode(true, partySize);
+        this.setModeAndEnd(gameMode);
+      }
+    };
+
+    const options: OptionSelectItem[] = [
+      {
+        label: i18next.t("menu:twoPlayerFullMode"),
+        handler: () => {
+          startTwoPlayer(6);
+          return true;
+        },
+      },
+      {
+        label: i18next.t("menu:twoPlayerHalfMode"),
+        handler: () => {
+          startTwoPlayer(3);
+          return true;
+        },
+      },
+      {
+        label: i18next.t("menu:cancel"),
+        handler: () => {
+          this.showPlayerCountSelect(gameMode);
+          return true;
+        },
+        keepOpen: true,
+      },
+    ];
+
+    this.showOptionSelectWithText(i18next.t("menu:selectTwoPlayerMode"), options);
   }
 
   // TODO: Make callers actually wait for the save slot to load

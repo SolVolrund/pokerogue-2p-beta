@@ -608,6 +608,15 @@ export function getRandomTrainerFunc(
     ];
     const isEvilTeamGrunt = evilTeamGrunts.includes(choice);
 
+    if (
+      globalScene.twoPlayerMode
+      && globalScene.twoPlayerPartySize === 6
+      && trainerConfigs[choice].hasDouble
+      && trainerConfigs[choice].trainerTypeDouble
+    ) {
+      return new Trainer(choice, TrainerVariant.DOUBLE);
+    }
+
     if (trainerConfigs[choice].hasDouble && isEvilTeamGrunt) {
       return new Trainer(choice, randInt(3) === 0 ? TrainerVariant.DOUBLE : trainerGender);
     }

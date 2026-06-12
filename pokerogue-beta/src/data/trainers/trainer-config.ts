@@ -2373,12 +2373,15 @@ export const trainerConfigs: TrainerConfigs = {
       SpeciesId.WEEDLE,
       SpeciesId.RATTATA,
       SpeciesId.SENTRET,
+      SpeciesId.SKITTY,
       SpeciesId.POOCHYENA,
       SpeciesId.ZIGZAGOON,
       SpeciesId.WURMPLE,
       SpeciesId.BIDOOF,
+      SpeciesId.BUNEARY,
       SpeciesId.PATRAT,
       SpeciesId.LILLIPUP,
+      SpeciesId.WOOLOO,
     ]),
   [TrainerType.ROCKET_GRUNT]: new TrainerConfig(++t)
     .setHasGenders("Rocket Grunt Female")
