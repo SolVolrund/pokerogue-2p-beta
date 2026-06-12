@@ -7,15 +7,35 @@ export class ShowTrainerPhase extends BattlePhase {
   start() {
     super.start();
 
+    const trainerBackKey = `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`;
+    const playerTrainerX = globalScene.twoPlayerMode ? 90 : 106;
+
     globalScene.trainer
       .setVisible(true)
-      .setTexture(`trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`);
+      .setTexture(trainerBackKey)
+      .setFrame(0);
+    globalScene.trainerPartner
+      .setVisible(globalScene.twoPlayerMode)
+      .setTexture(trainerBackKey)
+      .setFrame(0);
 
     globalScene.tweens.add({
       targets: globalScene.trainer,
-      x: 106,
+      x: playerTrainerX,
       duration: 1000,
-      onComplete: () => this.end(),
+      onComplete: () => {
+        if (!globalScene.twoPlayerMode) {
+          this.end();
+        }
+      },
     });
+    if (globalScene.twoPlayerMode) {
+      globalScene.tweens.add({
+        targets: globalScene.trainerPartner,
+        x: 122,
+        duration: 1000,
+        onComplete: () => this.end(),
+      });
+    }
   }
 }

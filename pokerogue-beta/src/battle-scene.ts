@@ -355,6 +355,7 @@ export class BattleScene extends SceneBase {
   public score: number;
   public lockModifierTiers: boolean;
   public trainer: Phaser.GameObjects.Sprite;
+  public trainerPartner: Phaser.GameObjects.Sprite;
   public lastEnemyTrainer: Trainer | null;
   public currentBattle: Battle;
   public pokeballCounts: PokeballCounts;
@@ -692,7 +693,15 @@ export class BattleScene extends SceneBase {
     this.trainer = this.addFieldSprite(0, 0, `trainer_${this.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`)
       .setOrigin(0.5, 1)
       .setName("sprite-trainer");
-    this.field.add(this.trainer);
+    this.trainerPartner = this.addFieldSprite(
+      0,
+      0,
+      `trainer_${this.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`,
+    )
+      .setOrigin(0.5, 1)
+      .setName("sprite-trainer-partner")
+      .setVisible(false);
+    this.field.add([this.trainer, this.trainerPartner]);
 
     this.anims.create({
       key: "prompt",
@@ -1474,6 +1483,9 @@ export class BattleScene extends SceneBase {
     this.trainer.setTexture(`trainer_${this.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`);
     this.trainer.setPosition(406, 186);
     this.trainer.setVisible(true);
+    this.trainerPartner.setTexture(`trainer_${this.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`);
+    this.trainerPartner.setPosition(438, 186);
+    this.trainerPartner.setVisible(false);
 
     this.mysteryEncounterSaveData = new MysteryEncounterSaveData();
 
@@ -1856,7 +1868,9 @@ export class BattleScene extends SceneBase {
     }
 
     // use the old value of `double` to ensure both combatants get recalled properly when going from double to single battles
-    const playerField = this.getPlayerParty().slice(0, 1 + Number(lastBattle.double));
+    const playerField = this.twoPlayerMode
+      ? this.getPlayerField()
+      : this.getPlayerParty().slice(0, 1 + Number(lastBattle.double));
     if (resetArenaState) {
       this.arena.resetArenaEffects();
 

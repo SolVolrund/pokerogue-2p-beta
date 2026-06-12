@@ -101,20 +101,22 @@ export class SummonPhase extends PartyMemberPokemonPhase {
       if (this.player) {
         globalScene.pbTray.hide();
       }
-      globalScene.trainer.setTexture(
-        `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back_pb`,
-      );
+      const trainerSprite =
+        globalScene.twoPlayerMode && this.fieldIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+      trainerSprite
+        .setVisible(true)
+        .setTexture(`trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back_pb`);
       globalScene.time.delayedCall(562, () => {
-        globalScene.trainer.setFrame("2");
+        trainerSprite.setFrame("2");
         globalScene.time.delayedCall(64, () => {
-          globalScene.trainer.setFrame("3");
+          trainerSprite.setFrame("3");
         });
       });
       globalScene.tweens.add({
-        targets: globalScene.trainer,
+        targets: trainerSprite,
         x: -36,
         duration: 1000,
-        onComplete: () => globalScene.trainer.setVisible(false),
+        onComplete: () => trainerSprite.setVisible(false),
       });
       globalScene.time.delayedCall(750, () => this.summon());
     } else if (
