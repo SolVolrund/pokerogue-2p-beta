@@ -2,6 +2,7 @@ import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { signatureSpecies } from "#balance/signature-species";
 import { EntryHazardTag } from "#data/arena-tag";
+import { withRivalRollContext } from "#app/ai/rival-team-gen";
 import type { PokemonSpecies } from "#data/pokemon-species";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import { PartyMemberStrength } from "#enums/party-member-strength";
@@ -16,6 +17,7 @@ import type { PersistentModifier } from "#modifiers/modifier";
 import type { TrainerConfig } from "#trainers/trainer-config";
 import { trainerConfigs } from "#trainers/trainer-config";
 import { TrainerPartyCompoundTemplate, type TrainerPartyTemplate } from "#trainers/trainer-party-template";
+import { getRandomTwoPlayerTrainerPartner } from "#trainers/two-player-trainer-partners";
 import { randSeedInt, randSeedItem } from "#utils/common";
 import { getRandomLocaleEntry } from "#utils/i18n";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
@@ -25,10 +27,14 @@ import i18next from "i18next";
 export class Trainer extends Phaser.GameObjects.Container {
   public config: TrainerConfig;
   public variant: TrainerVariant;
+  private trainerVariant: TrainerVariant;
+  public partnerTrainerType: TrainerType | undefined;
+  public partnerVariant: TrainerVariant;
   public partyTemplateIndex: number;
-  public partnerName: string;
+  public partnerName: string | undefined;
   public nameKey: string;
   public partnerNameKey: string | undefined;
+  private partnerConfig: TrainerConfig | undefined;
   public originalIndexes: { [key: number]: number } = {};
 
   /**
@@ -41,6 +47,8 @@ export class Trainer extends Phaser.GameObjects.Container {
    * @param nameKey - If provided, will override the name key of the trainer
    * @param partnerNameKey - If provided, will override the
    * @param trainerConfigOverride - If provided, will override the trainer config for the given trainer type
+   * @param partnerTrainerType - If provided, will use this TrainerType as the second trainer in a double battle
+   * @param partnerVariant - If provided, will use this variant for the second trainer
    * @todo Review how many of these parameters we actually need
    */
   constructor(
@@ -50,15 +58,65 @@ export class Trainer extends Phaser.GameObjects.Container {
     nameKey?: string,
     partnerNameKey?: string,
     trainerConfigOverride?: TrainerConfig,
+    partnerTrainerType?: TrainerType,
+    partnerVariant?: TrainerVariant,
   ) {
     super(globalScene, -72, 80);
+    const requestedVariant = variant;
     this.config =
       trainerConfigOverride
       ?? (Object.hasOwn(trainerConfigs, trainerType)
         ? trainerConfigs[trainerType]
         : trainerConfigs[TrainerType.ACE_TRAINER]);
 
+    const lookupPartnerTrainerType =
+      !trainerConfigOverride
+      && globalScene.twoPlayerMode
+      && globalScene.twoPlayerPartySize === 6
+      && !this.config.doubleOnly
+        ? getRandomTwoPlayerTrainerPartner(trainerType)
+        : undefined;
+    this.partnerTrainerType =
+      partnerTrainerType
+      ?? lookupPartnerTrainerType
+      ?? (variant === TrainerVariant.DOUBLE && this.config.trainerTypeDouble ? this.config.trainerTypeDouble : undefined);
+    this.partnerConfig = this.partnerTrainerType == null ? undefined : trainerConfigs[this.partnerTrainerType];
+
+    if (this.partnerConfig && !this.config.doubleOnly) {
+      variant = TrainerVariant.DOUBLE;
+    }
+
+    switch (variant) {
+      case TrainerVariant.FEMALE:
+        if (!this.config.hasGenders) {
+          variant = TrainerVariant.DEFAULT;
+        }
+        break;
+      case TrainerVariant.DOUBLE:
+        if (!this.config.hasDouble && !this.partnerConfig) {
+          variant = TrainerVariant.DEFAULT;
+        }
+        break;
+    }
+
     this.variant = variant;
+    this.trainerVariant =
+      this.variant === TrainerVariant.DOUBLE && this.partnerConfig && !this.config.doubleOnly
+        ? requestedVariant === TrainerVariant.FEMALE && this.config.hasGenders
+          ? TrainerVariant.FEMALE
+          : TrainerVariant.DEFAULT
+        : this.variant;
+    this.partnerVariant =
+      partnerVariant
+      ?? (this.partnerConfig?.hasGenders
+        ? this.partnerConfig === this.config
+          ? requestedVariant === TrainerVariant.FEMALE
+            ? TrainerVariant.DEFAULT
+            : TrainerVariant.FEMALE
+          : randSeedInt(2)
+            ? TrainerVariant.FEMALE
+            : TrainerVariant.DEFAULT
+        : TrainerVariant.DEFAULT);
     this.partyTemplateIndex = Math.min(
       partyTemplateIndex === undefined ? randSeedItem(this.config.partyTemplates.map((_, i) => i)) : partyTemplateIndex,
       this.config.partyTemplates.length - 1,
@@ -71,14 +129,14 @@ export class Trainer extends Phaser.GameObjects.Container {
         this.name = i18next.t(nameKey);
       } else {
         const genderKey = i18next.exists(`${classKey}.male`)
-          ? variant === TrainerVariant.FEMALE
+          ? this.trainerVariant === TrainerVariant.FEMALE
             ? ".female"
             : ".male"
           : "";
         [this.nameKey, this.name] = getRandomLocaleEntry(`${classKey}${genderKey}`);
       }
 
-      if (variant === TrainerVariant.DOUBLE) {
+      if (this.variant === TrainerVariant.DOUBLE) {
         if (this.config.doubleOnly) {
           if (partnerNameKey) {
             this.partnerNameKey = partnerNameKey;
@@ -86,31 +144,41 @@ export class Trainer extends Phaser.GameObjects.Container {
           } else {
             [this.name, this.partnerName] = this.name.split(" & ");
           }
+        } else if (this.partnerConfig && this.partnerConfig !== this.config) {
+          if (partnerNameKey) {
+            this.partnerNameKey = partnerNameKey;
+            this.partnerName = i18next.t(this.partnerNameKey);
+          } else {
+            const partnerClassKey = `trainersCommon:${toCamelCase(TrainerType[this.partnerConfig.trainerType])}`;
+            if (i18next.exists(partnerClassKey, { returnObjects: true })) {
+              const partnerGenderKey = i18next.exists(`${partnerClassKey}.male`)
+                ? this.partnerVariant === TrainerVariant.FEMALE
+                  ? ".female"
+                  : ".male"
+                : "";
+              [this.partnerNameKey, this.partnerName] = getRandomLocaleEntry(`${partnerClassKey}${partnerGenderKey}`);
+            } else {
+              this.partnerName = this.partnerConfig.getTitle(TrainerSlot.TRAINER, TrainerVariant.DEFAULT);
+            }
+          }
         } else {
-          const partnerGenderKey = i18next.exists(`${classKey}.female`) ? ".female" : "";
+          const partnerGenderKey = i18next.exists(`${classKey}.male`)
+            ? this.partnerVariant === TrainerVariant.FEMALE
+              ? ".female"
+              : ".male"
+            : i18next.exists(`${classKey}.female`)
+              ? ".female"
+              : "";
           [this.partnerNameKey, this.partnerName] = getRandomLocaleEntry(`${classKey}${partnerGenderKey}`);
         }
       }
     }
 
-    switch (this.variant) {
-      case TrainerVariant.FEMALE:
-        if (!this.config.hasGenders) {
-          variant = TrainerVariant.DEFAULT;
-        }
-        break;
-      case TrainerVariant.DOUBLE:
-        if (!this.config.hasDouble) {
-          variant = TrainerVariant.DEFAULT;
-        }
-        break;
-    }
-
-    const getSprite = (hasShadow?: boolean, forceFemale?: boolean) => {
+    const getSprite = (config: TrainerConfig, variant: TrainerVariant, hasShadow?: boolean) => {
       const ret = globalScene.addFieldSprite(
         0,
         0,
-        this.config.getSpriteKey(variant === TrainerVariant.FEMALE || forceFemale, this.isDouble()),
+        config.getSpriteKey(variant === TrainerVariant.FEMALE, this.isDouble()),
       );
       ret.setOrigin(0.5, 1);
       ret.setPipeline(globalScene.spritePipeline, {
@@ -120,17 +188,25 @@ export class Trainer extends Phaser.GameObjects.Container {
       return ret;
     };
 
-    const sprite = getSprite(true);
-    const tintSprite = getSprite();
+    const sprite = getSprite(
+      this.config,
+      this.trainerVariant === TrainerVariant.FEMALE ? TrainerVariant.FEMALE : TrainerVariant.DEFAULT,
+      true,
+    );
+    const tintSprite = getSprite(
+      this.config,
+      this.trainerVariant === TrainerVariant.FEMALE ? TrainerVariant.FEMALE : TrainerVariant.DEFAULT,
+    );
 
     tintSprite.setVisible(false);
 
     this.add(sprite);
     this.add(tintSprite);
 
-    if (variant === TrainerVariant.DOUBLE && !this.config.doubleOnly) {
-      const partnerSprite = getSprite(true, true);
-      const partnerTintSprite = getSprite(false, true);
+    if (this.variant === TrainerVariant.DOUBLE && !this.config.doubleOnly) {
+      const spriteConfig = this.partnerConfig ?? this.config;
+      const partnerSprite = getSprite(spriteConfig, this.partnerVariant, true);
+      const partnerTintSprite = getSprite(spriteConfig, this.partnerVariant);
 
       partnerTintSprite.setVisible(false);
 
@@ -145,7 +221,13 @@ export class Trainer extends Phaser.GameObjects.Container {
   }
 
   getKey(forceFemale?: boolean): string {
-    return this.config.getSpriteKey(this.variant === TrainerVariant.FEMALE || forceFemale, this.isDouble());
+    if (forceFemale && this.variant === TrainerVariant.DOUBLE && !this.config.doubleOnly) {
+      return (this.partnerConfig ?? this.config).getSpriteKey(
+        this.partnerVariant === TrainerVariant.FEMALE,
+        this.isDouble(),
+      );
+    }
+    return this.config.getSpriteKey(this.trainerVariant === TrainerVariant.FEMALE || forceFemale, this.isDouble());
   }
 
   /**
@@ -155,6 +237,45 @@ export class Trainer extends Phaser.GameObjects.Container {
    * @returns - The formatted name of the trainer
    */
   getName(trainerSlot: TrainerSlot = TrainerSlot.NONE, includeTitle = false): string {
+    if (this.partnerConfig && this.partnerConfig !== this.config && this.variant === TrainerVariant.DOUBLE) {
+      const getConfigName = (
+        config: TrainerConfig,
+        nameOverride: string | undefined,
+        slot: TrainerSlot,
+      ) => {
+        let name = nameOverride || config.getTitle(slot, TrainerVariant.DEFAULT);
+        let title = includeTitle && config.title ? config.title : null;
+
+        if (nameOverride && includeTitle) {
+          title = i18next.t(`trainerClasses:${toCamelCase(config.getTitle(slot, TrainerVariant.DEFAULT))}`);
+        }
+
+        return title ? `${title} ${name}` : name;
+      };
+
+      if (trainerSlot === TrainerSlot.TRAINER) {
+        return getConfigName(this.config, this.name, TrainerSlot.TRAINER);
+      }
+      if (trainerSlot === TrainerSlot.TRAINER_PARTNER) {
+        return getConfigName(this.partnerConfig, this.partnerName, TrainerSlot.TRAINER);
+      }
+
+      return `${getConfigName(this.config, this.name, TrainerSlot.TRAINER)} & ${getConfigName(
+        this.partnerConfig,
+        this.partnerName,
+        TrainerSlot.TRAINER,
+      )}`;
+    }
+    if (
+      this.partnerConfig === this.config
+      && this.variant === TrainerVariant.DOUBLE
+      && !this.config.doubleOnly
+      && trainerSlot === TrainerSlot.NONE
+      && this.config.title === i18next.t("titles:rival")
+    ) {
+      return `${includeTitle ? "Rivals " : ""}${this.name} & ${this.partnerName || this.name}`;
+    }
+
     // Get the base title based on the trainer slot and variant.
     let name = this.config.getTitle(trainerSlot, this.variant);
 
@@ -264,7 +385,7 @@ export class Trainer extends Phaser.GameObjects.Container {
     return !!(
       globalScene.twoPlayerMode
       && globalScene.twoPlayerPartySize === 6
-      && this.config.trainerTypeDouble
+      && this.partnerConfig
       && this.isDouble()
       && !this.config.doubleOnly
     );
@@ -324,7 +445,7 @@ export class Trainer extends Phaser.GameObjects.Container {
 
   getPartyLevels(waveIndex: number): number[] {
     if (this.shouldUseTwoPlayerNamedPartnerParty()) {
-      const partnerConfig = trainerConfigs[this.config.trainerTypeDouble];
+      const partnerConfig = this.partnerConfig!;
       const mainLevels = this.getPartyLevelsForConfig(this.config, waveIndex);
       const partnerLevels = this.getPartyLevelsForConfig(partnerConfig, waveIndex);
       const ret: number[] = [];
@@ -350,7 +471,7 @@ export class Trainer extends Phaser.GameObjects.Container {
     partyIndex: number;
     trainerSlot: TrainerSlot;
   } {
-    const partnerConfig = trainerConfigs[this.config.trainerTypeDouble];
+    const partnerConfig = this.partnerConfig!;
     const mainSize = this.getPartyTemplate(this.config).size;
     const partnerSize = this.getPartyTemplate(partnerConfig).size;
     const totalSize = Math.max(mainSize, partnerSize);
@@ -534,14 +655,18 @@ export class Trainer extends Phaser.GameObjects.Container {
       () => {
         const template = this.getPartyTemplate(config);
         const strength = template.getStrength(index);
+        const generationContext = `${TrainerType[config.trainerType]}:${TrainerSlot[trainerSlot]}`;
 
         if (Object.hasOwn(config.partyMemberFuncs, index)) {
-          ret = config.partyMemberFuncs[index](level, strength);
+          ret = withRivalRollContext(generationContext, () => config.partyMemberFuncs[index](level, strength));
           ret.trainerSlot = trainerSlot;
           return;
         }
         if (Object.hasOwn(config.partyMemberFuncs, index - template.size)) {
-          ret = config.partyMemberFuncs[index - template.size](level, template.getStrength(index));
+          ret = withRivalRollContext(
+            generationContext,
+            () => config.partyMemberFuncs[index - template.size](level, template.getStrength(index)),
+          );
           ret.trainerSlot = trainerSlot;
           return;
         }
@@ -571,10 +696,11 @@ export class Trainer extends Phaser.GameObjects.Container {
         ret = globalScene.addEnemyPokemon(species, level, trainerSlot);
       },
       config.hasStaticParty
-        ? config.getDerivedType() + ((index + 1) << 8)
+        ? config.getDerivedType() + ((index + 1) << 8) + (trainerSlot === TrainerSlot.TRAINER_PARTNER ? 1 << 16 : 0)
         : globalScene.currentBattle.waveIndex
             + (config.getDerivedType() << 10)
-            + (((config.useSameSeedForAllMembers ? 0 : index) + 1) << 8),
+            + (((config.useSameSeedForAllMembers ? 0 : index) + 1) << 8)
+            + (trainerSlot === TrainerSlot.TRAINER_PARTNER ? 1 << 16 : 0),
     );
 
     return ret!;
@@ -788,7 +914,7 @@ export class Trainer extends Phaser.GameObjects.Container {
       const ret: PersistentModifier[] = [];
       const mainParty = party.filter(p => p.trainerSlot === TrainerSlot.TRAINER);
       const partnerParty = party.filter(p => p.trainerSlot === TrainerSlot.TRAINER_PARTNER);
-      const partnerConfig = trainerConfigs[this.config.trainerTypeDouble];
+      const partnerConfig = this.partnerConfig!;
 
       if (this.config.genModifiersFunc) {
         ret.push(...this.config.genModifiersFunc(mainParty));
@@ -810,7 +936,7 @@ export class Trainer extends Phaser.GameObjects.Container {
     if (this.shouldUseTwoPlayerNamedPartnerParty()) {
       const mainParty = party.filter(p => p.trainerSlot === TrainerSlot.TRAINER);
       const partnerParty = party.filter(p => p.trainerSlot === TrainerSlot.TRAINER_PARTNER);
-      const partnerConfig = trainerConfigs[this.config.trainerTypeDouble];
+      const partnerConfig = this.partnerConfig!;
 
       this.config.genAIFuncs?.forEach(f => f(mainParty));
       partnerConfig.genAIFuncs?.forEach(f => f(partnerParty));
@@ -825,6 +951,53 @@ export class Trainer extends Phaser.GameObjects.Container {
   }
 
   loadAssets(): Promise<void> {
+    if (this.partnerConfig && this.partnerConfig !== this.config && this.variant === TrainerVariant.DOUBLE) {
+      return new Promise(resolve => {
+        const trainerKey = this.getKey();
+        const partnerTrainerKey = this.getKey(true);
+        globalScene.loadAtlas(trainerKey, "trainer");
+        globalScene.loadAtlas(partnerTrainerKey, "trainer");
+        globalScene.load.once(Phaser.Loader.Events.COMPLETE, () => {
+          const originalWarn = console.warn;
+          console.warn = () => {};
+          const frameNames = globalScene.anims.generateFrameNames(trainerKey, {
+            zeroPad: 4,
+            suffix: ".png",
+            start: 1,
+            end: 128,
+          });
+          const partnerFrameNames = globalScene.anims.generateFrameNames(partnerTrainerKey, {
+            zeroPad: 4,
+            suffix: ".png",
+            start: 1,
+            end: 128,
+          });
+          console.warn = originalWarn;
+
+          if (!globalScene.anims.exists(trainerKey)) {
+            globalScene.anims.create({
+              key: trainerKey,
+              frames: frameNames,
+              frameRate: 24,
+              repeat: -1,
+            });
+          }
+          if (!globalScene.anims.exists(partnerTrainerKey)) {
+            globalScene.anims.create({
+              key: partnerTrainerKey,
+              frames: partnerFrameNames,
+              frameRate: 24,
+              repeat: -1,
+            });
+          }
+          resolve();
+        });
+        if (!globalScene.load.isLoading()) {
+          globalScene.load.start();
+        }
+      });
+    }
+
     return this.config.loadAssets(this.variant);
   }
 

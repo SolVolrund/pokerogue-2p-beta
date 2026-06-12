@@ -8,6 +8,8 @@ export class TrainerData {
   public partyTemplateIndex: number;
   public nameKey: string;
   public partnerNameKey: string | undefined;
+  public partnerTrainerType: TrainerType | undefined;
+  public partnerVariant: TrainerVariant | undefined;
 
   constructor(source: Trainer | any) {
     const sourceTrainer = source instanceof Trainer ? (source as Trainer) : null;
@@ -17,12 +19,25 @@ export class TrainerData {
       : source.female
         ? TrainerVariant.FEMALE
         : TrainerVariant.DEFAULT;
-    this.partyTemplateIndex = source.partyMemberTemplateIndex;
+    this.partyTemplateIndex = sourceTrainer
+      ? sourceTrainer.partyTemplateIndex
+      : (source.partyTemplateIndex ?? source.partyMemberTemplateIndex);
     this.nameKey = source.nameKey;
     this.partnerNameKey = source.partnerNameKey;
+    this.partnerTrainerType = sourceTrainer ? sourceTrainer.partnerTrainerType : source.partnerTrainerType;
+    this.partnerVariant = sourceTrainer ? sourceTrainer.partnerVariant : source.partnerVariant;
   }
 
   toTrainer(): Trainer {
-    return new Trainer(this.trainerType, this.variant, this.partyTemplateIndex, this.nameKey, this.partnerNameKey);
+    return new Trainer(
+      this.trainerType,
+      this.variant,
+      this.partyTemplateIndex,
+      this.nameKey,
+      this.partnerNameKey,
+      undefined,
+      this.partnerTrainerType,
+      this.partnerVariant,
+    );
   }
 }

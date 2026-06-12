@@ -35,7 +35,29 @@ const MAX_SHARED_WEAKNESSES = 2;
 const MAX_SHARED_TYPES = 1;
 
 /** Record of the chosen indices in the rival species pool, for type balancing based on the final fight */
-const CHOSEN_RIVAL_ROLLS: (undefined | [number] | [number, number])[] = new Array(6);
+type RivalRolls = (undefined | [number] | [number, number])[];
+const DEFAULT_RIVAL_ROLL_CONTEXT = "default";
+const CHOSEN_RIVAL_ROLLS_BY_CONTEXT = new Map<string, RivalRolls>();
+let activeRivalRollContext = DEFAULT_RIVAL_ROLL_CONTEXT;
+
+function getChosenRivalRolls(): RivalRolls {
+  let chosenRolls = CHOSEN_RIVAL_ROLLS_BY_CONTEXT.get(activeRivalRollContext);
+  if (!chosenRolls) {
+    chosenRolls = new Array(6);
+    CHOSEN_RIVAL_ROLLS_BY_CONTEXT.set(activeRivalRollContext, chosenRolls);
+  }
+  return chosenRolls;
+}
+
+export function withRivalRollContext<T>(context: string, callback: () => T): T {
+  const previousContext = activeRivalRollContext;
+  activeRivalRollContext = context;
+  try {
+    return callback();
+  } finally {
+    activeRivalRollContext = previousContext;
+  }
+}
 
 /**
  * Return the species from the rival species pool based on a previously chosen roll
@@ -140,7 +162,7 @@ function calcPartyTypings(
     return;
   }
   for (let i = 0; i < targetSlot; i++) {
-    const chosenRoll = CHOSEN_RIVAL_ROLLS[i];
+    const chosenRoll = getChosenRivalRolls()[i];
     const refConfig = referenceConfig[i];
     // In case pokemon are somehow generating out of order, break early
     if (chosenRoll == null || refConfig == null) {
@@ -286,10 +308,11 @@ export function getRandomRivalPartyMemberFunc(
 
     const existingTypes = new Map<PokemonType, number>();
     const existingWeaknesses = new Map<PokemonType, number>();
+    const chosenRolls = getChosenRivalRolls();
 
     if (slot === 0) {
       // Clear out the rolls from previous rival generations
-      CHOSEN_RIVAL_ROLLS.fill(undefined);
+      chosenRolls.fill(undefined);
     } else if (balanceTypes || balanceWeaknesses) {
       calcPartyTypings(slot, existingTypes, existingWeaknesses, balanceTypes, balanceWeaknesses, referenceConfig);
     }
@@ -312,10 +335,10 @@ export function getRandomRivalPartyMemberFunc(
     const choice = randSeedItem(choices);
     if (typeof choice === "number") {
       species = pool[choice] as SpeciesId;
-      CHOSEN_RIVAL_ROLLS[slot] = [choice];
+      chosenRolls[slot] = [choice];
     } else {
       species = pool[choice[0]][choice[1]];
-      CHOSEN_RIVAL_ROLLS[slot] = choice;
+      chosenRolls[slot] = choice;
     }
 
     return globalScene.addEnemyPokemon(

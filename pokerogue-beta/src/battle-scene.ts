@@ -1631,6 +1631,7 @@ export class BattleScene extends SceneBase {
       trainerData?.variant === TrainerVariant.DOUBLE
       && !trainerConfigs[trainerData.trainerType].hasDouble
       && !trainerConfigs[trainerData.trainerType].doubleOnly
+      && trainerData.partnerTrainerType == null
     ) {
       trainerData.variant = TrainerVariant.DEFAULT;
       fixedDouble = false;
@@ -1649,7 +1650,10 @@ export class BattleScene extends SceneBase {
         break;
       case BattleType.TRAINER: {
         const config = trainerConfigs[trainerData.trainerType];
-        fixedDouble = config.doubleOnly || (config.hasDouble && trainerData.variant === TrainerVariant.DOUBLE);
+        fixedDouble =
+          config.doubleOnly
+          || (config.hasDouble && trainerData.variant === TrainerVariant.DOUBLE)
+          || (trainerData.partnerTrainerType != null && trainerData.variant === TrainerVariant.DOUBLE);
         break;
       }
       case BattleType.MYSTERY_ENCOUNTER:

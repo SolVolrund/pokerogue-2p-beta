@@ -402,7 +402,9 @@ export class SummaryUiHandler extends UiHandler {
       if (this.pokemon?.summonData.speciesForm) {
         k += "Base";
       }
-      this.pokemonSprite.pipelineData[k] = this.pokemon?.getSprite().pipelineData[k];
+      this.pokemonSprite.pipelineData[k] = this.pokemon?.isOnField()
+        ? this.pokemon.getSprite().pipelineData[k]
+        : [];
     });
     this.pokemon.cry();
 
