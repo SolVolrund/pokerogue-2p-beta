@@ -1,5 +1,4 @@
 import { globalScene } from "#app/global-scene";
-import { PlayerGender } from "#enums/player-gender";
 import { BattlePhase } from "#phases/battle-phase";
 
 export class ShowTrainerPhase extends BattlePhase {
@@ -7,16 +6,15 @@ export class ShowTrainerPhase extends BattlePhase {
   start() {
     super.start();
 
-    const trainerBackKey = `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`;
     const playerTrainerX = globalScene.twoPlayerMode ? 90 : 106;
 
     globalScene.trainer
       .setVisible(true)
-      .setTexture(trainerBackKey)
+      .setTexture(globalScene.getTrainerBackTextureKey(0))
       .setFrame(0);
     globalScene.trainerPartner
       .setVisible(globalScene.twoPlayerMode)
-      .setTexture(trainerBackKey)
+      .setTexture(globalScene.getTrainerBackTextureKey(1))
       .setFrame(0);
 
     globalScene.tweens.add({

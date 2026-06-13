@@ -7,7 +7,6 @@ import { getPokeballAtlasKey, getPokeballTintColor } from "#data/pokeball";
 import { BattleType } from "#enums/battle-type";
 import { FieldPosition } from "#enums/field-position";
 import { MysteryEncounterMode } from "#enums/mystery-encounter-mode";
-import { PlayerGender } from "#enums/player-gender";
 import { TrainerSlot } from "#enums/trainer-slot";
 import type { Pokemon } from "#field/pokemon";
 import { PartyMemberPokemonPhase } from "#phases/party-member-pokemon-phase";
@@ -106,7 +105,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
         globalScene.twoPlayerMode && playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
       trainerSprite
         .setVisible(true)
-        .setTexture(`trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back_pb`);
+        .setTexture(globalScene.getTrainerBackTextureKey(playerIndex, true));
       globalScene.time.delayedCall(562, () => {
         trainerSprite.setFrame("2");
         globalScene.time.delayedCall(64, () => {

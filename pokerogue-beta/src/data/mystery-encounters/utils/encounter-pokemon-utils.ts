@@ -17,7 +17,6 @@ import type { PokemonSpecies } from "#data/pokemon-species";
 import { getStatusEffectCatchRateMultiplier } from "#data/status-effect";
 import type { AbilityId } from "#enums/ability-id";
 import { ChallengeType } from "#enums/challenge-type";
-import { PlayerGender } from "#enums/player-gender";
 import type { PokeballType } from "#enums/pokeball";
 import type { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
@@ -482,9 +481,7 @@ export function trainerThrowPokeball(
       trainerSprite.setPosition(playerIndex === 1 ? 122 : 90, 186);
     }
     trainerSprite.setVisible(true);
-    trainerSprite.setTexture(
-      `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back_pb`,
-    );
+    trainerSprite.setTexture(globalScene.getTrainerBackTextureKey(playerIndex, true));
     globalScene.time.delayedCall(512, () => {
       audioManager.playSound("se/pb_throw");
 
@@ -494,7 +491,7 @@ export function trainerThrowPokeball(
         trainerSprite.setFrame("3");
         globalScene.time.delayedCall(768, () => {
           trainerSprite.setTexture(
-            `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`,
+            globalScene.getTrainerBackTextureKey(playerIndex),
           );
         });
       });

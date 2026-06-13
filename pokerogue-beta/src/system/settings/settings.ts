@@ -173,6 +173,7 @@ export const SettingKeys = {
   Sprite_Set: "SPRITE_SET",
   Fusion_Palette_Swaps: "FUSION_PALETTE_SWAPS",
   Player_Gender: "PLAYER_GENDER",
+  Guest_Gender: "GUEST_GENDER",
   Type_Hints: "TYPE_HINTS",
   Master_Volume: "MASTER_VOLUME",
   BGM_Volume: "BGM_VOLUME",
@@ -626,6 +627,22 @@ export const Setting: Setting[] = [
     type: SettingType.DISPLAY,
   },
   {
+    key: SettingKeys.Guest_Gender,
+    label: i18next.t("settings:guestGender"),
+    options: [
+      {
+        value: "Boy",
+        label: i18next.t("settings:boy"),
+      },
+      {
+        value: "Girl",
+        label: i18next.t("settings:girl"),
+      },
+    ],
+    default: 1,
+    type: SettingType.DISPLAY,
+  },
+  {
     key: SettingKeys.Type_Hints,
     label: i18next.t("settings:typeHints"),
     options: OFF_ON,
@@ -913,11 +930,17 @@ export function setSetting(setting: string, value: number): boolean {
     case SettingKeys.Player_Gender:
       if (globalScene.gameData) {
         const female = Setting[index].options[value].value === "Girl";
-        globalScene.gameData.gender = female ? PlayerGender.FEMALE : PlayerGender.MALE;
-        globalScene.trainer.setTexture(globalScene.trainer.texture.key.replace(female ? "m" : "f", female ? "f" : "m"));
+        globalScene.getPlayerGameData(0).gender = female ? PlayerGender.FEMALE : PlayerGender.MALE;
+        globalScene.trainer.setTexture(globalScene.getTrainerBackTextureKey(0));
       } else {
         return false;
       }
+      break;
+    case SettingKeys.Guest_Gender:
+      globalScene.twoPlayerGuestGender = Setting[index].options[value].value === "Girl"
+        ? PlayerGender.FEMALE
+        : PlayerGender.MALE;
+      globalScene.trainerPartner.setTexture(globalScene.getTrainerBackTextureKey(1));
       break;
     case SettingKeys.Touch_Controls: {
       globalScene.enableTouchControls = Setting[index].options[value].value !== "Disabled" && hasTouchscreen();

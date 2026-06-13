@@ -10,7 +10,6 @@ import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { Nature } from "#enums/nature";
-import { PlayerGender } from "#enums/player-gender";
 import { SpeciesId } from "#enums/species-id";
 import { TrainerSlot } from "#enums/trainer-slot";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
@@ -190,9 +189,7 @@ async function summonPlayerPokemon() {
       }),
     );
     globalScene.pbTray.hide();
-    globalScene.trainer.setTexture(
-      `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back_pb`,
-    );
+    globalScene.trainer.setTexture(globalScene.getTrainerBackTextureKey(0, true));
     globalScene.time.delayedCall(562, () => {
       globalScene.trainer.setFrame("2");
       globalScene.time.delayedCall(64, () => {

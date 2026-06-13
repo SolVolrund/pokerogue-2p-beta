@@ -9,7 +9,6 @@ import { BattlerIndex } from "#enums/battler-index";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
-import { PlayerGender } from "#enums/player-gender";
 import { PokeballType } from "#enums/pokeball";
 import { UiMode } from "#enums/ui-mode";
 import type { EnemyPokemon } from "#field/pokemon";
@@ -114,15 +113,14 @@ function getSafariTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sp
 }
 
 function showTwoPlayerSafariTrainers(): void {
-  const trainerBackKey = `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`;
   globalScene.trainer
     .setVisible(true)
-    .setTexture(trainerBackKey)
+    .setTexture(globalScene.getTrainerBackTextureKey(0))
     .setFrame(0)
     .setPosition(90, 186);
   globalScene.trainerPartner
     .setVisible(true)
-    .setTexture(trainerBackKey)
+    .setTexture(globalScene.getTrainerBackTextureKey(1))
     .setFrame(0)
     .setPosition(122, 186);
 }
@@ -798,9 +796,7 @@ async function throwBait(pokemon: EnemyPokemon, playerIndex: PlayerIndex = globa
   return new Promise(resolve => {
     const trainerSprite = getSafariTrainerSprite(playerIndex);
     trainerSprite.setVisible(true);
-    trainerSprite.setTexture(
-      `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back_pb`,
-    );
+    trainerSprite.setTexture(globalScene.getTrainerBackTextureKey(playerIndex, true));
     globalScene.time.delayedCall(TRAINER_THROW_ANIMATION_TIMES[0], () => {
       audioManager.playSound("se/pb_throw");
 
@@ -810,7 +806,7 @@ async function throwBait(pokemon: EnemyPokemon, playerIndex: PlayerIndex = globa
         trainerSprite.setFrame("3");
         globalScene.time.delayedCall(TRAINER_THROW_ANIMATION_TIMES[2], () => {
           trainerSprite.setTexture(
-            `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`,
+            globalScene.getTrainerBackTextureKey(playerIndex),
           );
         });
       });
@@ -870,9 +866,7 @@ async function throwMud(pokemon: EnemyPokemon, playerIndex: PlayerIndex = global
   return new Promise(resolve => {
     const trainerSprite = getSafariTrainerSprite(playerIndex);
     trainerSprite.setVisible(true);
-    trainerSprite.setTexture(
-      `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back_pb`,
-    );
+    trainerSprite.setTexture(globalScene.getTrainerBackTextureKey(playerIndex, true));
     globalScene.time.delayedCall(TRAINER_THROW_ANIMATION_TIMES[0], () => {
       audioManager.playSound("se/pb_throw");
 
@@ -882,7 +876,7 @@ async function throwMud(pokemon: EnemyPokemon, playerIndex: PlayerIndex = global
         trainerSprite.setFrame("3");
         globalScene.time.delayedCall(TRAINER_THROW_ANIMATION_TIMES[2], () => {
           trainerSprite.setTexture(
-            `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`,
+            globalScene.getTrainerBackTextureKey(playerIndex),
           );
         });
       });

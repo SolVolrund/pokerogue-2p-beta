@@ -177,8 +177,9 @@ const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.SAFARI_ZONE,
   MysteryEncounterType.LOST_AT_SEA,
   MysteryEncounterType.FIERY_FALLOUT,
+  MysteryEncounterType.THE_STRONG_STUFF,
 ];
-const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_TYPE = MysteryEncounterType.MYSTERIOUS_CHEST;
+const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_TYPE = MysteryEncounterType.THE_STRONG_STUFF;
 const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_WAVE = STARTING_WAVE;
 
 export interface PlayerRunState {
@@ -382,6 +383,7 @@ export class BattleScene extends SceneBase {
   public twoPlayerPartySize: 3 | 6 = getTwoPlayerPartySize();
   private readonly twoPlayerEggVoucherGrant: number | undefined = getTwoPlayerEggVoucherGrant();
   public activePlayerIndex: PlayerIndex = 0;
+  public twoPlayerGuestGender: PlayerGender = PlayerGender.FEMALE;
   public twoPlayerMysteryDecisionPriority: PlayerIndex = 0;
   public readonly fieldSlotOwners: [PlayerIndex, PlayerIndex] = [0, 1];
   public players: [PlayerRunState, PlayerRunState] = [createPlayerRunState(), createPlayerRunState()];
@@ -707,13 +709,13 @@ export class BattleScene extends SceneBase {
       .setVisible(false);
     this.field.add([this.arenaPlayer, this.arenaPlayerTransition, this.arenaEnemy, this.arenaNextEnemy]);
 
-    this.trainer = this.addFieldSprite(0, 0, `trainer_${this.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`)
+    this.trainer = this.addFieldSprite(0, 0, this.getTrainerBackTextureKey(0))
       .setOrigin(0.5, 1)
       .setName("sprite-trainer");
     this.trainerPartner = this.addFieldSprite(
       0,
       0,
-      `trainer_${this.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`,
+      this.getTrainerBackTextureKey(1),
     )
       .setOrigin(0.5, 1)
       .setName("sprite-trainer-partner")
@@ -943,6 +945,15 @@ export class BattleScene extends SceneBase {
     this.syncActiveSystemSaveForActivePlayer();
     this.updateMoneyText(false);
     this.refreshPlayerModifierBar();
+  }
+
+  public getTrainerGender(playerIndex: PlayerIndex = 0): PlayerGender {
+    return playerIndex === 1 ? this.twoPlayerGuestGender : this.getPlayerGameData(0).gender;
+  }
+
+  public getTrainerBackTextureKey(playerIndex: PlayerIndex = 0, pokeball = false): string {
+    const genderPrefix = this.getTrainerGender(playerIndex) === PlayerGender.FEMALE ? "f" : "m";
+    return `trainer_${genderPrefix}_back${pokeball ? "_pb" : ""}`;
   }
 
   // TODO: Add a `getPartyOnSide` function for getting the party of a pokemon
@@ -1543,10 +1554,10 @@ export class BattleScene extends SceneBase {
 
     this.arena.init();
 
-    this.trainer.setTexture(`trainer_${this.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`);
+    this.trainer.setTexture(this.getTrainerBackTextureKey(0));
     this.trainer.setPosition(406, 186);
     this.trainer.setVisible(true);
-    this.trainerPartner.setTexture(`trainer_${this.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`);
+    this.trainerPartner.setTexture(this.getTrainerBackTextureKey(1));
     this.trainerPartner.setPosition(438, 186);
     this.trainerPartner.setVisible(false);
 

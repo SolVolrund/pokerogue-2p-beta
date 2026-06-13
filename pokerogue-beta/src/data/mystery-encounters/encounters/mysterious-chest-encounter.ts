@@ -6,7 +6,6 @@ import { MoveId } from "#enums/move-id";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
-import { PlayerGender } from "#enums/player-gender";
 import { SpeciesId } from "#enums/species-id";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
@@ -290,12 +289,11 @@ function getMysteriousChestTrainerSprite(playerIndex: PlayerIndex): Phaser.GameO
 }
 
 function setMysteriousChestTrainerVisible(playerIndex: PlayerIndex): void {
-  const trainerBackKey = `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`;
   const trainerSprite = getMysteriousChestTrainerSprite(playerIndex);
   globalScene.tweens.killTweensOf(trainerSprite);
   trainerSprite
     .setVisible(true)
-    .setTexture(trainerBackKey)
+    .setTexture(globalScene.getTrainerBackTextureKey(playerIndex))
     .setFrame(0)
     .setPosition(playerIndex === 1 ? 122 : 90, 186);
 }
