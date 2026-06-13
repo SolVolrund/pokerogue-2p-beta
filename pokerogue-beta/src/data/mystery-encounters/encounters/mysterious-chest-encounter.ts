@@ -6,9 +6,12 @@ import { MoveId } from "#enums/move-id";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
+import { PlayerGender } from "#enums/player-gender";
 import { SpeciesId } from "#enums/species-id";
+import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import { queueEncounterMessage, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
+import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import type { EnemyPartyConfig } from "#mystery-encounters/encounter-phase-utils";
 import {
   initBattleWithEnemyConfig,
@@ -35,6 +38,25 @@ const COMMON_REWARDS_PERCENT = 25;
 const ULTRA_REWARDS_PERCENT = 30;
 const ROGUE_REWARDS_PERCENT = 10;
 const MASTER_REWARDS_PERCENT = 5;
+const MIN_HEALTHY_POKEMON_FOR_ONE_CHEST = 2;
+const MIN_HEALTHY_POKEMON_FOR_TWO_CHESTS = 3;
+
+class PlayerHealthyPokemonRequirement extends EncounterSceneRequirement {
+  constructor(
+    private readonly playerIndex: PlayerIndex,
+    private readonly minHealthyPokemon: number,
+  ) {
+    super();
+  }
+
+  override meetsRequirement(): boolean {
+    return globalScene.getPokemonAllowedInBattle(this.playerIndex).length >= this.minHealthyPokemon;
+  }
+
+  override getDialogueToken(): [string, string] {
+    return ["minHealthyPokemon", this.minHealthyPokemon.toString()];
+  }
+}
 
 interface MysteriousChestChoice {
   playerIndex: PlayerIndex;
@@ -123,8 +145,7 @@ async function storeMysteriousChestChoice(openChest: boolean, playerIndex: Playe
   updateWindowType(playerIndex + 1);
 
   let canOpenChest = openChest;
-  if (openChest && globalScene.getPokemonAllowedInBattle(playerIndex).length <= 1) {
-    await showEncounterText(`Player ${playerIndex + 1} does not have enough healthy Pokemon to risk opening the chest.`);
+  if (openChest && globalScene.getPokemonAllowedInBattle(playerIndex).length < MIN_HEALTHY_POKEMON_FOR_ONE_CHEST) {
     canOpenChest = false;
   }
 
@@ -132,8 +153,12 @@ async function storeMysteriousChestChoice(openChest: boolean, playerIndex: Playe
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
   data.choices.push({ playerIndex, openChest: canOpenChest });
 
+  if (!canOpenChest) {
+    hideMysteriousChestTrainer(playerIndex);
+  }
+
   if (playerIndex === 0) {
-    showMysteriousChestPlayerMenu(1, openChest ? 0 : 1);
+    showMysteriousChestPlayerMenu(1, canOpenChest ? 0 : 1);
     return false;
   }
 
@@ -163,10 +188,13 @@ function buildMysteriousChestPlayerOptions(playerIndex: PlayerIndex): MysteryEnc
 }
 
 function buildMysteriousChestOpenOption(playerIndex: PlayerIndex): MysteryEncounterOption {
-  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT)
+    .withSceneRequirement(new PlayerHealthyPokemonRequirement(playerIndex, MIN_HEALTHY_POKEMON_FOR_ONE_CHEST))
     .withDialogue({
       buttonLabel: `${namespace}:option.1.label`,
+      disabledButtonLabel: `${namespace}:option.1.labelDisabled`,
       buttonTooltip: `${namespace}:option.1.tooltip`,
+      disabledButtonTooltip: `${namespace}:option.1.tooltipDisabled`,
       selected: [
         {
           text: `${namespace}:option.1.selected`,
@@ -219,14 +247,22 @@ function playChestOpenAnimation(hasTrap = false): void {
 async function promptSingleOpenerForSecondChest(playerIndex: PlayerIndex): Promise<boolean> {
   globalScene.setActivePlayerIndex(playerIndex);
   updateWindowType(playerIndex + 1);
+
   await showEncounterText(`${namespace}:option.1.openBothPrompt`);
+  const canOpenBothChests =
+    globalScene.getPokemonAllowedInBattle(playerIndex).length >= MIN_HEALTHY_POKEMON_FOR_TWO_CHESTS;
 
   return new Promise(resolve => {
     const config: OptionSelectConfig = {
       options: [
         {
-          label: "Open both chests!",
+          label: canOpenBothChests ? "Open both chests!" : "You dont feel too confident, so...",
+          disabled: !canOpenBothChests,
+          style: canOpenBothChests ? TextStyle.WINDOW : TextStyle.SUMMARY_GRAY,
           handler: () => {
+            if (!canOpenBothChests) {
+              return false;
+            }
             globalScene.ui.setMode(UiMode.MESSAGE);
             resolve(true);
             return true;
@@ -249,19 +285,56 @@ async function promptSingleOpenerForSecondChest(playerIndex: PlayerIndex): Promi
   });
 }
 
-function queueImmediateChestReward(rewardTiers: ModifierTier[], playerIndex: PlayerIndex): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
-  globalScene.phaseManager.unshiftNew(
-    "SelectModifierPhase",
-    0,
-    undefined,
-    {
-      guaranteedModifierTiers: rewardTiers,
-    },
-    false,
-    playerIndex,
-  );
+function getMysteriousChestTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
+  return playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+}
+
+function setMysteriousChestTrainerVisible(playerIndex: PlayerIndex): void {
+  const trainerBackKey = `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`;
+  const trainerSprite = getMysteriousChestTrainerSprite(playerIndex);
+  globalScene.tweens.killTweensOf(trainerSprite);
+  trainerSprite
+    .setVisible(true)
+    .setTexture(trainerBackKey)
+    .setFrame(0)
+    .setPosition(playerIndex === 1 ? 122 : 90, 186);
+}
+
+function showTwoPlayerMysteriousChestTrainers(): void {
+  setMysteriousChestTrainerVisible(0);
+  setMysteriousChestTrainerVisible(1);
+}
+
+function hideMysteriousChestTrainer(playerIndex: PlayerIndex, animate = true): void {
+  const trainerSprite = getMysteriousChestTrainerSprite(playerIndex);
+  globalScene.tweens.killTweensOf(trainerSprite);
+  if (!trainerSprite.visible) {
+    return;
+  }
+
+  if (!animate) {
+    trainerSprite.setVisible(false);
+    return;
+  }
+
+  globalScene.tweens.add({
+    targets: trainerSprite,
+    x: -36,
+    duration: 500,
+    onComplete: () => trainerSprite.setVisible(false),
+  });
+}
+
+function prepareMysteriousChestBattleTrainers(playerIndexes: PlayerIndex[]): void {
+  const battlePlayerIndexes = new Set(playerIndexes);
+  ([0, 1] as PlayerIndex[]).forEach(playerIndex => {
+    if (battlePlayerIndexes.has(playerIndex)) {
+      setMysteriousChestTrainerVisible(playerIndex);
+      getMysteriousChestTrainerSprite(playerIndex).setVisible(false);
+    } else {
+      hideMysteriousChestTrainer(playerIndex, false);
+    }
+  });
 }
 
 /**
@@ -323,6 +396,13 @@ export const MysteriousChestEncounter: MysteryEncounter = MysteryEncounterBuilde
     encounter.setDialogueToken("ultraPercent", ULTRA_REWARDS_PERCENT.toString());
     encounter.setDialogueToken("roguePercent", ROGUE_REWARDS_PERCENT.toString());
     encounter.setDialogueToken("masterPercent", MASTER_REWARDS_PERCENT.toString());
+
+    return true;
+  })
+  .withOnVisualsStart(() => {
+    if (globalScene.twoPlayerMode) {
+      showTwoPlayerMysteriousChestTrainers();
+    }
 
     return true;
   })
@@ -463,11 +543,19 @@ async function runTwoPlayerMysteriousChestChoices(): Promise<boolean> {
   }
 
   for (const treasureReward of treasureRewards) {
-    queueImmediateChestReward(treasureReward.rewardTiers, treasureReward.playerIndex);
+    setEncounterRewards(
+      {
+        guaranteedModifierTiers: treasureReward.rewardTiers,
+      },
+      undefined,
+      undefined,
+      treasureReward.playerIndex,
+    );
   }
 
   await transitionMysteryEncounterIntroVisuals(true, true, 500);
   globalScene.setMysteryEncounterBattlePlayerFieldOwners(trappedPlayers);
+  prepareMysteriousChestBattleTrainers(fightingPlayers);
   await initBattleWithEnemyConfig(getGimmighoulConfig(trappedPlayers.length));
   return true;
 }

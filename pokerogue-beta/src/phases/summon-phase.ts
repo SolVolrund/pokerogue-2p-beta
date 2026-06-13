@@ -101,8 +101,9 @@ export class SummonPhase extends PartyMemberPokemonPhase {
       if (this.player) {
         globalScene.pbTray.hide();
       }
+      const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
       const trainerSprite =
-        globalScene.twoPlayerMode && this.fieldIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+        globalScene.twoPlayerMode && playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
       trainerSprite
         .setVisible(true)
         .setTexture(`trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back_pb`);

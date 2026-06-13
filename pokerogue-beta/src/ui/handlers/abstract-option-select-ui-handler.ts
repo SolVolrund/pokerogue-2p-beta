@@ -24,6 +24,7 @@ export interface OptionSelectItem {
   handler: () => boolean;
   onHover?: () => void;
   skip?: boolean;
+  disabled?: boolean;
   keepOpen?: boolean;
   overrideSound?: boolean;
   style?: TextStyle;
@@ -197,7 +198,7 @@ export abstract class AbstractOptionSelectUiHandler extends UiHandler {
 
     this.optionSelectContainer.setVisible(true);
     this.scrollCursor = 0;
-    this.fullCursor = 0;
+    this.fullCursor = -1;
     this.setCursor(0);
 
     if (this.config.delay) {
@@ -345,7 +346,7 @@ export abstract class AbstractOptionSelectUiHandler extends UiHandler {
 
   getUnskippedIndices(options: OptionSelectItem[]) {
     const unskippedIndices = options
-      .map((option, index) => (option.skip ? null : index)) // Map to index or null if skipped
+      .map((option, index) => (option.skip || option.disabled ? null : index)) // Map to index or null if skipped
       .filter(index => index !== null) as number[];
     return unskippedIndices;
   }
