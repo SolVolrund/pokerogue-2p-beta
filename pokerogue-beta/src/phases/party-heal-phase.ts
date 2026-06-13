@@ -1,4 +1,5 @@
 import { audioManager } from "#app/global-audio-manager";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { ChallengeType } from "#enums/challenge-type";
 import { BattlePhase } from "#phases/battle-phase";
@@ -8,11 +9,13 @@ import { BooleanHolder } from "#utils/common";
 export class PartyHealPhase extends BattlePhase {
   public readonly phaseName = "PartyHealPhase";
   private resumeBgm: boolean;
+  private playerIndex: PlayerIndex | undefined;
 
-  constructor(resumeBgm: boolean) {
+  constructor(resumeBgm: boolean, playerIndex?: PlayerIndex) {
     super();
 
     this.resumeBgm = resumeBgm;
+    this.playerIndex = playerIndex;
   }
 
   start() {
@@ -22,7 +25,7 @@ export class PartyHealPhase extends BattlePhase {
     globalScene.ui.fadeOut(1000).then(() => {
       const preventRevive = new BooleanHolder(false);
       applyChallenges(ChallengeType.PREVENT_REVIVE, preventRevive);
-      for (const pokemon of globalScene.getPlayerParty()) {
+      for (const pokemon of globalScene.getPlayerParty(this.playerIndex)) {
         // Prevent reviving fainted pokemon during certain challenges
         if (pokemon.isFainted() && preventRevive.value) {
           continue;

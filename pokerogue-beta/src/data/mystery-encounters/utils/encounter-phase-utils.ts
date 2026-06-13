@@ -63,7 +63,15 @@ type EncounterRewardConfig = {
   playerIndex: PlayerIndex;
 };
 
+type EncounterExpConfig = {
+  participantIds: number[];
+  baseExpValue: number;
+  useWaveIndex: boolean;
+  playerIndex: PlayerIndex | undefined;
+};
+
 const ENCOUNTER_REWARD_CONFIGS_KEY = "encounterRewardConfigs";
+const ENCOUNTER_EXP_CONFIGS_KEY = "encounterExpConfigs";
 
 /**
  * Animates exclamation sprite over trainer's head at start of encounter
@@ -832,10 +840,28 @@ export function setEncounterExp(
   useWaveIndex = true,
   playerIndex?: PlayerIndex,
 ) {
-  const participantIds = coerceArray(participantId);
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  encounter.misc ??= {};
+  const configs = ((encounter.misc[ENCOUNTER_EXP_CONFIGS_KEY] ??= []) as EncounterExpConfig[]);
+  configs.push({
+    participantIds: coerceArray(participantId),
+    baseExpValue,
+    useWaveIndex,
+    playerIndex,
+  });
 
-  globalScene.currentBattle.mysteryEncounter!.doEncounterExp = () => {
-    globalScene.phaseManager.unshiftNew("PartyExpPhase", baseExpValue, useWaveIndex, new Set(participantIds), playerIndex);
+  encounter.doEncounterExp = () => {
+    const expConfigs = ((encounter.misc?.[ENCOUNTER_EXP_CONFIGS_KEY] ?? []) as EncounterExpConfig[]).slice();
+
+    for (const config of expConfigs.toReversed()) {
+      globalScene.phaseManager.unshiftNew(
+        "PartyExpPhase",
+        config.baseExpValue,
+        config.useWaveIndex,
+        new Set(config.participantIds),
+        config.playerIndex,
+      );
+    }
 
     return true;
   };

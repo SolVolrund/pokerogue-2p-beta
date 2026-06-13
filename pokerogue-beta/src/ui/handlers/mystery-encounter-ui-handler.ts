@@ -354,15 +354,15 @@ export class MysteryEncounterUiHandler extends UiHandler {
     this.optionsMeetsReqs = [];
 
     const titleText: string | null = getEncounterText(
-      mysteryEncounter.dialogue.encounterOptionsDialogue?.title,
+      this.overrideSettings?.overrideTitle ?? mysteryEncounter.dialogue.encounterOptionsDialogue?.title,
       TextStyle.TOOLTIP_TITLE,
     );
     const descriptionText: string | null = getEncounterText(
-      mysteryEncounter.dialogue.encounterOptionsDialogue?.description,
+      this.overrideSettings?.overrideDescription ?? mysteryEncounter.dialogue.encounterOptionsDialogue?.description,
       TextStyle.TOOLTIP_CONTENT,
     );
     const queryText: string | null = getEncounterText(
-      mysteryEncounter.dialogue.encounterOptionsDialogue?.query,
+      this.overrideSettings?.overrideQuery ?? mysteryEncounter.dialogue.encounterOptionsDialogue?.query,
       TextStyle.TOOLTIP_CONTENT,
     );
 

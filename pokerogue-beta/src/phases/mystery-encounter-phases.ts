@@ -1,4 +1,5 @@
 import { audioManager } from "#app/global-audio-manager";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { Phase } from "#app/phase";
 import { getCharVariantFromDialogue } from "#data/dialogue";
@@ -15,6 +16,7 @@ import type { OptionSelectSettings } from "#mystery-encounters/encounter-phase-u
 import { transitionMysteryEncounterIntroVisuals } from "#mystery-encounters/encounter-phase-utils";
 import type { MysteryEncounterOption, OptionPhaseCallback } from "#mystery-encounters/mystery-encounter-option";
 import { SeenEncounterData } from "#mystery-encounters/mystery-encounter-save-data";
+import { updateWindowType } from "#ui/ui-theme";
 import { randSeedItem } from "#utils/common";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import i18next from "i18next";
@@ -32,6 +34,8 @@ export class MysteryEncounterPhase extends Phase {
   public readonly phaseName = "MysteryEncounterPhase";
   private readonly FIRST_DIALOGUE_PROMPT_DELAY = 300;
   optionSelectSettings?: OptionSelectSettings | undefined;
+  private firstTwoPlayerDecisionIndex: number | undefined;
+  private twoPlayerDecisionMessage: string | undefined;
 
   /**
    * Mostly useful for having repeated queries during a single encounter, where the queries and options may differ each time
@@ -72,14 +76,50 @@ export class MysteryEncounterPhase extends Phase {
    * @param index
    */
   handleOptionSelect(option: MysteryEncounterOption, index: number): boolean {
+    const encounter = globalScene.currentBattle.mysteryEncounter!;
+    const shouldAskSecondPlayer =
+      globalScene.twoPlayerMode
+      && encounter.twoPlayerSharedDecision
+      && !this.optionSelectSettings
+      && this.firstTwoPlayerDecisionIndex == null;
+
+    if (shouldAskSecondPlayer) {
+      this.firstTwoPlayerDecisionIndex = index;
+      globalScene.setActivePlayerIndex(1);
+      updateWindowType(2);
+      globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
+        slideInDescription: false,
+        overrideTitle: "Player 2",
+        overrideQuery: "What will you do?",
+        startingCursorIndex: index,
+      });
+      return true;
+    }
+
+    if (this.firstTwoPlayerDecisionIndex != null) {
+      const firstIndex = this.firstTwoPlayerDecisionIndex;
+      this.firstTwoPlayerDecisionIndex = undefined;
+
+      if (firstIndex !== index) {
+        const winningPlayerIndex = globalScene.twoPlayerMysteryDecisionPriority;
+        index = winningPlayerIndex === 0 ? firstIndex : index;
+        option = encounter.options[index];
+        globalScene.twoPlayerMysteryDecisionPriority = winningPlayerIndex === 0 ? 1 : 0;
+        this.twoPlayerDecisionMessage = `Player ${winningPlayerIndex + 1}'s choice wins this time.`;
+      }
+    }
+
+    globalScene.setActivePlayerIndex(0);
+    updateWindowType(1);
+
     // Set option selected flag
-    globalScene.currentBattle.mysteryEncounter!.selectedOption = option;
+    encounter.selectedOption = option;
 
     if (!this.optionSelectSettings) {
       // Saves the selected option in the ME save data, only if this is not a followup option select phase
       // Can be used for analytics purposes to track what options are popular on certain encounters
       const encounterSaveData = globalScene.mysteryEncounterSaveData.encounteredEvents.at(-1)!;
-      if (encounterSaveData.type === globalScene.currentBattle.mysteryEncounter?.encounterType) {
+      if (encounterSaveData.type === encounter.encounterType) {
         encounterSaveData.selectedOption = index;
       }
     }
@@ -89,7 +129,7 @@ export class MysteryEncounterPhase extends Phase {
     }
 
     // Populate dialogue tokens for option requirements
-    globalScene.currentBattle.mysteryEncounter!.populateDialogueTokensFromRequirements();
+    encounter.populateDialogueTokensFromRequirements();
 
     if (option.onPreOptionPhase) {
       globalScene.executeWithSeedOffset(async () => {
@@ -115,40 +155,58 @@ export class MysteryEncounterPhase extends Phase {
       this.end();
     };
 
-    const optionSelectDialogue = globalScene.currentBattle?.mysteryEncounter?.selectedOption?.dialogue;
-    if (optionSelectDialogue?.selected && optionSelectDialogue.selected.length > 0) {
-      // Handle intermediate dialogue (between player selection event and the onOptionSelect logic)
+    const showSelectedDialogue = () => {
+      if (globalScene.currentBattle?.mysteryEncounter?.misc?.skipSelectedDialogueOnce) {
+        globalScene.currentBattle.mysteryEncounter.misc.skipSelectedDialogueOnce = false;
+        endDialogueAndContinueEncounter();
+        return;
+      }
+
+      const optionSelectDialogue = globalScene.currentBattle?.mysteryEncounter?.selectedOption?.dialogue;
+      if (optionSelectDialogue?.selected && optionSelectDialogue.selected.length > 0) {
+        // Handle intermediate dialogue (between player selection event and the onOptionSelect logic)
+        globalScene.ui.setMode(UiMode.MESSAGE);
+        const selectedDialogue = optionSelectDialogue.selected;
+        let i = 0;
+        const showNextDialogue = () => {
+          const nextAction = i === selectedDialogue.length - 1 ? endDialogueAndContinueEncounter : showNextDialogue;
+          const dialogue = selectedDialogue[i];
+          let title: string | null = null;
+          const text: string | null = getEncounterText(dialogue.text);
+          if (dialogue.speaker) {
+            title = getEncounterText(dialogue.speaker);
+          }
+
+          i++;
+          if (title) {
+            globalScene.ui.showDialogue(
+              text ?? "",
+              title,
+              null,
+              nextAction,
+              0,
+              i === 1 ? this.FIRST_DIALOGUE_PROMPT_DELAY : 0,
+            );
+          } else {
+            globalScene.ui.showText(text ?? "", null, nextAction, i === 1 ? this.FIRST_DIALOGUE_PROMPT_DELAY : 0, true);
+          }
+        };
+
+        showNextDialogue();
+      } else {
+        endDialogueAndContinueEncounter();
+      }
+    };
+
+    if (this.twoPlayerDecisionMessage) {
+      const decisionMessage = this.twoPlayerDecisionMessage;
+      this.twoPlayerDecisionMessage = undefined;
       globalScene.ui.setMode(UiMode.MESSAGE);
-      const selectedDialogue = optionSelectDialogue.selected;
-      let i = 0;
-      const showNextDialogue = () => {
-        const nextAction = i === selectedDialogue.length - 1 ? endDialogueAndContinueEncounter : showNextDialogue;
-        const dialogue = selectedDialogue[i];
-        let title: string | null = null;
-        const text: string | null = getEncounterText(dialogue.text);
-        if (dialogue.speaker) {
-          title = getEncounterText(dialogue.speaker);
-        }
-
-        i++;
-        if (title) {
-          globalScene.ui.showDialogue(
-            text ?? "",
-            title,
-            null,
-            nextAction,
-            0,
-            i === 1 ? this.FIRST_DIALOGUE_PROMPT_DELAY : 0,
-          );
-        } else {
-          globalScene.ui.showText(text ?? "", null, nextAction, i === 1 ? this.FIRST_DIALOGUE_PROMPT_DELAY : 0, true);
-        }
-      };
-
-      showNextDialogue();
-    } else {
-      endDialogueAndContinueEncounter();
+      globalScene.ui.showText(decisionMessage, null, showSelectedDialogue, 0, true);
+      return;
     }
+
+    showSelectedDialogue();
   }
 
   /**

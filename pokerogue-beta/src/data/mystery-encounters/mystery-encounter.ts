@@ -73,6 +73,7 @@ export interface IMysteryEncounter {
   skipEnemyBattleTurns: boolean;
   skipToFightInput: boolean;
   preventGameStatsUpdates: boolean;
+  twoPlayerSharedDecision: boolean;
 
   onInit?: (() => boolean) | undefined;
   onVisualsStart?: (() => boolean) | undefined;
@@ -277,6 +278,7 @@ export class MysteryEncounter implements IMysteryEncounter {
    * Defaults to 1
    */
   expMultiplier: number;
+  twoPlayerSharedDecision: boolean;
   /**
    * Can add any asset load promises here during onInit() to make sure the scene awaits the loads properly
    */
@@ -313,6 +315,7 @@ export class MysteryEncounter implements IMysteryEncounter {
     this.autoHideIntroVisuals = this.autoHideIntroVisuals ?? true;
     this.enterIntroVisualsFromRight = this.enterIntroVisualsFromRight ?? false;
     this.continuousEncounter = this.continuousEncounter ?? false;
+    this.twoPlayerSharedDecision = this.twoPlayerSharedDecision ?? false;
 
     // Reset any dirty flags or encounter data
     this.startOfBattleEffectsComplete = false;
@@ -591,6 +594,7 @@ export class MysteryEncounterBuilder implements Partial<IMysteryEncounter> {
   skipEnemyBattleTurns = false;
   skipToFightInput = false;
   preventGameStatsUpdates = false;
+  twoPlayerSharedDecision = false;
   maxAllowedEncounters = 3;
   expMultiplier = 1;
 
@@ -819,6 +823,16 @@ export class MysteryEncounterBuilder implements Partial<IMysteryEncounter> {
     preventGameStatsUpdates: boolean,
   ): this & Required<Pick<IMysteryEncounter, "preventGameStatsUpdates">> {
     return Object.assign(this, { preventGameStatsUpdates });
+  }
+
+  /**
+   * If true in 2P mode, both players choose from the same option list.
+   * Matching choices run normally; disagreements are resolved by the scene's rotating decision priority.
+   */
+  withTwoPlayerSharedDecision(
+    twoPlayerSharedDecision = true,
+  ): this & Required<Pick<IMysteryEncounter, "twoPlayerSharedDecision">> {
+    return Object.assign(this, { twoPlayerSharedDecision });
   }
 
   /**

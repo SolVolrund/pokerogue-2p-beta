@@ -164,13 +164,20 @@ import Phaser from "phaser";
 export type PokeballCounts = Record<Exclude<PokeballType, PokeballType.LUXURY_BALL>, number>;
 export type PlayerIndex = 0 | 1;
 const TWO_PLAYER_GUEST_SYSTEM_SAVE_KEY = "pokerogue_2p_guest_system_save";
+const TWO_PLAYER_TEST_STARTING_MONEY = 1000;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.MYSTERIOUS_CHEST,
   MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
   MysteryEncounterType.DARK_DEAL,
   MysteryEncounterType.FIGHT_OR_FLIGHT,
+  MysteryEncounterType.SLUMBERING_SNORLAX,
+  MysteryEncounterType.TRAINING_SESSION,
+  MysteryEncounterType.DEPARTMENT_STORE_SALE,
+  MysteryEncounterType.SHADY_VITAMIN_DEALER,
+  MysteryEncounterType.SAFARI_ZONE,
+  MysteryEncounterType.LOST_AT_SEA,
 ];
-const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_TYPE = MysteryEncounterType.FIGHT_OR_FLIGHT;
+const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_TYPE = MysteryEncounterType.LOST_AT_SEA;
 const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_WAVE = STARTING_WAVE;
 
 export interface PlayerRunState {
@@ -202,7 +209,7 @@ function createInitialPokeballCounts(): PokeballCounts {
 function createPlayerRunState(): PlayerRunState {
   return {
     party: [],
-    money: 0,
+    money: isTwoPlayerPrototypeEnabled() ? TWO_PLAYER_TEST_STARTING_MONEY : 0,
     pokeballCounts: createInitialPokeballCounts(),
     modifiers: [],
   };
@@ -374,6 +381,7 @@ export class BattleScene extends SceneBase {
   public twoPlayerPartySize: 3 | 6 = getTwoPlayerPartySize();
   private readonly twoPlayerEggVoucherGrant: number | undefined = getTwoPlayerEggVoucherGrant();
   public activePlayerIndex: PlayerIndex = 0;
+  public twoPlayerMysteryDecisionPriority: PlayerIndex = 0;
   public readonly fieldSlotOwners: [PlayerIndex, PlayerIndex] = [0, 1];
   public players: [PlayerRunState, PlayerRunState] = [createPlayerRunState(), createPlayerRunState()];
   /** Session save data that pertains to Mystery Encounters */

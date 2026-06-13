@@ -1,4 +1,5 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
+import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
@@ -10,6 +11,7 @@ import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { PlayerGender } from "#enums/player-gender";
 import { PokeballType } from "#enums/pokeball";
+import { UiMode } from "#enums/ui-mode";
 import type { EnemyPokemon } from "#field/pokemon";
 import { IvScannerModifier } from "#modifiers/modifier";
 import { getEncounterText, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
@@ -31,6 +33,7 @@ import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { MoneyRequirement } from "#mystery-encounters/mystery-encounter-requirements";
+import { updateWindowType } from "#ui/ui-theme";
 import { BooleanHolder, NumberHolder, randSeedInt } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 
@@ -46,6 +49,399 @@ const NUM_SAFARI_ENCOUNTERS = 3;
 const eventEncs = new NumberHolder(0);
 const eventChance = new NumberHolder(50);
 
+type SafariActionIndex = 1 | 2 | 3 | 4;
+
+interface SafariTargetState {
+  pokemon: EnemyPokemon;
+  catchStage: number;
+  fleeStage: number;
+  active: boolean;
+}
+
+interface SafariActionChoice {
+  playerIndex: PlayerIndex;
+  optionIndex: SafariActionIndex;
+}
+
+interface SafariZoneData {
+  safariPokemonRemaining: number;
+  targets?: Partial<Record<PlayerIndex, SafariTargetState>>;
+  choices?: SafariActionChoice[];
+  selectingPlayerIndex?: PlayerIndex;
+  skipSelectedDialogueOnce?: boolean;
+}
+
+class SafariBothPlayersMoneyRequirement extends MoneyRequirement {
+  override meetsRequirement(): boolean {
+    if (!globalScene.twoPlayerMode) {
+      return super.meetsRequirement();
+    }
+
+    if (this.scalingMultiplier > 0) {
+      this.requiredMoney = globalScene.getWaveMoneyAmount(this.scalingMultiplier);
+    }
+
+    return ([0, 1] as PlayerIndex[]).every(playerIndex => globalScene.getPlayerMoney(playerIndex) >= this.requiredMoney);
+  }
+}
+
+function getSafariData(): SafariZoneData {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  encounter.misc ??= {
+    safariPokemonRemaining: NUM_SAFARI_ENCOUNTERS,
+  };
+
+  return encounter.misc as SafariZoneData;
+}
+
+function getSafariEntryFee(): number {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  return (encounter.options[0].requirements[0] as MoneyRequirement).requiredMoney;
+}
+
+function spendSafariEntryFee(playerIndex: PlayerIndex, cost: number): void {
+  globalScene.setPlayerMoney(Math.max(globalScene.getPlayerMoney(playerIndex) - cost, 0), playerIndex);
+  if (playerIndex === globalScene.activePlayerIndex) {
+    globalScene.updateMoneyText();
+    globalScene.animateMoneyChanged(false);
+  }
+}
+
+function getSafariTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
+  const trainerSprite = playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+  trainerSprite.setPosition(playerIndex === 1 ? 122 : 90, 186);
+  return trainerSprite;
+}
+
+function showTwoPlayerSafariTrainers(): void {
+  const trainerBackKey = `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`;
+  globalScene.trainer
+    .setVisible(true)
+    .setTexture(trainerBackKey)
+    .setFrame(0)
+    .setPosition(90, 186);
+  globalScene.trainerPartner
+    .setVisible(true)
+    .setTexture(trainerBackKey)
+    .setFrame(0)
+    .setPosition(122, 186);
+}
+
+function getActiveSafariPlayerIndexes(): PlayerIndex[] {
+  const targets = getSafariData().targets ?? {};
+  return ([0, 1] as PlayerIndex[]).filter(playerIndex => targets[playerIndex]?.active);
+}
+
+function showTwoPlayerSafariOptions(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
+  const data = getSafariData();
+  data.selectingPlayerIndex = playerIndex;
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+  initSubsequentOptionSelect({
+    overrideOptions: twoPlayerSafariZoneGameOptions,
+    startingCursorIndex,
+    hideDescription: true,
+    overrideTitle: `Player ${playerIndex + 1}`,
+    overrideQuery: "What will you do?",
+  });
+}
+
+function continueTwoPlayerSafariOptions(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
+  const data = getSafariData();
+  data.selectingPlayerIndex = playerIndex;
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+  globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
+    overrideOptions: twoPlayerSafariZoneGameOptions,
+    startingCursorIndex,
+    hideDescription: true,
+    overrideTitle: `Player ${playerIndex + 1}`,
+    overrideQuery: "What will you do?",
+  });
+}
+
+function beginTwoPlayerSafariActionSelect(startingCursorIndex = 0): void {
+  const data = getSafariData();
+  data.choices = [];
+  const activePlayers = getActiveSafariPlayerIndexes();
+
+  if (activePlayers.length === 0) {
+    void endOrContinueTwoPlayerSafari(startingCursorIndex);
+    return;
+  }
+
+  showTwoPlayerSafariOptions(activePlayers[0], startingCursorIndex);
+}
+
+function storeTwoPlayerSafariAction(optionIndex: SafariActionIndex): boolean {
+  const data = getSafariData();
+  const playerIndex = data.selectingPlayerIndex ?? 0;
+  data.choices ??= [];
+  data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
+  data.choices.push({ playerIndex, optionIndex });
+
+  const nextPlayerIndex = getActiveSafariPlayerIndexes().find(activePlayerIndex => activePlayerIndex > playerIndex);
+  if (nextPlayerIndex != null) {
+    continueTwoPlayerSafariOptions(nextPlayerIndex, optionIndex - 1);
+    return false;
+  }
+
+  delete data.selectingPlayerIndex;
+  data.skipSelectedDialogueOnce = true;
+  globalScene.setActivePlayerIndex(0);
+  updateWindowType(1);
+  return true;
+}
+
+async function startSafariEncounter(): Promise<boolean> {
+  if (globalScene.twoPlayerMode) {
+    return startTwoPlayerSafariEncounter();
+  }
+
+  // Start safari encounter
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  encounter.continuousEncounter = true;
+  encounter.misc = {
+    safariPokemonRemaining: NUM_SAFARI_ENCOUNTERS,
+  };
+  updatePlayerMoney(-getSafariEntryFee());
+  loadSafariAssets();
+  // Clear enemy party
+  globalScene.currentBattle.enemyParty = [];
+  await transitionMysteryEncounterIntroVisuals();
+  await summonSafariPokemon();
+  initSubsequentOptionSelect({
+    overrideOptions: safariZoneGameOptions,
+    hideDescription: true,
+  });
+  return true;
+}
+
+async function startTwoPlayerSafariEncounter(): Promise<boolean> {
+  const cost = getSafariEntryFee();
+  const players = [0, 1] as PlayerIndex[];
+  if (players.some(playerIndex => globalScene.getPlayerMoney(playerIndex) < cost)) {
+    await showEncounterText(getEncounterText(`${namespace}:option.2.selected`) ?? "");
+    leaveEncounterWithoutBattle(true);
+    return true;
+  }
+
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  encounter.continuousEncounter = true;
+  encounter.misc = {
+    safariPokemonRemaining: NUM_SAFARI_ENCOUNTERS,
+    choices: [],
+    targets: {},
+  } satisfies SafariZoneData;
+
+  for (const playerIndex of players) {
+    spendSafariEntryFee(playerIndex, cost);
+  }
+  audioManager.playSound("se/buy");
+
+  loadSafariAssets();
+  globalScene.currentBattle.enemyParty = [];
+  globalScene.currentBattle.double = true;
+  await transitionMysteryEncounterIntroVisuals();
+  showTwoPlayerSafariTrainers();
+  await summonTwoPlayerSafariPokemonPair();
+  beginTwoPlayerSafariActionSelect();
+  return true;
+}
+
+function loadSafariAssets(): void {
+  globalScene
+    .loadSe("PRSFX- Bug Bite", "battle_anims", "PRSFX- Bug Bite.wav")
+    .loadSe("PRSFX- Sludge Bomb2", "battle_anims", "PRSFX- Sludge Bomb2.wav")
+    .loadSe("PRSFX- Taunt2", "battle_anims", "PRSFX- Taunt2.wav")
+    .loadAtlas("safari_zone_bait", "mystery-encounters")
+    .loadAtlas("safari_zone_mud", "mystery-encounters");
+}
+
+function generateSafariPokemon(seedOffset: number): EnemyPokemon {
+  let pokemon: EnemyPokemon | undefined;
+  globalScene.executeWithSeedOffset(
+    () => {
+      console.log("Event chance %d", eventChance.value);
+      const fromEvent = new BooleanHolder(false);
+      pokemon = getRandomEncounterPokemon({
+        level: globalScene.currentBattle.getLevelForWave(),
+        includeLegendary: false,
+        includeSubLegendary: false,
+        includeMythical: false,
+        speciesFunction: getSafariSpeciesSpawn,
+        shinyRerolls: 1,
+        eventShinyRerolls: 1,
+        hiddenRerolls: 1,
+        eventHiddenRerolls: 1,
+        eventChance: eventChance.value,
+        isEventEncounter: fromEvent,
+      }) as EnemyPokemon;
+
+      pokemon.init();
+
+      // Increase chance of event encounter by 25% until one spawns
+      if (fromEvent.value) {
+        console.log("Safari zone encounter is from event");
+        eventEncs.value++;
+        eventChance.value = 50;
+      } else if (eventEncs.value === 0) {
+        console.log("Safari zone encounter is not from event");
+        eventChance.value += 25;
+      }
+    },
+    seedOffset,
+  );
+
+  return pokemon!;
+}
+
+async function summonTwoPlayerSafariPokemonPair(): Promise<void> {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const data = getSafariData();
+  encounter.setDialogueToken("remainingCount", data.safariPokemonRemaining.toString());
+  globalScene.phaseManager.queueMessage(getEncounterText(`${namespace}:safari.remainingCount`) ?? "", null, true);
+
+  const seedBase = globalScene.currentBattle.waveIndex * 1000 * data.safariPokemonRemaining;
+  const leftPokemon = generateSafariPokemon(seedBase);
+  const rightPokemon = generateSafariPokemon(seedBase + 1);
+
+  globalScene.currentBattle.enemyParty.unshift(rightPokemon);
+  globalScene.currentBattle.enemyParty.unshift(leftPokemon);
+
+  for (const pokemon of [leftPokemon, rightPokemon]) {
+    for (const playerIndex of [0, 1] as PlayerIndex[]) {
+      globalScene.getPlayerGameData(playerIndex).setPokemonSeen(pokemon, true);
+    }
+  }
+
+  await Promise.all([leftPokemon.loadAssets(), rightPokemon.loadAssets()]);
+
+  data.targets = {
+    0: { pokemon: leftPokemon, catchStage: 0, fleeStage: 0, active: true },
+    1: { pokemon: rightPokemon, catchStage: 0, fleeStage: 0, active: true },
+  };
+  data.safariPokemonRemaining -= 1;
+
+  globalScene.phaseManager.unshiftNew("SummonPhase", 1, false);
+  globalScene.phaseManager.unshiftNew("PostSummonPhase", BattlerIndex.ENEMY_2);
+  globalScene.phaseManager.unshiftNew("SummonPhase", 0, false);
+  globalScene.phaseManager.unshiftNew("PostSummonPhase", BattlerIndex.ENEMY);
+
+  const ivScannerModifier = globalScene.findModifier(m => m instanceof IvScannerModifier);
+  if (ivScannerModifier) {
+    globalScene.phaseManager.pushNew("ScanIvsPhase", leftPokemon.getBattlerIndex());
+    globalScene.phaseManager.pushNew("ScanIvsPhase", rightPokemon.getBattlerIndex());
+  }
+}
+
+async function runTwoPlayerSafariRound(startingCursorIndex: number): Promise<boolean> {
+  const data = getSafariData();
+  const choices = (data.choices ?? []).slice().sort((a, b) => a.playerIndex - b.playerIndex);
+  data.choices = [];
+
+  for (const choice of choices) {
+    const target = data.targets?.[choice.playerIndex];
+    if (!target?.active) {
+      continue;
+    }
+
+    globalScene.setActivePlayerIndex(choice.playerIndex);
+    updateWindowType(choice.playerIndex + 1);
+    await runTwoPlayerSafariAction(choice.optionIndex, choice.playerIndex, target);
+  }
+
+  for (const target of Object.values(data.targets ?? {})) {
+    if (!target.active) {
+      continue;
+    }
+
+    const isFlee = isPokemonFlee(target.pokemon, target.fleeStage);
+    if (isFlee) {
+      await doPokemonFlee(target.pokemon);
+      target.active = false;
+    } else {
+      globalScene.phaseManager.queueMessage(getEncounterText(`${namespace}:safari.watching`) ?? "", 0, null, 1000);
+    }
+  }
+
+  await endOrContinueTwoPlayerSafari(startingCursorIndex);
+  return true;
+}
+
+async function runTwoPlayerSafariAction(
+  optionIndex: SafariActionIndex,
+  playerIndex: PlayerIndex,
+  target: SafariTargetState,
+): Promise<void> {
+  switch (optionIndex) {
+    case 1:
+      await showEncounterText(`${namespace}:safari.1.selected`);
+      if (await throwPokeball(target.pokemon, target.catchStage, playerIndex)) {
+        target.active = false;
+      }
+      return;
+    case 2: {
+      await showEncounterText(`${namespace}:safari.2.selected`);
+      await throwBait(target.pokemon, playerIndex);
+      target.catchStage = getChangedSafariStage(target.catchStage, 2);
+      const fleeChangeResult = tryChangeSafariStage(1, 8);
+      if (fleeChangeResult) {
+        target.fleeStage = getChangedSafariStage(target.fleeStage, 1);
+        await showEncounterText(getEncounterText(`${namespace}:safari.eating`) ?? "", null, 1000, false);
+      } else {
+        await showEncounterText(getEncounterText(`${namespace}:safari.busyEating`) ?? "", null, 1000, false);
+      }
+      return;
+    }
+    case 3: {
+      await showEncounterText(`${namespace}:safari.3.selected`);
+      await throwMud(target.pokemon, playerIndex);
+      target.fleeStage = getChangedSafariStage(target.fleeStage, -2);
+      const catchChangeResult = tryChangeSafariStage(-1, 8);
+      if (catchChangeResult) {
+        target.catchStage = getChangedSafariStage(target.catchStage, -1);
+        await showEncounterText(getEncounterText(`${namespace}:safari.angry`) ?? "", null, 1000, false);
+      } else {
+        await showEncounterText(getEncounterText(`${namespace}:safari.besideItselfAngry`) ?? "", null, 1000, false);
+      }
+      return;
+    }
+    case 4:
+      await doPlayerFlee(target.pokemon);
+      target.active = false;
+      return;
+  }
+}
+
+async function endOrContinueTwoPlayerSafari(startingCursorIndex: number): Promise<void> {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const data = getSafariData();
+  if (getActiveSafariPlayerIndexes().length > 0) {
+    beginTwoPlayerSafariActionSelect(startingCursorIndex);
+    return;
+  }
+
+  if (data.safariPokemonRemaining > 0) {
+    await summonTwoPlayerSafariPokemonPair();
+    beginTwoPlayerSafariActionSelect(startingCursorIndex);
+    return;
+  }
+
+  encounter.continuousEncounter = false;
+  globalScene.setActivePlayerIndex(0);
+  updateWindowType(1);
+  leaveEncounterWithoutBattle(true);
+}
+
+function getChangedSafariStage(currentStage: number, change: number): number {
+  return Math.min(Math.max(currentStage + change, -6), 6);
+}
+
+function tryChangeSafariStage(_change: number, chance?: number): boolean {
+  return !(chance && randSeedInt(10) >= chance);
+}
+
 /**
  * Safari Zone encounter.
  * @see {@link https://github.com/pagefaultgames/pokerogue/issues/3800 | GitHub Issue #3800}
@@ -56,7 +452,8 @@ export const SafariZoneEncounter: MysteryEncounter = MysteryEncounterBuilder.wit
 )
   .withEncounterTier(MysteryEncounterTier.GREAT)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
-  .withSceneRequirement(new MoneyRequirement(0, SAFARI_MONEY_MULTIPLIER)) // Cost equal to 1 Max Revive
+  .withSceneRequirement(new SafariBothPlayersMoneyRequirement(0, SAFARI_MONEY_MULTIPLIER)) // Cost equal to 1 Max Revive
+  .withTwoPlayerSharedDecision()
   .withAutoHideIntroVisuals(false)
   .withIntroSpriteConfigs([
     {
@@ -84,7 +481,7 @@ export const SafariZoneEncounter: MysteryEncounter = MysteryEncounterBuilder.wit
   })
   .withOption(
     MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT)
-      .withSceneRequirement(new MoneyRequirement(0, SAFARI_MONEY_MULTIPLIER)) // Cost equal to 1 Max Revive
+      .withSceneRequirement(new SafariBothPlayersMoneyRequirement(0, SAFARI_MONEY_MULTIPLIER)) // Cost equal to 1 Max Revive
       .withDialogue({
         buttonLabel: `${namespace}:option.1.label`,
         buttonTooltip: `${namespace}:option.1.tooltip`,
@@ -94,31 +491,7 @@ export const SafariZoneEncounter: MysteryEncounter = MysteryEncounterBuilder.wit
           },
         ],
       })
-      .withOptionPhase(async () => {
-        // Start safari encounter
-        const encounter = globalScene.currentBattle.mysteryEncounter!;
-        encounter.continuousEncounter = true;
-        encounter.misc = {
-          safariPokemonRemaining: NUM_SAFARI_ENCOUNTERS,
-        };
-        updatePlayerMoney(-(encounter.options[0].requirements[0] as MoneyRequirement).requiredMoney);
-        // Load bait/mud assets
-        globalScene
-          .loadSe("PRSFX- Bug Bite", "battle_anims", "PRSFX- Bug Bite.wav")
-          .loadSe("PRSFX- Sludge Bomb2", "battle_anims", "PRSFX- Sludge Bomb2.wav")
-          .loadSe("PRSFX- Taunt2", "battle_anims", "PRSFX- Taunt2.wav")
-          .loadAtlas("safari_zone_bait", "mystery-encounters")
-          .loadAtlas("safari_zone_mud", "mystery-encounters");
-        // Clear enemy party
-        globalScene.currentBattle.enemyParty = [];
-        await transitionMysteryEncounterIntroVisuals();
-        await summonSafariPokemon();
-        initSubsequentOptionSelect({
-          overrideOptions: safariZoneGameOptions,
-          hideDescription: true,
-        });
-        return true;
-      })
+      .withOptionPhase(async () => startSafariEncounter())
       .build(),
   )
   .withSimpleOption(
@@ -278,6 +651,56 @@ const safariZoneGameOptions: MysteryEncounterOption[] = [
     .build(),
 ];
 
+const twoPlayerSafariZoneGameOptions: MysteryEncounterOption[] = [
+  MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
+      buttonLabel: `${namespace}:safari.1.label`,
+      buttonTooltip: `${namespace}:safari.1.tooltip`,
+      selected: [
+        {
+          text: `${namespace}:safari.1.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => storeTwoPlayerSafariAction(1))
+    .withOptionPhase(async () => runTwoPlayerSafariRound(0))
+    .build(),
+  MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
+      buttonLabel: `${namespace}:safari.2.label`,
+      buttonTooltip: `${namespace}:safari.2.tooltip`,
+      selected: [
+        {
+          text: `${namespace}:safari.2.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => storeTwoPlayerSafariAction(2))
+    .withOptionPhase(async () => runTwoPlayerSafariRound(1))
+    .build(),
+  MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
+      buttonLabel: `${namespace}:safari.3.label`,
+      buttonTooltip: `${namespace}:safari.3.tooltip`,
+      selected: [
+        {
+          text: `${namespace}:safari.3.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => storeTwoPlayerSafariAction(3))
+    .withOptionPhase(async () => runTwoPlayerSafariRound(2))
+    .build(),
+  MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
+      buttonLabel: `${namespace}:safari.4.label`,
+      buttonTooltip: `${namespace}:safari.4.tooltip`,
+    })
+    .withPreOptionPhase(async () => storeTwoPlayerSafariAction(4))
+    .withOptionPhase(async () => runTwoPlayerSafariRound(3))
+    .build(),
+];
+
 async function summonSafariPokemon() {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   // Message pokemon remaining
@@ -347,41 +770,46 @@ async function summonSafariPokemon() {
   }
 }
 
-function throwPokeball(pokemon: EnemyPokemon): Promise<boolean> {
+function throwPokeball(
+  pokemon: EnemyPokemon,
+  catchStage = globalScene.currentBattle.mysteryEncounter!.misc.catchStage,
+  playerIndex: PlayerIndex = globalScene.activePlayerIndex,
+): Promise<boolean> {
   const baseCatchRate = pokemon.species.catchRate;
-  // Catch stage ranges from -6 to +6 (like stat boost stages)
-  const safariCatchStage = globalScene.currentBattle.mysteryEncounter!.misc.catchStage;
   // Catch modifier ranges from 2/8 (-6 stage) to 8/2 (+6)
   const safariModifier =
-    (2 + Math.min(Math.max(safariCatchStage, 0), 6)) / (2 - Math.max(Math.min(safariCatchStage, 0), -6));
+    (2 + Math.min(Math.max(catchStage, 0), 6)) / (2 - Math.max(Math.min(catchStage, 0), -6));
   // Catch rate same as safari ball
   const pokeballMultiplier = 1.5;
   const catchRate = Math.round(baseCatchRate * pokeballMultiplier * safariModifier);
   const ballTwitchRate = Math.round(1048560 / Math.sqrt(Math.sqrt(16711680 / catchRate)));
-  return trainerThrowPokeball(pokemon, PokeballType.POKEBALL, ballTwitchRate);
+  return trainerThrowPokeball(pokemon, PokeballType.POKEBALL, ballTwitchRate, playerIndex);
 }
 
-async function throwBait(pokemon: EnemyPokemon): Promise<boolean> {
+async function throwBait(pokemon: EnemyPokemon, playerIndex: PlayerIndex = globalScene.activePlayerIndex): Promise<boolean> {
   const originalY: number = pokemon.y;
 
   const fpOffset = pokemon.getFieldPositionOffset();
-  const bait: Phaser.GameObjects.Sprite = globalScene.addFieldSprite(16 + 75, 80 + 25, "safari_zone_bait", "0001.png");
+  const baitX = playerIndex === 1 ? 122 : 16 + 75;
+  const bait: Phaser.GameObjects.Sprite = globalScene.addFieldSprite(baitX, 80 + 25, "safari_zone_bait", "0001.png");
   bait.setOrigin(0.5, 0.625);
   globalScene.field.add(bait);
 
   return new Promise(resolve => {
-    globalScene.trainer.setTexture(
+    const trainerSprite = getSafariTrainerSprite(playerIndex);
+    trainerSprite.setVisible(true);
+    trainerSprite.setTexture(
       `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back_pb`,
     );
     globalScene.time.delayedCall(TRAINER_THROW_ANIMATION_TIMES[0], () => {
       audioManager.playSound("se/pb_throw");
 
       // Trainer throw frames
-      globalScene.trainer.setFrame("2");
+      trainerSprite.setFrame("2");
       globalScene.time.delayedCall(TRAINER_THROW_ANIMATION_TIMES[1], () => {
-        globalScene.trainer.setFrame("3");
+        trainerSprite.setFrame("3");
         globalScene.time.delayedCall(TRAINER_THROW_ANIMATION_TIMES[2], () => {
-          globalScene.trainer.setTexture(
+          trainerSprite.setTexture(
             `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`,
           );
         });
@@ -430,27 +858,30 @@ async function throwBait(pokemon: EnemyPokemon): Promise<boolean> {
   });
 }
 
-async function throwMud(pokemon: EnemyPokemon): Promise<boolean> {
+async function throwMud(pokemon: EnemyPokemon, playerIndex: PlayerIndex = globalScene.activePlayerIndex): Promise<boolean> {
   const originalY: number = pokemon.y;
 
   const fpOffset = pokemon.getFieldPositionOffset();
-  const mud: Phaser.GameObjects.Sprite = globalScene.addFieldSprite(16 + 75, 80 + 35, "safari_zone_mud", "0001.png");
+  const mudX = playerIndex === 1 ? 122 : 16 + 75;
+  const mud: Phaser.GameObjects.Sprite = globalScene.addFieldSprite(mudX, 80 + 35, "safari_zone_mud", "0001.png");
   mud.setOrigin(0.5, 0.625);
   globalScene.field.add(mud);
 
   return new Promise(resolve => {
-    globalScene.trainer.setTexture(
+    const trainerSprite = getSafariTrainerSprite(playerIndex);
+    trainerSprite.setVisible(true);
+    trainerSprite.setTexture(
       `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back_pb`,
     );
     globalScene.time.delayedCall(TRAINER_THROW_ANIMATION_TIMES[0], () => {
       audioManager.playSound("se/pb_throw");
 
       // Trainer throw frames
-      globalScene.trainer.setFrame("2");
+      trainerSprite.setFrame("2");
       globalScene.time.delayedCall(TRAINER_THROW_ANIMATION_TIMES[1], () => {
-        globalScene.trainer.setFrame("3");
+        trainerSprite.setFrame("3");
         globalScene.time.delayedCall(TRAINER_THROW_ANIMATION_TIMES[2], () => {
-          globalScene.trainer.setTexture(
+          trainerSprite.setTexture(
             `trainer_${globalScene.gameData.gender === PlayerGender.FEMALE ? "f" : "m"}_back`,
           );
         });
