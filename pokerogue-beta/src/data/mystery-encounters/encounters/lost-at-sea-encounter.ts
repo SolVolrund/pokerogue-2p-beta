@@ -15,6 +15,7 @@ import { leaveEncounterWithoutBattle, setEncounterExp } from "#mystery-encounter
 import { applyDamageToPokemon } from "#mystery-encounters/encounter-pokemon-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
+import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { EncounterPokemonRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import { updateWindowType } from "#ui/ui-theme";
@@ -45,34 +46,39 @@ interface LostAtSeaData {
   skipSelectedDialogueOnce?: boolean;
 }
 
-class ActivePlayerCanLearnMoveRequirement extends EncounterPokemonRequirement {
+class PlayerCanLearnMoveRequirement extends EncounterPokemonRequirement {
   private readonly moveRequirement: CanLearnMoveRequirement;
+  private readonly playerIndex: PlayerIndex | undefined;
   private readonly requiredMove: MoveId;
 
-  constructor(requiredMove: MoveId) {
+  constructor(requiredMove: MoveId, playerIndex?: PlayerIndex) {
     super();
     this.requiredMove = requiredMove;
+    this.playerIndex = playerIndex;
     this.moveRequirement = new CanLearnMoveRequirement(requiredMove);
     this.minNumberOfPokemon = 1;
     this.invertQuery = false;
   }
 
   override meetsRequirement(): boolean {
-    return this.queryActivePlayerParty().length >= this.minNumberOfPokemon;
+    return this.queryPlayerParty().length >= this.minNumberOfPokemon;
   }
 
   override queryParty(_partyPokemon: PlayerPokemon[]): PlayerPokemon[] {
-    return this.queryActivePlayerParty();
+    return this.queryPlayerParty();
   }
 
   override getDialogueToken(_pokemon?: PlayerPokemon): [string, string] {
     return ["requiredMoves", new PokemonMove(this.requiredMove).getName()];
   }
 
-  private queryActivePlayerParty(): PlayerPokemon[] {
-    return this.moveRequirement.queryParty(
-      globalScene.getPlayerParty(globalScene.activePlayerIndex).filter(pokemon => pokemon.isAllowedInBattle()),
-    );
+  private queryPlayerParty(): PlayerPokemon[] {
+    const party =
+      globalScene.twoPlayerMode && this.playerIndex != null
+        ? globalScene.getPlayerParty(this.playerIndex)
+        : globalScene.getPlayerParty();
+
+    return this.moveRequirement.queryParty(party.filter(pokemon => pokemon.isAllowedInBattle()));
   }
 }
 
@@ -104,13 +110,12 @@ function getChoiceGuidePokemon(playerIndex: PlayerIndex, optionIndex: LostAtSeaO
   return undefined;
 }
 
-function storeLostAtSeaChoice(optionIndex: LostAtSeaOptionIndex): boolean {
+function storeLostAtSeaChoice(optionIndex: LostAtSeaOptionIndex, playerIndex: PlayerIndex = 0): boolean {
   if (!globalScene.twoPlayerMode) {
     return true;
   }
 
   const data = getLostAtSeaData();
-  const playerIndex = data.selectingPlayerIndex ?? 0;
   const guidePokemon = getChoiceGuidePokemon(playerIndex, optionIndex);
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
   data.choices.push({
@@ -123,12 +128,7 @@ function storeLostAtSeaChoice(optionIndex: LostAtSeaOptionIndex): boolean {
     data.selectingPlayerIndex = 1;
     globalScene.setActivePlayerIndex(1);
     updateWindowType(2);
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: "Player 2",
-      overrideQuery: "What will you do?",
-      startingCursorIndex: optionIndex - 1,
-    });
+    showLostAtSeaPlayerMenu(1, optionIndex - 1);
     return false;
   }
 
@@ -137,6 +137,87 @@ function storeLostAtSeaChoice(optionIndex: LostAtSeaOptionIndex): boolean {
   globalScene.setActivePlayerIndex(0);
   updateWindowType(1);
   return true;
+}
+
+function showLostAtSeaPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
+  const overrideOptions = buildLostAtSeaPlayerOptions(playerIndex);
+  setLostAtSeaPlayerOptionTokens(playerIndex);
+
+  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
+      slideInDescription: false,
+      overrideTitle: `Player ${playerIndex + 1}`,
+      overrideQuery: "What will you do?",
+      overrideOptions,
+      startingCursorIndex,
+    });
+  });
+}
+
+function setLostAtSeaPlayerOptionTokens(playerIndex: PlayerIndex): void {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const surfPokemon = getChoiceGuidePokemon(playerIndex, 1);
+  const flyPokemon = getChoiceGuidePokemon(playerIndex, 2);
+
+  encounter.setDialogueToken("option1PrimaryName", surfPokemon?.getNameToRender() ?? "");
+  encounter.setDialogueToken("option2PrimaryName", flyPokemon?.getNameToRender() ?? "");
+}
+
+function buildLostAtSeaPlayerOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
+  return [
+    buildLostAtSeaMoveOption(1, OPTION_1_REQUIRED_MOVE, playerIndex),
+    buildLostAtSeaMoveOption(2, OPTION_2_REQUIRED_MOVE, playerIndex),
+    buildLostAtSeaWanderOption(playerIndex),
+  ];
+}
+
+function buildLostAtSeaMoveOption(
+  optionIndex: 1 | 2,
+  requiredMove: MoveId,
+  playerIndex: PlayerIndex,
+): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT)
+    .withPrimaryPokemonRequirement(new PlayerCanLearnMoveRequirement(requiredMove, playerIndex))
+    .withDialogue({
+      buttonLabel: `${namespace}:option.${optionIndex}.label`,
+      disabledButtonLabel: `${namespace}:option.${optionIndex}.labelDisabled`,
+      buttonTooltip: `${namespace}:option.${optionIndex}.tooltip`,
+      disabledButtonTooltip: `${namespace}:option.${optionIndex}.tooltipDisabled`,
+      selected: [
+        {
+          text: `${namespace}:option.${optionIndex}.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => storeLostAtSeaChoice(optionIndex, playerIndex))
+    .withOptionPhase(async () =>
+      globalScene.twoPlayerMode ? runTwoPlayerLostAtSeaChoices() : handlePokemonGuidingYouPhase(),
+    )
+    .build();
+}
+
+function buildLostAtSeaWanderOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
+      buttonLabel: `${namespace}:option.3.label`,
+      buttonTooltip: `${namespace}:option.3.tooltip`,
+      selected: [
+        {
+          text: `${namespace}:option.3.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => storeLostAtSeaChoice(3, playerIndex))
+    .withOptionPhase(async () => {
+      if (globalScene.twoPlayerMode) {
+        return runTwoPlayerLostAtSeaChoices();
+      }
+
+      applyLostAtSeaWanderDamage();
+      leaveEncounterWithoutBattle();
+      return true;
+    })
+    .build();
 }
 
 async function runTwoPlayerLostAtSeaChoices(): Promise<boolean> {
@@ -218,69 +299,15 @@ export const LostAtSeaEncounter: MysteryEncounter = MysteryEncounterBuilder.with
   .withQuery(`${namespace}:query`)
   .withOption(
     // Option 1: Use a (non fainted) pokemon that can learn Surf to guide you back/
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT)
-      .withPrimaryPokemonRequirement(new ActivePlayerCanLearnMoveRequirement(OPTION_1_REQUIRED_MOVE))
-      .withDialogue({
-        buttonLabel: `${namespace}:option.1.label`,
-        disabledButtonLabel: `${namespace}:option.1.labelDisabled`,
-        buttonTooltip: `${namespace}:option.1.tooltip`,
-        disabledButtonTooltip: `${namespace}:option.1.tooltipDisabled`,
-        selected: [
-          {
-            text: `${namespace}:option.1.selected`,
-          },
-        ],
-      })
-      .withPreOptionPhase(async () => storeLostAtSeaChoice(1))
-      .withOptionPhase(async () =>
-        globalScene.twoPlayerMode ? runTwoPlayerLostAtSeaChoices() : handlePokemonGuidingYouPhase(),
-      )
-      .build(),
+    buildLostAtSeaMoveOption(1, OPTION_1_REQUIRED_MOVE, 0),
   )
   .withOption(
     //Option 2: Use a (non fainted) pokemon that can learn fly to guide you back.
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT)
-      .withPrimaryPokemonRequirement(new ActivePlayerCanLearnMoveRequirement(OPTION_2_REQUIRED_MOVE))
-      .withDialogue({
-        buttonLabel: `${namespace}:option.2.label`,
-        disabledButtonLabel: `${namespace}:option.2.labelDisabled`,
-        buttonTooltip: `${namespace}:option.2.tooltip`,
-        disabledButtonTooltip: `${namespace}:option.2.tooltipDisabled`,
-        selected: [
-          {
-            text: `${namespace}:option.2.selected`,
-          },
-        ],
-      })
-      .withPreOptionPhase(async () => storeLostAtSeaChoice(2))
-      .withOptionPhase(async () =>
-        globalScene.twoPlayerMode ? runTwoPlayerLostAtSeaChoices() : handlePokemonGuidingYouPhase(),
-      )
-      .build(),
+    buildLostAtSeaMoveOption(2, OPTION_2_REQUIRED_MOVE, 0),
   )
   .withOption(
     // Option 3: Wander aimlessly
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
-      .withDialogue({
-        buttonLabel: `${namespace}:option.3.label`,
-        buttonTooltip: `${namespace}:option.3.tooltip`,
-        selected: [
-          {
-            text: `${namespace}:option.3.selected`,
-          },
-        ],
-      })
-      .withPreOptionPhase(async () => storeLostAtSeaChoice(3))
-      .withOptionPhase(async () => {
-        if (globalScene.twoPlayerMode) {
-          return runTwoPlayerLostAtSeaChoices();
-        }
-
-        applyLostAtSeaWanderDamage();
-        leaveEncounterWithoutBattle();
-        return true;
-      })
-      .build(),
+    buildLostAtSeaWanderOption(0),
   )
   .withOutroDialogue([
     {

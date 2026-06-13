@@ -472,13 +472,14 @@ export class MysteryEncounterBattlePhase extends Phase {
       }
     }
 
+    const playerFieldOwners = globalScene.getPlayerFieldOwners();
     const availablePartyMembers = globalScene.twoPlayerMode
-      ? ([0, 1] as const)
+      ? playerFieldOwners
           .map(playerIndex => globalScene.getPlayerParty(playerIndex)[0])
           .filter(pokemon => pokemon?.isAllowedInBattle())
       : globalScene.getPlayerParty().filter(p => p.isAllowedInBattle());
 
-    if (!availablePartyMembers[0].isOnField()) {
+    if (availablePartyMembers[0] && !availablePartyMembers[0].isOnField()) {
       globalScene.phaseManager.pushNew("SummonPhase", 0);
     }
 
@@ -500,10 +501,12 @@ export class MysteryEncounterBattlePhase extends Phase {
     }
 
     if (encounterMode !== MysteryEncounterMode.TRAINER_BATTLE && !this.disableSwitch) {
-      const minPartySize = globalScene.currentBattle.double ? 2 : 1;
+      const minPartySize = globalScene.twoPlayerMode
+        ? playerFieldOwners.length
+        : globalScene.currentBattle.double ? 2 : 1;
       if (availablePartyMembers.length > minPartySize) {
         globalScene.phaseManager.pushNew("CheckSwitchPhase", 0, globalScene.currentBattle.double);
-        if (globalScene.currentBattle.double) {
+        if (globalScene.currentBattle.double && playerFieldOwners.length > 1) {
           globalScene.phaseManager.pushNew("CheckSwitchPhase", 1, globalScene.currentBattle.double);
         }
       }
@@ -661,6 +664,8 @@ export class PostMysteryEncounterPhase extends Phase {
    */
   continueEncounter() {
     const endPhase = () => {
+      globalScene.clearMysteryEncounterBattlePlayerFieldOwners();
+
       if (globalScene.gameMode.hasRandomBiomes || globalScene.isNewBiome()) {
         globalScene.phaseManager.pushNew("SelectBiomePhase");
       }

@@ -176,8 +176,9 @@ const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.SHADY_VITAMIN_DEALER,
   MysteryEncounterType.SAFARI_ZONE,
   MysteryEncounterType.LOST_AT_SEA,
+  MysteryEncounterType.FIERY_FALLOUT,
 ];
-const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_TYPE = MysteryEncounterType.LOST_AT_SEA;
+const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_TYPE = MysteryEncounterType.MYSTERIOUS_CHEST;
 const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_WAVE = STARTING_WAVE;
 
 export interface PlayerRunState {
@@ -1004,8 +1005,45 @@ export class BattleScene extends SceneBase {
     return player ? this.getPlayerModifiers(playerIndex) : this.enemyModifiers;
   }
 
+  public setMysteryEncounterBattlePlayerFieldOwners(playerIndexes?: PlayerIndex[]): void {
+    if (!this.currentBattle) {
+      return;
+    }
+
+    if (!this.twoPlayerMode || !playerIndexes?.length) {
+      this.currentBattle.playerFieldOwners = undefined;
+      return;
+    }
+
+    const fieldOwners = [...new Set(playerIndexes)].slice(0, 2) as PlayerIndex[];
+    this.currentBattle.playerFieldOwners = fieldOwners;
+    this.setActivePlayerIndex(fieldOwners[0]);
+
+    ([0, 1] as PlayerIndex[])
+      .filter(playerIndex => !fieldOwners.includes(playerIndex))
+      .map(playerIndex => this.getPlayerParty(playerIndex)[0])
+      .filter((pokemon): pokemon is PlayerPokemon => !!pokemon && pokemon.isOnField())
+      .forEach(pokemon => pokemon.leaveField(true, true, false));
+  }
+
+  public clearMysteryEncounterBattlePlayerFieldOwners(): void {
+    if (this.currentBattle) {
+      this.currentBattle.playerFieldOwners = undefined;
+    }
+  }
+
+  public getPlayerFieldOwners(): PlayerIndex[] {
+    if (!this.twoPlayerMode) {
+      return [0];
+    }
+
+    return (this.currentBattle?.playerFieldOwners?.length
+      ? this.currentBattle.playerFieldOwners
+      : this.fieldSlotOwners) as PlayerIndex[];
+  }
+
   public getPlayerIndexForFieldSlot(fieldSlot: number): PlayerIndex {
-    return this.fieldSlotOwners[fieldSlot] ?? 0;
+    return this.getPlayerFieldOwners()[fieldSlot] ?? this.fieldSlotOwners[fieldSlot] ?? 0;
   }
 
   public getPlayerIndexForPokemon(pokemon: Pokemon): PlayerIndex | undefined {
@@ -1044,7 +1082,7 @@ export class BattleScene extends SceneBase {
    */
   public getPlayerField(active = false): PlayerPokemon[] {
     if (this.twoPlayerMode) {
-      return this.fieldSlotOwners
+      return this.getPlayerFieldOwners()
         .map(playerIndex => this.getPlayerParty(playerIndex)[0])
         .filter((p): p is PlayerPokemon => !!p && (!active || p.isActive()));
     }

@@ -160,8 +160,11 @@ export class SummonPhase extends PartyMemberPokemonPhase {
       pokemon.setFieldPosition(FieldPosition.RIGHT, 0);
     } else {
       const availablePartyMembers = this.getParty().filter(p => p.isAllowedInBattle()).length;
+      const playerFieldSlotCount = this.player && globalScene.twoPlayerMode ? globalScene.getPlayerFieldOwners().length : 2;
       pokemon.setFieldPosition(
-        !globalScene.currentBattle.double || availablePartyMembers === 1 ? FieldPosition.CENTER : FieldPosition.LEFT,
+        !globalScene.currentBattle.double || availablePartyMembers === 1 || playerFieldSlotCount === 1
+          ? FieldPosition.CENTER
+          : FieldPosition.LEFT,
       );
     }
 
@@ -244,8 +247,11 @@ export class SummonPhase extends PartyMemberPokemonPhase {
       pokemon.setFieldPosition(FieldPosition.RIGHT, 0);
     } else {
       const availablePartyMembers = this.getParty().filter(p => !p.isFainted()).length;
+      const playerFieldSlotCount = this.player && globalScene.twoPlayerMode ? globalScene.getPlayerFieldOwners().length : 2;
       pokemon.setFieldPosition(
-        !globalScene.currentBattle.double || availablePartyMembers === 1 ? FieldPosition.CENTER : FieldPosition.LEFT,
+        !globalScene.currentBattle.double || availablePartyMembers === 1 || playerFieldSlotCount === 1
+          ? FieldPosition.CENTER
+          : FieldPosition.LEFT,
       );
     }
 

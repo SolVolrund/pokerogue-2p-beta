@@ -99,6 +99,7 @@ export class Battle {
   public mysteryEncounterType?: MysteryEncounterType | undefined;
   /** If the current battle is a Mystery Encounter, this will always be defined */
   public mysteryEncounter?: MysteryEncounter | undefined;
+  public playerFieldOwners: Array<0 | 1> | undefined;
 
   /**
    * Tracker for whether the last run attempt failed.
