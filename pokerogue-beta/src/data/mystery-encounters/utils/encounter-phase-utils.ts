@@ -1,4 +1,5 @@
 import type { Battle } from "#app/battle";
+import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
@@ -54,6 +55,15 @@ import { coerceArray } from "#utils/array";
 import { BooleanHolder, randSeedInt, randSeedItem } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
+
+type EncounterRewardConfig = {
+  customShopRewards: CustomModifierSettings | undefined;
+  eggRewards: IEggOptions[] | undefined;
+  preRewardsCallback: (() => void) | undefined;
+  playerIndex: PlayerIndex;
+};
+
+const ENCOUNTER_REWARD_CONFIGS_KEY = "encounterRewardConfigs";
 
 /**
  * Animates exclamation sprite over trainer's head at start of encounter
@@ -119,9 +129,15 @@ export interface EnemyPartyConfig {
   trainerType?: TrainerType;
   /** More customizable option for configuring trainer battle */
   trainerConfig?: TrainerConfig;
+  /** More customizable option for configuring a second trainer in double trainer battles */
+  partnerTrainerConfig?: TrainerConfig;
+  /** Generates a second trainer in double trainer battles solely off trainer type */
+  partnerTrainerType?: TrainerType;
   pokemonConfigs?: EnemyPokemonConfig[];
   /** `true` for female trainer, false for male */
   female?: boolean;
+  /** `true` for female partner trainer, false for male */
+  partnerFemale?: boolean;
   /** `true` will prevent player from switching */
   disableSwitch?: boolean;
   /** `true` or leaving undefined will increment dex seen count for the encounter battle, `false` will not */
@@ -145,6 +161,8 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
   // Trainer
   const trainerType = partyConfig?.trainerType;
   const partyTrainerConfig = partyConfig?.trainerConfig;
+  const partnerTrainerConfig = partyConfig?.partnerTrainerConfig;
+  const partnerTrainerType = partyConfig?.partnerTrainerType ?? partnerTrainerConfig?.trainerType;
   let trainerConfig: TrainerConfig;
   if (trainerType != null || partyTrainerConfig) {
     globalScene.currentBattle.mysteryEncounter!.encounterMode = MysteryEncounterMode.TRAINER_BATTLE;
@@ -155,9 +173,19 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
 
     trainerConfig = partyTrainerConfig ? partyTrainerConfig : trainerConfigs[trainerType!];
 
-    const doubleTrainer = trainerConfig.doubleOnly || (trainerConfig.hasDouble && !!partyConfig.doubleBattle);
+    const doubleTrainer =
+      trainerConfig.doubleOnly
+      || partnerTrainerType != null
+      || !!partnerTrainerConfig
+      || (trainerConfig.hasDouble && !!partyConfig.doubleBattle);
     doubleBattle = doubleTrainer;
     const trainerFemale = partyConfig.female == null ? !!randSeedInt(2) : partyConfig.female;
+    const partnerVariant =
+      partyConfig.partnerFemale == null
+        ? undefined
+        : partyConfig.partnerFemale
+          ? TrainerVariant.FEMALE
+          : TrainerVariant.DEFAULT;
     const newTrainer = new Trainer(
       trainerConfig.trainerType,
       doubleTrainer ? TrainerVariant.DOUBLE : trainerFemale ? TrainerVariant.FEMALE : TrainerVariant.DEFAULT,
@@ -165,6 +193,9 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
       undefined,
       undefined,
       trainerConfig,
+      partnerTrainerType,
+      partnerVariant,
+      partnerTrainerConfig,
     );
     newTrainer.x += 300;
     newTrainer.setVisible(false);
@@ -730,23 +761,45 @@ export function setEncounterRewards(
   customShopRewards?: CustomModifierSettings,
   eggRewards?: IEggOptions[],
   preRewardsCallback?: () => void,
+  playerIndex: PlayerIndex = globalScene.activePlayerIndex,
 ): void {
-  globalScene.currentBattle.mysteryEncounter!.doEncounterRewards = () => {
-    if (preRewardsCallback) {
-      preRewardsCallback();
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  encounter.misc ??= {};
+  const rewardConfigs = ((encounter.misc[ENCOUNTER_REWARD_CONFIGS_KEY] ??= []) as EncounterRewardConfig[]);
+  rewardConfigs.push({ customShopRewards, eggRewards, preRewardsCallback, playerIndex });
+
+  encounter.doEncounterRewards = () => {
+    const configs = ((encounter.misc?.[ENCOUNTER_REWARD_CONFIGS_KEY] ?? []) as EncounterRewardConfig[]).slice();
+
+    for (const config of configs) {
+      globalScene.setActivePlayerIndex(config.playerIndex);
+
+      if (config.preRewardsCallback) {
+        config.preRewardsCallback();
+      }
+
+      if (config.eggRewards) {
+        config.eggRewards.forEach(eggOptions => {
+          const egg = new Egg(eggOptions);
+          egg.addEggToGameData();
+        });
+      }
     }
 
-    if (customShopRewards) {
-      globalScene.phaseManager.unshiftNew("SelectModifierPhase", 0, undefined, customShopRewards);
-    } else {
+    const shopRewards = configs.filter(config => config.customShopRewards);
+    if (shopRewards.length === 0) {
       globalScene.phaseManager.removeAllPhasesOfType("MysteryEncounterRewardsPhase");
     }
 
-    if (eggRewards) {
-      eggRewards.forEach(eggOptions => {
-        const egg = new Egg(eggOptions);
-        egg.addEggToGameData();
-      });
+    for (const config of shopRewards) {
+      globalScene.phaseManager.unshiftNew(
+        "SelectModifierPhase",
+        0,
+        undefined,
+        config.customShopRewards,
+        false,
+        config.playerIndex,
+      );
     }
 
     return true;
@@ -773,11 +826,16 @@ export function setEncounterRewards(
  * https://bulbapedia.bulbagarden.net/wiki/List_of_Pok%C3%A9mon_by_effort_value_yield_(Generation_IX)
  * @param useWaveIndex - set to false when directly passing the the full exp value instead of baseExpValue
  */
-export function setEncounterExp(participantId: number | number[], baseExpValue: number, useWaveIndex = true) {
+export function setEncounterExp(
+  participantId: number | number[],
+  baseExpValue: number,
+  useWaveIndex = true,
+  playerIndex?: PlayerIndex,
+) {
   const participantIds = coerceArray(participantId);
 
   globalScene.currentBattle.mysteryEncounter!.doEncounterExp = () => {
-    globalScene.phaseManager.unshiftNew("PartyExpPhase", baseExpValue, useWaveIndex, new Set(participantIds));
+    globalScene.phaseManager.unshiftNew("PartyExpPhase", baseExpValue, useWaveIndex, new Set(participantIds), playerIndex);
 
     return true;
   };

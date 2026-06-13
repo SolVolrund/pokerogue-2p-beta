@@ -164,7 +164,14 @@ import Phaser from "phaser";
 export type PokeballCounts = Record<Exclude<PokeballType, PokeballType.LUXURY_BALL>, number>;
 export type PlayerIndex = 0 | 1;
 const TWO_PLAYER_GUEST_SYSTEM_SAVE_KEY = "pokerogue_2p_guest_system_save";
-const TWO_PLAYER_DOUBLE_ONLY_TEST_PAIRS = 3;
+const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
+  MysteryEncounterType.MYSTERIOUS_CHEST,
+  MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
+  MysteryEncounterType.DARK_DEAL,
+  MysteryEncounterType.FIGHT_OR_FLIGHT,
+];
+const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_TYPE = MysteryEncounterType.FIGHT_OR_FLIGHT;
+const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_WAVE = STARTING_WAVE;
 
 export interface PlayerRunState {
   party: PlayerPokemon[];
@@ -365,7 +372,6 @@ export class BattleScene extends SceneBase {
   private party: PlayerPokemon[];
   public twoPlayerMode: boolean = isTwoPlayerPrototypeEnabled();
   public twoPlayerPartySize: 3 | 6 = getTwoPlayerPartySize();
-  public twoPlayerDoubleOnlyTestPairs = 0;
   private readonly twoPlayerEggVoucherGrant: number | undefined = getTwoPlayerEggVoucherGrant();
   public activePlayerIndex: PlayerIndex = 0;
   public readonly fieldSlotOwners: [PlayerIndex, PlayerIndex] = [0, 1];
@@ -1272,13 +1278,22 @@ export class BattleScene extends SceneBase {
       return;
     }
 
-    const partyIndex = this.party.indexOf(pokemon);
-    this.party.splice(partyIndex, 1);
+    const playerIndex = this.getPlayerIndexForPokemon(pokemon) ?? this.activePlayerIndex;
+    const party = this.getPlayerParty(playerIndex);
+    const partyIndex = party.indexOf(pokemon);
+    if (partyIndex === -1) {
+      return;
+    }
+
+    party.splice(partyIndex, 1);
+    if (!this.twoPlayerMode || playerIndex === this.activePlayerIndex) {
+      this.party = party;
+    }
     if (destroy) {
       this.field.remove(pokemon, true);
       pokemon.destroy();
     }
-    this.updateModifiers(true);
+    this.updateModifiers(true, undefined, playerIndex);
   }
 
   addPokemonIcon(
@@ -1584,13 +1599,6 @@ export class BattleScene extends SceneBase {
       );
     }
     resolved.double = this.checkIsDouble(resolved as NewBattleConstructedProps);
-    this.twoPlayerDoubleOnlyTestPairs =
-      !fromSession
-      && this.shouldForceTwoPlayerDoubleOnlyTestBattle(waveIndex)
-      && resolved.battleType === BattleType.TRAINER
-      && !!resolved.trainer?.config.doubleOnly
-        ? TWO_PLAYER_DOUBLE_ONLY_TEST_PAIRS
-        : 0;
 
     const lastBattle: Battle | null = this.currentBattle;
     const maxExpLevel = this.getMaxExpLevel();
@@ -1737,11 +1745,9 @@ export class BattleScene extends SceneBase {
   private handleNonFixedBattle(resolved: NewBattleInitialProps): void {
     const { waveIndex } = resolved;
 
-    if (this.shouldForceTwoPlayerDoubleOnlyTestBattle(waveIndex)) {
-      resolved.battleType = BattleType.TRAINER;
-      const trainer = new Trainer(TrainerType.TWINS, TrainerVariant.DOUBLE);
-      this.field.add(trainer);
-      resolved.trainer = trainer;
+    if (this.twoPlayerMode && waveIndex === TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_WAVE) {
+      resolved.battleType = BattleType.MYSTERY_ENCOUNTER;
+      resolved.mysteryEncounterType = TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_TYPE;
       return;
     }
 
@@ -1756,7 +1762,7 @@ export class BattleScene extends SceneBase {
     // NB: battle type checks are offloaded to `isWaveMysteryEncounter`
     // TODO: This means MEs can generate when the override is set to `BattleType.WILD`
     if (
-      !this.twoPlayerMode
+      (!this.twoPlayerMode || TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST.length > 0)
       && !activeOverrides.BATTLE_TYPE_OVERRIDE
       && this.isWaveMysteryEncounter(resolved.battleType, waveIndex)
     ) {
@@ -1773,10 +1779,6 @@ export class BattleScene extends SceneBase {
     const trainer = this.generateNewBattleTrainer(waveIndex);
     this.field.add(trainer);
     resolved.trainer = trainer;
-  }
-
-  private shouldForceTwoPlayerDoubleOnlyTestBattle(waveIndex: number): boolean {
-    return this.twoPlayerMode && this.twoPlayerPartySize === 6 && waveIndex === STARTING_WAVE;
   }
 
   /**
@@ -3421,10 +3423,13 @@ export class BattleScene extends SceneBase {
         .filter(fc => fc.findTrigger(formChangeTriggerType) && fc.canChange(pokemon));
       let matchingFormChange: SpeciesFormChange | null;
       if (pokemon.species.speciesId === SpeciesId.NECROZMA && matchingFormChangeOpts.length > 1) {
+        const playerIndex = pokemon.isPlayer() ? this.getPlayerIndexForPokemon(pokemon) : undefined;
         // Ultra Necrozma is changing its form back, so we need to figure out into which form it devolves.
         const formChangeItemModifiers = (
           this.findModifiers(
             m => m instanceof PokemonFormChangeItemModifier && m.pokemonId === pokemon.id,
+            pokemon.isPlayer(),
+            playerIndex,
           ) as PokemonFormChangeItemModifier[]
         )
           .filter(m => m.active)
@@ -3441,7 +3446,13 @@ export class BattleScene extends SceneBase {
       if (matchingFormChange) {
         let phase: Phase;
         if (pokemon.isPlayer() && !matchingFormChange.quiet) {
-          phase = this.phaseManager.create("FormChangePhase", pokemon, matchingFormChange, modal);
+          phase = this.phaseManager.create(
+            "FormChangePhase",
+            pokemon,
+            matchingFormChange,
+            modal,
+            this.getPlayerIndexForPokemon(pokemon) ?? this.activePlayerIndex,
+          );
         } else {
           phase = this.phaseManager.create("QuietFormChangePhase", pokemon, matchingFormChange);
         }
@@ -3863,6 +3874,10 @@ export class BattleScene extends SceneBase {
     );
   }
 
+  private isMysteryEncounterAllowedInTwoPlayer(encounterType: MysteryEncounterType): boolean {
+    return !this.twoPlayerMode || TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST.includes(encounterType);
+  }
+
   /**
    * Loads or generates a mystery encounter
    * @param encounterType used to load session encounter when restarting game, etc.
@@ -3875,6 +3890,7 @@ export class BattleScene extends SceneBase {
     if (
       activeOverrides.MYSTERY_ENCOUNTER_OVERRIDE != null
       && Object.hasOwn(allMysteryEncounters, activeOverrides.MYSTERY_ENCOUNTER_OVERRIDE)
+      && this.isMysteryEncounterAllowedInTwoPlayer(activeOverrides.MYSTERY_ENCOUNTER_OVERRIDE)
     ) {
       encounter = allMysteryEncounters[activeOverrides.MYSTERY_ENCOUNTER_OVERRIDE];
       if (canBypass) {
@@ -3884,9 +3900,15 @@ export class BattleScene extends SceneBase {
       encounter = allMysteryEncounters[encounterType ?? -1];
       return encounter;
     } else if (getDailyMysteryEncounter(this.currentBattle.waveIndex) == null) {
-      encounter = encounterType == null ? null : allMysteryEncounters[encounterType];
+      encounter =
+        encounterType == null || !this.isMysteryEncounterAllowedInTwoPlayer(encounterType)
+          ? null
+          : allMysteryEncounters[encounterType];
     } else {
-      encounter = allMysteryEncounters[getDailyMysteryEncounter(this.currentBattle.waveIndex)!];
+      const dailyMysteryEncounter = getDailyMysteryEncounter(this.currentBattle.waveIndex)!;
+      encounter = this.isMysteryEncounterAllowedInTwoPlayer(dailyMysteryEncounter)
+        ? allMysteryEncounters[dailyMysteryEncounter]
+        : null;
     }
 
     // Check for queued encounters first
@@ -3897,7 +3919,7 @@ export class BattleScene extends SceneBase {
       while (i < queuedEncounters.length && encounter) {
         const candidate = queuedEncounters[i];
         const forcedChance = candidate.spawnPercent;
-        if (randSeedInt(100) < forcedChance) {
+        if (this.isMysteryEncounterAllowedInTwoPlayer(candidate.type) && randSeedInt(100) < forcedChance) {
           encounter = allMysteryEncounters[candidate.type];
         }
 
@@ -3956,6 +3978,9 @@ export class BattleScene extends SceneBase {
     while (availableEncounters.length === 0 && tier !== null) {
       availableEncounters = biomeMysteryEncounters
         .filter(encounterType => {
+          if (!this.isMysteryEncounterAllowedInTwoPlayer(encounterType)) {
+            return false;
+          }
           const encounterCandidate = allMysteryEncounters[encounterType];
           if (!encounterCandidate) {
             return false;
@@ -4005,8 +4030,13 @@ export class BattleScene extends SceneBase {
 
     // If absolutely no encounters are available, spawn 0th encounter
     if (availableEncounters.length === 0) {
-      console.log("No Mystery Encounters found, falling back to Mysterious Challengers.");
-      return allMysteryEncounters[MysteryEncounterType.MYSTERIOUS_CHALLENGERS];
+      const fallbackEncounterType = this.twoPlayerMode
+        ? TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST[0]
+        : MysteryEncounterType.MYSTERIOUS_CHALLENGERS;
+      console.log(`No Mystery Encounters found, falling back to ${MysteryEncounterType[fallbackEncounterType]}.`);
+      encounter = new MysteryEncounter(allMysteryEncounters[fallbackEncounterType]);
+      encounter.populateDialogueTokensFromRequirements();
+      return encounter;
     }
     // TODO: should this use `randSeedItem`?
     encounter = availableEncounters[randSeedInt(availableEncounters.length)];

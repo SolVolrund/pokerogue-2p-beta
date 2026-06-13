@@ -1,4 +1,5 @@
 import { audioManager } from "#app/global-audio-manager";
+import type { PlayerIndex } from "#app/battle-scene";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
@@ -145,8 +146,12 @@ export function getRandomPlayerPokemon(
  * @param isFainted Default false. If true, includes fainted mons.
  * @returns
  */
-export function getHighestLevelPlayerPokemon(isAllowed = false, isFainted = false): PlayerPokemon {
-  const party = globalScene.getPlayerParty();
+export function getHighestLevelPlayerPokemon(
+  isAllowed = false,
+  isFainted = false,
+  playerIndex: PlayerIndex = globalScene.activePlayerIndex,
+): PlayerPokemon {
+  const party = globalScene.getPlayerParty(playerIndex);
   let pokemon: PlayerPokemon | null = null;
 
   for (const p of party) {

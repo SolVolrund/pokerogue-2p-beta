@@ -93,7 +93,7 @@ export class LevelUpPhase extends PlayerPartyMemberPokemonPhase {
       const evolution = this.pokemon.getEvolution();
       if (evolution) {
         this.pokemon.breakIllusion();
-        globalScene.phaseManager.unshiftNew("EvolutionPhase", this.pokemon, evolution, this.lastLevel);
+        globalScene.phaseManager.unshiftNew("EvolutionPhase", this.pokemon, evolution, this.lastLevel, true, this.playerIndex);
       }
     }
     super.end();

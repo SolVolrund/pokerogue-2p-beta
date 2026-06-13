@@ -92,7 +92,7 @@ export class CommandPhase extends FieldPhase {
     }
 
     const allyCommand = globalScene.currentBattle.turnCommands[this.fieldIndex - 1];
-    if (allyCommand?.command === Command.BALL || allyCommand?.command === Command.RUN) {
+    if (allyCommand?.command === Command.RUN || (!globalScene.twoPlayerMode && allyCommand?.command === Command.BALL)) {
       globalScene.currentBattle.turnCommands[this.fieldIndex] = {
         command: allyCommand?.command,
         skip: true,
@@ -424,7 +424,7 @@ export class CommandPhase extends FieldPhase {
       return false;
     }
 
-    if (targets.length > 1) {
+    if (targets.length > 1 && !globalScene.twoPlayerMode) {
       this.queueShowText("battle:noPokeballMulti");
       return false;
     }
@@ -463,7 +463,10 @@ export class CommandPhase extends FieldPhase {
         playerIndex: globalScene.getPlayerIndexForFieldSlot(this.fieldIndex),
       };
       globalScene.currentBattle.turnCommands[this.fieldIndex]!.targets = targets;
-      if (this.fieldIndex) {
+      if (targets.length > 1) {
+        globalScene.phaseManager.unshiftNew("SelectTargetPhase", this.fieldIndex, targets);
+      }
+      if (!globalScene.twoPlayerMode && this.fieldIndex) {
         globalScene.currentBattle.turnCommands[this.fieldIndex - 1]!.skip = true;
       }
       return true;

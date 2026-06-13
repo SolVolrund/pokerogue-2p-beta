@@ -290,10 +290,6 @@ export function getTwoPlayerDoubleTrainerPartyTemplate(...templates: TrainerPart
     return template;
   }
 
-  if (globalScene.twoPlayerDoubleOnlyTestPairs > 0) {
-    return repeatTrainerPartyTemplate(template, globalScene.twoPlayerDoubleOnlyTestPairs);
-  }
-
   const { currentBattle, gameMode } = globalScene;
   const wave = gameMode.getWaveForDifficulty(currentBattle?.waveIndex || STARTING_WAVE, true);
 

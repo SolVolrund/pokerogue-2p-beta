@@ -1,11 +1,13 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import { globalScene } from "#app/global-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import { ModifierTier } from "#enums/modifier-tier";
 import { MoveId } from "#enums/move-id";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { SpeciesId } from "#enums/species-id";
+import { UiMode } from "#enums/ui-mode";
 import { queueEncounterMessage, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
 import type { EnemyPartyConfig } from "#mystery-encounters/encounter-phase-utils";
 import {
@@ -18,6 +20,7 @@ import { getHighestLevelPlayerPokemon, koPlayerPokemon } from "#mystery-encounte
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
+import { updateWindowType } from "#ui/ui-theme";
 import { randSeedInt } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 
@@ -30,6 +33,99 @@ const COMMON_REWARDS_PERCENT = 25;
 const ULTRA_REWARDS_PERCENT = 30;
 const ROGUE_REWARDS_PERCENT = 10;
 const MASTER_REWARDS_PERCENT = 5;
+
+function getGimmighoulConfig(count = 1): EnemyPartyConfig {
+  return {
+    levelAdditiveModifier: 0.5,
+    disableSwitch: true,
+    doubleBattle: globalScene.twoPlayerMode,
+    pokemonConfigs: Array.from({ length: count }, () => ({
+      species: getPokemonSpecies(SpeciesId.GIMMIGHOUL),
+      formIndex: 0,
+      isBoss: true,
+      moveSet: [MoveId.NASTY_PLOT, MoveId.SHADOW_BALL, MoveId.POWER_GEM, MoveId.THIEF],
+    })),
+  };
+}
+
+function getChestRewardTiers(roll: number): ModifierTier[] | null {
+  if (roll >= RAND_LENGTH - COMMON_REWARDS_PERCENT) {
+    return [ModifierTier.COMMON, ModifierTier.COMMON, ModifierTier.GREAT, ModifierTier.GREAT];
+  }
+  if (roll >= RAND_LENGTH - COMMON_REWARDS_PERCENT - ULTRA_REWARDS_PERCENT) {
+    return [ModifierTier.ULTRA, ModifierTier.ULTRA, ModifierTier.ULTRA];
+  }
+  if (roll >= RAND_LENGTH - COMMON_REWARDS_PERCENT - ULTRA_REWARDS_PERCENT - ROGUE_REWARDS_PERCENT) {
+    return [ModifierTier.ROGUE, ModifierTier.ROGUE];
+  }
+  if (
+    roll
+    >= RAND_LENGTH - COMMON_REWARDS_PERCENT - ULTRA_REWARDS_PERCENT - ROGUE_REWARDS_PERCENT - MASTER_REWARDS_PERCENT
+  ) {
+    return [ModifierTier.MASTER];
+  }
+
+  return null;
+}
+
+function getChestRewardMessageKey(roll: number): string {
+  if (roll >= RAND_LENGTH - COMMON_REWARDS_PERCENT) {
+    return `${namespace}:option.1.normal`;
+  }
+  if (roll >= RAND_LENGTH - COMMON_REWARDS_PERCENT - ULTRA_REWARDS_PERCENT) {
+    return `${namespace}:option.1.good`;
+  }
+  if (roll >= RAND_LENGTH - COMMON_REWARDS_PERCENT - ULTRA_REWARDS_PERCENT - ROGUE_REWARDS_PERCENT) {
+    return `${namespace}:option.1.great`;
+  }
+
+  return `${namespace}:option.1.amazing`;
+}
+
+function promptPlayerToOpenChest(playerIndex: PlayerIndex): Promise<boolean> {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  const playerLabel = `Player ${playerIndex + 1}`;
+  const allowedPokemon = globalScene.getPokemonAllowedInBattle(playerIndex);
+  if (allowedPokemon.length <= 1) {
+    return showEncounterText(`${playerLabel} does not have enough healthy Pokemon to risk opening the chest.`).then(
+      () => false,
+    );
+  }
+
+  return new Promise(resolve => {
+    globalScene.ui.showText(`${playerLabel}: Open the mysterious chest?`, null, () => {
+      globalScene.ui.setMode(
+        UiMode.CONFIRM,
+        () => {
+          globalScene.ui.setMode(UiMode.MESSAGE);
+          resolve(true);
+        },
+        () => {
+          globalScene.ui.setMode(UiMode.MESSAGE);
+          resolve(false);
+        },
+      );
+    });
+  });
+}
+
+function queueImmediateChestReward(rewardTiers: ModifierTier[], playerIndex: PlayerIndex, messageKey: string): void {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+  queueEncounterMessage(messageKey);
+  globalScene.phaseManager.unshiftNew(
+    "SelectModifierPhase",
+    0,
+    undefined,
+    {
+      guaranteedModifierTiers: rewardTiers,
+    },
+    false,
+    playerIndex,
+  );
+}
 
 /**
  * Mysterious Chest encounter.
@@ -76,21 +172,7 @@ export const MysteriousChestEncounter: MysteryEncounter = MysteryEncounterBuilde
   .withOnInit(() => {
     const encounter = globalScene.currentBattle.mysteryEncounter!;
 
-    // Calculate boss mon
-    const config: EnemyPartyConfig = {
-      levelAdditiveModifier: 0.5,
-      disableSwitch: true,
-      pokemonConfigs: [
-        {
-          species: getPokemonSpecies(SpeciesId.GIMMIGHOUL),
-          formIndex: 0,
-          isBoss: true,
-          moveSet: [MoveId.NASTY_PLOT, MoveId.SHADOW_BALL, MoveId.POWER_GEM, MoveId.THIEF],
-        },
-      ],
-    };
-
-    encounter.enemyPartyConfigs = [config];
+    encounter.enemyPartyConfigs = [getGimmighoulConfig()];
 
     encounter.setDialogueToken("gimmighoulName", getPokemonSpecies(SpeciesId.GIMMIGHOUL).getName());
     encounter.setDialogueToken("trapPercent", TRAP_PERCENT.toString());
@@ -117,6 +199,14 @@ export const MysteriousChestEncounter: MysteryEncounter = MysteryEncounterBuilde
         const encounter = globalScene.currentBattle.mysteryEncounter!;
         const introVisuals = encounter.introVisuals!;
 
+        if (globalScene.twoPlayerMode) {
+          encounter.misc = {};
+          introVisuals.spriteConfigs[0].disableAnimation = false;
+          introVisuals.spriteConfigs[1].disableAnimation = false;
+          introVisuals.playAnim();
+          return;
+        }
+
         // Determine roll first
         const roll = randSeedInt(RAND_LENGTH);
         encounter.misc = {
@@ -137,67 +227,99 @@ export const MysteriousChestEncounter: MysteryEncounter = MysteryEncounterBuilde
       .withOptionPhase(async () => {
         // Open the chest
         const encounter = globalScene.currentBattle.mysteryEncounter!;
-        const roll = encounter.misc.roll;
-        if (roll >= RAND_LENGTH - COMMON_REWARDS_PERCENT) {
-          // Choose between 2 COMMON / 2 GREAT tier items (20%)
-          setEncounterRewards({
-            guaranteedModifierTiers: [ModifierTier.COMMON, ModifierTier.COMMON, ModifierTier.GREAT, ModifierTier.GREAT],
-          });
-          // Display result message then proceed to rewards
-          queueEncounterMessage(`${namespace}:option.1.normal`);
-          leaveEncounterWithoutBattle();
-        } else if (roll >= RAND_LENGTH - COMMON_REWARDS_PERCENT - ULTRA_REWARDS_PERCENT) {
-          // Choose between 3 ULTRA tier items (30%)
-          setEncounterRewards({
-            guaranteedModifierTiers: [ModifierTier.ULTRA, ModifierTier.ULTRA, ModifierTier.ULTRA],
-          });
-          // Display result message then proceed to rewards
-          queueEncounterMessage(`${namespace}:option.1.good`);
-          leaveEncounterWithoutBattle();
-        } else if (roll >= RAND_LENGTH - COMMON_REWARDS_PERCENT - ULTRA_REWARDS_PERCENT - ROGUE_REWARDS_PERCENT) {
-          // Choose between 2 ROGUE tier items (10%)
-          setEncounterRewards({
-            guaranteedModifierTiers: [ModifierTier.ROGUE, ModifierTier.ROGUE],
-          });
-          // Display result message then proceed to rewards
-          queueEncounterMessage(`${namespace}:option.1.great`);
-          leaveEncounterWithoutBattle();
-        } else if (
-          roll
-          >= RAND_LENGTH
-            - COMMON_REWARDS_PERCENT
-            - ULTRA_REWARDS_PERCENT
-            - ROGUE_REWARDS_PERCENT
-            - MASTER_REWARDS_PERCENT
-        ) {
-          // Choose 1 MASTER tier item (5%)
-          setEncounterRewards({
-            guaranteedModifierTiers: [ModifierTier.MASTER],
-          });
-          // Display result message then proceed to rewards
-          queueEncounterMessage(`${namespace}:option.1.amazing`);
-          leaveEncounterWithoutBattle();
-        } else {
-          // Your highest level unfainted Pokemon gets OHKO. Start battle against a Gimmighoul (35%)
-          const highestLevelPokemon = getHighestLevelPlayerPokemon(true, false);
+
+        if (!globalScene.twoPlayerMode) {
+          const roll = encounter.misc.roll;
+          const rewardTiers = getChestRewardTiers(roll);
+          if (rewardTiers) {
+            setEncounterRewards({
+              guaranteedModifierTiers: rewardTiers,
+            });
+            queueEncounterMessage(getChestRewardMessageKey(roll));
+            leaveEncounterWithoutBattle();
+          } else {
+            const highestLevelPokemon = getHighestLevelPlayerPokemon(true, false);
+            koPlayerPokemon(highestLevelPokemon);
+
+            encounter.setDialogueToken("pokeName", highestLevelPokemon.getNameToRender());
+            await showEncounterText(`${namespace}:option.1.bad`);
+
+            const allowedPokemon = globalScene.getPokemonAllowedInBattle();
+            if (allowedPokemon.length === 0) {
+              globalScene.phaseManager.clearPhaseQueue();
+              globalScene.phaseManager.unshiftNew("GameOverPhase");
+            } else {
+              await transitionMysteryEncounterIntroVisuals(true, true, 500);
+              setEncounterRewards({ fillRemaining: true });
+              await initBattleWithEnemyConfig(encounter.enemyPartyConfigs[0]);
+            }
+          }
+          return;
+        }
+
+        const openingPlayers: PlayerIndex[] = [];
+        for (const playerIndex of [0, 1] as PlayerIndex[]) {
+          if (await promptPlayerToOpenChest(playerIndex)) {
+            openingPlayers.push(playerIndex);
+          }
+        }
+
+        if (openingPlayers.length === 0) {
+          leaveEncounterWithoutBattle(true);
+          return;
+        }
+
+        const trappedPlayers: PlayerIndex[] = [];
+        const treasureRewards: { playerIndex: PlayerIndex; rewardTiers: ModifierTier[]; messageKey: string }[] = [];
+        for (const playerIndex of openingPlayers) {
+          globalScene.setActivePlayerIndex(playerIndex);
+          updateWindowType(playerIndex + 1);
+
+          const roll = randSeedInt(RAND_LENGTH);
+          const rewardTiers = getChestRewardTiers(roll);
+          if (rewardTiers) {
+            treasureRewards.push({
+              playerIndex,
+              rewardTiers,
+              messageKey: getChestRewardMessageKey(roll),
+            });
+            continue;
+          }
+
+          const highestLevelPokemon = getHighestLevelPlayerPokemon(true, false, playerIndex);
           koPlayerPokemon(highestLevelPokemon);
+          trappedPlayers.push(playerIndex);
 
           encounter.setDialogueToken("pokeName", highestLevelPokemon.getNameToRender());
           await showEncounterText(`${namespace}:option.1.bad`);
-
-          // Handle game over edge case
-          const allowedPokemon = globalScene.getPokemonAllowedInBattle();
-          if (allowedPokemon.length === 0) {
-            // If there are no longer any legal pokemon in the party, game over.
-            globalScene.phaseManager.clearPhaseQueue();
-            globalScene.phaseManager.unshiftNew("GameOverPhase");
-          } else {
-            // Show which Pokemon was KOed, then start battle against Gimmighoul
-            await transitionMysteryEncounterIntroVisuals(true, true, 500);
-            setEncounterRewards({ fillRemaining: true });
-            await initBattleWithEnemyConfig(encounter.enemyPartyConfigs[0]);
-          }
+          setEncounterRewards({ fillRemaining: true }, undefined, undefined, playerIndex);
         }
+
+        if (trappedPlayers.length === 0) {
+          for (const treasureReward of treasureRewards) {
+            setEncounterRewards(
+              {
+                guaranteedModifierTiers: treasureReward.rewardTiers,
+              },
+              undefined,
+              undefined,
+              treasureReward.playerIndex,
+            );
+            queueEncounterMessage(treasureReward.messageKey);
+          }
+          leaveEncounterWithoutBattle();
+          return;
+        }
+
+        for (const treasureReward of treasureRewards) {
+          queueImmediateChestReward(
+            treasureReward.rewardTiers,
+            treasureReward.playerIndex,
+            treasureReward.messageKey,
+          );
+        }
+        await transitionMysteryEncounterIntroVisuals(true, true, 500);
+        await initBattleWithEnemyConfig(getGimmighoulConfig(trappedPlayers.length));
       })
       .build(),
   )

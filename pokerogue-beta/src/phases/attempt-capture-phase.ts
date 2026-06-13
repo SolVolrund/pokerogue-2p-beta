@@ -49,7 +49,11 @@ export class AttemptCapturePhase extends PokemonPhase {
 
     const pokemon = this.getPokemon() as EnemyPokemon;
 
-    if (!pokemon?.hp) {
+    if (!pokemon?.hp || !pokemon.isActive(true)) {
+      return this.end();
+    }
+
+    if (globalScene.currentBattle.capturedBattlerIndexesThisTurn.has(this.battlerIndex) || !this.canSpendPokeball()) {
       return this.end();
     }
 
@@ -209,6 +213,10 @@ export class AttemptCapturePhase extends PokemonPhase {
     });
   }
 
+  private canSpendPokeball(): boolean {
+    return !!globalScene.getPlayerPokeballCounts(this.playerIndex)[this.pokeballType];
+  }
+
   failCatch(_shakeCount: number) {
     const pokemon = this.getPokemon();
 
@@ -244,6 +252,7 @@ export class AttemptCapturePhase extends PokemonPhase {
 
   catch() {
     const pokemon = this.getPokemon() as EnemyPokemon;
+    globalScene.currentBattle.capturedBattlerIndexesThisTurn.add(this.battlerIndex);
 
     const speciesForm = pokemon.fusionSpecies ? pokemon.getFusionSpeciesForm() : pokemon.getSpeciesForm();
 

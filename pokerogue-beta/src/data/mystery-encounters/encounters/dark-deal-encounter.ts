@@ -1,4 +1,5 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { modifierTypes } from "#data/data-lists";
 import { Challenges } from "#enums/challenges";
@@ -7,6 +8,7 @@ import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import type { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
+import { UiMode } from "#enums/ui-mode";
 import type { PokemonHeldItemModifier } from "#modifiers/modifier";
 import { PokemonFormChangeItemModifier } from "#modifiers/modifier";
 import type { EnemyPartyConfig, EnemyPokemonConfig } from "#mystery-encounters/encounter-phase-utils";
@@ -15,11 +17,18 @@ import { getRandomPlayerPokemon, getRandomSpeciesByStarterCost } from "#mystery-
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
+import { updateWindowType } from "#ui/ui-theme";
 import { randSeedInt } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 
 /** i18n namespace for encounter */
 const namespace = "mysteryEncounters/darkDeal";
+
+type DarkDealAcceptedPlayer = {
+  playerIndex: PlayerIndex;
+  removedTypes: PokemonType[];
+  modifiers: PokemonHeldItemModifier[];
+};
 
 /** Exclude Ultra Beasts (inludes Cosmog/Solgaleo/Lunala/Necrozma), Paradox (includes Miraidon/Koraidon), Eternatus, and Mythicals */
 const excludedBosses = [
@@ -90,6 +99,84 @@ const excludedBosses = [
   SpeciesId.PECHARUNT,
 ];
 
+function promptPlayerForDarkDeal(playerIndex: PlayerIndex): Promise<boolean> {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  const playerLabel = `Player ${playerIndex + 1}`;
+  const allowedPokemon = globalScene.getPokemonAllowedInBattle(playerIndex);
+  if (allowedPokemon.length <= 1) {
+    return new Promise(resolve => {
+      globalScene.ui.showText(`${playerLabel} does not have enough healthy Pokemon to risk the deal.`, null, () =>
+        resolve(false),
+      );
+    });
+  }
+
+  return new Promise(resolve => {
+    globalScene.ui.showText(`${playerLabel}: Accept the Dark Deal?`, null, () => {
+      globalScene.ui.setMode(
+        UiMode.CONFIRM,
+        () => {
+          globalScene.ui.setMode(UiMode.MESSAGE);
+          resolve(true);
+        },
+        () => {
+          globalScene.ui.setMode(UiMode.MESSAGE);
+          resolve(false);
+        },
+      );
+    });
+  });
+}
+
+function acceptDarkDealForPlayer(playerIndex: PlayerIndex): DarkDealAcceptedPlayer {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  const removedPokemon = getRandomPlayerPokemon(true, false, true);
+  const modifiers = removedPokemon.getHeldItems().filter(m => !(m instanceof PokemonFormChangeItemModifier));
+
+  globalScene.removePokemonFromPlayerParty(removedPokemon);
+  globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypes.ROGUE_BALL, playerIndex);
+  globalScene.phaseManager.queueMessage(`${removedPokemon.getNameToRender()} hops into the strange machine...`);
+
+  return {
+    playerIndex,
+    removedTypes: removedPokemon.getTypes(),
+    modifiers,
+  };
+}
+
+function getDarkDealBossConfig(deal: DarkDealAcceptedPlayer): EnemyPokemonConfig {
+  let bossTypes: PokemonType[] = deal.removedTypes;
+  const singleTypeChallenges = globalScene.gameMode.challenges.filter(
+    c => c.value && c.id === Challenges.SINGLE_TYPE,
+  );
+  if (globalScene.gameMode.isChallenge && singleTypeChallenges.length > 0) {
+    bossTypes = singleTypeChallenges.map(c => (c.value - 1) as PokemonType);
+  }
+
+  const roll = randSeedInt(100);
+  const starterTier: number | [number, number] = roll >= 65 ? 6 : roll >= 15 ? 7 : roll >= 5 ? 8 : [9, 10];
+  const bossSpecies = getPokemonSpecies(getRandomSpeciesByStarterCost(starterTier, excludedBosses, bossTypes));
+  const pokemonConfig: EnemyPokemonConfig = {
+    species: bossSpecies,
+    isBoss: true,
+    modifierConfigs: deal.modifiers.map(m => {
+      return {
+        modifier: m,
+        stackCount: m.getStackCount(),
+      };
+    }),
+  };
+  if (bossSpecies.forms != null && bossSpecies.forms.length > 0) {
+    pokemonConfig.formIndex = 0;
+  }
+
+  return pokemonConfig;
+}
+
 /**
  * Dark Deal encounter.
  * @see {@link https://github.com/pagefaultgames/pokerogue/issues/3806 | GitHub Issue #3806}
@@ -145,6 +232,15 @@ export const DarkDealEncounter: MysteryEncounter = MysteryEncounterBuilder.withE
         ],
       })
       .withPreOptionPhase(async () => {
+        if (globalScene.twoPlayerMode) {
+          const encounter = globalScene.currentBattle.mysteryEncounter!;
+          encounter.setDialogueToken("pokeName", "a Pokemon");
+          encounter.misc = {
+            acceptedDeals: [],
+          };
+          return;
+        }
+
         // Removes random pokemon (including fainted) from party and adds name to dialogue data tokens
         // Will never return last battle able mon and instead pick fainted/unable to battle
         const removedPokemon = getRandomPlayerPokemon(true, false, true);
@@ -165,6 +261,28 @@ export const DarkDealEncounter: MysteryEncounter = MysteryEncounterBuilder.withE
       .withOptionPhase(async () => {
         // Give the player 5 Rogue Balls
         const encounter = globalScene.currentBattle.mysteryEncounter!;
+
+        if (globalScene.twoPlayerMode) {
+          const acceptedDeals: DarkDealAcceptedPlayer[] = [];
+          for (const playerIndex of [0, 1] as PlayerIndex[]) {
+            if (await promptPlayerForDarkDeal(playerIndex)) {
+              acceptedDeals.push(acceptDarkDealForPlayer(playerIndex));
+            }
+          }
+
+          if (acceptedDeals.length === 0) {
+            leaveEncounterWithoutBattle(true);
+            return;
+          }
+
+          const config: EnemyPartyConfig = {
+            doubleBattle: true,
+            pokemonConfigs: acceptedDeals.map(getDarkDealBossConfig),
+          };
+          await initBattleWithEnemyConfig(config);
+          return;
+        }
+
         globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypes.ROGUE_BALL);
 
         // Start encounter with random legendary (7-10 starter strength) that has level additive

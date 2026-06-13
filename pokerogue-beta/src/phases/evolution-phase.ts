@@ -1,4 +1,5 @@
 import { EVOLVE_MOVE } from "#app/constants";
+import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
@@ -20,6 +21,7 @@ export class EvolutionPhase extends Phase {
   public readonly phaseName: "EvolutionPhase" | "FormChangePhase" = "EvolutionPhase";
   protected pokemon: PlayerPokemon;
   protected lastLevel: number;
+  protected playerIndex: PlayerIndex;
 
   protected evoChain: Phaser.Tweens.TweenChain | null = null;
 
@@ -50,7 +52,13 @@ export class EvolutionPhase extends Phase {
    * @param lastLevel - The level at which the Pokemon is evolving
    * @param canCancel - Whether the evolution can be cancelled by the player
    */
-  constructor(pokemon: PlayerPokemon, evolution: SpeciesFormEvolution | null, lastLevel: number, canCancel = true) {
+  constructor(
+    pokemon: PlayerPokemon,
+    evolution: SpeciesFormEvolution | null,
+    lastLevel: number,
+    canCancel = true,
+    playerIndex: PlayerIndex = globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.activePlayerIndex,
+  ) {
     super();
 
     this.pokemon = pokemon;
@@ -58,6 +66,7 @@ export class EvolutionPhase extends Phase {
     this.lastLevel = lastLevel;
     this.fusionSpeciesEvolved = evolution instanceof FusionSpeciesFormEvolution;
     this.canCancel = canCancel;
+    this.playerIndex = playerIndex;
   }
 
   validate(): boolean {
@@ -189,6 +198,7 @@ export class EvolutionPhase extends Phase {
 
   async start() {
     super.start();
+    globalScene.setActivePlayerIndex(this.playerIndex);
     await this.setMode();
 
     if (!this.validate()) {
@@ -409,8 +419,9 @@ export class EvolutionPhase extends Phase {
     const levelMoves = this.pokemon
       .getLevelMoves(this.lastLevel + 1, true, false, false, learnSituation)
       .filter(lm => lm[0] === EVOLVE_MOVE);
+    const partyMemberIndex = globalScene.getPlayerParty(this.playerIndex).indexOf(this.pokemon);
     for (const lm of levelMoves) {
-      globalScene.phaseManager.unshiftNew("LearnMovePhase", globalScene.getPlayerParty().indexOf(this.pokemon), lm[1]);
+      globalScene.phaseManager.unshiftNew("LearnMovePhase", partyMemberIndex, lm[1], undefined, -1, this.playerIndex);
     }
     globalScene.phaseManager.unshiftNew("EndEvolutionPhase");
 

@@ -414,7 +414,11 @@ export class MysteryEncounterBattlePhase extends Phase {
       }
     }
 
-    const availablePartyMembers = globalScene.getPlayerParty().filter(p => p.isAllowedInBattle());
+    const availablePartyMembers = globalScene.twoPlayerMode
+      ? ([0, 1] as const)
+          .map(playerIndex => globalScene.getPlayerParty(playerIndex)[0])
+          .filter(pokemon => pokemon?.isAllowedInBattle())
+      : globalScene.getPlayerParty().filter(p => p.isAllowedInBattle());
 
     if (!availablePartyMembers[0].isOnField()) {
       globalScene.phaseManager.pushNew("SummonPhase", 0);

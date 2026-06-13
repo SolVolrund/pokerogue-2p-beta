@@ -6400,7 +6400,7 @@ export class PlayerPokemon extends Pokemon {
     pokemon
       .getMoveset(true)
       .map((m: PokemonMove) =>
-        globalScene.phaseManager.unshiftNew("LearnMovePhase", newPartyMemberIndex, m.getMove().id),
+        globalScene.phaseManager.unshiftNew("LearnMovePhase", newPartyMemberIndex, m.getMove().id, undefined, -1, playerIndex),
       );
     pokemon.destroy();
     this.updateFusionPalette();

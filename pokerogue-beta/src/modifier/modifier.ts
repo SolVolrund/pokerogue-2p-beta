@@ -2248,7 +2248,8 @@ export class PokemonNatureChangeModifier extends ConsumablePokemonModifier {
    */
   override apply(playerPokemon: PlayerPokemon): boolean {
     playerPokemon.setCustomNature(this.nature);
-    globalScene.gameData.unlockSpeciesNature(playerPokemon.species, this.nature);
+    const playerIndex = globalScene.getPlayerIndexForPokemon(playerPokemon) ?? globalScene.activePlayerIndex;
+    globalScene.getPlayerGameData(playerIndex).unlockSpeciesNature(playerPokemon.species, this.nature);
 
     return true;
   }
@@ -2262,7 +2263,9 @@ export class PokemonLevelIncrementModifier extends ConsumablePokemonModifier {
    * @returns always `true`
    */
   override apply(playerPokemon: PlayerPokemon, levelCount: NumberHolder = new NumberHolder(1)): boolean {
-    globalScene.applyModifiers(LevelIncrementBoosterModifier, true, levelCount);
+    const playerIndex = globalScene.getPlayerIndexForPokemon(playerPokemon) ?? globalScene.activePlayerIndex;
+    const party = globalScene.getPlayerParty(playerIndex);
+    globalScene.applyModifiersForPlayer(LevelIncrementBoosterModifier, playerIndex, levelCount);
 
     playerPokemon.level += levelCount.value;
     if (playerPokemon.level <= globalScene.getMaxExpLevel(true)) {
@@ -2273,9 +2276,10 @@ export class PokemonLevelIncrementModifier extends ConsumablePokemonModifier {
 
     globalScene.phaseManager.unshiftNew(
       "LevelUpPhase",
-      globalScene.getPlayerParty().indexOf(playerPokemon),
+      party.indexOf(playerPokemon),
       playerPokemon.level - levelCount.value,
       playerPokemon.level,
+      playerIndex,
     );
 
     return true;
@@ -2291,11 +2295,14 @@ export class TmModifier extends ConsumablePokemonModifier {
    * @returns always `true`
    */
   override apply(playerPokemon: PlayerPokemon): boolean {
+    const playerIndex = globalScene.getPlayerIndexForPokemon(playerPokemon) ?? globalScene.activePlayerIndex;
     globalScene.phaseManager.unshiftNew(
       "LearnMovePhase",
-      globalScene.getPlayerParty().indexOf(playerPokemon),
+      globalScene.getPlayerParty(playerIndex).indexOf(playerPokemon),
       this.type.moveId,
       LearnMoveType.TM,
+      -1,
+      playerIndex,
     );
 
     return true;
@@ -2317,12 +2324,14 @@ export class RememberMoveModifier extends ConsumablePokemonModifier {
    * @returns always `true`
    */
   override apply(playerPokemon: PlayerPokemon, cost?: number): boolean {
+    const playerIndex = globalScene.getPlayerIndexForPokemon(playerPokemon) ?? globalScene.activePlayerIndex;
     globalScene.phaseManager.unshiftNew(
       "LearnMovePhase",
-      globalScene.getPlayerParty().indexOf(playerPokemon),
+      globalScene.getPlayerParty(playerIndex).indexOf(playerPokemon),
       playerPokemon.getLearnableLevelMoves()[this.levelMoveIndex],
       LearnMoveType.MEMORY,
       cost,
+      playerIndex,
     );
 
     return true;
@@ -2353,7 +2362,15 @@ export class EvolutionItemModifier extends ConsumablePokemonModifier {
     }
 
     if (matchingEvolution) {
-      globalScene.phaseManager.unshiftNew("EvolutionPhase", playerPokemon, matchingEvolution, playerPokemon.level - 1);
+      const playerIndex = globalScene.getPlayerIndexForPokemon(playerPokemon) ?? globalScene.activePlayerIndex;
+      globalScene.phaseManager.unshiftNew(
+        "EvolutionPhase",
+        playerPokemon,
+        matchingEvolution,
+        playerPokemon.level - 1,
+        true,
+        playerIndex,
+      );
       return true;
     }
 

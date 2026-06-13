@@ -1,4 +1,5 @@
 import type { Animation } from "#app/animations";
+import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
@@ -18,8 +19,13 @@ export class FormChangePhase extends EvolutionPhase {
   private formChange: SpeciesFormChange;
   private modal: boolean;
 
-  constructor(pokemon: PlayerPokemon, formChange: SpeciesFormChange, modal: boolean) {
-    super(pokemon, null, 0);
+  constructor(
+    pokemon: PlayerPokemon,
+    formChange: SpeciesFormChange,
+    modal: boolean,
+    playerIndex: PlayerIndex = globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.activePlayerIndex,
+  ) {
+    super(pokemon, null, 0, true, playerIndex);
 
     this.formChange = formChange;
     this.modal = modal;

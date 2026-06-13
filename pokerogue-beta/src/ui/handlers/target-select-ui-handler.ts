@@ -35,7 +35,13 @@ export class TargetSelectUiHandler extends UiHandler {
   setup(): void {}
 
   show(
-    args: [fieldIndex: number, moveId: MoveId, callback: TargetSelectCallback, defaultTargets?: BattlerIndex[]],
+    args: [
+      fieldIndex: number,
+      moveId: MoveId,
+      callback: TargetSelectCallback,
+      defaultTargets?: BattlerIndex[],
+      explicitTargets?: BattlerIndex[],
+    ],
   ): boolean {
     if (args.length < 3) {
       return false;
@@ -46,9 +52,15 @@ export class TargetSelectUiHandler extends UiHandler {
     [this.fieldIndex, this.move, this.targetSelectCallback] = args;
     const user = globalScene.getPlayerField()[this.fieldIndex];
 
-    const moveTargets = getMoveTargets(user, this.move);
-    this.targets = moveTargets.targets;
-    this.isMultipleTargets = moveTargets.multiple;
+    const explicitTargets = args[4];
+    if (explicitTargets?.length) {
+      this.targets = explicitTargets.filter(target => globalScene.getField()[target]?.isActive(true));
+      this.isMultipleTargets = false;
+    } else {
+      const moveTargets = getMoveTargets(user, this.move);
+      this.targets = moveTargets.targets;
+      this.isMultipleTargets = moveTargets.multiple;
+    }
 
     if (this.targets.length === 0) {
       return false;

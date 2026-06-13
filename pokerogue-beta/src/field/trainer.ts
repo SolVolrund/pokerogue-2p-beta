@@ -24,6 +24,104 @@ import { getPokemonSpecies } from "#utils/pokemon-utils";
 import { toCamelCase } from "#utils/strings";
 import i18next from "i18next";
 
+type TateLizaPairPool = "normal" | "strong";
+type TateLizaPair = readonly [lizaSpecies: SpeciesId, tateSpecies: SpeciesId];
+
+const TATE_LIZA_OPENING_PAIR: TateLizaPair = [SpeciesId.LUNATONE, SpeciesId.SOLROCK];
+
+const TATE_LIZA_PAIRS: TateLizaPair[] = [
+  [SpeciesId.PLUSLE, SpeciesId.MINUN],
+  [SpeciesId.GARDEVOIR, SpeciesId.GALLADE],
+  [SpeciesId.ZOROARK, SpeciesId.LUCARIO],
+  [SpeciesId.VOLBEAT, SpeciesId.ILLUMISE],
+  [SpeciesId.ORANGURU, SpeciesId.PASSIMIAN],
+  [SpeciesId.GOTHITA, SpeciesId.SOLOSIS],
+  [SpeciesId.GENGAR, SpeciesId.ALAKAZAM],
+  [SpeciesId.FROSLASS, SpeciesId.GLALIE],
+  [SpeciesId.NIDOKING, SpeciesId.NIDOQUEEN],
+  [SpeciesId.TAUROS, SpeciesId.MILTANK],
+  [SpeciesId.MAWILE, SpeciesId.SABLEYE],
+  [SpeciesId.THROH, SpeciesId.SAWK],
+  [SpeciesId.RUFFLET, SpeciesId.VULLABY],
+  [SpeciesId.DURANT, SpeciesId.HEATMOR],
+];
+
+const TATE_LIZA_STRONG_PAIRS: TateLizaPair[] = [
+  [SpeciesId.LATIAS, SpeciesId.LATIOS],
+  [SpeciesId.KYOGRE, SpeciesId.GROUDON],
+  [SpeciesId.DIALGA, SpeciesId.PALKIA],
+  [SpeciesId.RESHIRAM, SpeciesId.ZEKROM],
+  [SpeciesId.XERNEAS, SpeciesId.YVELTAL],
+  [SpeciesId.ZACIAN, SpeciesId.ZAMAZENTA],
+  [SpeciesId.KORAIDON, SpeciesId.MIRAIDON],
+];
+
+function isTateLizaTrainerType(trainerType?: TrainerType): boolean {
+  return trainerType === TrainerType.TATE || trainerType === TrainerType.LIZA;
+}
+
+function isTateLizaDoubleConfig(config: TrainerConfig): boolean {
+  return isTateLizaTrainerType(config.trainerType) && isTateLizaTrainerType(config.trainerTypeDouble);
+}
+
+function getTateLizaPairPoolSequence(waveIndex: number): TateLizaPairPool[] {
+  const ret: TateLizaPairPool[] = [];
+
+  if (waveIndex >= 50) {
+    ret.push("normal");
+  }
+  if (waveIndex >= 80) {
+    ret.push("strong");
+  }
+  if (waveIndex >= 120) {
+    ret.push("normal");
+  }
+  if (waveIndex >= 150) {
+    ret.push("strong");
+  }
+  if (waveIndex >= 180) {
+    ret.push("normal");
+  }
+
+  return ret;
+}
+
+function getTateLizaPairCountForWave(waveIndex: number): number {
+  return 1 + getTateLizaPairPoolSequence(waveIndex).length;
+}
+
+function getTateLizaPairPool(poolType: TateLizaPairPool): TateLizaPair[] {
+  return poolType === "strong" ? TATE_LIZA_STRONG_PAIRS : TATE_LIZA_PAIRS;
+}
+
+function getTateLizaSpeciesForTrainer(pair: TateLizaPair, trainerType?: TrainerType): SpeciesId {
+  return trainerType === TrainerType.LIZA ? pair[0] : pair[1];
+}
+
+function getTateLizaPairForPartyIndex(
+  index: number,
+  waveIndex: number,
+  enemyParty: EnemyPokemon[],
+): TateLizaPair | undefined {
+  const pairIndex = Math.floor(index / 2);
+
+  if (pairIndex === 0) {
+    return TATE_LIZA_OPENING_PAIR;
+  }
+
+  const poolType = getTateLizaPairPoolSequence(waveIndex)[pairIndex - 1];
+
+  if (!poolType) {
+    return;
+  }
+
+  const pool = getTateLizaPairPool(poolType);
+  const alreadyUsedSpecies = new Set(enemyParty.slice(0, pairIndex * 2).map(pokemon => pokemon.species.speciesId));
+  const filteredPool = pool.filter(pair => !alreadyUsedSpecies.has(pair[0]) && !alreadyUsedSpecies.has(pair[1]));
+
+  return randSeedItem(filteredPool.length > 0 ? filteredPool : pool);
+}
+
 export class Trainer extends Phaser.GameObjects.Container {
   public config: TrainerConfig;
   public variant: TrainerVariant;
@@ -49,6 +147,7 @@ export class Trainer extends Phaser.GameObjects.Container {
    * @param trainerConfigOverride - If provided, will override the trainer config for the given trainer type
    * @param partnerTrainerType - If provided, will use this TrainerType as the second trainer in a double battle
    * @param partnerVariant - If provided, will use this variant for the second trainer
+   * @param partnerTrainerConfigOverride - If provided, will override the partner trainer config for the given trainer type
    * @todo Review how many of these parameters we actually need
    */
   constructor(
@@ -60,6 +159,7 @@ export class Trainer extends Phaser.GameObjects.Container {
     trainerConfigOverride?: TrainerConfig,
     partnerTrainerType?: TrainerType,
     partnerVariant?: TrainerVariant,
+    partnerTrainerConfigOverride?: TrainerConfig,
   ) {
     super(globalScene, -72, 80);
     const requestedVariant = variant;
@@ -78,11 +178,14 @@ export class Trainer extends Phaser.GameObjects.Container {
         : undefined;
     this.partnerTrainerType =
       partnerTrainerType
+      ?? partnerTrainerConfigOverride?.trainerType
       ?? lookupPartnerTrainerType
       ?? (variant === TrainerVariant.DOUBLE && this.config.trainerTypeDouble
         ? this.config.trainerTypeDouble
         : undefined);
-    this.partnerConfig = this.partnerTrainerType == null ? undefined : trainerConfigs[this.partnerTrainerType];
+    this.partnerConfig =
+      partnerTrainerConfigOverride
+      ?? (this.partnerTrainerType == null ? undefined : trainerConfigs[this.partnerTrainerType]);
 
     if (this.partnerConfig && !this.config.doubleOnly) {
       variant = TrainerVariant.DOUBLE;
@@ -398,6 +501,10 @@ export class Trainer extends Phaser.GameObjects.Container {
     );
   }
 
+  private shouldUseTateLizaPairParty(): boolean {
+    return !!(this.isDouble() && !this.config.doubleOnly && isTateLizaDoubleConfig(this.config));
+  }
+
   private getTwoPlayerDoubleOnlyPartyMemberFuncIndex(index: number): number | undefined {
     if (!this.shouldUseTwoPlayerDoubleOnlyScaledParty()) {
       return;
@@ -464,6 +571,13 @@ export class Trainer extends Phaser.GameObjects.Container {
   }
 
   getPartyLevels(waveIndex: number): number[] {
+    if (this.shouldUseTateLizaPairParty()) {
+      const levels = this.getPartyLevelsForConfig(this.config, waveIndex, true);
+      const targetSize = getTateLizaPairCountForWave(waveIndex) * 2;
+
+      return Array.from({ length: targetSize }, (_, i) => levels[Math.min(i, levels.length - 1)] ?? 1);
+    }
+
     if (this.shouldUseTwoPlayerNamedPartnerParty()) {
       const partnerConfig = this.partnerConfig!;
       const mainLevels = this.getPartyLevelsForConfig(this.config, waveIndex);
@@ -516,7 +630,7 @@ export class Trainer extends Phaser.GameObjects.Container {
   }
 
   genPartyMember(index: number): EnemyPokemon {
-    if (this.shouldUseTwoPlayerNamedPartnerParty()) {
+    if (this.shouldUseTwoPlayerNamedPartnerParty() && !this.shouldUseTateLizaPairParty()) {
       const { config, partyIndex, trainerSlot } = this.getTwoPlayerNamedPartnerPartySlot(index);
       return this.genPartyMemberForConfig(config, partyIndex, trainerSlot, index);
     }
@@ -567,54 +681,52 @@ export class Trainer extends Phaser.GameObjects.Container {
           // Use the new species pool for this party generation
           useNewSpeciesPool = true;
 
-          // Get the species pool for the partner trainer and the current trainer
-          const speciesPoolPartner = signatureSpecies[TrainerType[this.config.trainerTypeDouble]];
-          const speciesPool = signatureSpecies[TrainerType[this.config.trainerType]];
+          const tateLizaPair = this.shouldUseTateLizaPairParty()
+            ? getTateLizaPairForPartyIndex(index, globalScene.currentBattle.waveIndex, battle.enemyParty)
+            : undefined;
 
-          // Get the species that are already in the enemy party so we dont generate the same species twice
-          const AlreadyUsedSpecies = battle.enemyParty.map(p => p.species.speciesId);
+          if (tateLizaPair) {
+            const trainerType = index % 2 ? this.config.trainerTypeDouble : this.config.trainerType;
+            newSpeciesPool = [getTateLizaSpeciesForTrainer(tateLizaPair, trainerType)];
+          } else {
+            // Get the species pool for the partner trainer and the current trainer
+            const speciesPoolPartner = signatureSpecies[TrainerType[this.config.trainerTypeDouble]];
+            const speciesPool = signatureSpecies[TrainerType[this.config.trainerType]];
 
-          // Filter out the species that are already in the enemy party from the main trainer species pool
-          const speciesPoolFiltered = speciesPool
-            .filter(species => {
-              // Since some species pools have arrays in them (use either of those species), we need to check if one of the species is already in the party and filter the whole array if it is
-              if (Array.isArray(species)) {
-                return !species.some(s => AlreadyUsedSpecies.includes(s));
-              }
-              return !AlreadyUsedSpecies.includes(species);
-            })
-            .flat();
+            // Get the species that are already in the enemy party so we dont generate the same species twice
+            const AlreadyUsedSpecies = battle.enemyParty.map(p => p.species.speciesId);
 
-          // Filter out the species that are already in the enemy party from the partner trainer species pool
-          const speciesPoolPartnerFiltered = speciesPoolPartner
-            .filter(species => {
-              // Since some species pools have arrays in them (use either of those species), we need to check if one of the species is already in the party and filter the whole array if it is
-              if (Array.isArray(species)) {
-                return !species.some(s => AlreadyUsedSpecies.includes(s));
-              }
-              return !AlreadyUsedSpecies.includes(species);
-            })
-            .flat();
+            // Filter out the species that are already in the enemy party from the main trainer species pool
+            const speciesPoolFiltered = speciesPool
+              .filter(species => {
+                // Since some species pools have arrays in them (use either of those species), we need to check if one of the species is already in the party and filter the whole array if it is
+                if (Array.isArray(species)) {
+                  return !species.some(s => AlreadyUsedSpecies.includes(s));
+                }
+                return !AlreadyUsedSpecies.includes(species);
+              })
+              .flat();
 
-          // If the index is even, use the species pool for the main trainer (that way he only uses his own pokemon in battle)
-          if (!(index % 2)) {
-            // Since the only currently allowed double battle with named trainers is Tate & Liza, we need to make sure that Solrock is the first pokemon in the party for Tate and Lunatone for Liza
-            if (index === 0 && TrainerType[this.config.trainerType] === TrainerType[TrainerType.TATE]) {
-              newSpeciesPool = [SpeciesId.SOLROCK];
-            } else if (index === 0 && TrainerType[this.config.trainerType] === TrainerType[TrainerType.LIZA]) {
-              newSpeciesPool = [SpeciesId.LUNATONE];
+            // Filter out the species that are already in the enemy party from the partner trainer species pool
+            const speciesPoolPartnerFiltered = speciesPoolPartner
+              .filter(species => {
+                // Since some species pools have arrays in them (use either of those species), we need to check if one of the species is already in the party and filter the whole array if it is
+                if (Array.isArray(species)) {
+                  return !species.some(s => AlreadyUsedSpecies.includes(s));
+                }
+                return !AlreadyUsedSpecies.includes(species);
+              })
+              .flat();
+
+            // If the index is even, use the species pool for the main trainer (that way he only uses his own pokemon in battle)
+            if (index % 2) {
+              // If the index is odd, use the species pool for the partner trainer (that way he only uses his own pokemon in battle)
+              newSpeciesPool = speciesPoolPartnerFiltered;
             } else {
               newSpeciesPool = speciesPoolFiltered;
             }
-            // If the index is odd, use the species pool for the partner trainer (that way he only uses his own pokemon in battle)
-            // Since the only currently allowed double battle with named trainers is Tate & Liza, we need to make sure that Solrock is the first pokemon in the party for Tate and Lunatone for Liza
-          } else if (index === 1 && TrainerType[this.config.trainerTypeDouble] === TrainerType[TrainerType.TATE]) {
-            newSpeciesPool = [SpeciesId.SOLROCK];
-          } else if (index === 1 && TrainerType[this.config.trainerTypeDouble] === TrainerType[TrainerType.LIZA]) {
-            newSpeciesPool = [SpeciesId.LUNATONE];
-          } else {
-            newSpeciesPool = speciesPoolPartnerFiltered;
           }
+
           // Fallback for when the species pool is empty
           if (newSpeciesPool.length === 0) {
             // If all pokemon from this pool are already in the party, generate a random species
@@ -651,7 +763,8 @@ export class Trainer extends Phaser.GameObjects.Container {
         );
       },
       this.config.hasStaticParty
-        ? this.config.getDerivedType() + ((index + 1) << 8)
+        ? this.config.getDerivedType()
+            + (((this.shouldUseTateLizaPairParty() ? Math.floor(index / 2) : index) + 1) << 8)
         : globalScene.currentBattle.waveIndex
             + (this.config.getDerivedType() << 10)
             + ((this.getPartyMemberSeedIndex(index) + 1) << 8),

@@ -9,6 +9,7 @@ import type { Pokemon } from "#field/pokemon";
 import { BypassSpeedChanceModifier } from "#modifiers/modifier";
 import { PokemonMove } from "#moves/pokemon-move";
 import { FieldPhase } from "#phases/field-phase";
+import { randSeedInt } from "#utils/common";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 
 export class TurnStartPhase extends FieldPhase {
@@ -22,6 +23,11 @@ export class TurnStartPhase extends FieldPhase {
     const playerField = globalScene.getPlayerField(true).map(p => p.getBattlerIndex());
     const enemyField = globalScene.getEnemyField(true).map(p => p.getBattlerIndex());
     const orderedTargets: BattlerIndex[] = playerField.concat(enemyField);
+    const shouldCoinTossBallOrder =
+      globalScene.twoPlayerMode
+      && playerField.length > 1
+      && globalScene.currentBattle.turnCommands[playerField[0]]?.command === Command.BALL
+      && globalScene.currentBattle.turnCommands[playerField[1]]?.command === Command.BALL;
 
     // The function begins sorting orderedTargets based on command priority, move priority, and possible speed bypasses.
     // Non-FIGHT commands (SWITCH, BALL, RUN) have a higher command priority and will always occur before any FIGHT commands.
@@ -43,6 +49,16 @@ export class TurnStartPhase extends FieldPhase {
 
       return aIndex < bIndex ? -1 : aIndex > bIndex ? 1 : 0;
     });
+
+    if (shouldCoinTossBallOrder && randSeedInt(2)) {
+      const firstPlayerIndex = orderedTargets.indexOf(playerField[0]);
+      const secondPlayerIndex = orderedTargets.indexOf(playerField[1]);
+      [orderedTargets[firstPlayerIndex], orderedTargets[secondPlayerIndex]] = [
+        orderedTargets[secondPlayerIndex],
+        orderedTargets[firstPlayerIndex],
+      ];
+    }
+
     return orderedTargets;
   }
 

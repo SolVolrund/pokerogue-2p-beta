@@ -12,6 +12,11 @@ export abstract class PlayerPartyMemberPokemonPhase extends PartyMemberPokemonPh
     this.playerIndex = playerIndex;
   }
 
+  override start(): void {
+    super.start();
+    globalScene.setActivePlayerIndex(this.playerIndex);
+  }
+
   override getParty(): PlayerPokemon[] {
     return globalScene.getPlayerParty(this.playerIndex);
   }

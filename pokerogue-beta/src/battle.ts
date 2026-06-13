@@ -86,6 +86,7 @@ export class Battle {
   public lastEnemyInvolved: number;
   public lastPlayerInvolved: number;
   public lastUsedPokeball: PokeballType | null = null;
+  public capturedBattlerIndexesThisTurn: Set<BattlerIndex> = new Set();
   /**
    * Saves the number of times a Pokemon on the enemy's side has fainted during this battle.
    * This is saved here since we encounter a new enemy every wave.
@@ -168,6 +169,7 @@ export class Battle {
     this.turn++;
     this.turnCommands = Object.fromEntries(getEnumValues(BattlerIndex).map(bt => [bt, null]));
     this.preTurnCommands = Object.fromEntries(getEnumValues(BattlerIndex).map(bt => [bt, null]));
+    this.capturedBattlerIndexesThisTurn.clear();
     this.battleSeedState = null;
   }
 

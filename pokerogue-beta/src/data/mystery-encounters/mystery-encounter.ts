@@ -40,6 +40,14 @@ export interface EncounterStartOfBattleEffect {
 const DEFAULT_MAX_ALLOWED_ENCOUNTERS = 2;
 const DEFAULT_MAX_ALLOWED_ROGUE_ENCOUNTERS = 1;
 
+function getMysteryEncounterRequirementParty(): PlayerPokemon[] {
+  if (!globalScene.twoPlayerMode) {
+    return globalScene.getPlayerParty();
+  }
+
+  return [...globalScene.getPlayerParty(0), ...globalScene.getPlayerParty(1)];
+}
+
 /**
  * Used by {@linkcode MysteryEncounterBuilder} class to define required/optional properties on the {@linkcode MysteryEncounter} class when building.
  *
@@ -339,12 +347,9 @@ export class MysteryEncounter implements IMysteryEncounter {
    * @param pokemon
    */
   pokemonMeetsPrimaryRequirements(pokemon: Pokemon): boolean {
+    const party = getMysteryEncounterRequirementParty();
     return !this.primaryPokemonRequirements.some(
-      req =>
-        !req
-          .queryParty(globalScene.getPlayerParty())
-          .map(p => p.id)
-          .includes(pokemon.id),
+      req => !req.queryParty(party).map(p => p.id).includes(pokemon.id),
     );
   }
 
@@ -364,10 +369,12 @@ export class MysteryEncounter implements IMysteryEncounter {
       }
       return true;
     }
-    let qualified: PlayerPokemon[] = globalScene.getPlayerParty();
+    const party = getMysteryEncounterRequirementParty();
+    let qualified: PlayerPokemon[] = party;
     for (const req of this.primaryPokemonRequirements) {
-      if (req.meetsRequirement()) {
-        qualified = qualified.filter(pkmn => req.queryParty(globalScene.getPlayerParty()).includes(pkmn));
+      const queryParty = req.queryParty(party);
+      if (queryParty.length >= req.minNumberOfPokemon) {
+        qualified = qualified.filter(pkmn => queryParty.includes(pkmn));
       } else {
         this.primaryPokemon = undefined;
         return false;
@@ -424,10 +431,12 @@ export class MysteryEncounter implements IMysteryEncounter {
       return true;
     }
 
-    let qualified: PlayerPokemon[] = globalScene.getPlayerParty();
+    const party = getMysteryEncounterRequirementParty();
+    let qualified: PlayerPokemon[] = party;
     for (const req of this.secondaryPokemonRequirements) {
-      if (req.meetsRequirement()) {
-        qualified = qualified.filter(pkmn => req.queryParty(globalScene.getPlayerParty()).includes(pkmn));
+      const queryParty = req.queryParty(party);
+      if (queryParty.length >= req.minNumberOfPokemon) {
+        qualified = qualified.filter(pkmn => queryParty.includes(pkmn));
       } else {
         this.secondaryPokemon = [];
         return false;

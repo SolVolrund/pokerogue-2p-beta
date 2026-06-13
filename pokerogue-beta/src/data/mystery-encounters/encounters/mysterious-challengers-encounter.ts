@@ -16,9 +16,60 @@ import {
   trainerPartyTemplates,
 } from "#trainers/trainer-party-template";
 import { randSeedInt } from "#utils/common";
+import type { TrainerConfig } from "#trainers/trainer-config";
+import type { TrainerType } from "#enums/trainer-type";
 
 /** the i18n namespace for the encounter */
 const namespace = "mysteryEncounters/mysteriousChallengers";
+
+function getRandomTrainerTypeForChallenger(isBoss = false, excludedTrainerTypes: TrainerType[] = []): TrainerType {
+  let retries = 0;
+  let trainerType = globalScene.arena.randomTrainerType(globalScene.currentBattle.waveIndex, isBoss);
+
+  while (retries < 8 && excludedTrainerTypes.includes(trainerType)) {
+    trainerType = globalScene.arena.randomTrainerType(globalScene.currentBattle.waveIndex, isBoss);
+    retries++;
+  }
+
+  return trainerType;
+}
+
+function getTrainerFemale(config: TrainerConfig): boolean {
+  return config.hasGenders ? !!randSeedInt(2) : false;
+}
+
+function addTwoPlayerPartnerConfig(
+  enemyPartyConfig: EnemyPartyConfig,
+  isBoss: boolean,
+  excludedTrainerTypes: TrainerType[],
+  configurePartner?: (config: TrainerConfig, trainerType: TrainerType) => void,
+): void {
+  if (!globalScene.twoPlayerMode) {
+    return;
+  }
+
+  const partnerTrainerType = getRandomTrainerTypeForChallenger(isBoss, excludedTrainerTypes);
+  const partnerConfig = trainerConfigs[partnerTrainerType].clone();
+  configurePartner?.(partnerConfig, partnerTrainerType);
+
+  enemyPartyConfig.doubleBattle = true;
+  enemyPartyConfig.partnerTrainerConfig = partnerConfig;
+  enemyPartyConfig.partnerFemale = getTrainerFemale(partnerConfig);
+}
+
+function applyBrutalTemplate(config: TrainerConfig, trainerType: TrainerType): void {
+  config.title = trainerConfigs[trainerType].title;
+  config.setPartyTemplates(trainerPartyTemplates.ELITE_FOUR);
+  // @ts-expect-error
+  config.partyTemplateFunc = null; // Overrides gym leader party template func
+}
+
+function setChallengerRewards(rewards: Parameters<typeof setEncounterRewards>[0]): void {
+  setEncounterRewards(rewards, undefined, undefined, 0);
+  if (globalScene.twoPlayerMode) {
+    setEncounterRewards(rewards, undefined, undefined, 1);
+  }
+}
 
 /**
  * Mysterious Challengers encounter.
@@ -41,27 +92,20 @@ export const MysteriousChallengersEncounter: MysteryEncounter = MysteryEncounter
     // Calculates what trainers are available for battle in the encounter
 
     // Normal difficulty trainer is randomly pulled from biome
-    const normalTrainerType = globalScene.arena.randomTrainerType(globalScene.currentBattle.waveIndex);
+    const normalTrainerType = getRandomTrainerTypeForChallenger();
     const normalConfig = trainerConfigs[normalTrainerType].clone();
-    let female = false;
-    if (normalConfig.hasGenders) {
-      female = !!randSeedInt(2);
-    }
+    let female = getTrainerFemale(normalConfig);
     const normalSpriteKey = normalConfig.getSpriteKey(female, normalConfig.doubleOnly);
-    encounter.enemyPartyConfigs.push({
+    const normalPartyConfig: EnemyPartyConfig = {
       trainerConfig: normalConfig,
       female,
-    });
+    };
+    addTwoPlayerPartnerConfig(normalPartyConfig, false, [normalTrainerType]);
+    encounter.enemyPartyConfigs.push(normalPartyConfig);
 
     // Hard difficulty trainer is another random trainer, but with AVERAGE_BALANCED config
     // Number of mons is based off wave: 1-20 is 2, 20-40 is 3, etc. capping at 6 after wave 100
-    let retries = 0;
-    let hardTrainerType = globalScene.arena.randomTrainerType(globalScene.currentBattle.waveIndex);
-    while (retries < 5 && hardTrainerType === normalTrainerType) {
-      // Will try to use a different trainer from the normal trainer type
-      hardTrainerType = globalScene.arena.randomTrainerType(globalScene.currentBattle.waveIndex);
-      retries++;
-    }
+    const hardTrainerType = getRandomTrainerTypeForChallenger(false, [normalTrainerType]);
     const hardTemplate = new TrainerPartyCompoundTemplate(
       new TrainerPartyTemplate(1, PartyMemberStrength.STRONGER, false, true),
       new TrainerPartyTemplate(
@@ -73,36 +117,32 @@ export const MysteriousChallengersEncounter: MysteryEncounter = MysteryEncounter
     );
     const hardConfig = trainerConfigs[hardTrainerType].clone();
     hardConfig.setPartyTemplates(hardTemplate);
-    female = false;
-    if (hardConfig.hasGenders) {
-      female = !!randSeedInt(2);
-    }
+    female = getTrainerFemale(hardConfig);
     const hardSpriteKey = hardConfig.getSpriteKey(female, hardConfig.doubleOnly);
-    encounter.enemyPartyConfigs.push({
+    const hardPartyConfig: EnemyPartyConfig = {
       trainerConfig: hardConfig,
       levelAdditiveModifier: 1,
       female,
-    });
+    };
+    addTwoPlayerPartnerConfig(hardPartyConfig, false, [normalTrainerType, hardTrainerType], partnerConfig =>
+      partnerConfig.setPartyTemplates(hardTemplate),
+    );
+    encounter.enemyPartyConfigs.push(hardPartyConfig);
 
     // Brutal trainer is pulled from pool of boss trainers (gym leaders) for the biome
     // They are given an E4 template team, so will be stronger than usual boss encounter and always have 6 mons
-    const brutalTrainerType = globalScene.arena.randomTrainerType(globalScene.currentBattle.waveIndex, true);
-    const e4Template = trainerPartyTemplates.ELITE_FOUR;
+    const brutalTrainerType = getRandomTrainerTypeForChallenger(true);
     const brutalConfig = trainerConfigs[brutalTrainerType].clone();
-    brutalConfig.title = trainerConfigs[brutalTrainerType].title;
-    brutalConfig.setPartyTemplates(e4Template);
-    // @ts-expect-error
-    brutalConfig.partyTemplateFunc = null; // Overrides gym leader party template func
-    female = false;
-    if (brutalConfig.hasGenders) {
-      female = !!randSeedInt(2);
-    }
+    applyBrutalTemplate(brutalConfig, brutalTrainerType);
+    female = getTrainerFemale(brutalConfig);
     const brutalSpriteKey = brutalConfig.getSpriteKey(female, brutalConfig.doubleOnly);
-    encounter.enemyPartyConfigs.push({
+    const brutalPartyConfig: EnemyPartyConfig = {
       trainerConfig: brutalConfig,
       levelAdditiveModifier: 1.5,
       female,
-    });
+    };
+    addTwoPlayerPartnerConfig(brutalPartyConfig, true, [brutalTrainerType], applyBrutalTemplate);
+    encounter.enemyPartyConfigs.push(brutalPartyConfig);
 
     encounter.spriteConfigs = [
       {
@@ -146,7 +186,7 @@ export const MysteriousChallengersEncounter: MysteryEncounter = MysteryEncounter
       // Spawn standard trainer battle with memory mushroom reward
       const config: EnemyPartyConfig = encounter.enemyPartyConfigs[0];
 
-      setEncounterRewards({
+      setChallengerRewards({
         guaranteedModifierTypeFuncs: [modifierTypes.TM_COMMON, modifierTypes.TM_GREAT, modifierTypes.MEMORY_MUSHROOM],
         fillRemaining: true,
       });
@@ -174,7 +214,7 @@ export const MysteriousChallengersEncounter: MysteryEncounter = MysteryEncounter
       // Spawn hard fight
       const config: EnemyPartyConfig = encounter.enemyPartyConfigs[1];
 
-      setEncounterRewards({
+      setChallengerRewards({
         guaranteedModifierTiers: [ModifierTier.ULTRA, ModifierTier.ULTRA, ModifierTier.GREAT, ModifierTier.GREAT],
         fillRemaining: true,
       });
@@ -205,7 +245,7 @@ export const MysteriousChallengersEncounter: MysteryEncounter = MysteryEncounter
       // To avoid player level snowballing from picking this option
       encounter.expMultiplier = 0.9;
 
-      setEncounterRewards({
+      setChallengerRewards({
         guaranteedModifierTiers: [ModifierTier.ROGUE, ModifierTier.ROGUE, ModifierTier.ULTRA, ModifierTier.GREAT],
         fillRemaining: true,
       });
