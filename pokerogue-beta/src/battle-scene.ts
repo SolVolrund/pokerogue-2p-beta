@@ -186,8 +186,9 @@ const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.BERRIES_ABOUND,
   MysteryEncounterType.CLOWNING_AROUND,
   MysteryEncounterType.PART_TIMER,
+  MysteryEncounterType.DANCING_LESSONS,
 ];
-const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_TYPE = MysteryEncounterType.PART_TIMER;
+const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_TYPE = MysteryEncounterType.DANCING_LESSONS;
 const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_WAVE = STARTING_WAVE + 1;
 
 export interface PlayerRunState {
