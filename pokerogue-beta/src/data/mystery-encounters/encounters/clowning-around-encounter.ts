@@ -1,4 +1,5 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { EncounterBattleAnim } from "#data/battle-anims";
 import { allAbilities, modifierTypes } from "#data/data-lists";
@@ -42,10 +43,12 @@ import {
 } from "#mystery-encounters/encounter-pokemon-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
+import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { trainerConfigs } from "#trainers/trainer-config";
 import { TrainerPartyCompoundTemplate, TrainerPartyTemplate } from "#trainers/trainer-party-template";
 import type { OptionSelectConfig } from "#ui/abstract-option-select-ui-handler";
+import { updateWindowType } from "#ui/ui-theme";
 import { randSeedInt, randSeedShuffle } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
@@ -70,6 +73,383 @@ const RANDOM_ABILITY_POOL = [
   AbilityId.SHEER_FORCE,
   AbilityId.PRANKSTER,
 ];
+
+type ClowningAroundOptionIndex = 1 | 2 | 3;
+
+interface ClowningAroundChoice {
+  playerIndex: PlayerIndex;
+  optionIndex: ClowningAroundOptionIndex;
+}
+
+interface ClowningAroundData {
+  ability: AbilityId;
+  choices: ClowningAroundChoice[];
+  battlePlayers: PlayerIndex[];
+  skipSelectedDialogueOnce?: boolean;
+}
+
+function getClowningAroundData(): ClowningAroundData {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  if (!encounter.misc || !Array.isArray(encounter.misc.choices)) {
+    encounter.misc = {
+      ...(encounter.misc ?? {}),
+      ability: encounter.misc?.ability,
+      choices: [],
+      battlePlayers: [],
+    } satisfies ClowningAroundData;
+  }
+
+  return encounter.misc as ClowningAroundData;
+}
+
+function showClowningAroundPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
+      slideInDescription: false,
+      overrideTitle: `Player ${playerIndex + 1}`,
+      overrideQuery: i18next.t(`${namespace}:query`),
+      overrideOptions: buildClowningAroundPlayerOptions(playerIndex),
+      startingCursorIndex,
+    });
+  });
+}
+
+function getClowningAroundTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
+  return playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+}
+
+async function hideClowningAroundNonBattleTrainers(battlePlayers: PlayerIndex[]): Promise<void> {
+  if (!globalScene.twoPlayerMode) {
+    return;
+  }
+
+  const battlePlayerSet = new Set(battlePlayers);
+  await Promise.all(
+    ([0, 1] as PlayerIndex[])
+      .filter(playerIndex => !battlePlayerSet.has(playerIndex))
+      .map(
+        playerIndex =>
+          new Promise<void>(resolve => {
+            const trainerSprite = getClowningAroundTrainerSprite(playerIndex);
+            globalScene.tweens.killTweensOf(trainerSprite);
+
+            if (!trainerSprite.visible) {
+              resolve();
+              return;
+            }
+
+            globalScene.tweens.add({
+              targets: trainerSprite,
+              x: -36,
+              duration: 500,
+              onComplete: () => {
+                trainerSprite.setVisible(false);
+                resolve();
+              },
+            });
+          }),
+      ),
+  );
+}
+
+function storeClowningAroundChoice(optionIndex: ClowningAroundOptionIndex, playerIndex: PlayerIndex): boolean {
+  if (!globalScene.twoPlayerMode) {
+    return true;
+  }
+
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  const data = getClowningAroundData();
+  data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
+  data.choices.push({ playerIndex, optionIndex });
+
+  if (playerIndex === 0) {
+    showClowningAroundPlayerMenu(1, optionIndex - 1);
+    return false;
+  }
+
+  data.skipSelectedDialogueOnce = true;
+  globalScene.setActivePlayerIndex(0);
+  updateWindowType(1);
+  return true;
+}
+
+function applyClowningAroundItemShuffle(playerIndex: PlayerIndex): void {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  const party = globalScene.getPlayerParty(playerIndex);
+  let mostHeldItemsPokemon = party[0];
+  let count = mostHeldItemsPokemon
+    .getHeldItems()
+    .filter(m => m.isTransferable && !(m instanceof BerryModifier))
+    .reduce((v, m) => v + m.stackCount, 0);
+
+  for (const pokemon of party) {
+    const nextCount = pokemon
+      .getHeldItems()
+      .filter(m => m.isTransferable && !(m instanceof BerryModifier))
+      .reduce((v, m) => v + m.stackCount, 0);
+    if (nextCount > count) {
+      mostHeldItemsPokemon = pokemon;
+      count = nextCount;
+    }
+  }
+
+  encounter.setDialogueToken("switchPokemon", mostHeldItemsPokemon.getNameToRender());
+
+  const items = mostHeldItemsPokemon.getHeldItems();
+
+  let numBerries = 0;
+  for (const m of items.filter(m => m instanceof BerryModifier)) {
+    numBerries += m.stackCount;
+    globalScene.removeModifier(m, false, playerIndex);
+  }
+
+  generateItemsOfTier(mostHeldItemsPokemon, numBerries, "Berries", playerIndex);
+
+  let numUltra = 0;
+  let numRogue = 0;
+
+  for (const m of items.filter(m => m.isTransferable && !(m instanceof BerryModifier))) {
+    const type = m.type.withTierFromPool(ModifierPoolType.PLAYER, party);
+    const tier = type.tier ?? ModifierTier.ULTRA;
+    if (type.id === "GOLDEN_EGG" || tier === ModifierTier.ROGUE) {
+      numRogue += m.stackCount;
+      globalScene.removeModifier(m, false, playerIndex);
+    } else if (type.id === "LUCKY_EGG" || type.id === "SOOTHE_BELL" || tier === ModifierTier.ULTRA) {
+      numUltra += m.stackCount;
+      globalScene.removeModifier(m, false, playerIndex);
+    }
+  }
+
+  generateItemsOfTier(mostHeldItemsPokemon, numUltra, ModifierTier.ULTRA, playerIndex);
+  generateItemsOfTier(mostHeldItemsPokemon, numRogue, ModifierTier.ROGUE, playerIndex);
+}
+
+function applyClowningAroundTypeShuffle(playerIndex: PlayerIndex): void {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  for (const pokemon of globalScene.getPlayerParty(playerIndex)) {
+    const originalTypes = pokemon.getTypes({
+      includeTeraType: false,
+      bypassSummonData: true,
+      ignoreThirdType: true,
+    });
+
+    let priorityTypes = pokemon.moveset
+      .filter(move => move && !originalTypes.includes(move.getMove().type) && move.getMove().category !== MoveCategory.STATUS)
+      .map(move => move!.getMove().type);
+    if (priorityTypes?.length > 0) {
+      priorityTypes = [...new Set(priorityTypes)].sort();
+      priorityTypes = randSeedShuffle(priorityTypes);
+    }
+
+    const newTypes = [PokemonType.UNKNOWN];
+    let secondType: PokemonType | null = null;
+    while (secondType === null || secondType === newTypes[0] || originalTypes.includes(secondType)) {
+      if (priorityTypes.length > 0) {
+        secondType = priorityTypes.pop() ?? null;
+      } else {
+        secondType = randSeedInt(18) as PokemonType;
+      }
+    }
+    newTypes.push(secondType);
+
+    pokemon.customPokemonData.types = newTypes;
+    if (pokemon.isFusion()) {
+      if (!pokemon.fusionCustomPokemonData) {
+        pokemon.fusionCustomPokemonData = new CustomPokemonData();
+      }
+      pokemon.fusionCustomPokemonData.types = newTypes;
+    }
+  }
+}
+
+function queueClowningAroundStartOfBattleEffects(battlePlayers: PlayerIndex[]): void {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  encounter.startOfBattleEffects.push(
+    {
+      sourceBattlerIndex: BattlerIndex.ENEMY,
+      targets: [BattlerIndex.ENEMY_2],
+      move: new PokemonMove(MoveId.ROLE_PLAY),
+      useMode: MoveUseMode.IGNORE_PP,
+    },
+    {
+      sourceBattlerIndex: BattlerIndex.ENEMY_2,
+      targets: [BattlerIndex.PLAYER],
+      move: new PokemonMove(MoveId.TAUNT),
+      useMode: MoveUseMode.IGNORE_PP,
+    },
+    ...(!globalScene.twoPlayerMode || battlePlayers.length > 1
+      ? [
+          {
+            sourceBattlerIndex: BattlerIndex.ENEMY_2,
+            targets: [BattlerIndex.PLAYER_2],
+            move: new PokemonMove(MoveId.TAUNT),
+            useMode: MoveUseMode.IGNORE_PP,
+          },
+        ]
+      : []),
+  );
+}
+
+async function runTwoPlayerClowningAroundChoices(): Promise<boolean> {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const data = getClowningAroundData();
+  const choices = data.choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
+  const battlePlayers: PlayerIndex[] = [];
+
+  for (const choice of choices) {
+    globalScene.setActivePlayerIndex(choice.playerIndex);
+    updateWindowType(choice.playerIndex + 1);
+    await showEncounterDialogue(`${namespace}:option.${choice.optionIndex}.selected`, `${namespace}:speaker`);
+
+    if (choice.optionIndex === 1) {
+      setEncounterRewards({ fillRemaining: true }, undefined, undefined, choice.playerIndex);
+      battlePlayers.push(choice.playerIndex);
+      continue;
+    }
+
+    if (choice.optionIndex === 2) {
+      applyClowningAroundItemShuffle(choice.playerIndex);
+      await showEncounterText(`${namespace}:option.2.selected2`);
+      await showEncounterDialogue(`${namespace}:option.2.selected3`, `${namespace}:speaker`);
+      continue;
+    }
+
+    applyClowningAroundTypeShuffle(choice.playerIndex);
+    await showEncounterText(`${namespace}:option.3.selected2`);
+    await showEncounterDialogue(`${namespace}:option.3.selected3`, `${namespace}:speaker`);
+  }
+
+  data.battlePlayers = battlePlayers;
+  if (battlePlayers.length === 0) {
+    leaveEncounterWithoutBattle(true);
+    return true;
+  }
+
+  globalScene.setActivePlayerIndex(battlePlayers[0]);
+  updateWindowType(battlePlayers[0] + 1);
+  globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
+  queueClowningAroundStartOfBattleEffects(battlePlayers);
+  await transitionMysteryEncounterIntroVisuals();
+  await hideClowningAroundNonBattleTrainers(battlePlayers);
+  await initBattleWithEnemyConfig(encounter.enemyPartyConfigs[0]);
+  return true;
+}
+
+async function runOnePlayerClowningAroundBattle(): Promise<void> {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  setEncounterRewards({ fillRemaining: true });
+  getClowningAroundData().battlePlayers = [globalScene.activePlayerIndex];
+  queueClowningAroundStartOfBattleEffects([globalScene.activePlayerIndex]);
+
+  await transitionMysteryEncounterIntroVisuals();
+  await initBattleWithEnemyConfig(encounter.enemyPartyConfigs[0]);
+}
+
+function buildClowningAroundBattleOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
+      buttonLabel: `${namespace}:option.1.label`,
+      buttonTooltip: `${namespace}:option.1.tooltip`,
+      selected: [
+        {
+          text: `${namespace}:option.1.selected`,
+          speaker: `${namespace}:speaker`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => storeClowningAroundChoice(1, playerIndex))
+    .withOptionPhase(async () =>
+      globalScene.twoPlayerMode ? runTwoPlayerClowningAroundChoices() : runOnePlayerClowningAroundBattle(),
+    )
+    .withPostOptionPhase(runClowningAroundPostOptionPhase)
+    .build();
+}
+
+function buildClowningAroundItemShuffleOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
+      buttonLabel: `${namespace}:option.2.label`,
+      buttonTooltip: `${namespace}:option.2.tooltip`,
+      selected: [
+        {
+          text: `${namespace}:option.2.selected`,
+          speaker: `${namespace}:speaker`,
+        },
+        {
+          text: `${namespace}:option.2.selected2`,
+        },
+        {
+          text: `${namespace}:option.2.selected3`,
+          speaker: `${namespace}:speaker`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => {
+      if (globalScene.twoPlayerMode) {
+        return storeClowningAroundChoice(2, playerIndex);
+      }
+
+      applyClowningAroundItemShuffle(playerIndex);
+      return true;
+    })
+    .withOptionPhase(async () =>
+      globalScene.twoPlayerMode ? runTwoPlayerClowningAroundChoices() : leaveEncounterWithoutBattle(true),
+    )
+    .withPostOptionPhase(runClowningAroundPostOptionPhase)
+    .build();
+}
+
+function buildClowningAroundTypeShuffleOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
+      buttonLabel: `${namespace}:option.3.label`,
+      buttonTooltip: `${namespace}:option.3.tooltip`,
+      selected: [
+        {
+          text: `${namespace}:option.3.selected`,
+          speaker: `${namespace}:speaker`,
+        },
+        {
+          text: `${namespace}:option.3.selected2`,
+        },
+        {
+          text: `${namespace}:option.3.selected3`,
+          speaker: `${namespace}:speaker`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => {
+      if (globalScene.twoPlayerMode) {
+        return storeClowningAroundChoice(3, playerIndex);
+      }
+
+      applyClowningAroundTypeShuffle(playerIndex);
+      return true;
+    })
+    .withOptionPhase(async () =>
+      globalScene.twoPlayerMode ? runTwoPlayerClowningAroundChoices() : leaveEncounterWithoutBattle(true),
+    )
+    .withPostOptionPhase(runClowningAroundPostOptionPhase)
+    .build();
+}
+
+function buildClowningAroundPlayerOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
+  return [
+    buildClowningAroundBattleOption(playerIndex),
+    buildClowningAroundItemShuffleOption(playerIndex),
+    buildClowningAroundTypeShuffleOption(playerIndex),
+  ];
+}
 
 /**
  * Clowning Around encounter.
@@ -186,248 +566,9 @@ export const ClowningAroundEncounter: MysteryEncounter = MysteryEncounterBuilder
   .withTitle(`${namespace}:title`)
   .withDescription(`${namespace}:description`)
   .withQuery(`${namespace}:query`)
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
-      .withDialogue({
-        buttonLabel: `${namespace}:option.1.label`,
-        buttonTooltip: `${namespace}:option.1.tooltip`,
-        selected: [
-          {
-            text: `${namespace}:option.1.selected`,
-            speaker: `${namespace}:speaker`,
-          },
-        ],
-      })
-      .withOptionPhase(async () => {
-        const encounter = globalScene.currentBattle.mysteryEncounter!;
-        // Spawn battle
-        const config: EnemyPartyConfig = encounter.enemyPartyConfigs[0];
-
-        setEncounterRewards({ fillRemaining: true });
-
-        // TODO: when Magic Room and Wonder Room are implemented, add those to start of battle
-        encounter.startOfBattleEffects.push(
-          {
-            // Mr. Mime copies the Blacephalon's random ability
-            sourceBattlerIndex: BattlerIndex.ENEMY,
-            targets: [BattlerIndex.ENEMY_2],
-            move: new PokemonMove(MoveId.ROLE_PLAY),
-            useMode: MoveUseMode.IGNORE_PP,
-          },
-          {
-            sourceBattlerIndex: BattlerIndex.ENEMY_2,
-            targets: [BattlerIndex.PLAYER],
-            move: new PokemonMove(MoveId.TAUNT),
-            useMode: MoveUseMode.IGNORE_PP,
-          },
-          {
-            sourceBattlerIndex: BattlerIndex.ENEMY_2,
-            targets: [BattlerIndex.PLAYER_2],
-            move: new PokemonMove(MoveId.TAUNT),
-            useMode: MoveUseMode.IGNORE_PP,
-          },
-        );
-
-        await transitionMysteryEncounterIntroVisuals();
-        await initBattleWithEnemyConfig(config);
-      })
-      .withPostOptionPhase(async (): Promise<boolean> => {
-        // After the battle, offer the player the opportunity to permanently swap ability
-        const abilityWasSwapped = await handleSwapAbility();
-        if (abilityWasSwapped) {
-          await showEncounterText(`${namespace}:option.1.abilityGained`);
-        }
-
-        // Play animations once ability swap is complete
-        // Trainer sprite that is shown at end of battle is not the same as mystery encounter intro visuals
-        globalScene.tweens.add({
-          targets: globalScene.currentBattle.trainer,
-          x: "+=16",
-          y: "-=16",
-          alpha: 0,
-          ease: "Sine.easeInOut",
-          duration: 250,
-        });
-        const background = new EncounterBattleAnim(
-          EncounterAnim.SMOKESCREEN,
-          globalScene.getPlayerPokemon()!,
-          globalScene.getPlayerPokemon(),
-        );
-        background.playWithoutTargets(230, 40, 2);
-        return true;
-      })
-      .build(),
-  )
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
-      .withDialogue({
-        buttonLabel: `${namespace}:option.2.label`,
-        buttonTooltip: `${namespace}:option.2.tooltip`,
-        selected: [
-          {
-            text: `${namespace}:option.2.selected`,
-            speaker: `${namespace}:speaker`,
-          },
-          {
-            text: `${namespace}:option.2.selected2`,
-          },
-          {
-            text: `${namespace}:option.2.selected3`,
-            speaker: `${namespace}:speaker`,
-          },
-        ],
-      })
-      .withPreOptionPhase(async () => {
-        // Swap player's items on pokemon with the most items
-        // Item comparisons look at whichever Pokemon has the greatest number of TRANSFERABLE, non-berry items
-        // So Vitamins, form change items, etc. are not included
-        const encounter = globalScene.currentBattle.mysteryEncounter!;
-
-        const party = globalScene.getPlayerParty();
-        let mostHeldItemsPokemon = party[0];
-        let count = mostHeldItemsPokemon
-          .getHeldItems()
-          .filter(m => m.isTransferable && !(m instanceof BerryModifier))
-          .reduce((v, m) => v + m.stackCount, 0);
-
-        for (const pokemon of party) {
-          const nextCount = pokemon
-            .getHeldItems()
-            .filter(m => m.isTransferable && !(m instanceof BerryModifier))
-            .reduce((v, m) => v + m.stackCount, 0);
-          if (nextCount > count) {
-            mostHeldItemsPokemon = pokemon;
-            count = nextCount;
-          }
-        }
-
-        encounter.setDialogueToken("switchPokemon", mostHeldItemsPokemon.getNameToRender());
-
-        const items = mostHeldItemsPokemon.getHeldItems();
-
-        // Shuffles Berries (if they have any)
-        let numBerries = 0;
-        for (const m of items.filter(m => m instanceof BerryModifier)) {
-          numBerries += m.stackCount;
-          globalScene.removeModifier(m);
-        }
-
-        generateItemsOfTier(mostHeldItemsPokemon, numBerries, "Berries");
-
-        // Shuffle Transferable held items in the same tier (only shuffles Ultra and Rogue atm)
-        // For the purpose of this ME, Soothe Bells and Lucky Eggs are counted as Ultra tier
-        // And Golden Eggs as Rogue tier
-        let numUltra = 0;
-        let numRogue = 0;
-
-        for (const m of items.filter(m => m.isTransferable && !(m instanceof BerryModifier))) {
-          const type = m.type.withTierFromPool(ModifierPoolType.PLAYER, party);
-          const tier = type.tier ?? ModifierTier.ULTRA;
-          if (type.id === "GOLDEN_EGG" || tier === ModifierTier.ROGUE) {
-            numRogue += m.stackCount;
-            globalScene.removeModifier(m);
-          } else if (type.id === "LUCKY_EGG" || type.id === "SOOTHE_BELL" || tier === ModifierTier.ULTRA) {
-            numUltra += m.stackCount;
-            globalScene.removeModifier(m);
-          }
-        }
-
-        generateItemsOfTier(mostHeldItemsPokemon, numUltra, ModifierTier.ULTRA);
-        generateItemsOfTier(mostHeldItemsPokemon, numRogue, ModifierTier.ROGUE);
-      })
-      .withOptionPhase(async () => {
-        leaveEncounterWithoutBattle(true);
-      })
-      .withPostOptionPhase(async () => {
-        // Play animations
-        const background = new EncounterBattleAnim(
-          EncounterAnim.SMOKESCREEN,
-          globalScene.getPlayerPokemon()!,
-          globalScene.getPlayerPokemon(),
-        );
-        background.playWithoutTargets(230, 40, 2);
-        await transitionMysteryEncounterIntroVisuals(true, true, 200);
-      })
-      .build(),
-  )
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
-      .withDialogue({
-        buttonLabel: `${namespace}:option.3.label`,
-        buttonTooltip: `${namespace}:option.3.tooltip`,
-        selected: [
-          {
-            text: `${namespace}:option.3.selected`,
-            speaker: `${namespace}:speaker`,
-          },
-          {
-            text: `${namespace}:option.3.selected2`,
-          },
-          {
-            text: `${namespace}:option.3.selected3`,
-            speaker: `${namespace}:speaker`,
-          },
-        ],
-      })
-      .withPreOptionPhase(async () => {
-        // Randomize the second type of all player's pokemon
-        // If the pokemon does not normally have a second type, it will gain 1
-        for (const pokemon of globalScene.getPlayerParty()) {
-          const originalTypes = pokemon.getTypes({
-            includeTeraType: false,
-            bypassSummonData: true,
-            ignoreThirdType: true,
-          });
-
-          // If the Pokemon has non-status moves that don't match the Pokemon's type, prioritizes those as the new type
-          // Makes the "randomness" of the shuffle slightly less punishing
-          let priorityTypes = pokemon.moveset
-            .filter(
-              move =>
-                move && !originalTypes.includes(move.getMove().type) && move.getMove().category !== MoveCategory.STATUS,
-            )
-            .map(move => move!.getMove().type);
-          if (priorityTypes?.length > 0) {
-            priorityTypes = [...new Set(priorityTypes)].sort();
-            priorityTypes = randSeedShuffle(priorityTypes);
-          }
-
-          const newTypes = [PokemonType.UNKNOWN];
-          let secondType: PokemonType | null = null;
-          while (secondType === null || secondType === newTypes[0] || originalTypes.includes(secondType)) {
-            if (priorityTypes.length > 0) {
-              secondType = priorityTypes.pop() ?? null;
-            } else {
-              secondType = randSeedInt(18) as PokemonType;
-            }
-          }
-          newTypes.push(secondType);
-
-          // Apply the type changes (to both base and fusion, if pokemon is fused)
-          pokemon.customPokemonData.types = newTypes;
-          if (pokemon.isFusion()) {
-            if (!pokemon.fusionCustomPokemonData) {
-              pokemon.fusionCustomPokemonData = new CustomPokemonData();
-            }
-            pokemon.fusionCustomPokemonData.types = newTypes;
-          }
-        }
-      })
-      .withOptionPhase(async () => {
-        leaveEncounterWithoutBattle(true);
-      })
-      .withPostOptionPhase(async () => {
-        // Play animations
-        const background = new EncounterBattleAnim(
-          EncounterAnim.SMOKESCREEN,
-          globalScene.getPlayerPokemon()!,
-          globalScene.getPlayerPokemon(),
-        );
-        background.playWithoutTargets(230, 40, 2);
-        await transitionMysteryEncounterIntroVisuals(true, true, 200);
-      })
-      .build(),
-  )
+  .withOption(buildClowningAroundBattleOption(0))
+  .withOption(buildClowningAroundItemShuffleOption(0))
+  .withOption(buildClowningAroundTypeShuffleOption(0))
   .withOutroDialogue([
     {
       text: `${namespace}:outro`,
@@ -435,25 +576,67 @@ export const ClowningAroundEncounter: MysteryEncounter = MysteryEncounterBuilder
   ])
   .build();
 
-async function handleSwapAbility() {
+async function runClowningAroundPostOptionPhase(): Promise<boolean> {
+  const data = getClowningAroundData();
+  for (const playerIndex of data.battlePlayers) {
+    globalScene.setActivePlayerIndex(playerIndex);
+    updateWindowType(playerIndex + 1);
+    const abilityWasSwapped = await handleSwapAbility(playerIndex);
+    if (abilityWasSwapped) {
+      await showEncounterText(`${namespace}:option.1.abilityGained`);
+    }
+  }
+
+  if (data.battlePlayers.length > 0) {
+    globalScene.tweens.add({
+      targets: globalScene.currentBattle.trainer,
+      x: "+=16",
+      y: "-=16",
+      alpha: 0,
+      ease: "Sine.easeInOut",
+      duration: 250,
+    });
+  }
+
+  const background = new EncounterBattleAnim(
+    EncounterAnim.SMOKESCREEN,
+    globalScene.getPlayerPokemon()!,
+    globalScene.getPlayerPokemon(),
+  );
+  background.playWithoutTargets(230, 40, 2);
+
+  if (data.battlePlayers.length === 0) {
+    await transitionMysteryEncounterIntroVisuals(true, true, 200);
+  }
+
+  globalScene.setActivePlayerIndex(0);
+  updateWindowType(1);
+  return true;
+}
+
+async function handleSwapAbility(playerIndex: PlayerIndex) {
   // biome-ignore lint/suspicious/noAsyncPromiseExecutor: TODO: Consider refactoring to avoid async promise executor
   return new Promise<boolean>(async resolve => {
+    globalScene.setActivePlayerIndex(playerIndex);
+    updateWindowType(playerIndex + 1);
     await showEncounterDialogue(`${namespace}:option.1.applyAbilityDialogue`, `${namespace}:speaker`);
     await showEncounterText(`${namespace}:option.1.applyAbilityMessage`);
 
     globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-      displayYesNoOptions(resolve);
+      displayYesNoOptions(resolve, playerIndex);
     });
   });
 }
 
-function displayYesNoOptions(resolve) {
+function displayYesNoOptions(resolve: (value: boolean) => void, playerIndex: PlayerIndex) {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
   showEncounterText(`${namespace}:option.1.abilityPrompt`, null, 500, false);
   const fullOptions = [
     {
       label: i18next.t("menu:yes"),
       handler: () => {
-        onYesAbilitySwap(resolve);
+        onYesAbilitySwap(resolve, playerIndex);
         return true;
       },
     },
@@ -474,26 +657,33 @@ function displayYesNoOptions(resolve) {
   globalScene.ui.setModeWithoutClear(UiMode.OPTION_SELECT, config, null, true);
 }
 
-function onYesAbilitySwap(resolve) {
+function onYesAbilitySwap(resolve: (value: boolean) => void, playerIndex: PlayerIndex) {
   const onPokemonSelected = (pokemon: PlayerPokemon) => {
     // Do ability swap
     const encounter = globalScene.currentBattle.mysteryEncounter!;
 
-    applyAbilityOverrideToPokemon(pokemon, encounter.misc.ability);
+    applyAbilityOverrideToPokemon(pokemon, getClowningAroundData().ability);
     encounter.setDialogueToken("chosenPokemon", pokemon.getNameToRender());
     globalScene.ui.setMode(UiMode.MESSAGE).then(() => resolve(true));
   };
 
   const onPokemonNotSelected = () => {
     globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-      displayYesNoOptions(resolve);
+      displayYesNoOptions(resolve, playerIndex);
     });
   };
 
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
   selectPokemonForOption(onPokemonSelected, onPokemonNotSelected);
 }
 
-function generateItemsOfTier(pokemon: PlayerPokemon, numItems: number, tier: ModifierTier | "Berries") {
+function generateItemsOfTier(
+  pokemon: PlayerPokemon,
+  numItems: number,
+  tier: ModifierTier | "Berries",
+  playerIndex: PlayerIndex = globalScene.activePlayerIndex,
+) {
   // These pools have to be defined at runtime so that modifierTypes exist
   // Pools have instances of the modifier type equal to the max stacks that modifier can be applied to any one pokemon
   // This is to prevent "over-generating" a random item of a certain type during item swaps
@@ -550,6 +740,7 @@ function generateItemsOfTier(pokemon: PlayerPokemon, numItems: number, tier: Mod
     } else {
       newMod = generateModifierType(newItemType[0]) as PokemonHeldItemModifierType;
     }
+    globalScene.setActivePlayerIndex(playerIndex);
     applyModifierTypeToPlayerPokemon(pokemon, newMod);
     // Decrement max stacks and remove from pool if at max
     newItemType[1]--;
