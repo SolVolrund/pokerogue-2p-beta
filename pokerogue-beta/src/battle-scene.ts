@@ -182,8 +182,10 @@ const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.DELIBIRDY,
   MysteryEncounterType.ABSOLUTE_AVARICE,
   MysteryEncounterType.A_TRAINERS_TEST,
+  MysteryEncounterType.TRASH_TO_TREASURE,
+  MysteryEncounterType.BERRIES_ABOUND,
 ];
-const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_TYPE = MysteryEncounterType.A_TRAINERS_TEST;
+const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_TYPE = MysteryEncounterType.BERRIES_ABOUND;
 const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_WAVE = STARTING_WAVE + 1;
 
 export interface PlayerRunState {
