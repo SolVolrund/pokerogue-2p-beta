@@ -32,12 +32,7 @@ import { applyModifierTypeToPlayerPokemon } from "#mystery-encounters/encounter-
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
-import {
-  CombinationPokemonRequirement,
-  EncounterSceneRequirement,
-  HeldItemRequirement,
-  MoneyRequirement,
-} from "#mystery-encounters/mystery-encounter-requirements";
+import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import type { OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { updateWindowType } from "#ui/ui-theme";
 import { randSeedItem } from "#utils/common";
@@ -77,20 +72,6 @@ interface DelibirdyData {
   skipSelectedDialogueOnce?: boolean;
 }
 
-class TwoPlayerAnyPlayerDelibirdyMoneyRequirement extends MoneyRequirement {
-  override meetsRequirement(): boolean {
-    if (!globalScene.twoPlayerMode) {
-      return super.meetsRequirement();
-    }
-
-    if (this.scalingMultiplier > 0) {
-      this.requiredMoney = globalScene.getWaveMoneyAmount(this.scalingMultiplier);
-    }
-
-    return ([0, 1] as PlayerIndex[]).some(playerIndex => globalScene.getPlayerMoney(playerIndex) >= this.requiredMoney);
-  }
-}
-
 class DelibirdyPlayerMoneyRequirement extends EncounterSceneRequirement {
   constructor(private readonly playerIndex: PlayerIndex) {
     super();
@@ -119,6 +100,46 @@ class DelibirdyPlayerHeldItemRequirement extends EncounterSceneRequirement {
 
   override getDialogueToken(): [string, string] {
     return ["item", ""];
+  }
+}
+
+class DelibirdyPlayerAnyPaymentRequirement extends EncounterSceneRequirement {
+  constructor(private readonly playerIndex: PlayerIndex) {
+    super();
+  }
+
+  override meetsRequirement(): boolean {
+    return (
+      globalScene.getPlayerMoney(this.playerIndex) >= getDelibirdyMoneyPrice()
+      || globalScene.getPlayerParty(this.playerIndex).some(
+        pokemon => getDelibirdyValidItems(pokemon, 2).length > 0 || getDelibirdyValidItems(pokemon, 3).length > 0,
+      )
+    );
+  }
+
+  override getDialogueToken(): [string, string] {
+    return ["money", getDelibirdyMoneyPrice().toString()];
+  }
+}
+
+class DelibirdySpawnRequirement extends EncounterSceneRequirement {
+  override meetsRequirement(): boolean {
+    if (!globalScene.twoPlayerMode) {
+      return (
+        globalScene.getPlayerMoney() >= getDelibirdyMoneyPrice()
+        && globalScene.getPlayerParty().some(
+          pokemon => getDelibirdyValidItems(pokemon, 2).length > 0 || getDelibirdyValidItems(pokemon, 3).length > 0,
+        )
+      );
+    }
+
+    return ([0, 1] as PlayerIndex[]).every(playerIndex =>
+      new DelibirdyPlayerAnyPaymentRequirement(playerIndex).meetsRequirement(),
+    );
+  }
+
+  override getDialogueToken(): [string, string] {
+    return ["money", getDelibirdyMoneyPrice().toString()];
   }
 }
 
@@ -482,14 +503,7 @@ export const DelibirdyEncounter: MysteryEncounter = MysteryEncounterBuilder.with
   .withEncounterTier(MysteryEncounterTier.GREAT)
   .withMaxAllowedEncounters(4)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
-  .withSceneRequirement(new TwoPlayerAnyPlayerDelibirdyMoneyRequirement(0, DELIBIRDY_MONEY_PRICE_MULTIPLIER)) // Must have enough money for it to spawn at the very least
-  .withPrimaryPokemonRequirement(
-    CombinationPokemonRequirement.Some(
-      // Must also have either option 2 or 3 available to spawn
-      new HeldItemRequirement(OPTION_2_ALLOWED_MODIFIERS),
-      new HeldItemRequirement(OPTION_3_DISALLOWED_MODIFIERS, 1, true),
-    ),
-  )
+  .withSceneRequirement(new DelibirdySpawnRequirement()) // Each 2P player must have at least one way to pay
   .withIntroSpriteConfigs([
     {
       spriteKey: "",

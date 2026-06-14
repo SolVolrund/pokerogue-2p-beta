@@ -105,9 +105,10 @@ export enum SettingType {
   GENERAL,
   DISPLAY,
   AUDIO,
+  EVENTS,
 }
 
-type SettingOption = {
+export type SettingOption = {
   value: string;
   label: string;
   needConfirmation?: boolean;

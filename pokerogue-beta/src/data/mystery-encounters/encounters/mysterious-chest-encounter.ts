@@ -57,6 +57,22 @@ class PlayerHealthyPokemonRequirement extends EncounterSceneRequirement {
   }
 }
 
+class MysteriousChestSpawnRequirement extends EncounterSceneRequirement {
+  override meetsRequirement(): boolean {
+    if (!globalScene.twoPlayerMode) {
+      return globalScene.getPokemonAllowedInBattle().length >= MIN_HEALTHY_POKEMON_FOR_ONE_CHEST;
+    }
+
+    return ([0, 1] as PlayerIndex[]).some(
+      playerIndex => globalScene.getPokemonAllowedInBattle(playerIndex).length >= MIN_HEALTHY_POKEMON_FOR_ONE_CHEST,
+    );
+  }
+
+  override getDialogueToken(): [string, string] {
+    return ["minHealthyPokemon", MIN_HEALTHY_POKEMON_FOR_ONE_CHEST.toString()];
+  }
+}
+
 interface MysteriousChestChoice {
   playerIndex: PlayerIndex;
   openChest: boolean;
@@ -342,10 +358,10 @@ function prepareMysteriousChestBattleTrainers(playerIndexes: PlayerIndex[]): voi
  */
 export const MysteriousChestEncounter: MysteryEncounter = MysteryEncounterBuilder.withEncounterType(
   MysteryEncounterType.MYSTERIOUS_CHEST,
-)
-  .withEncounterTier(MysteryEncounterTier.COMMON)
-  .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
-  .withScenePartySizeRequirement(2, 6, true)
+  )
+    .withEncounterTier(MysteryEncounterTier.COMMON)
+    .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
+  .withSceneRequirement(new MysteriousChestSpawnRequirement())
   .withAutoHideIntroVisuals(false)
   .withCatchAllowed(true)
   .withIntroSpriteConfigs([

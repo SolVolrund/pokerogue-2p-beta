@@ -1,4 +1,5 @@
 import { audioManager } from "#app/global-audio-manager";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { modifierTypes } from "#data/data-lists";
@@ -17,6 +18,7 @@ import { MAX_POKEMON_TYPE, PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { StatusEffect } from "#enums/status-effect";
 import { TrainerType } from "#enums/trainer-type";
+import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import type { PokemonHeldItemModifier } from "#modifiers/modifier";
 import { HiddenAbilityRateBoosterModifier, PokemonFormChangeItemModifier } from "#modifiers/modifier";
@@ -36,12 +38,15 @@ import {
 } from "#mystery-encounters/encounter-transformation-sequence";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
+import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
+import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import { achvs } from "#system/achv";
 import { PokemonData } from "#system/pokemon-data";
 import { trainerConfigs } from "#trainers/trainer-config";
 import { TrainerPartyTemplate } from "#trainers/trainer-party-template";
 import type { HeldModifierConfig } from "#types/held-modifier-config";
+import { updateWindowType } from "#ui/ui-theme";
 import { NumberHolder, randSeedInt, randSeedShuffle } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
@@ -118,6 +123,442 @@ const HIGH_BST_TRANSFORM_BASE_VALUES: [number, number] = [90, 110];
  * All remaining Pokemon in the party use this range
  */
 const STANDARD_BST_TRANSFORM_BASE_VALUES: [number, number] = [40, 50];
+const MIN_PARTY_SIZE_FOR_WEIRD_DREAM = 3;
+
+type WeirdDreamOptionIndex = 1 | 2 | 3;
+
+interface WeirdDreamChoice {
+  playerIndex: PlayerIndex;
+  optionIndex: WeirdDreamOptionIndex;
+}
+
+interface WeirdDreamData {
+  choices: WeirdDreamChoice[];
+  teamTransformationsByPlayer: Record<PlayerIndex, PokemonTransformation[]>;
+  loadAssetsByPlayer: Record<PlayerIndex, Promise<void>[]>;
+  skipSelectedDialogueOnce?: boolean;
+}
+
+class WeirdDreamSpawnRequirement extends EncounterSceneRequirement {
+  override meetsRequirement(): boolean {
+    if (!globalScene.twoPlayerMode) {
+      return globalScene.getPlayerParty().length >= MIN_PARTY_SIZE_FOR_WEIRD_DREAM;
+    }
+
+    return ([0, 1] as PlayerIndex[]).every(
+      playerIndex => globalScene.getPlayerParty(playerIndex).length >= MIN_PARTY_SIZE_FOR_WEIRD_DREAM,
+    );
+  }
+
+  override getDialogueToken(): [string, string] {
+    return ["partySize", MIN_PARTY_SIZE_FOR_WEIRD_DREAM.toString()];
+  }
+}
+
+function getWeirdDreamData(): WeirdDreamData {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  if (
+    !encounter.misc
+    || !Array.isArray(encounter.misc.choices)
+    || !encounter.misc.teamTransformationsByPlayer
+    || !encounter.misc.loadAssetsByPlayer
+  ) {
+    const teamTransformationsByPlayer = {
+      0: getTeamTransformations(0),
+      1: getTeamTransformations(1),
+    } satisfies Record<PlayerIndex, PokemonTransformation[]>;
+
+    encounter.misc = {
+      ...(encounter.misc ?? {}),
+      choices: [],
+      teamTransformationsByPlayer,
+      loadAssetsByPlayer: {
+        0: teamTransformationsByPlayer[0].map(t => (t.newPokemon as PlayerPokemon).loadAssets()),
+        1: teamTransformationsByPlayer[1].map(t => (t.newPokemon as PlayerPokemon).loadAssets()),
+      },
+    } satisfies WeirdDreamData;
+  }
+
+  return encounter.misc as WeirdDreamData;
+}
+
+function showWeirdDreamPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
+      slideInDescription: false,
+      overrideTitle: `Player ${playerIndex + 1}`,
+      overrideQuery: i18next.t(`${namespace}:query`),
+      overrideOptions: buildWeirdDreamPlayerOptions(playerIndex),
+      startingCursorIndex,
+    });
+  });
+}
+
+function storeWeirdDreamChoice(optionIndex: WeirdDreamOptionIndex, playerIndex: PlayerIndex): boolean {
+  if (!globalScene.twoPlayerMode) {
+    const data = getWeirdDreamData();
+    data.choices = [{ playerIndex, optionIndex }];
+    data.skipSelectedDialogueOnce = true;
+    return true;
+  }
+
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  const data = getWeirdDreamData();
+  data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
+  data.choices.push({ playerIndex, optionIndex });
+
+  if (playerIndex === 0) {
+    showWeirdDreamPlayerMenu(1, optionIndex - 1);
+    return false;
+  }
+
+  globalScene.setActivePlayerIndex(0);
+  updateWindowType(1);
+  data.skipSelectedDialogueOnce = true;
+  return true;
+}
+
+function healWeirdDreamPlayerParty(playerIndex: PlayerIndex): void {
+  for (const pokemon of globalScene.getPlayerParty(playerIndex)) {
+    pokemon.hp = pokemon.getMaxHp();
+    pokemon.resetStatus(true, false, false, true);
+    for (const move of pokemon.moveset) {
+      move.ppUsed = 0;
+    }
+    pokemon.updateInfo(true);
+  }
+}
+
+function getWeirdDreamTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
+  return playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+}
+
+async function hideWeirdDreamNonBattleTrainers(battlePlayers: PlayerIndex[]): Promise<void> {
+  if (!globalScene.twoPlayerMode) {
+    return;
+  }
+
+  const battlePlayerSet = new Set(battlePlayers);
+  await Promise.all(
+    ([0, 1] as PlayerIndex[])
+      .filter(playerIndex => !battlePlayerSet.has(playerIndex))
+      .map(
+        playerIndex =>
+          new Promise<void>(resolve => {
+            const trainerSprite = getWeirdDreamTrainerSprite(playerIndex);
+            globalScene.tweens.killTweensOf(trainerSprite);
+
+            if (!trainerSprite.visible) {
+              resolve();
+              return;
+            }
+
+            globalScene.tweens.add({
+              targets: trainerSprite,
+              x: -36,
+              duration: 500,
+              onComplete: () => {
+                trainerSprite.setVisible(false);
+                resolve();
+              },
+            });
+          }),
+      ),
+  );
+}
+
+function replacePlayerPartyWithTransformations(playerIndex: PlayerIndex, transformations: PokemonTransformation[]): void {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  for (const transformation of transformations) {
+    globalScene.removePokemonFromPlayerParty(transformation.previousPokemon, false);
+    globalScene.getPlayerParty(playerIndex).push(transformation.newPokemon);
+  }
+}
+
+async function showDreamTransformations(transformations: PokemonTransformation[]): Promise<void> {
+  if (transformations.length <= 3) {
+    for (const transformation of transformations) {
+      await doPokemonTransformationSequence(
+        transformation.previousPokemon,
+        transformation.newPokemon,
+        TransformationScreenPosition.CENTER,
+      );
+    }
+    return;
+  }
+
+  await doSideBySideTransformations(transformations);
+}
+
+async function resolveDreamTransformChoice(playerIndex: PlayerIndex): Promise<void> {
+  const data = getWeirdDreamData();
+  const transformations = data.teamTransformationsByPlayer[playerIndex];
+
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  doShowDreamBackground();
+
+  await showEncounterText(`${namespace}:option.1.selected`);
+  const cutsceneDialoguePromise = showEncounterText(`${namespace}:option.1.cutscene`);
+
+  replacePlayerPartyWithTransformations(playerIndex, transformations);
+  await Promise.all(data.loadAssetsByPlayer[playerIndex]);
+  await showDreamTransformations(transformations);
+
+  await cutsceneDialoguePromise;
+  await doHideDreamBackground();
+  await showEncounterText(`${namespace}:option.1.dreamComplete`);
+
+  await doNewTeamPostProcess(transformations, playerIndex);
+  setEncounterRewards(
+    {
+      guaranteedModifierTypeFuncs: [
+        modifierTypes.MEMORY_MUSHROOM,
+        modifierTypes.ROGUE_BALL,
+        modifierTypes.MINT,
+        modifierTypes.MINT,
+        modifierTypes.MINT,
+        modifierTypes.MINT,
+      ],
+      fillRemaining: false,
+    },
+    undefined,
+    () => healWeirdDreamPlayerParty(playerIndex),
+    playerIndex,
+  );
+}
+
+async function resolveDreamLeaveChoice(playerIndex: PlayerIndex): Promise<void> {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+  await showEncounterText(`${namespace}:option.3.selected`);
+
+  for (const pokemon of globalScene.getPlayerParty(playerIndex)) {
+    pokemon.level = Math.max(Math.ceil(((100 - PERCENT_LEVEL_LOSS_ON_REFUSE) / 100) * pokemon.level), 1);
+    pokemon.exp = getLevelTotalExp(pokemon.level, pokemon.species.growthRate);
+
+    pokemon.calculateStats();
+    pokemon.getBattleInfo().setLevelDisplay(pokemon.level);
+    await pokemon.updateInfo();
+  }
+}
+
+function setDreamBattleRewards(playerIndex: PlayerIndex): void {
+  const onBeforeRewards = () => {
+    globalScene.setActivePlayerIndex(playerIndex);
+    updateWindowType(playerIndex + 1);
+
+    const passiveDisabledPokemon = globalScene.getPlayerParty(playerIndex).filter(p => !p.passive);
+    if (passiveDisabledPokemon?.length > 0) {
+      const enablePassiveMon = passiveDisabledPokemon[randSeedInt(passiveDisabledPokemon.length)];
+      enablePassiveMon.passive = true;
+      enablePassiveMon.updateInfo(true);
+    }
+  };
+
+  setEncounterRewards(
+    {
+      guaranteedModifierTiers: [
+        ModifierTier.ROGUE,
+        ModifierTier.ROGUE,
+        ModifierTier.ULTRA,
+        ModifierTier.ULTRA,
+        ModifierTier.GREAT,
+        ModifierTier.GREAT,
+      ],
+      fillRemaining: false,
+    },
+    undefined,
+    onBeforeRewards,
+    playerIndex,
+  );
+}
+
+async function createDreamEnemyPokemonConfigs(playerIndexes: PlayerIndex[]): Promise<EnemyPokemonConfig[]> {
+  const data = getWeirdDreamData();
+  const maxPartySize = Math.max(...playerIndexes.map(playerIndex => data.teamTransformationsByPlayer[playerIndex].length));
+  const enemyPokemonConfigs: EnemyPokemonConfig[] = [];
+
+  for (let partyIndex = 0; partyIndex < maxPartySize; partyIndex++) {
+    for (const playerIndex of playerIndexes) {
+      const transformation = data.teamTransformationsByPlayer[playerIndex][partyIndex];
+      if (!transformation) {
+        continue;
+      }
+
+      const newPokemon = transformation.newPokemon;
+      const previousPokemon = transformation.previousPokemon;
+
+      await postProcessTransformedPokemon(
+        previousPokemon,
+        newPokemon,
+        newPokemon.species.getRootSpeciesId(),
+        playerIndex,
+        true,
+      );
+
+      const dataSource = new PokemonData(newPokemon);
+      dataSource.player = false;
+
+      const newPokemonHeldItemConfigs: HeldModifierConfig[] = [];
+      for (const item of transformation.heldItems) {
+        newPokemonHeldItemConfigs.push({
+          modifier: item.clone() as PokemonHeldItemModifier,
+          stackCount: item.getStackCount(),
+          isTransferable: false,
+        });
+      }
+      if (shouldGetOldGateau(newPokemon)) {
+        newPokemonHeldItemConfigs.push({
+          modifier: generateModifierType(modifierTypes.MYSTERY_ENCOUNTER_OLD_GATEAU) as PokemonHeldItemModifierType,
+          stackCount: 1,
+          isTransferable: false,
+        });
+      }
+
+      enemyPokemonConfigs.push({
+        species: transformation.newSpecies,
+        isBoss: newPokemon.getSpeciesForm().getBaseStatTotal() > NON_LEGENDARY_BST_THRESHOLD,
+        level: previousPokemon.level,
+        dataSource,
+        modifierConfigs: newPokemonHeldItemConfigs,
+      });
+    }
+  }
+
+  return enemyPokemonConfigs;
+}
+
+function getAlternateTrainerConfig(playerIndex: PlayerIndex, partySize: number) {
+  const gender = globalScene.getTrainerGender(playerIndex);
+  const trainerConfig =
+    trainerConfigs[gender === PlayerGender.FEMALE ? TrainerType.PLAYER_F_ALTERNATE : TrainerType.PLAYER_M_ALTERNATE].clone();
+
+  trainerConfig.setPartyTemplates(new TrainerPartyTemplate(partySize, PartyMemberStrength.STRONG));
+  return trainerConfig;
+}
+
+async function createDreamEnemyPartyConfig(playerIndexes: PlayerIndex[]): Promise<EnemyPartyConfig> {
+  const enemyPokemonConfigs = await createDreamEnemyPokemonConfigs(playerIndexes);
+  const firstPlayerIndex = playerIndexes[0];
+  const secondPlayerIndex = playerIndexes[1];
+  const firstGender = globalScene.getTrainerGender(firstPlayerIndex);
+  const enemyPartyConfig: EnemyPartyConfig = {
+    trainerConfig: getAlternateTrainerConfig(firstPlayerIndex, enemyPokemonConfigs.length),
+    pokemonConfigs: enemyPokemonConfigs,
+    female: firstGender === PlayerGender.FEMALE,
+    doubleBattle: playerIndexes.length > 1,
+  };
+
+  if (secondPlayerIndex !== undefined) {
+    const secondGender = globalScene.getTrainerGender(secondPlayerIndex);
+    enemyPartyConfig.partnerTrainerConfig = getAlternateTrainerConfig(secondPlayerIndex, enemyPokemonConfigs.length);
+    enemyPartyConfig.partnerFemale = secondGender === PlayerGender.FEMALE;
+  }
+
+  return enemyPartyConfig;
+}
+
+async function runWeirdDreamChoices(): Promise<boolean> {
+  const choices = getWeirdDreamData().choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
+  const transformChoices = choices.filter(choice => choice.optionIndex === 1);
+  const battleChoices = choices.filter(choice => choice.optionIndex === 2);
+  const leaveChoices = choices.filter(choice => choice.optionIndex === 3);
+
+  for (const choice of choices) {
+    globalScene.setActivePlayerIndex(choice.playerIndex);
+    updateWindowType(choice.playerIndex + 1);
+
+    if (choice.optionIndex === 1) {
+      await resolveDreamTransformChoice(choice.playerIndex);
+    } else if (choice.optionIndex === 2) {
+      await showEncounterText(`${namespace}:option.2.selected`);
+    } else {
+      await resolveDreamLeaveChoice(choice.playerIndex);
+    }
+  }
+
+  if (battleChoices.length === 0) {
+    globalScene.setActivePlayerIndex(0);
+    updateWindowType(1);
+    leaveEncounterWithoutBattle(leaveChoices.length > 0);
+    return true;
+  }
+
+  const battlePlayers = battleChoices.map(choice => choice.playerIndex);
+  for (const playerIndex of battlePlayers) {
+    setDreamBattleRewards(playerIndex);
+  }
+
+  globalScene.setActivePlayerIndex(battlePlayers[0]);
+  updateWindowType(battlePlayers[0] + 1);
+  globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
+  await showEncounterText(`${namespace}:option.2.selected2`, null, undefined, true);
+  await hideWeirdDreamNonBattleTrainers(battlePlayers);
+  await initBattleWithEnemyConfig(await createDreamEnemyPartyConfig(battlePlayers));
+  return true;
+}
+
+function buildDreamTransformOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withHasDexProgress(true)
+    .withDialogue({
+      buttonLabel: `${namespace}:option.1.label`,
+      buttonTooltip: `${namespace}:option.1.tooltip`,
+      selected: [
+        {
+          text: `${namespace}:option.1.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => storeWeirdDreamChoice(1, playerIndex))
+    .withOptionPhase(runWeirdDreamChoices)
+    .build();
+}
+
+function buildDreamBattleOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
+      buttonLabel: `${namespace}:option.2.label`,
+      buttonTooltip: `${namespace}:option.2.tooltip`,
+      selected: [
+        {
+          text: `${namespace}:option.2.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => storeWeirdDreamChoice(2, playerIndex))
+    .withOptionPhase(runWeirdDreamChoices)
+    .build();
+}
+
+function buildDreamLeaveOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
+      buttonLabel: `${namespace}:option.3.label`,
+      buttonTooltip: `${namespace}:option.3.tooltip`,
+      selected: [
+        {
+          text: `${namespace}:option.3.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => storeWeirdDreamChoice(3, playerIndex))
+    .withOptionPhase(runWeirdDreamChoices)
+    .build();
+}
+
+function buildWeirdDreamPlayerOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
+  return [buildDreamTransformOption(playerIndex), buildDreamBattleOption(playerIndex), buildDreamLeaveOption(playerIndex)];
+}
 
 /**
  * Weird Dream encounter.
@@ -130,7 +571,7 @@ export const WeirdDreamEncounter: MysteryEncounter = MysteryEncounterBuilder.wit
   .withEncounterTier(MysteryEncounterTier.ROGUE)
   .withDisallowedChallenges(Challenges.SINGLE_TYPE, Challenges.SINGLE_GENERATION)
   .withSceneWaveRangeRequirement(30, 140)
-  .withScenePartySizeRequirement(3, 6)
+  .withSceneRequirement(new WeirdDreamSpawnRequirement())
   .withMaxAllowedEncounters(1)
   .withIntroSpriteConfigs([
     {
@@ -156,13 +597,19 @@ export const WeirdDreamEncounter: MysteryEncounter = MysteryEncounterBuilder.wit
   .withDescription(`${namespace}:description`)
   .withQuery(`${namespace}:query`)
   .withOnInit(() => {
-    // Calculate all the newly transformed Pokemon and begin asset load
-    const teamTransformations = getTeamTransformations();
-    const loadAssets = teamTransformations.map(t => (t.newPokemon as PlayerPokemon).loadAssets());
+    const teamTransformationsByPlayer = {
+      0: getTeamTransformations(0),
+      1: getTeamTransformations(1),
+    } satisfies Record<PlayerIndex, PokemonTransformation[]>;
+
     globalScene.currentBattle.mysteryEncounter!.misc = {
-      teamTransformations,
-      loadAssets,
-    };
+      choices: [],
+      teamTransformationsByPlayer,
+      loadAssetsByPlayer: {
+        0: teamTransformationsByPlayer[0].map(t => (t.newPokemon as PlayerPokemon).loadAssets()),
+        1: teamTransformationsByPlayer[1].map(t => (t.newPokemon as PlayerPokemon).loadAssets()),
+      },
+    } satisfies WeirdDreamData;
 
     return true;
   })
@@ -170,198 +617,9 @@ export const WeirdDreamEncounter: MysteryEncounter = MysteryEncounterBuilder.wit
     audioManager.playBgm("mystery_encounter_weird_dream", true);
     return true;
   })
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
-      .withHasDexProgress(true)
-      .withDialogue({
-        buttonLabel: `${namespace}:option.1.label`,
-        buttonTooltip: `${namespace}:option.1.tooltip`,
-        selected: [
-          {
-            text: `${namespace}:option.1.selected`,
-          },
-        ],
-      })
-      .withPreOptionPhase(async () => {
-        // Play the animation as the player goes through the dialogue
-        globalScene.time.delayedCall(1000, () => {
-          doShowDreamBackground();
-        });
-
-        for (const transformation of globalScene.currentBattle.mysteryEncounter!.misc.teamTransformations) {
-          globalScene.removePokemonFromPlayerParty(transformation.previousPokemon, false);
-          globalScene.getPlayerParty().push(transformation.newPokemon);
-        }
-      })
-      .withOptionPhase(async () => {
-        // Starts cutscene dialogue, but does not await so that cutscene plays as player goes through dialogue
-        const cutsceneDialoguePromise = showEncounterText(`${namespace}:option.1.cutscene`);
-
-        // Change the entire player's party
-        // Wait for all new Pokemon assets to be loaded before showing transformation animations
-        await Promise.all(globalScene.currentBattle.mysteryEncounter!.misc.loadAssets);
-        const transformations = globalScene.currentBattle.mysteryEncounter!.misc.teamTransformations;
-
-        // If there are 1-3 transformations, do them centered back to back
-        // Otherwise, the first 3 transformations are executed side-by-side, then any remaining 1-3 transformations occur in those same respective positions
-        if (transformations.length <= 3) {
-          for (const transformation of transformations) {
-            const pokemon1 = transformation.previousPokemon;
-            const pokemon2 = transformation.newPokemon;
-
-            await doPokemonTransformationSequence(pokemon1, pokemon2, TransformationScreenPosition.CENTER);
-          }
-        } else {
-          await doSideBySideTransformations(transformations);
-        }
-
-        // Make sure player has finished cutscene dialogue
-        await cutsceneDialoguePromise;
-
-        doHideDreamBackground();
-        await showEncounterText(`${namespace}:option.1.dreamComplete`);
-
-        await doNewTeamPostProcess(transformations);
-        globalScene.phaseManager.unshiftNew("PartyHealPhase", true);
-        setEncounterRewards({
-          guaranteedModifierTypeFuncs: [
-            modifierTypes.MEMORY_MUSHROOM,
-            modifierTypes.ROGUE_BALL,
-            modifierTypes.MINT,
-            modifierTypes.MINT,
-            modifierTypes.MINT,
-            modifierTypes.MINT,
-          ],
-          fillRemaining: false,
-        });
-        leaveEncounterWithoutBattle(false);
-      })
-      .build(),
-  )
-  .withSimpleOption(
-    {
-      buttonLabel: `${namespace}:option.2.label`,
-      buttonTooltip: `${namespace}:option.2.tooltip`,
-      selected: [
-        {
-          text: `${namespace}:option.2.selected`,
-        },
-      ],
-    },
-    async () => {
-      // Battle your "alternate" team for some item rewards
-      const transformations: PokemonTransformation[] =
-        globalScene.currentBattle.mysteryEncounter!.misc.teamTransformations;
-
-      // Uses the pokemon that player's party would have transformed into
-      const enemyPokemonConfigs: EnemyPokemonConfig[] = [];
-      for (const transformation of transformations) {
-        const newPokemon = transformation.newPokemon;
-        const previousPokemon = transformation.previousPokemon;
-
-        await postProcessTransformedPokemon(previousPokemon, newPokemon, newPokemon.species.getRootSpeciesId(), true);
-
-        const dataSource = new PokemonData(newPokemon);
-        dataSource.player = false;
-
-        // Copy held items to new pokemon
-        const newPokemonHeldItemConfigs: HeldModifierConfig[] = [];
-        for (const item of transformation.heldItems) {
-          newPokemonHeldItemConfigs.push({
-            modifier: item.clone() as PokemonHeldItemModifier,
-            stackCount: item.getStackCount(),
-            isTransferable: false,
-          });
-        }
-        // Any pokemon that is below 570 BST gets +20 permanent BST to 3 stats
-        if (shouldGetOldGateau(newPokemon)) {
-          newPokemonHeldItemConfigs.push({
-            modifier: generateModifierType(modifierTypes.MYSTERY_ENCOUNTER_OLD_GATEAU) as PokemonHeldItemModifierType,
-            stackCount: 1,
-            isTransferable: false,
-          });
-        }
-
-        const enemyConfig: EnemyPokemonConfig = {
-          species: transformation.newSpecies,
-          isBoss: newPokemon.getSpeciesForm().getBaseStatTotal() > NON_LEGENDARY_BST_THRESHOLD,
-          level: previousPokemon.level,
-          dataSource,
-          modifierConfigs: newPokemonHeldItemConfigs,
-        };
-
-        enemyPokemonConfigs.push(enemyConfig);
-      }
-
-      const genderIndex = globalScene.gameData.gender ?? PlayerGender.UNSET;
-      const trainerConfig =
-        trainerConfigs[
-          genderIndex === PlayerGender.FEMALE ? TrainerType.PLAYER_F_ALTERNATE : TrainerType.PLAYER_M_ALTERNATE
-        ].clone();
-      trainerConfig.setPartyTemplates(new TrainerPartyTemplate(transformations.length, PartyMemberStrength.STRONG));
-      const enemyPartyConfig: EnemyPartyConfig = {
-        trainerConfig,
-        pokemonConfigs: enemyPokemonConfigs,
-        female: genderIndex === PlayerGender.FEMALE,
-      };
-
-      const onBeforeRewards = () => {
-        // Before battle rewards, unlock the passive on a pokemon in the player's team for the rest of the run (not permanently)
-        // One random pokemon will get its passive unlocked
-        const passiveDisabledPokemon = globalScene.getPlayerParty().filter(p => !p.passive);
-        if (passiveDisabledPokemon?.length > 0) {
-          // TODO: should this use `randSeedItem`?
-          const enablePassiveMon = passiveDisabledPokemon[randSeedInt(passiveDisabledPokemon.length)];
-          enablePassiveMon.passive = true;
-          enablePassiveMon.updateInfo(true);
-        }
-      };
-
-      setEncounterRewards(
-        {
-          guaranteedModifierTiers: [
-            ModifierTier.ROGUE,
-            ModifierTier.ROGUE,
-            ModifierTier.ULTRA,
-            ModifierTier.ULTRA,
-            ModifierTier.GREAT,
-            ModifierTier.GREAT,
-          ],
-          fillRemaining: false,
-        },
-        undefined,
-        onBeforeRewards,
-      );
-
-      await showEncounterText(`${namespace}:option.2.selected2`, null, undefined, true);
-      await initBattleWithEnemyConfig(enemyPartyConfig);
-    },
-  )
-  .withSimpleOption(
-    {
-      buttonLabel: `${namespace}:option.3.label`,
-      buttonTooltip: `${namespace}:option.3.tooltip`,
-      selected: [
-        {
-          text: `${namespace}:option.3.selected`,
-        },
-      ],
-    },
-    async () => {
-      // Leave, reduce party levels by 10%
-      for (const pokemon of globalScene.getPlayerParty()) {
-        pokemon.level = Math.max(Math.ceil(((100 - PERCENT_LEVEL_LOSS_ON_REFUSE) / 100) * pokemon.level), 1);
-        pokemon.exp = getLevelTotalExp(pokemon.level, pokemon.species.growthRate);
-
-        pokemon.calculateStats();
-        pokemon.getBattleInfo().setLevelDisplay(pokemon.level);
-        await pokemon.updateInfo();
-      }
-
-      leaveEncounterWithoutBattle(true);
-      return true;
-    },
-  )
+  .withOption(buildDreamTransformOption(0))
+  .withOption(buildDreamBattleOption(0))
+  .withOption(buildDreamLeaveOption(0))
   .build();
 
 interface PokemonTransformation {
@@ -371,8 +629,8 @@ interface PokemonTransformation {
   heldItems: PokemonHeldItemModifier[];
 }
 
-function getTeamTransformations(): PokemonTransformation[] {
-  const party = globalScene.getPlayerParty();
+function getTeamTransformations(playerIndex: PlayerIndex = globalScene.activePlayerIndex): PokemonTransformation[] {
+  const party = globalScene.getPlayerParty(playerIndex);
   // Removes all pokemon from the party
   const alreadyUsedSpecies: PokemonSpecies[] = party.map(p => p.species);
   const pokemonTransformations: PokemonTransformation[] = party.map(p => {
@@ -441,7 +699,13 @@ function getTeamTransformations(): PokemonTransformation[] {
   return pokemonTransformations;
 }
 
-async function doNewTeamPostProcess(transformations: PokemonTransformation[]) {
+async function doNewTeamPostProcess(
+  transformations: PokemonTransformation[],
+  playerIndex: PlayerIndex = globalScene.activePlayerIndex,
+) {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
   let atLeastOneNewStarter = false;
   for (const transformation of transformations) {
     const previousPokemon = transformation.previousPokemon;
@@ -450,21 +714,21 @@ async function doNewTeamPostProcess(transformations: PokemonTransformation[]) {
     const newPokemon = transformation.newPokemon;
     const speciesRootForm = newPokemon.species.getRootSpeciesId();
 
-    if (await postProcessTransformedPokemon(previousPokemon, newPokemon, speciesRootForm)) {
+    if (await postProcessTransformedPokemon(previousPokemon, newPokemon, speciesRootForm, playerIndex)) {
       atLeastOneNewStarter = true;
     }
 
     // Copy old items to new pokemon
     for (const item of transformation.heldItems) {
       item.pokemonId = newPokemon.id;
-      globalScene.addModifier(item, false, false, false, true);
+      globalScene.addModifier(item, false, false, false, true, undefined, playerIndex);
     }
     // Any pokemon that is below 570 BST gets +20 permanent BST to 3 stats
     if (shouldGetOldGateau(newPokemon)) {
       const modType = modifierTypes.MYSTERY_ENCOUNTER_OLD_GATEAU();
       const modifier = modType.withIdFromFunc(modifierTypes.MYSTERY_ENCOUNTER_OLD_GATEAU).newModifier(newPokemon);
       if (modifier) {
-        globalScene.addModifier(modifier, false, false, false, true);
+        globalScene.addModifier(modifier, false, false, false, true, undefined, playerIndex);
       }
     }
 
@@ -486,7 +750,7 @@ async function doNewTeamPostProcess(transformations: PokemonTransformation[]) {
   }
 
   // One random pokemon will get its passive unlocked
-  const passiveDisabledPokemon = globalScene.getPlayerParty().filter(p => !p.passive);
+  const passiveDisabledPokemon = globalScene.getPlayerParty(playerIndex).filter(p => !p.passive);
   if (passiveDisabledPokemon?.length > 0) {
     // TODO: should this use `randSeedItem`?
     const enablePassiveMon = passiveDisabledPokemon[randSeedInt(passiveDisabledPokemon.length)];
@@ -512,15 +776,17 @@ async function postProcessTransformedPokemon(
   previousPokemon: PlayerPokemon,
   newPokemon: PlayerPokemon,
   speciesRootForm: SpeciesId,
+  playerIndex: PlayerIndex = globalScene.activePlayerIndex,
   forBattle = false,
 ): Promise<boolean> {
+  globalScene.setActivePlayerIndex(playerIndex);
   let isNewStarter = false;
   // Roll HA a second time
   if (newPokemon.species.abilityHidden) {
     const hiddenIndex = newPokemon.species.ability2 ? 2 : 1;
     if (newPokemon.abilityIndex < hiddenIndex) {
       const hiddenAbilityChance = new NumberHolder(256);
-      globalScene.applyModifiers(HiddenAbilityRateBoosterModifier, true, hiddenAbilityChance);
+      globalScene.applyModifiersForPlayer(HiddenAbilityRateBoosterModifier, playerIndex, hiddenAbilityChance);
 
       const hasHiddenAbility = !randSeedInt(hiddenAbilityChance.value);
 
@@ -563,8 +829,9 @@ async function postProcessTransformedPokemon(
       globalScene.validateAchv(achvs.CATCH_MYTHICAL);
     }
 
-    globalScene.gameData.updateSpeciesDexIvs(newPokemon.species.getRootSpeciesId(true), newPokemon.ivs);
-    const newStarterUnlocked = await globalScene.gameData.setPokemonCaught(newPokemon, true, false, false);
+    const gameData = globalScene.getPlayerGameData(playerIndex);
+    gameData.updateSpeciesDexIvs(newPokemon.species.getRootSpeciesId(true), newPokemon.ivs);
+    const newStarterUnlocked = await gameData.setPokemonCaught(newPokemon, true, false, false);
     if (newStarterUnlocked) {
       isNewStarter = true;
       await showEncounterText(
@@ -587,8 +854,9 @@ async function postProcessTransformedPokemon(
   });
 
   // For pokemon that the player owns (including ones just caught), gain a candy
-  if (!forBattle && globalScene.gameData.dexData[speciesRootForm].caughtAttr) {
-    globalScene.gameData.addStarterCandy(speciesRootForm, 1);
+  const gameData = globalScene.getPlayerGameData(playerIndex);
+  if (!forBattle && gameData.dexData[speciesRootForm].caughtAttr) {
+    gameData.addStarterCandy(speciesRootForm, 1);
   }
 
   // Set the moveset of the new pokemon to be the same as previous, but with 1 egg move and 1 (attempted) STAB move of the new species
@@ -598,7 +866,7 @@ async function postProcessTransformedPokemon(
 
   newPokemon.moveset = previousPokemon.moveset.slice(0);
 
-  const newEggMoveIndex = await addEggMoveToNewPokemonMoveset(newPokemon, speciesRootForm, forBattle);
+  const newEggMoveIndex = await addEggMoveToNewPokemonMoveset(newPokemon, speciesRootForm, playerIndex, forBattle);
 
   // Try to add a favored STAB move (might fail if Pokemon already knows a bunch of moves from newPokemonGeneratedMoveset)
   addFavoredMoveToNewPokemonMoveset(newPokemon, newPokemonGeneratedMoveset, newEggMoveIndex);
@@ -706,17 +974,23 @@ function doShowDreamBackground() {
   });
 }
 
-function doHideDreamBackground() {
+function doHideDreamBackground(): Promise<void> {
   const transformationContainer = globalScene.fieldUI.getByName("Dream Background");
+  if (!transformationContainer) {
+    return Promise.resolve();
+  }
 
-  globalScene.tweens.add({
-    targets: transformationContainer,
-    alpha: 0,
-    duration: 3000,
-    ease: "Sine.easeInOut",
-    onComplete: () => {
-      globalScene.fieldUI.remove(transformationContainer, true);
-    },
+  return new Promise(resolve => {
+    globalScene.tweens.add({
+      targets: transformationContainer,
+      alpha: 0,
+      duration: 3000,
+      ease: "Sine.easeInOut",
+      onComplete: () => {
+        globalScene.fieldUI.remove(transformationContainer, true);
+        resolve();
+      },
+    });
   });
 }
 
@@ -764,6 +1038,7 @@ function doSideBySideTransformations(transformations: PokemonTransformation[]) {
 async function addEggMoveToNewPokemonMoveset(
   newPokemon: PlayerPokemon,
   speciesRootForm: SpeciesId,
+  playerIndex: PlayerIndex = globalScene.activePlayerIndex,
   forBattle = false,
 ): Promise<number | null> {
   let eggMoveIndex: null | number = null;
@@ -791,8 +1066,9 @@ async function addEggMoveToNewPokemonMoveset(
       }
 
       // For pokemon that the player owns (including ones just caught), unlock the egg move
-      if (!forBattle && randomEggMoveIndex != null && globalScene.gameData.dexData[speciesRootForm].caughtAttr) {
-        await globalScene.gameData.setEggMoveUnlocked(getPokemonSpecies(speciesRootForm), randomEggMoveIndex, true);
+      const gameData = globalScene.getPlayerGameData(playerIndex);
+      if (!forBattle && randomEggMoveIndex != null && gameData.dexData[speciesRootForm].caughtAttr) {
+        await gameData.setEggMoveUnlocked(getPokemonSpecies(speciesRootForm), randomEggMoveIndex, true);
       }
     }
   }

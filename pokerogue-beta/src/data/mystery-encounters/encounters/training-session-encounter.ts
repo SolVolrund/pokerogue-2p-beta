@@ -27,6 +27,7 @@ import { isPokemonValidForEncounterOptionSelection } from "#mystery-encounters/e
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
+import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import { PokemonData } from "#system/pokemon-data";
 import type { HeldModifierConfig } from "#types/held-modifier-config";
 import type { OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
@@ -37,6 +38,8 @@ import i18next from "i18next";
 
 /** The i18n namespace for the encounter */
 const namespace = "mysteryEncounters/trainingSession";
+
+const MIN_HEALTHY_POKEMON_FOR_TRAINING = 2;
 
 type TrainingOptionIndex = 1 | 2 | 3 | 4;
 
@@ -53,6 +56,22 @@ interface TrainingSessionData {
   trainingChoices: TrainingChoice[];
   selectingPlayerIndex?: PlayerIndex;
   skipSelectedDialogueOnce?: boolean;
+}
+
+class TrainingSessionSpawnRequirement extends EncounterSceneRequirement {
+  override meetsRequirement(): boolean {
+    if (!globalScene.twoPlayerMode) {
+      return globalScene.getPokemonAllowedInBattle().length >= MIN_HEALTHY_POKEMON_FOR_TRAINING;
+    }
+
+    return ([0, 1] as PlayerIndex[]).every(
+      playerIndex => globalScene.getPokemonAllowedInBattle(playerIndex).length >= MIN_HEALTHY_POKEMON_FOR_TRAINING,
+    );
+  }
+
+  override getDialogueToken(): [string, string] {
+    return ["minHealthyPokemon", MIN_HEALTHY_POKEMON_FOR_TRAINING.toString()];
+  }
 }
 
 function getTrainingSessionData(): TrainingSessionData {
@@ -369,10 +388,10 @@ async function runTrainingSession(): Promise<boolean | void> {
  */
 export const TrainingSessionEncounter: MysteryEncounter = MysteryEncounterBuilder.withEncounterType(
   MysteryEncounterType.TRAINING_SESSION,
-)
-  .withEncounterTier(MysteryEncounterTier.ULTRA)
-  .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
-  .withScenePartySizeRequirement(2, 6, true) // Must have at least 2 unfainted pokemon in party
+  )
+    .withEncounterTier(MysteryEncounterTier.ULTRA)
+    .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
+  .withSceneRequirement(new TrainingSessionSpawnRequirement()) // Both 2P players must have at least 2 healthy Pokemon
   .withFleeAllowed(false)
   .withHideWildIntroMessage(true)
   .withPreventGameStatsUpdates(true) // Do not count the Pokemon as seen or defeated since it is ours

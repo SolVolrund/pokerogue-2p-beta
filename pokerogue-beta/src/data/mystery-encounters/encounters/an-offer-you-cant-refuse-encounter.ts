@@ -1,27 +1,27 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
-import { modifierTypes } from "#data/data-lists";
+import { allAbilities, modifierTypes } from "#data/data-lists";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { SpeciesId } from "#enums/species-id";
+import { UiMode } from "#enums/ui-mode";
+import type { PlayerPokemon } from "#field/pokemon";
+import { showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
 import {
   generateModifierType,
   leaveEncounterWithoutBattle,
   setEncounterExp,
-  updatePlayerMoney,
 } from "#mystery-encounters/encounter-phase-utils";
-import { getHighestStatTotalPlayerPokemon } from "#mystery-encounters/encounter-pokemon-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
+import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
-import {
-  AbilityRequirement,
-  CombinationPokemonRequirement,
-  MoveRequirement,
-} from "#mystery-encounters/mystery-encounter-requirements";
+import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import { EXTORTION_ABILITIES, EXTORTION_MOVES } from "#mystery-encounters/requirement-groups";
+import { updateWindowType } from "#ui/ui-theme";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -36,6 +36,287 @@ const namespace = "mysteryEncounters/anOfferYouCantRefuse";
 const MONEY_MINIMUM_MULTIPLIER = 10;
 const MONEY_MAXIMUM_MULTIPLIER = 30;
 
+type OfferChoiceIndex = 1 | 2 | 3;
+
+interface OfferChoice {
+  playerIndex: PlayerIndex;
+  optionIndex: OfferChoiceIndex;
+  pokemon?: PlayerPokemon;
+  price?: number;
+  moveOrAbility?: string;
+}
+
+interface OfferPlayerData {
+  strongestPokemon?: PlayerPokemon;
+  price: number;
+  extortionPokemon?: PlayerPokemon;
+  moveOrAbility?: string;
+}
+
+interface OfferData {
+  players: Record<PlayerIndex, OfferPlayerData>;
+  choices: OfferChoice[];
+  skipSelectedDialogueOnce?: boolean;
+}
+
+const MIN_VALID_POKEMON_FOR_OFFER = 2;
+
+function getValidOfferPokemonCount(playerIndex: PlayerIndex): number {
+  return globalScene.getPlayerParty(playerIndex).filter(pokemon => pokemon.isAllowedInChallenge()).length;
+}
+
+class OfferSpawnRequirement extends EncounterSceneRequirement {
+  override meetsRequirement(): boolean {
+    if (!globalScene.twoPlayerMode) {
+      return getValidOfferPokemonCount(0) >= MIN_VALID_POKEMON_FOR_OFFER;
+    }
+
+    return ([0, 1] as PlayerIndex[]).some(
+      playerIndex => getValidOfferPokemonCount(playerIndex) >= MIN_VALID_POKEMON_FOR_OFFER,
+    );
+  }
+
+  override getDialogueToken(): [string, string] {
+    return ["minPartySize", MIN_VALID_POKEMON_FOR_OFFER.toString()];
+  }
+}
+
+class PlayerOfferSellRequirement extends EncounterSceneRequirement {
+  constructor(private readonly playerIndex: PlayerIndex) {
+    super();
+  }
+
+  override meetsRequirement(): boolean {
+    return getValidOfferPokemonCount(this.playerIndex) >= MIN_VALID_POKEMON_FOR_OFFER;
+  }
+
+  override getDialogueToken(): [string, string] {
+    return ["minPartySize", MIN_VALID_POKEMON_FOR_OFFER.toString()];
+  }
+}
+
+class PlayerExtortionRequirement extends EncounterSceneRequirement {
+  constructor(private readonly playerIndex: PlayerIndex) {
+    super();
+  }
+
+  override meetsRequirement(): boolean {
+    return getExtortionOption(globalScene.getPlayerParty(this.playerIndex)).pokemon != null;
+  }
+
+  override getDialogueToken(): [string, string] {
+    return ["moveOrAbility", getExtortionOption(globalScene.getPlayerParty(this.playerIndex)).moveOrAbility ?? ""];
+  }
+}
+
+function getOfferData(): OfferData {
+  return globalScene.currentBattle.mysteryEncounter!.misc as OfferData;
+}
+
+function getOfferPlayerData(playerIndex: PlayerIndex): OfferPlayerData {
+  return getOfferData().players[playerIndex];
+}
+
+function getHighestStatTotalPlayerPokemon(
+  playerIndex: PlayerIndex,
+  isAllowed = false,
+  isFainted = false,
+): PlayerPokemon | undefined {
+  const party = globalScene.getPlayerParty(playerIndex);
+  let pokemon: PlayerPokemon | null = null;
+
+  for (const p of party) {
+    if (isAllowed && !p.isAllowedInChallenge()) {
+      continue;
+    }
+    if (!isFainted && p.isFainted()) {
+      continue;
+    }
+
+    pokemon = pokemon ? (pokemon.stats.reduce((a, b) => a + b) < p.stats.reduce((a, b) => a + b) ? p : pokemon) : p;
+  }
+
+  return pokemon ?? undefined;
+}
+
+function getOfferPrice(pokemon: PlayerPokemon): number {
+  const baseSpecies = pokemon.getSpeciesForm().getRootSpeciesId();
+  const starterValue: number = speciesDataRegistry.getStarterCost(baseSpecies) ?? 1;
+  const multiplier = Math.max((MONEY_MAXIMUM_MULTIPLIER / 10) * starterValue, MONEY_MINIMUM_MULTIPLIER);
+  return globalScene.getWaveMoneyAmount(multiplier);
+}
+
+function getExtortionOption(party: PlayerPokemon[]): { pokemon?: PlayerPokemon; moveOrAbility?: string } {
+  for (const pokemon of party) {
+    if (!pokemon.isAllowedInBattle()) {
+      continue;
+    }
+
+    const matchingMove = pokemon.moveset.find(move => move.moveId && EXTORTION_MOVES.includes(move.moveId));
+    if (matchingMove) {
+      return { pokemon, moveOrAbility: matchingMove.getName() };
+    }
+
+    const matchingAbility = EXTORTION_ABILITIES.find(ability => pokemon.hasAbility(ability, false));
+    if (matchingAbility != null) {
+      return { pokemon, moveOrAbility: allAbilities[matchingAbility].name };
+    }
+  }
+
+  return {};
+}
+
+function createOfferPlayerData(playerIndex: PlayerIndex): OfferPlayerData {
+  const strongestPokemon = getHighestStatTotalPlayerPokemon(playerIndex, true, true);
+  const extortion = getExtortionOption(globalScene.getPlayerParty(playerIndex));
+  const playerData: OfferPlayerData = {
+    price: strongestPokemon ? getOfferPrice(strongestPokemon) : 0,
+  };
+  if (strongestPokemon) {
+    playerData.strongestPokemon = strongestPokemon;
+  }
+  if (extortion.pokemon) {
+    playerData.extortionPokemon = extortion.pokemon;
+  }
+  if (extortion.moveOrAbility) {
+    playerData.moveOrAbility = extortion.moveOrAbility;
+  }
+  return playerData;
+}
+
+function setOfferTokens(playerIndex: PlayerIndex): void {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const playerData = getOfferPlayerData(playerIndex);
+  encounter.setDialogueToken("strongestPokemon", playerData.strongestPokemon?.getNameToRender() ?? "your Pokemon");
+  encounter.setDialogueToken("price", playerData.price.toString());
+  encounter.setDialogueToken("option2PrimaryName", playerData.extortionPokemon?.getNameToRender() ?? "");
+  encounter.setDialogueToken("moveOrAbility", playerData.moveOrAbility ?? "");
+}
+
+function getOfferIntroPlayerIndex(): PlayerIndex {
+  if (!globalScene.twoPlayerMode) {
+    return 0;
+  }
+
+  return ([0, 1] as PlayerIndex[]).find(
+    playerIndex => getValidOfferPokemonCount(playerIndex) >= MIN_VALID_POKEMON_FOR_OFFER,
+  ) ?? 0;
+}
+
+function showOfferPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+  setOfferTokens(playerIndex);
+
+  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
+      slideInDescription: false,
+      overrideTitle: `Player ${playerIndex + 1}`,
+      overrideQuery: i18next.t(`${namespace}:query`),
+      overrideOptions: buildOfferOptions(playerIndex),
+      startingCursorIndex,
+    });
+  });
+}
+
+function storeOfferChoice(choice: OfferChoice): boolean {
+  const data = getOfferData();
+  data.choices = data.choices.filter(existingChoice => existingChoice.playerIndex !== choice.playerIndex);
+  data.choices.push(choice);
+
+  if (globalScene.twoPlayerMode && choice.playerIndex === 0) {
+    showOfferPlayerMenu(1, choice.optionIndex - 1);
+    return false;
+  }
+
+  if (globalScene.twoPlayerMode) {
+    data.skipSelectedDialogueOnce = true;
+    globalScene.setActivePlayerIndex(0);
+    updateWindowType(1);
+  }
+  return true;
+}
+
+function collectOfferChoice(playerIndex: PlayerIndex, optionIndex: OfferChoiceIndex): boolean {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+  setOfferTokens(playerIndex);
+
+  const playerData = getOfferPlayerData(playerIndex);
+  const choice: OfferChoice = { playerIndex, optionIndex };
+  if (optionIndex === 1) {
+    if (!playerData.strongestPokemon) {
+      choice.optionIndex = 3;
+      return storeOfferChoice(choice);
+    }
+    choice.pokemon = playerData.strongestPokemon;
+    choice.price = playerData.price;
+  } else if (optionIndex === 2) {
+    if (playerData.extortionPokemon) {
+      choice.pokemon = playerData.extortionPokemon;
+    }
+    choice.price = playerData.price;
+    if (playerData.moveOrAbility) {
+      choice.moveOrAbility = playerData.moveOrAbility;
+    }
+  }
+
+  return storeOfferChoice(choice);
+}
+
+function addOfferMoney(amount: number, playerIndex: PlayerIndex): void {
+  globalScene.addMoneyForPlayer(amount, playerIndex);
+  globalScene.phaseManager.queueMessage(
+    i18next.t("mysteryEncounterMessages:receiveMoney", { amount }),
+    null,
+    true,
+  );
+}
+
+async function resolveOfferChoice(choice: OfferChoice): Promise<void> {
+  globalScene.setActivePlayerIndex(choice.playerIndex);
+  updateWindowType(choice.playerIndex + 1);
+  setOfferTokens(choice.playerIndex);
+
+  if (globalScene.twoPlayerMode) {
+    await showEncounterText(`${namespace}:option.${choice.optionIndex}.selected`);
+  }
+
+  if (choice.optionIndex === 1) {
+    const offeredPokemon = choice.pokemon ?? getOfferPlayerData(choice.playerIndex).strongestPokemon;
+    if (!offeredPokemon) {
+      return;
+    }
+    addOfferMoney(choice.price ?? getOfferPlayerData(choice.playerIndex).price, choice.playerIndex);
+    globalScene.removePokemonFromPlayerParty(offeredPokemon);
+    globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypes.SHINY_CHARM, choice.playerIndex);
+    return;
+  }
+
+  if (choice.optionIndex === 2) {
+    const helperPokemon = choice.pokemon ?? getOfferPlayerData(choice.playerIndex).extortionPokemon;
+    addOfferMoney(choice.price ?? getOfferPlayerData(choice.playerIndex).price, choice.playerIndex);
+    if (helperPokemon) {
+      setEncounterExp(helperPokemon.id, getPokemonSpecies(SpeciesId.LIEPARD).baseExp, true, choice.playerIndex);
+    }
+  }
+}
+
+async function runOfferChoices(): Promise<boolean> {
+  const choices = getOfferData().choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
+
+  for (const choice of choices) {
+    await resolveOfferChoice(choice);
+  }
+
+  if (globalScene.twoPlayerMode) {
+    globalScene.setActivePlayerIndex(0);
+    updateWindowType(1);
+  }
+  leaveEncounterWithoutBattle(true);
+  return true;
+}
+
 /**
  * An Offer You Can't Refuse encounter.
  * @see {@link https://github.com/pagefaultgames/pokerogue/issues/3808 | GitHub Issue #3808}
@@ -46,7 +327,7 @@ export const AnOfferYouCantRefuseEncounter: MysteryEncounter = MysteryEncounterB
 )
   .withEncounterTier(MysteryEncounterTier.GREAT)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
-  .withScenePartySizeRequirement(2, 6, true) // Must have at least 2 pokemon in party
+  .withSceneRequirement(new OfferSpawnRequirement()) // At least one player must have 2+ valid Pokemon
   .withIntroSpriteConfigs([
     {
       species: SpeciesId.LIEPARD,
@@ -82,99 +363,68 @@ export const AnOfferYouCantRefuseEncounter: MysteryEncounter = MysteryEncounterB
   .withQuery(`${namespace}:query`)
   .withOnInit(() => {
     const encounter = globalScene.currentBattle.mysteryEncounter!;
-    const pokemon = getHighestStatTotalPlayerPokemon(true, true);
-
-    const baseSpecies = pokemon.getSpeciesForm().getRootSpeciesId();
-    const starterValue: number = speciesDataRegistry.getStarterCost(baseSpecies) ?? 1;
-    const multiplier = Math.max((MONEY_MAXIMUM_MULTIPLIER / 10) * starterValue, MONEY_MINIMUM_MULTIPLIER);
-    const price = globalScene.getWaveMoneyAmount(multiplier);
-
-    encounter.setDialogueToken("strongestPokemon", pokemon.getNameToRender());
-    encounter.setDialogueToken("price", price.toString());
-
-    // Store pokemon and price
     encounter.misc = {
-      pokemon,
-      price,
-    };
-
-    // If player meets the combo OR requirements for option 2, populate the token
-    const opt2Req = encounter.options[1].primaryPokemonRequirements[0];
-    if (opt2Req.meetsRequirement()) {
-      const abilityToken = encounter.dialogueTokens["option2PrimaryAbility"];
-      const moveToken = encounter.dialogueTokens["option2PrimaryMove"];
-      if (abilityToken) {
-        encounter.setDialogueToken("moveOrAbility", abilityToken);
-      } else if (moveToken) {
-        encounter.setDialogueToken("moveOrAbility", moveToken);
-      }
-    }
+      players: {
+        0: createOfferPlayerData(0),
+        1: globalScene.twoPlayerMode ? createOfferPlayerData(1) : createOfferPlayerData(0),
+      },
+      choices: [],
+    } satisfies OfferData;
 
     const shinyCharm = generateModifierType(modifierTypes.SHINY_CHARM);
     encounter.setDialogueToken("itemName", shinyCharm?.name ?? i18next.t("modifierType:ModifierType.SHINY_CHARM.name"));
     encounter.setDialogueToken("liepardName", getPokemonSpecies(SpeciesId.LIEPARD).getName());
+    setOfferTokens(getOfferIntroPlayerIndex());
 
     return true;
   })
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
-      .withDialogue({
-        buttonLabel: `${namespace}:option.1.label`,
-        buttonTooltip: `${namespace}:option.1.tooltip`,
-        selected: [
-          {
-            text: `${namespace}:option.1.selected`,
-            speaker: `${namespace}:speaker`,
-          },
-        ],
-      })
-      .withPreOptionPhase(async (): Promise<boolean> => {
-        const encounter = globalScene.currentBattle.mysteryEncounter!;
-        // Update money and remove pokemon from party
-        updatePlayerMoney(encounter.misc.price);
-        globalScene.removePokemonFromPlayerParty(encounter.misc.pokemon);
-        return true;
-      })
-      .withOptionPhase(async () => {
-        // Give the player a Shiny Charm
-        globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypes.SHINY_CHARM);
-        leaveEncounterWithoutBattle(true);
-      })
-      .build(),
-  )
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_SPECIAL)
-      .withPrimaryPokemonRequirement(
-        CombinationPokemonRequirement.Some(
-          new MoveRequirement(EXTORTION_MOVES, true),
-          new AbilityRequirement(EXTORTION_ABILITIES, true),
-        ),
-      )
-      .withDialogue({
-        buttonLabel: `${namespace}:option.2.label`,
-        buttonTooltip: `${namespace}:option.2.tooltip`,
-        disabledButtonTooltip: `${namespace}:option.2.tooltipDisabled`,
-        selected: [
-          {
-            speaker: `${namespace}:speaker`,
-            text: `${namespace}:option.2.selected`,
-          },
-        ],
-      })
-      .withOptionPhase(async () => {
-        // Extort the rich kid for money
-        const encounter = globalScene.currentBattle.mysteryEncounter!;
-        // Update money and remove pokemon from party
-        updatePlayerMoney(encounter.misc.price);
+  .withOption(buildAcceptOfferOption(0))
+  .withOption(buildExtortKidOption(0))
+  .withOption(buildLeaveOfferOption(0))
+  .build();
 
-        setEncounterExp(encounter.options[1].primaryPokemon!.id, getPokemonSpecies(SpeciesId.LIEPARD).baseExp, true);
+function buildAcceptOfferOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT)
+    .withSceneRequirement(new PlayerOfferSellRequirement(playerIndex))
+    .withDialogue({
+      buttonLabel: `${namespace}:option.1.label`,
+      disabledButtonLabel: `${namespace}:option.1.labelDisabled`,
+      buttonTooltip: `${namespace}:option.1.tooltip`,
+      disabledButtonTooltip: `${namespace}:option.1.tooltipDisabled`,
+      selected: [
+        {
+          text: `${namespace}:option.1.selected`,
+          speaker: `${namespace}:speaker`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => collectOfferChoice(playerIndex, 1))
+    .withOptionPhase(async () => runOfferChoices())
+    .build();
+}
 
-        leaveEncounterWithoutBattle(true);
-      })
-      .build(),
-  )
-  .withSimpleOption(
-    {
+function buildExtortKidOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_SPECIAL)
+    .withSceneRequirement(new PlayerExtortionRequirement(playerIndex))
+    .withDialogue({
+      buttonLabel: `${namespace}:option.2.label`,
+      buttonTooltip: `${namespace}:option.2.tooltip`,
+      disabledButtonTooltip: `${namespace}:option.2.tooltipDisabled`,
+      selected: [
+        {
+          speaker: `${namespace}:speaker`,
+          text: `${namespace}:option.2.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => collectOfferChoice(playerIndex, 2))
+    .withOptionPhase(async () => runOfferChoices())
+    .build();
+}
+
+function buildLeaveOfferOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
       buttonLabel: `${namespace}:option.3.label`,
       buttonTooltip: `${namespace}:option.3.tooltip`,
       selected: [
@@ -183,11 +433,16 @@ export const AnOfferYouCantRefuseEncounter: MysteryEncounter = MysteryEncounterB
           text: `${namespace}:option.3.selected`,
         },
       ],
-    },
-    async () => {
-      // Leave encounter with no rewards or exp
-      leaveEncounterWithoutBattle(true);
-      return true;
-    },
-  )
-  .build();
+    })
+    .withPreOptionPhase(async () => collectOfferChoice(playerIndex, 3))
+    .withOptionPhase(async () => runOfferChoices())
+    .build();
+}
+
+function buildOfferOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
+  return [
+    buildAcceptOfferOption(playerIndex),
+    buildExtortKidOption(playerIndex),
+    buildLeaveOfferOption(playerIndex),
+  ];
+}

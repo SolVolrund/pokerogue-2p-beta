@@ -1,4 +1,5 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { allMoves, modifierTypes } from "#data/data-lists";
 import { ModifierTier } from "#enums/modifier-tier";
@@ -11,6 +12,7 @@ import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { TrainerSlot } from "#enums/trainer-slot";
 import { TrainerType } from "#enums/trainer-type";
+import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import type { PokemonHeldItemModifier } from "#modifiers/modifier";
 import {
@@ -22,7 +24,7 @@ import {
 } from "#modifiers/modifier";
 import type { AttackTypeBoosterModifierType, ModifierTypeOption } from "#modifiers/modifier-type";
 import { PokemonMove } from "#moves/pokemon-move";
-import { getEncounterText, showEncounterDialogue } from "#mystery-encounters/encounter-dialogue-utils";
+import { getEncounterText, showEncounterDialogue, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
 import type { EnemyPartyConfig } from "#mystery-encounters/encounter-phase-utils";
 import {
   generateModifierType,
@@ -36,10 +38,12 @@ import {
 } from "#mystery-encounters/encounter-phase-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
+import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import {
   AttackTypeBoosterHeldItemTypeRequirement,
   CombinationPokemonRequirement,
+  EncounterPokemonRequirement,
   HeldItemRequirement,
   TypeRequirement,
 } from "#mystery-encounters/mystery-encounter-requirements";
@@ -47,6 +51,7 @@ import { getRandomPartyMemberFunc, trainerConfigs } from "#trainers/trainer-conf
 import { TrainerPartyCompoundTemplate, TrainerPartyTemplate } from "#trainers/trainer-party-template";
 import type { OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
+import { updateWindowType } from "#ui/ui-theme";
 import { randSeedInt, randSeedShuffle } from "#utils/common";
 import i18next from "i18next";
 
@@ -155,6 +160,631 @@ const MISC_TUTOR_MOVES = [
  */
 const WAVE_LEVEL_BREAKPOINTS = [30, 50, 70, 100, 120, 140, 160] as const;
 
+type BugTypeSuperfanOptionIndex = 1 | 2 | 3;
+
+interface BugTypeSuperfanChoice {
+  playerIndex: PlayerIndex;
+  optionIndex: BugTypeSuperfanOptionIndex;
+  chosenPokemon?: PlayerPokemon;
+  chosenModifier?: PokemonHeldItemModifier;
+  moveTutorOptions?: PokemonMove[];
+}
+
+interface BugTypeSuperfanData {
+  choices: BugTypeSuperfanChoice[];
+  skipSelectedDialogueOnce?: boolean;
+}
+
+class PlayerBugTypeSuperfanRequirement extends EncounterPokemonRequirement {
+  private readonly requirement = CombinationPokemonRequirement.Some(
+    new HeldItemRequirement(["BypassSpeedChanceModifier", "ContactHeldItemTransferChanceModifier"], 1),
+    new AttackTypeBoosterHeldItemTypeRequirement(PokemonType.BUG, 1),
+    new TypeRequirement(PokemonType.BUG, false, 1),
+  );
+
+  constructor(private readonly playerIndex?: PlayerIndex) {
+    super();
+    this.minNumberOfPokemon = 1;
+    this.invertQuery = false;
+  }
+
+  override meetsRequirement(): boolean {
+    return this.queryPlayerParty().length >= this.minNumberOfPokemon;
+  }
+
+  override queryParty(_partyPokemon: PlayerPokemon[]): PlayerPokemon[] {
+    return this.queryPlayerParty();
+  }
+
+  override getDialogueToken(pokemon?: PlayerPokemon): [string, string] {
+    return this.requirement.getDialogueToken(pokemon);
+  }
+
+  private queryPlayerParty(): PlayerPokemon[] {
+    if (!globalScene.twoPlayerMode || this.playerIndex != null) {
+      return this.requirement.queryParty(globalScene.getPlayerParty(this.playerIndex));
+    }
+
+    return [
+      ...this.requirement.queryParty(globalScene.getPlayerParty(0)),
+      ...this.requirement.queryParty(globalScene.getPlayerParty(1)),
+    ];
+  }
+}
+
+class PlayerBugTypeRequirement extends EncounterPokemonRequirement {
+  private readonly requirement = new TypeRequirement(PokemonType.BUG, false, 1);
+
+  constructor(private readonly playerIndex: PlayerIndex) {
+    super();
+    this.minNumberOfPokemon = 1;
+    this.invertQuery = false;
+  }
+
+  override meetsRequirement(): boolean {
+    return this.queryParty([]).length >= this.minNumberOfPokemon;
+  }
+
+  override queryParty(_partyPokemon: PlayerPokemon[]): PlayerPokemon[] {
+    return this.requirement.queryParty(globalScene.getPlayerParty(this.playerIndex));
+  }
+
+  override getDialogueToken(pokemon?: PlayerPokemon): [string, string] {
+    return this.requirement.getDialogueToken(pokemon);
+  }
+}
+
+class PlayerBugItemRequirement extends EncounterPokemonRequirement {
+  private readonly requirement = CombinationPokemonRequirement.Some(
+    new HeldItemRequirement(["BypassSpeedChanceModifier", "ContactHeldItemTransferChanceModifier"], 1),
+    new AttackTypeBoosterHeldItemTypeRequirement(PokemonType.BUG, 1),
+  );
+
+  constructor(private readonly playerIndex: PlayerIndex) {
+    super();
+    this.minNumberOfPokemon = 1;
+    this.invertQuery = false;
+  }
+
+  override meetsRequirement(): boolean {
+    return this.queryParty([]).length >= this.minNumberOfPokemon;
+  }
+
+  override queryParty(_partyPokemon: PlayerPokemon[]): PlayerPokemon[] {
+    return this.requirement.queryParty(globalScene.getPlayerParty(this.playerIndex));
+  }
+
+  override getDialogueToken(pokemon?: PlayerPokemon): [string, string] {
+    return this.requirement.getDialogueToken(pokemon);
+  }
+}
+
+function getBugTypeSuperfanData(): BugTypeSuperfanData {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  if (!encounter.misc || !Array.isArray(encounter.misc.choices)) {
+    encounter.misc = {
+      ...(encounter.misc ?? {}),
+      choices: [],
+    } satisfies BugTypeSuperfanData;
+  }
+
+  return encounter.misc as BugTypeSuperfanData;
+}
+
+function getBugTypeSuperfanTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
+  return playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+}
+
+async function hideBugTypeSuperfanNonBattleTrainers(battlePlayers: PlayerIndex[]): Promise<void> {
+  if (!globalScene.twoPlayerMode) {
+    return;
+  }
+
+  const battlePlayerSet = new Set(battlePlayers);
+  await Promise.all(
+    ([0, 1] as PlayerIndex[])
+      .filter(playerIndex => !battlePlayerSet.has(playerIndex))
+      .map(
+        playerIndex =>
+          new Promise<void>(resolve => {
+            const trainerSprite = getBugTypeSuperfanTrainerSprite(playerIndex);
+            globalScene.tweens.killTweensOf(trainerSprite);
+
+            if (!trainerSprite.visible) {
+              resolve();
+              return;
+            }
+
+            globalScene.tweens.add({
+              targets: trainerSprite,
+              x: -36,
+              duration: 500,
+              onComplete: () => {
+                trainerSprite.setVisible(false);
+                resolve();
+              },
+            });
+          }),
+      ),
+  );
+}
+
+function showBugTypeSuperfanPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
+      slideInDescription: false,
+      overrideTitle: `Player ${playerIndex + 1}`,
+      overrideQuery: i18next.t(`${namespace}:query`),
+      overrideOptions: buildBugTypeSuperfanPlayerOptions(playerIndex),
+      startingCursorIndex,
+    });
+  });
+}
+
+function storeBugTypeSuperfanChoice(choice: BugTypeSuperfanChoice, startingCursorIndex: number): boolean {
+  if (!globalScene.twoPlayerMode) {
+    return true;
+  }
+
+  const data = getBugTypeSuperfanData();
+  data.choices = data.choices.filter(existing => existing.playerIndex !== choice.playerIndex);
+  data.choices.push(choice);
+
+  if (choice.playerIndex === 0) {
+    showBugTypeSuperfanPlayerMenu(1, startingCursorIndex);
+    return false;
+  }
+
+  data.skipSelectedDialogueOnce = true;
+  globalScene.setActivePlayerIndex(0);
+  updateWindowType(1);
+  return true;
+}
+
+function createBugTypeMoveTutorOptions(): PokemonMove[] {
+  return [
+    new PokemonMove(PHYSICAL_TUTOR_MOVES[randSeedInt(PHYSICAL_TUTOR_MOVES.length)]),
+    new PokemonMove(SPECIAL_TUTOR_MOVES[randSeedInt(SPECIAL_TUTOR_MOVES.length)]),
+    new PokemonMove(STATUS_TUTOR_MOVES[randSeedInt(STATUS_TUTOR_MOVES.length)]),
+    new PokemonMove(MISC_TUTOR_MOVES[randSeedInt(MISC_TUTOR_MOVES.length)]),
+  ];
+}
+
+async function storeBattleChoice(playerIndex: PlayerIndex): Promise<boolean> {
+  const choice: BugTypeSuperfanChoice = {
+    playerIndex,
+    optionIndex: 1,
+    moveTutorOptions: createBugTypeMoveTutorOptions(),
+  };
+  return storeBugTypeSuperfanChoice(choice, 0);
+}
+
+function storeShowBugTypesChoice(playerIndex: PlayerIndex): boolean {
+  const choice: BugTypeSuperfanChoice = {
+    playerIndex,
+    optionIndex: 2,
+  };
+  return storeBugTypeSuperfanChoice(choice, 1);
+}
+
+async function storeGiftBugItemChoice(playerIndex: PlayerIndex): Promise<boolean> {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  let selectedChoice: BugTypeSuperfanChoice | undefined;
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+
+  const onPokemonSelected = (pokemon: PlayerPokemon) => {
+    const validItems = getValidBugItems(pokemon);
+
+    return validItems.map((modifier: PokemonHeldItemModifier) => {
+      const option: OptionSelectItem = {
+        label: modifier.type.name,
+        handler: () => {
+          encounter.setDialogueToken("selectedItem", modifier.type.name);
+          selectedChoice = {
+            playerIndex,
+            optionIndex: 3,
+            chosenPokemon: pokemon,
+            chosenModifier: modifier,
+          };
+          return true;
+        },
+      };
+      return option;
+    });
+  };
+
+  const selected = await selectPokemonForOption(onPokemonSelected, undefined, getBugItemSelectableFilter());
+  if (!selected || !selectedChoice) {
+    return false;
+  }
+
+  return storeBugTypeSuperfanChoice(selectedChoice, 2);
+}
+
+function getValidBugItems(pokemon: PlayerPokemon | Pokemon): PokemonHeldItemModifier[] {
+  return pokemon.getHeldItems().filter((item): item is PokemonHeldItemModifier => {
+    return (
+      (item instanceof BypassSpeedChanceModifier
+        || item instanceof ContactHeldItemTransferChanceModifier
+        || (item instanceof AttackTypeBoosterModifier
+          && (item.type as AttackTypeBoosterModifierType).moveType === PokemonType.BUG))
+      && item.isTransferable
+    );
+  });
+}
+
+function getBugItemSelectableFilter(): (pokemon: Pokemon) => string | null {
+  return (pokemon: Pokemon) => {
+    if (getValidBugItems(pokemon).length === 0) {
+      return getEncounterText(`${namespace}:option.3.invalidSelection`) ?? null;
+    }
+
+    return null;
+  };
+}
+
+function getShowBugTypesTextKey(numBugTypes: number): string {
+  if (numBugTypes < 2) {
+    return `${namespace}:option.2.selected0To1`;
+  }
+  if (numBugTypes < 4) {
+    return `${namespace}:option.2.selected2To3`;
+  }
+  if (numBugTypes < 6) {
+    return `${namespace}:option.2.selected4To5`;
+  }
+  return `${namespace}:option.2.selected6`;
+}
+
+function setShowBugTypesRewards(choice: BugTypeSuperfanChoice): void {
+  globalScene.setActivePlayerIndex(choice.playerIndex);
+  updateWindowType(choice.playerIndex + 1);
+
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const numBugTypes = globalScene.getPlayerParty(choice.playerIndex).filter(p => p.isOfType(PokemonType.BUG)).length;
+  const numBugTypesText = i18next.t(`${namespace}:numBugTypes`, {
+    count: numBugTypes,
+  });
+  encounter.setDialogueToken("numBugTypes", numBugTypesText);
+
+  if (numBugTypes < 2) {
+    setEncounterRewards(
+      {
+        guaranteedModifierTypeFuncs: [modifierTypes.SUPER_LURE, modifierTypes.GREAT_BALL],
+        fillRemaining: false,
+      },
+      undefined,
+      undefined,
+      choice.playerIndex,
+    );
+  } else if (numBugTypes < 4) {
+    setEncounterRewards(
+      {
+        guaranteedModifierTypeFuncs: [modifierTypes.QUICK_CLAW, modifierTypes.MAX_LURE, modifierTypes.ULTRA_BALL],
+        fillRemaining: false,
+      },
+      undefined,
+      undefined,
+      choice.playerIndex,
+    );
+  } else if (numBugTypes < 6) {
+    setEncounterRewards(
+      {
+        guaranteedModifierTypeFuncs: [modifierTypes.GRIP_CLAW, modifierTypes.MAX_LURE, modifierTypes.ROGUE_BALL],
+        fillRemaining: false,
+      },
+      undefined,
+      undefined,
+      choice.playerIndex,
+    );
+  } else {
+    const modifierOptions: ModifierTypeOption[] = [generateModifierTypeOption(modifierTypes.MASTER_BALL)!];
+    const specialOptions: ModifierTypeOption[] = [];
+
+    if (!globalScene.findModifierForPlayer(m => m instanceof MegaEvolutionAccessModifier, choice.playerIndex)) {
+      modifierOptions.push(generateModifierTypeOption(modifierTypes.MEGA_BRACELET)!);
+    }
+    if (!globalScene.findModifierForPlayer(m => m instanceof GigantamaxAccessModifier, choice.playerIndex)) {
+      modifierOptions.push(generateModifierTypeOption(modifierTypes.DYNAMAX_BAND)!);
+    }
+    const nonRareEvolutionModifier = generateModifierTypeOption(modifierTypes.EVOLUTION_ITEM);
+    if (nonRareEvolutionModifier) {
+      specialOptions.push(nonRareEvolutionModifier);
+    }
+    const rareEvolutionModifier = generateModifierTypeOption(modifierTypes.RARE_EVOLUTION_ITEM);
+    if (rareEvolutionModifier) {
+      specialOptions.push(rareEvolutionModifier);
+    }
+    const formChangeModifier = generateModifierTypeOption(modifierTypes.FORM_CHANGE_ITEM);
+    if (formChangeModifier) {
+      specialOptions.push(formChangeModifier);
+    }
+    const rareFormChangeModifier = generateModifierTypeOption(modifierTypes.RARE_FORM_CHANGE_ITEM);
+    if (rareFormChangeModifier) {
+      specialOptions.push(rareFormChangeModifier);
+    }
+    if (specialOptions.length > 0) {
+      modifierOptions.push(specialOptions[randSeedInt(specialOptions.length)]);
+    }
+
+    setEncounterRewards(
+      {
+        guaranteedModifierTypeOptions: modifierOptions,
+        fillRemaining: false,
+      },
+      undefined,
+      undefined,
+      choice.playerIndex,
+    );
+  }
+}
+
+function setGiftBugItemRewards(choice: BugTypeSuperfanChoice): void {
+  if (!choice.chosenPokemon || !choice.chosenModifier) {
+    return;
+  }
+
+  globalScene.setActivePlayerIndex(choice.playerIndex);
+  updateWindowType(choice.playerIndex + 1);
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  encounter.setDialogueToken("selectedItem", choice.chosenModifier.type.name);
+
+  choice.chosenPokemon.loseHeldItem(choice.chosenModifier, false);
+  globalScene.updateModifiers(true, true, choice.playerIndex);
+
+  const bugNet = generateModifierTypeOption(modifierTypes.MYSTERY_ENCOUNTER_GOLDEN_BUG_NET)!;
+  bugNet.type.tier = ModifierTier.ROGUE;
+
+  setEncounterRewards(
+    {
+      guaranteedModifierTypeOptions: [bugNet],
+      guaranteedModifierTypeFuncs: [modifierTypes.REVIVER_SEED],
+      fillRemaining: false,
+    },
+    undefined,
+    undefined,
+    choice.playerIndex,
+  );
+}
+
+async function showBugTypeSuperfanSelectedDialogue(choice: BugTypeSuperfanChoice): Promise<void> {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  globalScene.setActivePlayerIndex(choice.playerIndex);
+  updateWindowType(choice.playerIndex + 1);
+
+  if (choice.optionIndex === 1) {
+    await showEncounterDialogue(`${namespace}:option.1.selected`, `${namespace}:speaker`);
+    return;
+  }
+
+  if (choice.optionIndex === 2) {
+    const numBugTypes = globalScene.getPlayerParty(choice.playerIndex).filter(p => p.isOfType(PokemonType.BUG)).length;
+    encounter.setDialogueToken("numBugTypes", i18next.t(`${namespace}:numBugTypes`, { count: numBugTypes }));
+    await showEncounterDialogue(`${namespace}:option.2.selected`, `${namespace}:speaker`);
+    await showEncounterDialogue(getShowBugTypesTextKey(numBugTypes), `${namespace}:speaker`);
+    return;
+  }
+
+  if (choice.chosenModifier) {
+    encounter.setDialogueToken("selectedItem", choice.chosenModifier.type.name);
+  }
+  await showEncounterText(`${namespace}:option.3.selected`);
+  await showEncounterDialogue(`${namespace}:option.3.selectedDialogue`, `${namespace}:speaker`);
+}
+
+async function runTwoPlayerBugTypeSuperfanChoices(): Promise<boolean> {
+  const choices = getBugTypeSuperfanData().choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
+  const battleChoices = choices.filter(choice => choice.optionIndex === 1);
+  const showChoices = choices.filter(choice => choice.optionIndex === 2);
+  const giftChoices = choices.filter(choice => choice.optionIndex === 3);
+
+  for (const choice of choices) {
+    await showBugTypeSuperfanSelectedDialogue(choice);
+  }
+
+  for (const choice of showChoices) {
+    setShowBugTypesRewards(choice);
+  }
+
+  for (const choice of giftChoices) {
+    setGiftBugItemRewards(choice);
+  }
+
+  for (const choice of battleChoices) {
+    setEncounterRewards({ fillRemaining: true }, undefined, undefined, choice.playerIndex);
+  }
+
+  if (battleChoices.length === 0) {
+    globalScene.setActivePlayerIndex(0);
+    updateWindowType(1);
+    leaveEncounterWithoutBattle(true);
+    return true;
+  }
+
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  encounter.onRewards = async () => {
+    for (const choice of battleChoices) {
+      await doBugTypeMoveTutor(choice.playerIndex, choice.moveTutorOptions ?? createBugTypeMoveTutorOptions());
+    }
+    encounter.onRewards = undefined;
+  };
+
+  const battlePlayers = battleChoices.map(choice => choice.playerIndex);
+  globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
+  globalScene.setActivePlayerIndex(0);
+  updateWindowType(1);
+  await transitionMysteryEncounterIntroVisuals(true, true);
+  await hideBugTypeSuperfanNonBattleTrainers(battlePlayers);
+  await initBattleWithEnemyConfig(createBugTypeSuperfanBattleConfig(battleChoices));
+  return true;
+}
+
+function createBugTypeSuperfanBattleConfig(battleChoices: BugTypeSuperfanChoice[]): EnemyPartyConfig {
+  const trainerConfig = getTrainerConfigForWave(globalScene.currentBattle.waveIndex);
+  if (battleChoices.length < 2) {
+    return {
+      trainerConfig,
+      female: true,
+    };
+  }
+
+  return {
+    trainerConfig,
+    partnerTrainerConfig: getTrainerConfigForWave(globalScene.currentBattle.waveIndex),
+    female: true,
+    partnerFemale: true,
+    doubleBattle: true,
+  };
+}
+
+function buildBattleOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
+      buttonLabel: `${namespace}:option.1.label`,
+      buttonTooltip: `${namespace}:option.1.tooltip`,
+      selected: [
+        {
+          speaker: `${namespace}:speaker`,
+          text: `${namespace}:option.1.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => storeBattleChoice(playerIndex))
+    .withOptionPhase(async () =>
+      globalScene.twoPlayerMode ? runTwoPlayerBugTypeSuperfanChoices() : runOnePlayerBattle(),
+    )
+    .build();
+}
+
+function buildShowBugTypesOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT)
+    .withPrimaryPokemonRequirement(new PlayerBugTypeRequirement(playerIndex))
+    .withDialogue({
+      buttonLabel: `${namespace}:option.2.label`,
+      buttonTooltip: `${namespace}:option.2.tooltip`,
+      disabledButtonTooltip: `${namespace}:option.2.disabledTooltip`,
+    })
+    .withPreOptionPhase(async () =>
+      globalScene.twoPlayerMode ? storeShowBugTypesChoice(playerIndex) : runOnePlayerShowBugTypesPreOption(),
+    )
+    .withOptionPhase(async () =>
+      globalScene.twoPlayerMode ? runTwoPlayerBugTypeSuperfanChoices() : leaveEncounterWithoutBattle(),
+    )
+    .build();
+}
+
+function buildGiftBugItemOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT)
+    .withPrimaryPokemonRequirement(new PlayerBugItemRequirement(playerIndex))
+    .withDialogue({
+      buttonLabel: `${namespace}:option.3.label`,
+      buttonTooltip: `${namespace}:option.3.tooltip`,
+      disabledButtonTooltip: `${namespace}:option.3.disabledTooltip`,
+      selected: [
+        {
+          text: `${namespace}:option.3.selected`,
+        },
+        {
+          speaker: `${namespace}:speaker`,
+          text: `${namespace}:option.3.selectedDialogue`,
+        },
+      ],
+      secondOptionPrompt: `${namespace}:option.3.selectPrompt`,
+    })
+    .withPreOptionPhase(async () =>
+      globalScene.twoPlayerMode ? storeGiftBugItemChoice(playerIndex) : runOnePlayerGiftBugItemPreOption(),
+    )
+    .withOptionPhase(async () =>
+      globalScene.twoPlayerMode ? runTwoPlayerBugTypeSuperfanChoices() : runOnePlayerGiftBugItem(),
+    )
+    .build();
+}
+
+function buildBugTypeSuperfanPlayerOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
+  return [buildBattleOption(playerIndex), buildShowBugTypesOption(playerIndex), buildGiftBugItemOption(playerIndex)];
+}
+
+async function runOnePlayerBattle(): Promise<void> {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const moveTutorOptions = createBugTypeMoveTutorOptions();
+  encounter.misc = {
+    moveTutorOptions,
+  };
+
+  encounter.onRewards = async () => {
+    await doBugTypeMoveTutor(0, moveTutorOptions);
+    encounter.onRewards = undefined;
+  };
+
+  setEncounterRewards({ fillRemaining: true });
+  await transitionMysteryEncounterIntroVisuals(true, true);
+  await initBattleWithEnemyConfig(encounter.enemyPartyConfigs[0]);
+}
+
+function runOnePlayerShowBugTypesPreOption(): boolean {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const choice: BugTypeSuperfanChoice = {
+    playerIndex: 0,
+    optionIndex: 2,
+  };
+  const numBugTypes = globalScene.getPlayerParty().filter(p => p.isOfType(PokemonType.BUG)).length;
+  encounter.setDialogueToken(
+    "numBugTypes",
+    i18next.t(`${namespace}:numBugTypes`, {
+      count: numBugTypes,
+    }),
+  );
+  setShowBugTypesRewards(choice);
+  encounter.selectedOption!.dialogue!.selected = [
+    {
+      speaker: `${namespace}:speaker`,
+      text: getShowBugTypesTextKey(numBugTypes),
+    },
+  ];
+  return true;
+}
+
+async function runOnePlayerGiftBugItemPreOption(): Promise<boolean> {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+
+  const onPokemonSelected = (pokemon: PlayerPokemon) => {
+    return getValidBugItems(pokemon).map((modifier: PokemonHeldItemModifier) => {
+      const option: OptionSelectItem = {
+        label: modifier.type.name,
+        handler: () => {
+          encounter.setDialogueToken("selectedItem", modifier.type.name);
+          encounter.misc = {
+            chosenPokemon: pokemon,
+            chosenModifier: modifier,
+          };
+          return true;
+        },
+      };
+      return option;
+    });
+  };
+
+  return selectPokemonForOption(onPokemonSelected, undefined, getBugItemSelectableFilter());
+}
+
+function runOnePlayerGiftBugItem(): void {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const choice: BugTypeSuperfanChoice = {
+    playerIndex: 0,
+    optionIndex: 3,
+    chosenPokemon: encounter.misc.chosenPokemon,
+    chosenModifier: encounter.misc.chosenModifier,
+  };
+
+  setGiftBugItemRewards(choice);
+  leaveEncounterWithoutBattle(true);
+}
+
 /**
  * Bug Type Superfan encounter.
  * @see {@link https://github.com/pagefaultgames/pokerogue/issues/3820 | GitHub Issue #3820}
@@ -164,14 +794,7 @@ export const BugTypeSuperfanEncounter: MysteryEncounter = MysteryEncounterBuilde
   MysteryEncounterType.BUG_TYPE_SUPERFAN,
 )
   .withEncounterTier(MysteryEncounterTier.GREAT)
-  .withPrimaryPokemonRequirement(
-    CombinationPokemonRequirement.Some(
-      // Must have at least 1 Bug type on team, OR have a bug item somewhere on the team
-      new HeldItemRequirement(["BypassSpeedChanceModifier", "ContactHeldItemTransferChanceModifier"], 1),
-      new AttackTypeBoosterHeldItemTypeRequirement(PokemonType.BUG, 1),
-      new TypeRequirement(PokemonType.BUG, false, 1),
-    ),
-  )
+  .withPrimaryPokemonRequirement(new PlayerBugTypeSuperfanRequirement())
   .withMaxAllowedEncounters(1)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withScenePartySizeRequirement(3, 6)
@@ -232,239 +855,9 @@ export const BugTypeSuperfanEncounter: MysteryEncounter = MysteryEncounterBuilde
   .withTitle(`${namespace}:title`)
   .withDescription(`${namespace}:description`)
   .withQuery(`${namespace}:query`)
-  .withSimpleOption(
-    {
-      buttonLabel: `${namespace}:option.1.label`,
-      buttonTooltip: `${namespace}:option.1.tooltip`,
-      selected: [
-        {
-          speaker: `${namespace}:speaker`,
-          text: `${namespace}:option.1.selected`,
-        },
-      ],
-    },
-    async () => {
-      // Select battle the bug trainer
-      const encounter = globalScene.currentBattle.mysteryEncounter!;
-      const config: EnemyPartyConfig = encounter.enemyPartyConfigs[0];
-
-      // Init the moves available for tutor
-      const moveTutorOptions: PokemonMove[] = [];
-      // TODO: should this use `randSeedItem`?
-      moveTutorOptions.push(new PokemonMove(PHYSICAL_TUTOR_MOVES[randSeedInt(PHYSICAL_TUTOR_MOVES.length)]));
-      moveTutorOptions.push(new PokemonMove(SPECIAL_TUTOR_MOVES[randSeedInt(SPECIAL_TUTOR_MOVES.length)]));
-      moveTutorOptions.push(new PokemonMove(STATUS_TUTOR_MOVES[randSeedInt(STATUS_TUTOR_MOVES.length)]));
-      moveTutorOptions.push(new PokemonMove(MISC_TUTOR_MOVES[randSeedInt(MISC_TUTOR_MOVES.length)]));
-      encounter.misc = {
-        moveTutorOptions,
-      };
-
-      // Assigns callback that teaches move before continuing to rewards
-      encounter.onRewards = doBugTypeMoveTutor;
-
-      setEncounterRewards({ fillRemaining: true });
-      await transitionMysteryEncounterIntroVisuals(true, true);
-      await initBattleWithEnemyConfig(config);
-    },
-  )
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT)
-      .withPrimaryPokemonRequirement(new TypeRequirement(PokemonType.BUG, false, 1)) // Must have 1 Bug type on team
-      .withDialogue({
-        buttonLabel: `${namespace}:option.2.label`,
-        buttonTooltip: `${namespace}:option.2.tooltip`,
-        disabledButtonTooltip: `${namespace}:option.2.disabledTooltip`,
-      })
-      .withPreOptionPhase(async () => {
-        // Player shows off their bug types
-        const encounter = globalScene.currentBattle.mysteryEncounter!;
-
-        // Player gets different rewards depending on the number of bug types they have
-        const numBugTypes = globalScene.getPlayerParty().filter(p => p.isOfType(PokemonType.BUG)).length;
-        const numBugTypesText = i18next.t(`${namespace}:numBugTypes`, {
-          count: numBugTypes,
-        });
-        encounter.setDialogueToken("numBugTypes", numBugTypesText);
-
-        if (numBugTypes < 2) {
-          setEncounterRewards({
-            guaranteedModifierTypeFuncs: [modifierTypes.SUPER_LURE, modifierTypes.GREAT_BALL],
-            fillRemaining: false,
-          });
-          encounter.selectedOption!.dialogue!.selected = [
-            {
-              speaker: `${namespace}:speaker`,
-              text: `${namespace}:option.2.selected0To1`,
-            },
-          ];
-        } else if (numBugTypes < 4) {
-          setEncounterRewards({
-            guaranteedModifierTypeFuncs: [modifierTypes.QUICK_CLAW, modifierTypes.MAX_LURE, modifierTypes.ULTRA_BALL],
-            fillRemaining: false,
-          });
-          encounter.selectedOption!.dialogue!.selected = [
-            {
-              speaker: `${namespace}:speaker`,
-              text: `${namespace}:option.2.selected2To3`,
-            },
-          ];
-        } else if (numBugTypes < 6) {
-          setEncounterRewards({
-            guaranteedModifierTypeFuncs: [modifierTypes.GRIP_CLAW, modifierTypes.MAX_LURE, modifierTypes.ROGUE_BALL],
-            fillRemaining: false,
-          });
-          encounter.selectedOption!.dialogue!.selected = [
-            {
-              speaker: `${namespace}:speaker`,
-              text: `${namespace}:option.2.selected4To5`,
-            },
-          ];
-        } else {
-          // If the player has any evolution/form change items that are valid for their party,
-          // spawn one of those items in addition to Dynamax Band, Mega Band, and Master Ball
-          const modifierOptions: ModifierTypeOption[] = [generateModifierTypeOption(modifierTypes.MASTER_BALL)!];
-          const specialOptions: ModifierTypeOption[] = [];
-
-          if (!globalScene.findModifier(m => m instanceof MegaEvolutionAccessModifier)) {
-            modifierOptions.push(generateModifierTypeOption(modifierTypes.MEGA_BRACELET)!);
-          }
-          if (!globalScene.findModifier(m => m instanceof GigantamaxAccessModifier)) {
-            modifierOptions.push(generateModifierTypeOption(modifierTypes.DYNAMAX_BAND)!);
-          }
-          const nonRareEvolutionModifier = generateModifierTypeOption(modifierTypes.EVOLUTION_ITEM);
-          if (nonRareEvolutionModifier) {
-            specialOptions.push(nonRareEvolutionModifier);
-          }
-          const rareEvolutionModifier = generateModifierTypeOption(modifierTypes.RARE_EVOLUTION_ITEM);
-          if (rareEvolutionModifier) {
-            specialOptions.push(rareEvolutionModifier);
-          }
-          const formChangeModifier = generateModifierTypeOption(modifierTypes.FORM_CHANGE_ITEM);
-          if (formChangeModifier) {
-            specialOptions.push(formChangeModifier);
-          }
-          const rareFormChangeModifier = generateModifierTypeOption(modifierTypes.RARE_FORM_CHANGE_ITEM);
-          if (rareFormChangeModifier) {
-            specialOptions.push(rareFormChangeModifier);
-          }
-          if (specialOptions.length > 0) {
-            // TODO: should this use `randSeedItem`?
-            modifierOptions.push(specialOptions[randSeedInt(specialOptions.length)]);
-          }
-
-          setEncounterRewards({
-            guaranteedModifierTypeOptions: modifierOptions,
-            fillRemaining: false,
-          });
-          encounter.selectedOption!.dialogue!.selected = [
-            {
-              speaker: `${namespace}:speaker`,
-              text: `${namespace}:option.2.selected6`,
-            },
-          ];
-        }
-      })
-      .withOptionPhase(async () => {
-        // Player shows off their bug types
-        leaveEncounterWithoutBattle();
-      })
-      .build(),
-  )
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT)
-      .withPrimaryPokemonRequirement(
-        CombinationPokemonRequirement.Some(
-          // Meets one or both of the below reqs
-          new HeldItemRequirement(["BypassSpeedChanceModifier", "ContactHeldItemTransferChanceModifier"], 1),
-          new AttackTypeBoosterHeldItemTypeRequirement(PokemonType.BUG, 1),
-        ),
-      )
-      .withDialogue({
-        buttonLabel: `${namespace}:option.3.label`,
-        buttonTooltip: `${namespace}:option.3.tooltip`,
-        disabledButtonTooltip: `${namespace}:option.3.disabledTooltip`,
-        selected: [
-          {
-            text: `${namespace}:option.3.selected`,
-          },
-          {
-            speaker: `${namespace}:speaker`,
-            text: `${namespace}:option.3.selectedDialogue`,
-          },
-        ],
-        secondOptionPrompt: `${namespace}:option.3.selectPrompt`,
-      })
-      .withPreOptionPhase(async (): Promise<boolean> => {
-        const encounter = globalScene.currentBattle.mysteryEncounter!;
-
-        const onPokemonSelected = (pokemon: PlayerPokemon) => {
-          // Get Pokemon held items and filter for valid ones
-          const validItems = pokemon.getHeldItems().filter(item => {
-            return (
-              (item instanceof BypassSpeedChanceModifier
-                || item instanceof ContactHeldItemTransferChanceModifier
-                || (item instanceof AttackTypeBoosterModifier
-                  && (item.type as AttackTypeBoosterModifierType).moveType === PokemonType.BUG))
-              && item.isTransferable
-            );
-          });
-
-          return validItems.map((modifier: PokemonHeldItemModifier) => {
-            const option: OptionSelectItem = {
-              label: modifier.type.name,
-              handler: () => {
-                // Pokemon and item selected
-                encounter.setDialogueToken("selectedItem", modifier.type.name);
-                encounter.misc = {
-                  chosenPokemon: pokemon,
-                  chosenModifier: modifier,
-                };
-                return true;
-              },
-            };
-            return option;
-          });
-        };
-
-        const selectableFilter = (pokemon: Pokemon) => {
-          // If pokemon has valid item, it can be selected
-          const hasValidItem = pokemon.getHeldItems().some(item => {
-            return (
-              item instanceof BypassSpeedChanceModifier
-              || item instanceof ContactHeldItemTransferChanceModifier
-              || (item instanceof AttackTypeBoosterModifier
-                && (item.type as AttackTypeBoosterModifierType).moveType === PokemonType.BUG)
-            );
-          });
-          if (!hasValidItem) {
-            return getEncounterText(`${namespace}:option.3.invalidSelection`) ?? null;
-          }
-
-          return null;
-        };
-
-        return selectPokemonForOption(onPokemonSelected, undefined, selectableFilter);
-      })
-      .withOptionPhase(async () => {
-        const encounter = globalScene.currentBattle.mysteryEncounter!;
-        const modifier = encounter.misc.chosenModifier;
-        const chosenPokemon: PlayerPokemon = encounter.misc.chosenPokemon;
-
-        chosenPokemon.loseHeldItem(modifier, false);
-        globalScene.updateModifiers(true, true);
-
-        const bugNet = generateModifierTypeOption(modifierTypes.MYSTERY_ENCOUNTER_GOLDEN_BUG_NET)!;
-        bugNet.type.tier = ModifierTier.ROGUE;
-
-        setEncounterRewards({
-          guaranteedModifierTypeOptions: [bugNet],
-          guaranteedModifierTypeFuncs: [modifierTypes.REVIVER_SEED],
-          fillRemaining: false,
-        });
-        leaveEncounterWithoutBattle(true);
-      })
-      .build(),
-  )
+  .withOption(buildBattleOption(0))
+  .withOption(buildShowBugTypesOption(0))
+  .withOption(buildGiftBugItemOption(0))
   .withOutroDialogue([
     {
       text: `${namespace}:outro`,
@@ -668,10 +1061,11 @@ function getTrainerConfigForWave(waveIndex: number) {
   return config;
 }
 
-function doBugTypeMoveTutor(): Promise<void> {
+function doBugTypeMoveTutor(playerIndex: PlayerIndex, moveOptions: PokemonMove[]): Promise<void> {
   // biome-ignore lint/suspicious/noAsyncPromiseExecutor: TODO explain
   return new Promise<void>(async resolve => {
-    const moveOptions = globalScene.currentBattle.mysteryEncounter!.misc.moveTutorOptions;
+    globalScene.setActivePlayerIndex(playerIndex);
+    updateWindowType(playerIndex + 1);
     await showEncounterDialogue(`${namespace}:battleWon`, `${namespace}:speaker`);
 
     const moveInfoOverlay = new MoveInfoOverlay({
@@ -725,6 +1119,9 @@ function doBugTypeMoveTutor(): Promise<void> {
         "LearnMovePhase",
         result.selectedPokemonIndex,
         moveOptions[result.selectedOptionIndex].moveId,
+        undefined,
+        undefined,
+        playerIndex,
       );
     }
 

@@ -32,6 +32,7 @@ import { modifyPlayerPokemonBST } from "#mystery-encounters/encounter-pokemon-ut
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
+import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import { updateWindowType } from "#ui/ui-theme";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 
@@ -41,6 +42,7 @@ const namespace = "mysteryEncounters/theStrongStuff";
 // Halved for HP stat
 const HIGH_BST_REDUCTION_VALUE = 15;
 const BST_INCREASE_VALUE = 10;
+const MIN_PARTY_SIZE_FOR_STRONG_STUFF = 3;
 
 type StrongStuffOptionIndex = 1 | 2;
 
@@ -52,6 +54,22 @@ interface StrongStuffChoice {
 interface StrongStuffData {
   choices: StrongStuffChoice[];
   skipSelectedDialogueOnce?: boolean;
+}
+
+class StrongStuffSpawnRequirement extends EncounterSceneRequirement {
+  override meetsRequirement(): boolean {
+    if (!globalScene.twoPlayerMode) {
+      return globalScene.getPlayerParty().length >= MIN_PARTY_SIZE_FOR_STRONG_STUFF;
+    }
+
+    return ([0, 1] as PlayerIndex[]).every(
+      playerIndex => globalScene.getPlayerParty(playerIndex).length >= MIN_PARTY_SIZE_FOR_STRONG_STUFF,
+    );
+  }
+
+  override getDialogueToken(): [string, string] {
+    return ["partySize", MIN_PARTY_SIZE_FOR_STRONG_STUFF.toString()];
+  }
 }
 
 function getStrongStuffData(): StrongStuffData {
@@ -386,7 +404,7 @@ export const TheStrongStuffEncounter: MysteryEncounter = MysteryEncounterBuilder
 )
   .withEncounterTier(MysteryEncounterTier.COMMON)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
-  .withScenePartySizeRequirement(3, 6) // Must have at least 3 pokemon in party
+  .withSceneRequirement(new StrongStuffSpawnRequirement()) // Both 2P players must have at least 3 Pokemon
   .withMaxAllowedEncounters(1)
   .withHideWildIntroMessage(true)
   .withAutoHideIntroVisuals(false)

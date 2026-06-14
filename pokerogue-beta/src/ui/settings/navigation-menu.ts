@@ -33,6 +33,7 @@ export class NavigationManager {
       UiMode.SETTINGS,
       UiMode.SETTINGS_DISPLAY,
       UiMode.SETTINGS_AUDIO,
+      UiMode.SETTINGS_EVENTS,
       UiMode.SETTINGS_GAMEPAD,
       UiMode.SETTINGS_KEYBOARD,
     ];
@@ -40,6 +41,7 @@ export class NavigationManager {
       i18next.t("settings:general"),
       i18next.t("settings:display"),
       i18next.t("settings:audio"),
+      i18next.t("settings:events"),
       i18next.t("settings:gamepad"),
       i18next.t("settings:keyboard"),
     ];

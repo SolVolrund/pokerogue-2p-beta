@@ -1,5 +1,6 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
+import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { modifierTypes } from "#data/data-lists";
@@ -10,9 +11,11 @@ import { BerryType } from "#enums/berry-type";
 import { ModifierTier } from "#enums/modifier-tier";
 import { MoveId } from "#enums/move-id";
 import { MysteryEncounterMode } from "#enums/mystery-encounter-mode";
+import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { Nature } from "#enums/nature";
+import { PartyMemberStrength } from "#enums/party-member-strength";
 import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { Stat } from "#enums/stat";
@@ -30,11 +33,349 @@ import {
 } from "#mystery-encounters/encounter-phase-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
+import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
+import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
+import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
+import { trainerConfigs } from "#trainers/trainer-config";
+import { TrainerPartyTemplate } from "#trainers/trainer-party-template";
+import { updateWindowType } from "#ui/ui-theme";
+import { UiMode } from "#enums/ui-mode";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
 /** the i18n namespace for the encounter */
 const namespace = "mysteryEncounters/theWinstrateChallenge";
+
+const MIN_PARTY_SIZE_FOR_WINSTRATE = 3;
+
+type WinstrateOptionIndex = 1 | 2;
+
+interface WinstrateChoice {
+  playerIndex: PlayerIndex;
+  optionIndex: WinstrateOptionIndex;
+}
+
+interface WinstrateData {
+  choices: WinstrateChoice[];
+  battlePlayers: PlayerIndex[];
+  skipSelectedDialogueOnce?: boolean;
+}
+
+class WinstrateSpawnRequirement extends EncounterSceneRequirement {
+  override meetsRequirement(): boolean {
+    if (!globalScene.twoPlayerMode) {
+      return globalScene.getPlayerParty().length >= MIN_PARTY_SIZE_FOR_WINSTRATE;
+    }
+
+    return ([0, 1] as PlayerIndex[]).every(
+      playerIndex => globalScene.getPlayerParty(playerIndex).length >= MIN_PARTY_SIZE_FOR_WINSTRATE,
+    );
+  }
+
+  override getDialogueToken(): [string, string] {
+    return ["partySize", MIN_PARTY_SIZE_FOR_WINSTRATE.toString()];
+  }
+}
+
+function getWinstrateData(): WinstrateData {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  if (!encounter.misc || !Array.isArray(encounter.misc.choices)) {
+    encounter.misc = {
+      ...(encounter.misc ?? {}),
+      choices: [],
+      battlePlayers: [],
+    } satisfies WinstrateData;
+  }
+
+  return encounter.misc as WinstrateData;
+}
+
+function showWinstratePlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
+      slideInDescription: false,
+      overrideTitle: `Player ${playerIndex + 1}`,
+      overrideQuery: i18next.t(`${namespace}:query`),
+      overrideOptions: buildWinstratePlayerOptions(playerIndex),
+      startingCursorIndex,
+    });
+  });
+}
+
+function storeWinstrateChoice(optionIndex: WinstrateOptionIndex, playerIndex: PlayerIndex): boolean {
+  if (!globalScene.twoPlayerMode) {
+    return true;
+  }
+
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  const data = getWinstrateData();
+  data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
+  data.choices.push({ playerIndex, optionIndex });
+
+  if (playerIndex === 0) {
+    showWinstratePlayerMenu(1, optionIndex - 1);
+    return false;
+  }
+
+  data.skipSelectedDialogueOnce = true;
+  globalScene.setActivePlayerIndex(0);
+  updateWindowType(1);
+  return true;
+}
+
+function healWinstratePlayerParty(playerIndex: PlayerIndex): void {
+  for (const pokemon of globalScene.getPlayerParty(playerIndex)) {
+    pokemon.hp = pokemon.getMaxHp();
+    pokemon.resetStatus(true, false, false, true);
+    for (const move of pokemon.moveset) {
+      move.ppUsed = 0;
+    }
+    pokemon.updateInfo(true);
+  }
+}
+
+function getWinstrateTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
+  return playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+}
+
+async function hideWinstrateNonBattleTrainers(battlePlayers: PlayerIndex[]): Promise<void> {
+  if (!globalScene.twoPlayerMode) {
+    return;
+  }
+
+  const battlePlayerSet = new Set(battlePlayers);
+  await Promise.all(
+    ([0, 1] as PlayerIndex[])
+      .filter(playerIndex => !battlePlayerSet.has(playerIndex))
+      .map(
+        playerIndex =>
+          new Promise<void>(resolve => {
+            const trainerSprite = getWinstrateTrainerSprite(playerIndex);
+            globalScene.tweens.killTweensOf(trainerSprite);
+
+            if (!trainerSprite.visible) {
+              resolve();
+              return;
+            }
+
+            globalScene.tweens.add({
+              targets: trainerSprite,
+              x: -36,
+              duration: 500,
+              onComplete: () => {
+                trainerSprite.setVisible(false);
+                resolve();
+              },
+            });
+          }),
+      ),
+  );
+}
+
+function setWinstrateRefuseReward(playerIndex: PlayerIndex): void {
+  setEncounterRewards(
+    {
+      guaranteedModifierTypeFuncs: [modifierTypes.RARER_CANDY],
+      fillRemaining: false,
+    },
+    undefined,
+    () => healWinstratePlayerParty(playerIndex),
+    playerIndex,
+  );
+}
+
+function setWinstrateVictoryRewards(playerIndexes: PlayerIndex[]): void {
+  for (const playerIndex of playerIndexes) {
+    const newModifier = modifierTypes.VOUCHER_PREMIUM().newModifier();
+    globalScene.addModifier(newModifier, false, true, false, true, undefined, playerIndex);
+    const machoBrace = generateModifierTypeOption(modifierTypes.MYSTERY_ENCOUNTER_MACHO_BRACE)!;
+    machoBrace.type.tier = ModifierTier.MASTER;
+    setEncounterRewards(
+      {
+        guaranteedModifierTypeOptions: [machoBrace],
+        fillRemaining: false,
+      },
+      undefined,
+      undefined,
+      playerIndex,
+    );
+  }
+}
+
+function cloneWinstrateTrainerConfig(trainerType: TrainerType, partySize: number) {
+  return trainerConfigs[trainerType]
+    .clone()
+    .setPartyTemplates(new TrainerPartyTemplate(partySize, PartyMemberStrength.STRONG));
+}
+
+function getTrainerTypeForConfig(config: EnemyPartyConfig): TrainerType {
+  return config.trainerType ?? config.trainerConfig!.trainerType;
+}
+
+function createSoloDoubleTrainerConfig(config: EnemyPartyConfig): EnemyPartyConfig {
+  const trainerType = getTrainerTypeForConfig(config);
+  const ret: EnemyPartyConfig = {
+    trainerConfig: cloneWinstrateTrainerConfig(trainerType, config.pokemonConfigs?.length ?? 2),
+    doubleBattle: true,
+    forceDoubleBattle: true,
+  };
+
+  if (config.pokemonConfigs) {
+    ret.pokemonConfigs = config.pokemonConfigs;
+  }
+
+  return ret;
+}
+
+function createPairedTrainerConfig(mainConfig: EnemyPartyConfig, partnerConfig: EnemyPartyConfig): EnemyPartyConfig {
+  const mainPokemonConfigs = mainConfig.pokemonConfigs ?? [];
+  const partnerPokemonConfigs = partnerConfig.pokemonConfigs ?? [];
+  const pokemonConfigs: NonNullable<EnemyPartyConfig["pokemonConfigs"]> = [];
+  const mainTrainerType = getTrainerTypeForConfig(mainConfig);
+  const partnerTrainerType = getTrainerTypeForConfig(partnerConfig);
+  const maxPartySize = Math.max(mainPokemonConfigs.length, partnerPokemonConfigs.length);
+  for (let i = 0; i < maxPartySize; i++) {
+    if (i < mainPokemonConfigs.length) {
+      pokemonConfigs.push(mainPokemonConfigs[i]);
+    }
+    if (i < partnerPokemonConfigs.length) {
+      pokemonConfigs.push(partnerPokemonConfigs[i]);
+    }
+  }
+
+  return {
+    trainerConfig: cloneWinstrateTrainerConfig(mainTrainerType, mainPokemonConfigs.length),
+    partnerTrainerConfig: cloneWinstrateTrainerConfig(partnerTrainerType, partnerPokemonConfigs.length),
+    pokemonConfigs,
+    doubleBattle: true,
+  };
+}
+
+function loadSinglePlayerWinstrateConfigs(): void {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  encounter.enemyPartyConfigs = [];
+  encounter.enemyPartyConfigs.push(getVitoTrainerConfig());
+  encounter.enemyPartyConfigs.push(getVickyTrainerConfig());
+  encounter.enemyPartyConfigs.push(getViviTrainerConfig());
+  encounter.enemyPartyConfigs.push(getVictoriaTrainerConfig());
+  encounter.enemyPartyConfigs.push(getVictorTrainerConfig());
+}
+
+function loadTwoPlayerWinstrateConfigs(battlePlayers: PlayerIndex[]): void {
+  if (battlePlayers.length < 2) {
+    loadSinglePlayerWinstrateConfigs();
+    return;
+  }
+
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const victor = getVictorTrainerConfig();
+  const victoria = getVictoriaTrainerConfig();
+  const vivi = getViviTrainerConfig();
+  const vicky = getVickyTrainerConfig();
+  const vito = getVitoTrainerConfig();
+
+  encounter.enemyPartyConfigs = [];
+  encounter.enemyPartyConfigs.push(createPairedTrainerConfig(vito, vicky));
+  encounter.enemyPartyConfigs.push(createPairedTrainerConfig(vicky, vivi));
+  encounter.enemyPartyConfigs.push(createPairedTrainerConfig(vivi, victoria));
+  encounter.enemyPartyConfigs.push(createPairedTrainerConfig(victoria, victor));
+  encounter.enemyPartyConfigs.push(createSoloDoubleTrainerConfig(victor));
+}
+
+async function runTwoPlayerWinstrateChoices(): Promise<boolean> {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const data = getWinstrateData();
+  const choices = data.choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
+  const battlePlayers = choices.filter(choice => choice.optionIndex === 1).map(choice => choice.playerIndex);
+  const refusePlayers = choices.filter(choice => choice.optionIndex === 2).map(choice => choice.playerIndex);
+
+  for (const choice of choices) {
+    globalScene.setActivePlayerIndex(choice.playerIndex);
+    updateWindowType(choice.playerIndex + 1);
+    await showEncounterDialogue(`${namespace}:option.${choice.optionIndex}.selected`, `${namespace}:speaker`);
+  }
+
+  for (const playerIndex of refusePlayers) {
+    setWinstrateRefuseReward(playerIndex);
+  }
+
+  if (battlePlayers.length === 0) {
+    leaveEncounterWithoutBattle();
+    return true;
+  }
+
+  data.battlePlayers = battlePlayers;
+  globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
+  loadTwoPlayerWinstrateConfigs(battlePlayers);
+
+  encounter.doContinueEncounter = async () => {
+    await endTrainerBattleAndShowDialogue();
+  };
+  await transitionMysteryEncounterIntroVisuals(true, false);
+  await hideWinstrateNonBattleTrainers(battlePlayers);
+  await spawnNextTrainerOrEndEncounter();
+  return true;
+}
+
+function buildWinstrateAcceptOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
+      buttonLabel: `${namespace}:option.1.label`,
+      buttonTooltip: `${namespace}:option.1.tooltip`,
+      selected: [
+        {
+          speaker: `${namespace}:speaker`,
+          text: `${namespace}:option.1.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => storeWinstrateChoice(1, playerIndex))
+    .withOptionPhase(async () => (globalScene.twoPlayerMode ? runTwoPlayerWinstrateChoices() : runOnePlayerWinstrateAccept()))
+    .build();
+}
+
+function buildWinstrateRefuseOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
+      buttonLabel: `${namespace}:option.2.label`,
+      buttonTooltip: `${namespace}:option.2.tooltip`,
+      selected: [
+        {
+          speaker: `${namespace}:speaker`,
+          text: `${namespace}:option.2.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => storeWinstrateChoice(2, playerIndex))
+    .withOptionPhase(async () => (globalScene.twoPlayerMode ? runTwoPlayerWinstrateChoices() : runOnePlayerWinstrateRefuse()))
+    .build();
+}
+
+function buildWinstratePlayerOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
+  return [buildWinstrateAcceptOption(playerIndex), buildWinstrateRefuseOption(playerIndex)];
+}
+
+async function runOnePlayerWinstrateAccept(): Promise<void> {
+  globalScene.currentBattle.mysteryEncounter!.doContinueEncounter = async () => {
+    await endTrainerBattleAndShowDialogue();
+  };
+  await transitionMysteryEncounterIntroVisuals(true, false);
+  await spawnNextTrainerOrEndEncounter();
+}
+
+async function runOnePlayerWinstrateRefuse(): Promise<void> {
+  globalScene.phaseManager.unshiftNew("PartyHealPhase", true);
+  setEncounterRewards({
+    guaranteedModifierTypeFuncs: [modifierTypes.RARER_CANDY],
+    fillRemaining: false,
+  });
+  leaveEncounterWithoutBattle();
+}
 
 /**
  * The Winstrate Challenge encounter.
@@ -46,7 +387,7 @@ export const TheWinstrateChallengeEncounter: MysteryEncounter = MysteryEncounter
 )
   .withEncounterTier(MysteryEncounterTier.ROGUE)
   .withSceneWaveRangeRequirement(100, CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES[1])
-  .withScenePartySizeRequirement(3, 6)
+  .withSceneRequirement(new WinstrateSpawnRequirement())
   .withMaxAllowedEncounters(1)
   .withIntroSpriteConfigs([
     {
@@ -95,14 +436,11 @@ export const TheWinstrateChallengeEncounter: MysteryEncounter = MysteryEncounter
   ])
   .withAutoHideIntroVisuals(false)
   .withOnInit(() => {
-    const encounter = globalScene.currentBattle.mysteryEncounter!;
-
-    // Loaded back to front for pop() operations
-    encounter.enemyPartyConfigs.push(getVitoTrainerConfig());
-    encounter.enemyPartyConfigs.push(getVickyTrainerConfig());
-    encounter.enemyPartyConfigs.push(getViviTrainerConfig());
-    encounter.enemyPartyConfigs.push(getVictoriaTrainerConfig());
-    encounter.enemyPartyConfigs.push(getVictorTrainerConfig());
+    loadSinglePlayerWinstrateConfigs();
+    globalScene.currentBattle.mysteryEncounter!.misc = {
+      choices: [],
+      battlePlayers: [],
+    } satisfies WinstrateData;
 
     return true;
   })
@@ -110,72 +448,32 @@ export const TheWinstrateChallengeEncounter: MysteryEncounter = MysteryEncounter
   .withTitle(`${namespace}:title`)
   .withDescription(`${namespace}:description`)
   .withQuery(`${namespace}:query`)
-  .withSimpleOption(
-    {
-      buttonLabel: `${namespace}:option.1.label`,
-      buttonTooltip: `${namespace}:option.1.tooltip`,
-      selected: [
-        {
-          speaker: `${namespace}:speaker`,
-          text: `${namespace}:option.1.selected`,
-        },
-      ],
-    },
-    async () => {
-      // Spawn 5 trainer battles back to back with Macho Brace in rewards
-      globalScene.currentBattle.mysteryEncounter!.doContinueEncounter = async () => {
-        await endTrainerBattleAndShowDialogue();
-      };
-      await transitionMysteryEncounterIntroVisuals(true, false);
-      await spawnNextTrainerOrEndEncounter();
-    },
-  )
-  .withSimpleOption(
-    {
-      buttonLabel: `${namespace}:option.2.label`,
-      buttonTooltip: `${namespace}:option.2.tooltip`,
-      selected: [
-        {
-          speaker: `${namespace}:speaker`,
-          text: `${namespace}:option.2.selected`,
-        },
-      ],
-    },
-    async () => {
-      // Refuse the challenge, they full heal the party and give the player a Rarer Candy
-      globalScene.phaseManager.unshiftNew("PartyHealPhase", true);
-      setEncounterRewards({
-        guaranteedModifierTypeFuncs: [modifierTypes.RARER_CANDY],
-        fillRemaining: false,
-      });
-      leaveEncounterWithoutBattle();
-    },
-  )
+  .withOption(buildWinstrateAcceptOption(0))
+  .withOption(buildWinstrateRefuseOption(0))
   .build();
 
 async function spawnNextTrainerOrEndEncounter() {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const nextConfig = encounter.enemyPartyConfigs.pop();
   if (nextConfig) {
+    const battlePlayers = (getWinstrateData().battlePlayers.length
+      ? getWinstrateData().battlePlayers
+      : [globalScene.activePlayerIndex]) as PlayerIndex[];
+    globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
     await initBattleWithEnemyConfig(nextConfig);
   } else {
     await transitionMysteryEncounterIntroVisuals(false, false);
     await showEncounterDialogue(`${namespace}:victory`, `${namespace}:speaker`);
 
-    // Give 10x Voucher
-    const newModifier = modifierTypes.VOUCHER_PREMIUM().newModifier();
-    globalScene.addModifier(newModifier);
+    const battlePlayers = (getWinstrateData().battlePlayers.length
+      ? getWinstrateData().battlePlayers
+      : [globalScene.activePlayerIndex]) as PlayerIndex[];
+    setWinstrateVictoryRewards(battlePlayers);
     audioManager.playSound("se/item_fanfare");
-    await showEncounterText(i18next.t("battle:rewardGain", { modifierName: newModifier?.type.name }));
+    await showEncounterText(i18next.t("battle:rewardGain", { modifierName: modifierTypes.VOUCHER_PREMIUM().name }));
 
     await showEncounterDialogue(`${namespace}:victory2`, `${namespace}:speaker`);
     globalScene.ui.clearText(); // Clears "Winstrate" title from screen as rewards get animated in
-    const machoBrace = generateModifierTypeOption(modifierTypes.MYSTERY_ENCOUNTER_MACHO_BRACE)!;
-    machoBrace.type.tier = ModifierTier.MASTER;
-    setEncounterRewards({
-      guaranteedModifierTypeOptions: [machoBrace],
-      fillRemaining: false,
-    });
     encounter.doContinueEncounter = undefined;
     leaveEncounterWithoutBattle(false, MysteryEncounterMode.NO_BATTLE);
   }
@@ -211,20 +509,25 @@ function endTrainerBattleAndShowDialogue(): Promise<void> {
       }
       playerField.forEach((_, p) => globalScene.phaseManager.unshiftNew("ReturnPhase", p));
 
-      for (const pokemon of globalScene.getPlayerParty()) {
-        // Only trigger form change when Eiscue is in Noice form
-        // Hardcoded Eiscue for now in case it is fused with another pokemon
-        if (
-          pokemon.species.speciesId === SpeciesId.EISCUE
-          && pokemon.hasAbility(AbilityId.ICE_FACE)
-          && pokemon.formIndex === 1
-        ) {
-          globalScene.triggerPokemonFormChange(pokemon, SpeciesFormChangeAbilityTrigger);
-        }
+      const battlePlayers = (getWinstrateData().battlePlayers.length
+        ? getWinstrateData().battlePlayers
+        : [globalScene.activePlayerIndex]) as PlayerIndex[];
+      for (const playerIndex of battlePlayers) {
+        for (const pokemon of globalScene.getPlayerParty(playerIndex)) {
+          // Only trigger form change when Eiscue is in Noice form
+          // Hardcoded Eiscue for now in case it is fused with another pokemon
+          if (
+            pokemon.species.speciesId === SpeciesId.EISCUE
+            && pokemon.hasAbility(AbilityId.ICE_FACE)
+            && pokemon.formIndex === 1
+          ) {
+            globalScene.triggerPokemonFormChange(pokemon, SpeciesFormChangeAbilityTrigger);
+          }
 
-        // Each trainer battle is supposed to be a new fight, so reset all per-battle activation effects
-        pokemon.resetBattleAndWaveData();
-        applyAbAttrs("PostBattleInitAbAttr", { pokemon });
+          // Each trainer battle is supposed to be a new fight, so reset all per-battle activation effects
+          pokemon.resetBattleAndWaveData();
+          applyAbAttrs("PostBattleInitAbAttr", { pokemon });
+        }
       }
 
       globalScene.phaseManager.unshiftNew("ShowTrainerPhase");

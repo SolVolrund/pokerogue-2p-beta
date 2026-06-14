@@ -58,6 +58,22 @@ class PlayerHealthyPokemonRequirement extends EncounterSceneRequirement {
   }
 }
 
+class DarkDealSpawnRequirement extends EncounterSceneRequirement {
+  override meetsRequirement(): boolean {
+    if (!globalScene.twoPlayerMode) {
+      return globalScene.getPokemonAllowedInBattle().length >= MIN_HEALTHY_POKEMON_FOR_DARK_DEAL;
+    }
+
+    return ([0, 1] as PlayerIndex[]).some(
+      playerIndex => globalScene.getPokemonAllowedInBattle(playerIndex).length >= MIN_HEALTHY_POKEMON_FOR_DARK_DEAL,
+    );
+  }
+
+  override getDialogueToken(): [string, string] {
+    return ["minHealthyPokemon", MIN_HEALTHY_POKEMON_FOR_DARK_DEAL.toString()];
+  }
+}
+
 /** Exclude Ultra Beasts (inludes Cosmog/Solgaleo/Lunala/Necrozma), Paradox (includes Miraidon/Koraidon), Eternatus, and Mythicals */
 const excludedBosses = [
   SpeciesId.ETERNATUS,
@@ -388,7 +404,7 @@ export const DarkDealEncounter: MysteryEncounter = MysteryEncounterBuilder.withE
     },
   ])
   .withSceneWaveRangeRequirement(30, CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES[1])
-  .withScenePartySizeRequirement(2, 6, true) // Must have at least 2 pokemon in party
+  .withSceneRequirement(new DarkDealSpawnRequirement()) // Must have at least one player who can risk the deal
   .withCatchAllowed(true)
   .setLocalizationKey(`${namespace}`)
   .withTitle(`${namespace}:title`)

@@ -150,7 +150,7 @@ const humanTransitableBiomeEncounters: MysteryEncounterType[] = [
   MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
   MysteryEncounterType.SHADY_VITAMIN_DEALER,
   MysteryEncounterType.THE_POKEMON_SALESMAN,
-  // MysteryEncounterType.AN_OFFER_YOU_CANT_REFUSE, Disabled
+  MysteryEncounterType.AN_OFFER_YOU_CANT_REFUSE,
   MysteryEncounterType.THE_WINSTRATE_CHALLENGE,
   MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
 ];

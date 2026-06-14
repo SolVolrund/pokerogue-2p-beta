@@ -148,6 +148,8 @@ export interface EnemyPartyConfig {
   partnerFemale?: boolean;
   /** `true` will prevent player from switching */
   disableSwitch?: boolean;
+  /** Allows one visible trainer to send two active Pokemon without requiring a double trainer sprite. */
+  forceDoubleBattle?: boolean;
   /** `true` or leaving undefined will increment dex seen count for the encounter battle, `false` will not */
   countAsSeen?: boolean;
 }
@@ -186,7 +188,7 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
       || partnerTrainerType != null
       || !!partnerTrainerConfig
       || (trainerConfig.hasDouble && !!partyConfig.doubleBattle);
-    doubleBattle = doubleTrainer;
+    doubleBattle = partyConfig.forceDoubleBattle ? true : doubleTrainer;
     const trainerFemale = partyConfig.female == null ? !!randSeedInt(2) : partyConfig.female;
     const partnerVariant =
       partyConfig.partnerFemale == null

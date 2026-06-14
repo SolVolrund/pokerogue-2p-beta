@@ -47,6 +47,7 @@ import { SavingIconContainer } from "#ui/saving-icon-handler";
 import { SessionReloadModalUiHandler } from "#ui/session-reload-modal-ui-handler";
 import { SettingsAudioUiHandler } from "#ui/settings-audio-ui-handler";
 import { SettingsDisplayUiHandler } from "#ui/settings-display-ui-handler";
+import { SettingsEventsUiHandler } from "#ui/settings-events-ui-handler";
 import { SettingsGamepadUiHandler } from "#ui/settings-gamepad-ui-handler";
 import { SettingsKeyboardUiHandler } from "#ui/settings-keyboard-ui-handler";
 import { SettingsUiHandler } from "#ui/settings-ui-handler";
@@ -89,6 +90,7 @@ const noTransitionModes = [
   UiMode.KEYBOARD_BINDING,
   UiMode.SETTINGS,
   UiMode.SETTINGS_AUDIO,
+  UiMode.SETTINGS_EVENTS,
   UiMode.SETTINGS_DISPLAY,
   UiMode.SETTINGS_GAMEPAD,
   UiMode.SETTINGS_KEYBOARD,
@@ -182,6 +184,7 @@ export class UI extends Phaser.GameObjects.Container {
       new AdminUiHandler(),
       new MysteryEncounterUiHandler(),
       new ChangePasswordFormUiHandler(),
+      new SettingsEventsUiHandler(),
     ];
   }
 

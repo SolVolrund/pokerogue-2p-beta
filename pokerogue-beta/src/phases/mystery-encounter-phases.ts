@@ -57,6 +57,7 @@ export class MysteryEncounterPhase extends Phase {
 
     const encounter = globalScene.currentBattle.mysteryEncounter!;
     encounter.updateSeedOffset();
+    this.normalizeTwoPlayerTrainerSprites();
 
     if (!this.optionSelectSettings) {
       // Sets flag that ME was encountered, only if this is not a followup option select phase
@@ -68,6 +69,26 @@ export class MysteryEncounterPhase extends Phase {
 
     // Initiates encounter dialogue window and option select
     globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, this.optionSelectSettings);
+  }
+
+  private normalizeTwoPlayerTrainerSprites(): void {
+    if (!globalScene.twoPlayerMode || this.optionSelectSettings) {
+      return;
+    }
+
+    globalScene.tweens.killTweensOf(globalScene.trainer);
+    globalScene.tweens.killTweensOf(globalScene.trainerPartner);
+
+    globalScene.trainer
+      .setVisible(true)
+      .setTexture(globalScene.getTrainerBackTextureKey(0))
+      .setFrame(0)
+      .setPosition(90, 186);
+    globalScene.trainerPartner
+      .setVisible(true)
+      .setTexture(globalScene.getTrainerBackTextureKey(1))
+      .setFrame(0)
+      .setPosition(122, 186);
   }
 
   /**

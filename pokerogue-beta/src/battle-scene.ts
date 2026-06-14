@@ -115,6 +115,7 @@ import { achvs, ModifierAchv, MoneyAchv } from "#system/achv";
 import { GameData } from "#system/game-data";
 import { initGameSpeed } from "#system/game-speed";
 import type { PokemonData } from "#system/pokemon-data";
+import { isMysteryEncounterEnabledBySettings } from "#system/settings-events";
 import { MusicPreference } from "#system/settings";
 import type { Voucher } from "#system/voucher";
 import { VoucherType, vouchers } from "#system/voucher";
@@ -179,6 +180,7 @@ const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.FIERY_FALLOUT,
   MysteryEncounterType.THE_STRONG_STUFF,
   MysteryEncounterType.THE_POKEMON_SALESMAN,
+  MysteryEncounterType.AN_OFFER_YOU_CANT_REFUSE,
   MysteryEncounterType.DELIBIRDY,
   MysteryEncounterType.ABSOLUTE_AVARICE,
   MysteryEncounterType.A_TRAINERS_TEST,
@@ -187,9 +189,15 @@ const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.CLOWNING_AROUND,
   MysteryEncounterType.PART_TIMER,
   MysteryEncounterType.DANCING_LESSONS,
+  MysteryEncounterType.WEIRD_DREAM,
+  MysteryEncounterType.THE_WINSTRATE_CHALLENGE,
+  MysteryEncounterType.TELEPORTING_HIJINKS,
+  MysteryEncounterType.BUG_TYPE_SUPERFAN,
+  MysteryEncounterType.FUN_AND_GAMES,
+  MysteryEncounterType.UNCOMMON_BREED,
+  MysteryEncounterType.GLOBAL_TRADE_SYSTEM,
+  MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
 ];
-const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_TYPE = MysteryEncounterType.DANCING_LESSONS;
-const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_WAVE = STARTING_WAVE + 1;
 
 export interface PlayerRunState {
   party: PlayerPokemon[];
@@ -1810,12 +1818,6 @@ export class BattleScene extends SceneBase {
    */
   private handleNonFixedBattle(resolved: NewBattleInitialProps): void {
     const { waveIndex } = resolved;
-
-    if (this.twoPlayerMode && waveIndex === TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_WAVE) {
-      resolved.battleType = BattleType.MYSTERY_ENCOUNTER;
-      resolved.mysteryEncounterType = TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_TYPE;
-      return;
-    }
 
     resolved.battleType =
       !this.gameMode.hasTrainers || activeOverrides.DISABLE_STANDARD_TRAINERS_OVERRIDE
@@ -3944,6 +3946,13 @@ export class BattleScene extends SceneBase {
     return !this.twoPlayerMode || TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST.includes(encounterType);
   }
 
+  private isMysteryEncounterEnabled(encounterType: MysteryEncounterType, canBypass = false): boolean {
+    return (
+      this.isMysteryEncounterAllowedInTwoPlayer(encounterType)
+      && (canBypass || isMysteryEncounterEnabledBySettings(encounterType))
+    );
+  }
+
   /**
    * Loads or generates a mystery encounter
    * @param encounterType used to load session encounter when restarting game, etc.
@@ -3956,7 +3965,7 @@ export class BattleScene extends SceneBase {
     if (
       activeOverrides.MYSTERY_ENCOUNTER_OVERRIDE != null
       && Object.hasOwn(allMysteryEncounters, activeOverrides.MYSTERY_ENCOUNTER_OVERRIDE)
-      && this.isMysteryEncounterAllowedInTwoPlayer(activeOverrides.MYSTERY_ENCOUNTER_OVERRIDE)
+      && this.isMysteryEncounterEnabled(activeOverrides.MYSTERY_ENCOUNTER_OVERRIDE, canBypass)
     ) {
       encounter = allMysteryEncounters[activeOverrides.MYSTERY_ENCOUNTER_OVERRIDE];
       if (canBypass) {
@@ -3967,12 +3976,12 @@ export class BattleScene extends SceneBase {
       return encounter;
     } else if (getDailyMysteryEncounter(this.currentBattle.waveIndex) == null) {
       encounter =
-        encounterType == null || !this.isMysteryEncounterAllowedInTwoPlayer(encounterType)
+        encounterType == null || !this.isMysteryEncounterEnabled(encounterType)
           ? null
           : allMysteryEncounters[encounterType];
     } else {
       const dailyMysteryEncounter = getDailyMysteryEncounter(this.currentBattle.waveIndex)!;
-      encounter = this.isMysteryEncounterAllowedInTwoPlayer(dailyMysteryEncounter)
+      encounter = this.isMysteryEncounterEnabled(dailyMysteryEncounter)
         ? allMysteryEncounters[dailyMysteryEncounter]
         : null;
     }
@@ -3985,7 +3994,7 @@ export class BattleScene extends SceneBase {
       while (i < queuedEncounters.length && encounter) {
         const candidate = queuedEncounters[i];
         const forcedChance = candidate.spawnPercent;
-        if (this.isMysteryEncounterAllowedInTwoPlayer(candidate.type) && randSeedInt(100) < forcedChance) {
+        if (this.isMysteryEncounterEnabled(candidate.type) && randSeedInt(100) < forcedChance) {
           encounter = allMysteryEncounters[candidate.type];
         }
 
@@ -4044,7 +4053,7 @@ export class BattleScene extends SceneBase {
     while (availableEncounters.length === 0 && tier !== null) {
       availableEncounters = biomeMysteryEncounters
         .filter(encounterType => {
-          if (!this.isMysteryEncounterAllowedInTwoPlayer(encounterType)) {
+          if (!this.isMysteryEncounterEnabled(encounterType)) {
             return false;
           }
           const encounterCandidate = allMysteryEncounters[encounterType];
@@ -4097,8 +4106,14 @@ export class BattleScene extends SceneBase {
     // If absolutely no encounters are available, spawn 0th encounter
     if (availableEncounters.length === 0) {
       const fallbackEncounterType = this.twoPlayerMode
-        ? TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST[0]
-        : MysteryEncounterType.MYSTERIOUS_CHALLENGERS;
+        ? (TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST.find(type => isMysteryEncounterEnabledBySettings(type))
+          ?? TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST[0])
+        : isMysteryEncounterEnabledBySettings(MysteryEncounterType.MYSTERIOUS_CHALLENGERS)
+          ? MysteryEncounterType.MYSTERIOUS_CHALLENGERS
+          : (Object.values(MysteryEncounterType).find(
+            (type): type is MysteryEncounterType =>
+              typeof type === "number" && isMysteryEncounterEnabledBySettings(type),
+          ) ?? MysteryEncounterType.MYSTERIOUS_CHALLENGERS);
       console.log(`No Mystery Encounters found, falling back to ${MysteryEncounterType[fallbackEncounterType]}.`);
       encounter = new MysteryEncounter(allMysteryEncounters[fallbackEncounterType]);
       encounter.populateDialogueTokensFromRequirements();
