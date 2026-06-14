@@ -202,10 +202,26 @@ function setStrongStuffBattleReward(playerIndex: PlayerIndex): void {
   );
 }
 
-async function applyStrongStuffApproachEffect(playerIndex: PlayerIndex): Promise<void> {
+function getStrongStuffTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
+  return playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+}
+
+function hideStrongStuffNonBattleTrainers(battlePlayers: PlayerIndex[]): void {
+  if (!globalScene.twoPlayerMode) {
+    return;
+  }
+
+  ([0, 1] as PlayerIndex[])
+    .filter(playerIndex => !battlePlayers.includes(playerIndex))
+    .forEach(playerIndex => {
+      const trainerSprite = getStrongStuffTrainerSprite(playerIndex);
+      globalScene.tweens.killTweensOf(trainerSprite);
+      trainerSprite.setVisible(false);
+    });
+}
+
+function applyStrongStuffApproachStatChanges(playerIndex: PlayerIndex): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
 
   const sortedParty = globalScene
     .getPlayerParty(playerIndex)
@@ -227,8 +243,24 @@ async function applyStrongStuffApproachEffect(playerIndex: PlayerIndex): Promise
 
   encounter.setDialogueToken("reductionValue", HIGH_BST_REDUCTION_VALUE.toString());
   encounter.setDialogueToken("increaseValue", BST_INCREASE_VALUE.toString());
+}
+
+async function applyStrongStuffApproachEffect(playerIndex: PlayerIndex): Promise<void> {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+  applyStrongStuffApproachStatChanges(playerIndex);
   await showEncounterText(`${namespace}:option.1.selected2`, null, undefined, true);
   setEncounterRewards({ fillRemaining: true }, undefined, undefined, playerIndex);
+}
+
+function queueStrongStuffPostBattleApproachEffects(approachPlayers: PlayerIndex[]): void {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  encounter.onRewards = async () => {
+    for (const playerIndex of approachPlayers) {
+      await applyStrongStuffApproachEffect(playerIndex);
+    }
+    encounter.onRewards = undefined;
+  };
 }
 
 function buildStrongStuffApproachOption(playerIndex: PlayerIndex) {
@@ -306,7 +338,7 @@ async function runTwoPlayerStrongStuffChoices(): Promise<boolean> {
     await showEncounterText(`${namespace}:option.${choice.optionIndex}.selected`);
   }
 
-  if (approachChoices.length > 0) {
+  if (approachChoices.length > 0 && battleChoices.length === 0) {
     globalScene.time.delayedCall(750, () => {
       transitionMysteryEncounterIntroVisuals(true, true, 50);
     });
@@ -334,8 +366,12 @@ async function runTwoPlayerStrongStuffChoices(): Promise<boolean> {
 
   encounter.dialogue.outro = [];
   globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
+  if (approachChoices.length > 0) {
+    queueStrongStuffPostBattleApproachEffects(approachChoices.map(choice => choice.playerIndex));
+  }
   queueShuckleStartOfBattleEffects(battlePlayers, shuckleCount);
   await transitionMysteryEncounterIntroVisuals(true, true, 500);
+  hideStrongStuffNonBattleTrainers(battlePlayers);
   await initBattleWithEnemyConfig(createShuckleEnemyPartyConfig(shuckleCount));
   return true;
 }

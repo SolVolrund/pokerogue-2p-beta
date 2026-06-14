@@ -931,7 +931,7 @@ export function setSetting(setting: string, value: number): boolean {
       if (globalScene.gameData) {
         const female = Setting[index].options[value].value === "Girl";
         globalScene.getPlayerGameData(0).gender = female ? PlayerGender.FEMALE : PlayerGender.MALE;
-        globalScene.trainer.setTexture(globalScene.getTrainerBackTextureKey(0));
+        globalScene.trainer?.setTexture(globalScene.getTrainerBackTextureKey(0));
       } else {
         return false;
       }
@@ -940,7 +940,7 @@ export function setSetting(setting: string, value: number): boolean {
       globalScene.twoPlayerGuestGender = Setting[index].options[value].value === "Girl"
         ? PlayerGender.FEMALE
         : PlayerGender.MALE;
-      globalScene.trainerPartner.setTexture(globalScene.getTrainerBackTextureKey(1));
+      globalScene.trainerPartner?.setTexture(globalScene.getTrainerBackTextureKey(1));
       break;
     case SettingKeys.Touch_Controls: {
       globalScene.enableTouchControls = Setting[index].options[value].value !== "Disabled" && hasTouchscreen();

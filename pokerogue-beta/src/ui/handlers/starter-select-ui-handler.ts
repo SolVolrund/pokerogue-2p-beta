@@ -4531,9 +4531,9 @@ export class StarterSelectUiHandler extends MessageUiHandler {
             const startRun = () => {
               globalScene.money = globalScene.gameMode.getStartingMoney();
               const starters = this.starters.slice(0);
-              ui.setMode(UiMode.STARTER_SELECT);
               const originalStarterSelectCallback = this.starterSelectCallback;
               this.starterSelectCallback = null;
+              ui.setMode(UiMode.STARTER_SELECT);
               originalStarterSelectCallback?.(starters);
             };
             startRun();

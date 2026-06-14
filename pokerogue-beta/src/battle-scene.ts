@@ -178,9 +178,13 @@ const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.LOST_AT_SEA,
   MysteryEncounterType.FIERY_FALLOUT,
   MysteryEncounterType.THE_STRONG_STUFF,
+  MysteryEncounterType.THE_POKEMON_SALESMAN,
+  MysteryEncounterType.DELIBIRDY,
+  MysteryEncounterType.ABSOLUTE_AVARICE,
+  MysteryEncounterType.A_TRAINERS_TEST,
 ];
-const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_TYPE = MysteryEncounterType.THE_STRONG_STUFF;
-const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_WAVE = STARTING_WAVE;
+const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_TYPE = MysteryEncounterType.A_TRAINERS_TEST;
+const TWO_PLAYER_TEST_MYSTERY_ENCOUNTER_WAVE = STARTING_WAVE + 1;
 
 export interface PlayerRunState {
   party: PlayerPokemon[];

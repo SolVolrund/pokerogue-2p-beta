@@ -1,15 +1,20 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
+import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { modifierTypes } from "#data/data-lists";
+import { BerryType } from "#enums/berry-type";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
+import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
+import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import type { PokemonHeldItemModifier, PokemonInstantReviveModifier } from "#modifiers/modifier";
 import {
+  AttackTypeBoosterModifier,
   BerryModifier,
   HealingBoosterModifier,
   LevelIncrementBoosterModifier,
@@ -22,7 +27,6 @@ import {
   generateModifierType,
   leaveEncounterWithoutBattle,
   selectPokemonForOption,
-  updatePlayerMoney,
 } from "#mystery-encounters/encounter-phase-utils";
 import { applyModifierTypeToPlayerPokemon } from "#mystery-encounters/encounter-pokemon-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
@@ -30,10 +34,12 @@ import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import {
   CombinationPokemonRequirement,
+  EncounterSceneRequirement,
   HeldItemRequirement,
   MoneyRequirement,
 } from "#mystery-encounters/mystery-encounter-requirements";
 import type { OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
+import { updateWindowType } from "#ui/ui-theme";
 import { randSeedItem } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
@@ -55,22 +61,415 @@ const OPTION_3_DISALLOWED_MODIFIERS = [
 
 const DELIBIRDY_MONEY_PRICE_MULTIPLIER = 2;
 
-const doEventReward = () => {
+type DelibirdyOptionIndex = 1 | 2 | 3;
+
+interface DelibirdyChoice {
+  playerIndex: PlayerIndex;
+  optionIndex: DelibirdyOptionIndex;
+  chosenPokemon?: PlayerPokemon;
+  chosenModifier?: PokemonHeldItemModifier;
+  cost?: number;
+}
+
+interface DelibirdyData {
+  choices: DelibirdyChoice[];
+  selectingPlayerIndex?: PlayerIndex;
+  skipSelectedDialogueOnce?: boolean;
+}
+
+class TwoPlayerAnyPlayerDelibirdyMoneyRequirement extends MoneyRequirement {
+  override meetsRequirement(): boolean {
+    if (!globalScene.twoPlayerMode) {
+      return super.meetsRequirement();
+    }
+
+    if (this.scalingMultiplier > 0) {
+      this.requiredMoney = globalScene.getWaveMoneyAmount(this.scalingMultiplier);
+    }
+
+    return ([0, 1] as PlayerIndex[]).some(playerIndex => globalScene.getPlayerMoney(playerIndex) >= this.requiredMoney);
+  }
+}
+
+class DelibirdyPlayerMoneyRequirement extends EncounterSceneRequirement {
+  constructor(private readonly playerIndex: PlayerIndex) {
+    super();
+  }
+
+  override meetsRequirement(): boolean {
+    return globalScene.getPlayerMoney(this.playerIndex) >= getDelibirdyMoneyPrice();
+  }
+
+  override getDialogueToken(): [string, string] {
+    return ["money", getDelibirdyMoneyPrice().toString()];
+  }
+}
+
+class DelibirdyPlayerHeldItemRequirement extends EncounterSceneRequirement {
+  constructor(
+    private readonly playerIndex: PlayerIndex,
+    private readonly optionIndex: 2 | 3,
+  ) {
+    super();
+  }
+
+  override meetsRequirement(): boolean {
+    return globalScene.getPlayerParty(this.playerIndex).some(pokemon => getDelibirdyValidItems(pokemon, this.optionIndex).length > 0);
+  }
+
+  override getDialogueToken(): [string, string] {
+    return ["item", ""];
+  }
+}
+
+const doEventReward = (playerIndex: PlayerIndex = globalScene.activePlayerIndex) => {
   const event_buff = timedEventManager.getDelibirdyBuff();
   if (event_buff.length > 0) {
     const candidates = event_buff.filter(c => {
       const mtype = generateModifierType(modifierTypes[c]);
-      const existingCharm = globalScene.findModifier(m => m.type.id === mtype?.id);
+      const existingCharm = globalScene.findModifierForPlayer(m => m.type.id === mtype?.id, playerIndex);
       return !(existingCharm && existingCharm.getStackCount() >= existingCharm.getMaxStackCount());
     });
     if (candidates.length > 0) {
-      globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypes[randSeedItem(candidates)]);
+      globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypes[randSeedItem(candidates)], playerIndex);
     } else {
       // At max stacks, give a Voucher instead
-      globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypes.VOUCHER);
+      globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypes.VOUCHER, playerIndex);
     }
   }
 };
+
+function getDelibirdyData(): DelibirdyData {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  if (!encounter.misc || !Array.isArray(encounter.misc.choices)) {
+    encounter.misc = {
+      ...(encounter.misc ?? {}),
+      choices: [],
+      selectingPlayerIndex: 0,
+    } satisfies DelibirdyData;
+  }
+
+  return encounter.misc as DelibirdyData;
+}
+
+function getDelibirdyMoneyPrice(): number {
+  return globalScene.getWaveMoneyAmount(DELIBIRDY_MONEY_PRICE_MULTIPLIER);
+}
+
+function spendDelibirdyMoney(cost: number, playerIndex: PlayerIndex): void {
+  globalScene.setPlayerMoney(Math.max(globalScene.getPlayerMoney(playerIndex) - cost, 0), playerIndex);
+
+  if (!globalScene.twoPlayerMode || playerIndex === globalScene.activePlayerIndex) {
+    globalScene.updateMoneyText();
+    globalScene.animateMoneyChanged(false);
+  }
+
+  audioManager.playSound("se/buy");
+  globalScene.phaseManager.queueMessage(i18next.t("mysteryEncounterMessages:paidMoney", { amount: cost }), null, true);
+}
+
+function getDelibirdyValidItems(pokemon: Pokemon, optionIndex: 2 | 3): PokemonHeldItemModifier[] {
+  return pokemon.getHeldItems().filter(item => {
+    if (!item.isTransferable) {
+      return false;
+    }
+
+    if (optionIndex === 2) {
+      return OPTION_2_ALLOWED_MODIFIERS.some(heldItem => item.constructor.name === heldItem);
+    }
+
+    return !OPTION_3_DISALLOWED_MODIFIERS.some(heldItem => item.constructor.name === heldItem);
+  });
+}
+
+function getDelibirdySelectableFilter(
+  playerIndex: PlayerIndex,
+  optionIndex: 2 | 3,
+): (pokemon: Pokemon) => string | null {
+  return (pokemon: Pokemon) => {
+    if (!globalScene.getPlayerParty(playerIndex).includes(pokemon as PlayerPokemon)) {
+      return getEncounterText(`${namespace}:invalidSelection`) ?? null;
+    }
+
+    return getDelibirdyValidItems(pokemon, optionIndex).length > 0
+      ? null
+      : getEncounterText(`${namespace}:invalidSelection`) ?? null;
+  };
+}
+
+function promptNextDelibirdyPlayer(startingCursorIndex: number): boolean {
+  const data = getDelibirdyData();
+  data.selectingPlayerIndex = 1;
+  globalScene.setActivePlayerIndex(1);
+  updateWindowType(2);
+  globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
+    slideInDescription: false,
+    overrideTitle: "Player 2",
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildDelibirdyPlayerOptions(1),
+    startingCursorIndex,
+  });
+  return false;
+}
+
+function storeDelibirdyChoice(choice: DelibirdyChoice): boolean {
+  const data = getDelibirdyData();
+  data.choices = data.choices.filter(existingChoice => existingChoice.playerIndex !== choice.playerIndex);
+  data.choices.push(choice);
+
+  if (globalScene.twoPlayerMode && choice.playerIndex === 0) {
+    return promptNextDelibirdyPlayer(choice.optionIndex - 1);
+  }
+
+  delete data.selectingPlayerIndex;
+  if (globalScene.twoPlayerMode) {
+    data.skipSelectedDialogueOnce = true;
+    globalScene.setActivePlayerIndex(0);
+    updateWindowType(1);
+  }
+  return true;
+}
+
+function collectDelibirdyMoneyChoice(playerIndex: PlayerIndex): boolean {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+  return storeDelibirdyChoice({
+    playerIndex,
+    optionIndex: 1,
+    cost: getDelibirdyMoneyPrice(),
+  });
+}
+
+async function collectDelibirdyItemChoice(optionIndex: 2 | 3, playerIndex: PlayerIndex): Promise<boolean> {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  let choice: DelibirdyChoice | undefined;
+  const selected = await selectPokemonForOption(
+    pokemon => {
+      const validItems = getDelibirdyValidItems(pokemon, optionIndex);
+      return validItems.map((modifier: PokemonHeldItemModifier) => {
+        const option: OptionSelectItem = {
+          label: modifier.type.name,
+          handler: () => {
+            encounter.setDialogueToken("chosenItem", modifier.type.name);
+            choice = {
+              playerIndex,
+              optionIndex,
+              chosenPokemon: pokemon,
+              chosenModifier: modifier,
+            };
+            return true;
+          },
+        };
+        return option;
+      });
+    },
+    undefined,
+    getDelibirdySelectableFilter(playerIndex, optionIndex),
+  );
+
+  if (!selected || !choice) {
+    return false;
+  }
+
+  return storeDelibirdyChoice(choice);
+}
+
+async function giveDelibirdyFallbackShellBell(playerIndex: PlayerIndex): Promise<void> {
+  const shellBell = generateModifierType(modifierTypes.SHELL_BELL) as PokemonHeldItemModifierType;
+  await applyModifierTypeToPlayerPokemon(globalScene.getPlayerParty(playerIndex)[0], shellBell);
+  audioManager.playSound("se/item_fanfare");
+  await showEncounterText(i18next.t("battle:rewardGain", { modifierName: shellBell.name }), null, undefined, true);
+}
+
+async function queueDelibirdyReward(choice: DelibirdyChoice): Promise<void> {
+  globalScene.setActivePlayerIndex(choice.playerIndex);
+  updateWindowType(choice.playerIndex + 1);
+
+  switch (choice.optionIndex) {
+    case 1: {
+      spendDelibirdyMoney(choice.cost ?? getDelibirdyMoneyPrice(), choice.playerIndex);
+
+      const existing = globalScene.findModifierForPlayer(
+        m => m instanceof MoneyMultiplierModifier,
+        choice.playerIndex,
+      ) as MoneyMultiplierModifier;
+
+      if (existing && existing.getStackCount() >= existing.getMaxStackCount()) {
+        await giveDelibirdyFallbackShellBell(choice.playerIndex);
+      } else {
+        globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypes.AMULET_COIN, choice.playerIndex);
+      }
+      doEventReward(choice.playerIndex);
+      return;
+    }
+    case 2: {
+      const modifier = choice.chosenModifier as BerryModifier | PokemonInstantReviveModifier;
+      const chosenPokemon = choice.chosenPokemon!;
+      if (modifier instanceof BerryModifier) {
+        const existing = globalScene.findModifierForPlayer(
+          m => m instanceof LevelIncrementBoosterModifier,
+          choice.playerIndex,
+        ) as LevelIncrementBoosterModifier;
+
+        if (existing && existing.getStackCount() >= existing.getMaxStackCount()) {
+          await giveDelibirdyFallbackShellBell(choice.playerIndex);
+        } else {
+          globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypes.CANDY_JAR, choice.playerIndex);
+        }
+      } else {
+        const existing = globalScene.findModifierForPlayer(
+          m => m instanceof PreserveBerryModifier,
+          choice.playerIndex,
+        ) as PreserveBerryModifier;
+
+        if (existing && existing.getStackCount() >= existing.getMaxStackCount()) {
+          await giveDelibirdyFallbackShellBell(choice.playerIndex);
+        } else {
+          globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypes.BERRY_POUCH, choice.playerIndex);
+        }
+      }
+
+      chosenPokemon.loseHeldItem(modifier, false);
+      doEventReward(choice.playerIndex);
+      return;
+    }
+    case 3: {
+      const modifier = choice.chosenModifier!;
+      const chosenPokemon = choice.chosenPokemon!;
+      const existing = globalScene.findModifierForPlayer(
+        m => m instanceof HealingBoosterModifier,
+        choice.playerIndex,
+      ) as HealingBoosterModifier;
+
+      if (existing && existing.getStackCount() >= existing.getMaxStackCount()) {
+        await giveDelibirdyFallbackShellBell(choice.playerIndex);
+      } else {
+        globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypes.HEALING_CHARM, choice.playerIndex);
+      }
+
+      chosenPokemon.loseHeldItem(modifier, false);
+      doEventReward(choice.playerIndex);
+      return;
+    }
+  }
+}
+
+async function runDelibirdyChoices(): Promise<boolean> {
+  const data = getDelibirdyData();
+  const choices = data.choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
+
+  for (const choice of choices) {
+    globalScene.setActivePlayerIndex(choice.playerIndex);
+    updateWindowType(choice.playerIndex + 1);
+    if (choice.chosenModifier) {
+      globalScene.currentBattle.mysteryEncounter!.setDialogueToken("chosenItem", choice.chosenModifier.type.name);
+    }
+    if (globalScene.twoPlayerMode) {
+      await showEncounterText(`${namespace}:option.${choice.optionIndex}.selected`);
+    }
+    await queueDelibirdyReward(choice);
+  }
+
+  if (globalScene.twoPlayerMode) {
+    globalScene.setActivePlayerIndex(0);
+    updateWindowType(1);
+  }
+
+  leaveEncounterWithoutBattle(true);
+  return true;
+}
+
+function buildDelibirdyMoneyOption(playerIndex: PlayerIndex) {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT)
+    .withSceneRequirement(new DelibirdyPlayerMoneyRequirement(playerIndex))
+    .withDialogue({
+      buttonLabel: `${namespace}:option.1.label`,
+      buttonTooltip: `${namespace}:option.1.tooltip`,
+      selected: [
+        {
+          text: `${namespace}:option.1.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => collectDelibirdyMoneyChoice(playerIndex))
+    .withOptionPhase(async () => runDelibirdyChoices())
+    .build();
+}
+
+function buildDelibirdyFoodOption(playerIndex: PlayerIndex) {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT)
+    .withSceneRequirement(new DelibirdyPlayerHeldItemRequirement(playerIndex, 2))
+    .withDialogue({
+      buttonLabel: `${namespace}:option.2.label`,
+      buttonTooltip: `${namespace}:option.2.tooltip`,
+      secondOptionPrompt: `${namespace}:option.2.selectPrompt`,
+      selected: [
+        {
+          text: `${namespace}:option.2.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => collectDelibirdyItemChoice(2, playerIndex))
+    .withOptionPhase(async () => runDelibirdyChoices())
+    .build();
+}
+
+function buildDelibirdyItemOption(playerIndex: PlayerIndex) {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT)
+    .withSceneRequirement(new DelibirdyPlayerHeldItemRequirement(playerIndex, 3))
+    .withDialogue({
+      buttonLabel: `${namespace}:option.3.label`,
+      buttonTooltip: `${namespace}:option.3.tooltip`,
+      secondOptionPrompt: `${namespace}:option.3.selectPrompt`,
+      selected: [
+        {
+          text: `${namespace}:option.3.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => collectDelibirdyItemChoice(3, playerIndex))
+    .withOptionPhase(async () => runDelibirdyChoices())
+    .build();
+}
+
+function buildDelibirdyPlayerOptions(playerIndex: PlayerIndex) {
+  return [
+    buildDelibirdyMoneyOption(playerIndex),
+    buildDelibirdyFoodOption(playerIndex),
+    buildDelibirdyItemOption(playerIndex),
+  ];
+}
+
+function seedDelibirdyTestItems(): void {
+  if (!globalScene.twoPlayerMode) {
+    return;
+  }
+
+  for (const playerIndex of [0, 1] as PlayerIndex[]) {
+    const leadPokemon = globalScene.getPlayerParty(playerIndex)[0];
+    if (!leadPokemon) {
+      continue;
+    }
+
+    globalScene.setActivePlayerIndex(playerIndex);
+    const heldItems = leadPokemon.getHeldItems();
+    if (!heldItems.some(item => item instanceof BerryModifier && item.berryType === BerryType.LUM)) {
+      const lumBerry = generateModifierType(modifierTypes.BERRY, [BerryType.LUM]) as PokemonHeldItemModifierType;
+      void applyModifierTypeToPlayerPokemon(leadPokemon, lumBerry);
+    }
+    if (!heldItems.some(item => item instanceof AttackTypeBoosterModifier)) {
+      const charcoal = generateModifierType(modifierTypes.ATTACK_TYPE_BOOSTER, [
+        PokemonType.FIRE,
+      ]) as PokemonHeldItemModifierType;
+      void applyModifierTypeToPlayerPokemon(leadPokemon, charcoal);
+    }
+  }
+
+  globalScene.setActivePlayerIndex(0);
+}
 
 /**
  * Delibird-y encounter.
@@ -83,7 +482,7 @@ export const DelibirdyEncounter: MysteryEncounter = MysteryEncounterBuilder.with
   .withEncounterTier(MysteryEncounterTier.GREAT)
   .withMaxAllowedEncounters(4)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
-  .withSceneRequirement(new MoneyRequirement(0, DELIBIRDY_MONEY_PRICE_MULTIPLIER)) // Must have enough money for it to spawn at the very least
+  .withSceneRequirement(new TwoPlayerAnyPlayerDelibirdyMoneyRequirement(0, DELIBIRDY_MONEY_PRICE_MULTIPLIER)) // Must have enough money for it to spawn at the very least
   .withPrimaryPokemonRequirement(
     CombinationPokemonRequirement.Some(
       // Must also have either option 2 or 3 available to spawn
@@ -138,246 +537,14 @@ export const DelibirdyEncounter: MysteryEncounter = MysteryEncounterBuilder.with
   .withOnInit(() => {
     const encounter = globalScene.currentBattle.mysteryEncounter!;
     encounter.setDialogueToken("delibirdName", getPokemonSpecies(SpeciesId.DELIBIRD).getName());
+    seedDelibirdyTestItems();
     return true;
   })
   .withOnVisualsStart(() => {
     audioManager.playBgm("mystery_encounter_delibirdy", true);
     return true;
   })
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT)
-      .withSceneMoneyRequirement(0, DELIBIRDY_MONEY_PRICE_MULTIPLIER) // Must have money to spawn
-      .withDialogue({
-        buttonLabel: `${namespace}:option.1.label`,
-        buttonTooltip: `${namespace}:option.1.tooltip`,
-        selected: [
-          {
-            text: `${namespace}:option.1.selected`,
-          },
-        ],
-      })
-      .withPreOptionPhase(async (): Promise<boolean> => {
-        const encounter = globalScene.currentBattle.mysteryEncounter!;
-        updatePlayerMoney(-(encounter.options[0].requirements[0] as MoneyRequirement).requiredMoney, true, false);
-        return true;
-      })
-      .withOptionPhase(async () => {
-        // Give the player an Amulet Coin
-        // Check if the player has max stacks of that item already
-        const existing = globalScene.findModifier(m => m instanceof MoneyMultiplierModifier) as MoneyMultiplierModifier;
-
-        if (existing && existing.getStackCount() >= existing.getMaxStackCount()) {
-          // At max stacks, give the first party pokemon a Shell Bell instead
-          const shellBell = generateModifierType(modifierTypes.SHELL_BELL) as PokemonHeldItemModifierType;
-          await applyModifierTypeToPlayerPokemon(globalScene.getPlayerPokemon()!, shellBell);
-          audioManager.playSound("se/item_fanfare");
-          await showEncounterText(
-            i18next.t("battle:rewardGain", { modifierName: shellBell.name }),
-            null,
-            undefined,
-            true,
-          );
-          doEventReward();
-        } else {
-          globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypes.AMULET_COIN);
-          doEventReward();
-        }
-
-        leaveEncounterWithoutBattle(true);
-      })
-      .build(),
-  )
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT)
-      .withPrimaryPokemonRequirement(new HeldItemRequirement(OPTION_2_ALLOWED_MODIFIERS))
-      .withDialogue({
-        buttonLabel: `${namespace}:option.2.label`,
-        buttonTooltip: `${namespace}:option.2.tooltip`,
-        secondOptionPrompt: `${namespace}:option.2.selectPrompt`,
-        selected: [
-          {
-            text: `${namespace}:option.2.selected`,
-          },
-        ],
-      })
-      .withPreOptionPhase(async (): Promise<boolean> => {
-        const encounter = globalScene.currentBattle.mysteryEncounter!;
-        const onPokemonSelected = (pokemon: PlayerPokemon) => {
-          // Get Pokemon held items and filter for valid ones
-          const validItems = pokemon.getHeldItems().filter(it => {
-            return OPTION_2_ALLOWED_MODIFIERS.some(heldItem => it.constructor.name === heldItem) && it.isTransferable;
-          });
-
-          return validItems.map((modifier: PokemonHeldItemModifier) => {
-            const option: OptionSelectItem = {
-              label: modifier.type.name,
-              handler: () => {
-                // Pokemon and item selected
-                encounter.setDialogueToken("chosenItem", modifier.type.name);
-                encounter.misc = {
-                  chosenPokemon: pokemon,
-                  chosenModifier: modifier,
-                };
-                return true;
-              },
-            };
-            return option;
-          });
-        };
-
-        const selectableFilter = (pokemon: Pokemon) => {
-          // If pokemon has valid item, it can be selected
-          const meetsReqs = encounter.options[1].pokemonMeetsPrimaryRequirements(pokemon);
-          if (!meetsReqs) {
-            return getEncounterText(`${namespace}:invalidSelection`) ?? null;
-          }
-
-          return null;
-        };
-
-        return selectPokemonForOption(onPokemonSelected, undefined, selectableFilter);
-      })
-      .withOptionPhase(async () => {
-        const encounter = globalScene.currentBattle.mysteryEncounter!;
-        const modifier: BerryModifier | PokemonInstantReviveModifier = encounter.misc.chosenModifier;
-        const chosenPokemon: PlayerPokemon = encounter.misc.chosenPokemon;
-
-        // Give the player a Candy Jar if they gave a Berry, and a Berry Pouch for Reviver Seed
-        if (modifier instanceof BerryModifier) {
-          // Check if the player has max stacks of that Candy Jar already
-          const existing = globalScene.findModifier(
-            m => m instanceof LevelIncrementBoosterModifier,
-          ) as LevelIncrementBoosterModifier;
-
-          if (existing && existing.getStackCount() >= existing.getMaxStackCount()) {
-            // At max stacks, give the first party pokemon a Shell Bell instead
-            const shellBell = generateModifierType(modifierTypes.SHELL_BELL) as PokemonHeldItemModifierType;
-            await applyModifierTypeToPlayerPokemon(globalScene.getPlayerPokemon()!, shellBell);
-            audioManager.playSound("se/item_fanfare");
-            await showEncounterText(
-              i18next.t("battle:rewardGain", {
-                modifierName: shellBell.name,
-              }),
-              null,
-              undefined,
-              true,
-            );
-            doEventReward();
-          } else {
-            globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypes.CANDY_JAR);
-            doEventReward();
-          }
-        } else {
-          // Check if the player has max stacks of that Berry Pouch already
-          const existing = globalScene.findModifier(m => m instanceof PreserveBerryModifier) as PreserveBerryModifier;
-
-          if (existing && existing.getStackCount() >= existing.getMaxStackCount()) {
-            // At max stacks, give the first party pokemon a Shell Bell instead
-            const shellBell = generateModifierType(modifierTypes.SHELL_BELL) as PokemonHeldItemModifierType;
-            await applyModifierTypeToPlayerPokemon(globalScene.getPlayerPokemon()!, shellBell);
-            audioManager.playSound("se/item_fanfare");
-            await showEncounterText(
-              i18next.t("battle:rewardGain", {
-                modifierName: shellBell.name,
-              }),
-              null,
-              undefined,
-              true,
-            );
-            doEventReward();
-          } else {
-            globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypes.BERRY_POUCH);
-            doEventReward();
-          }
-        }
-
-        chosenPokemon.loseHeldItem(modifier, false);
-
-        leaveEncounterWithoutBattle(true);
-      })
-      .build(),
-  )
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT)
-      .withPrimaryPokemonRequirement(new HeldItemRequirement(OPTION_3_DISALLOWED_MODIFIERS, 1, true))
-      .withDialogue({
-        buttonLabel: `${namespace}:option.3.label`,
-        buttonTooltip: `${namespace}:option.3.tooltip`,
-        secondOptionPrompt: `${namespace}:option.3.selectPrompt`,
-        selected: [
-          {
-            text: `${namespace}:option.3.selected`,
-          },
-        ],
-      })
-      .withPreOptionPhase(async (): Promise<boolean> => {
-        const encounter = globalScene.currentBattle.mysteryEncounter!;
-        const onPokemonSelected = (pokemon: PlayerPokemon) => {
-          // Get Pokemon held items and filter for valid ones
-          const validItems = pokemon.getHeldItems().filter(it => {
-            return (
-              !OPTION_3_DISALLOWED_MODIFIERS.some(heldItem => it.constructor.name === heldItem) && it.isTransferable
-            );
-          });
-
-          return validItems.map((modifier: PokemonHeldItemModifier) => {
-            const option: OptionSelectItem = {
-              label: modifier.type.name,
-              handler: () => {
-                // Pokemon and item selected
-                encounter.setDialogueToken("chosenItem", modifier.type.name);
-                encounter.misc = {
-                  chosenPokemon: pokemon,
-                  chosenModifier: modifier,
-                };
-                return true;
-              },
-            };
-            return option;
-          });
-        };
-
-        const selectableFilter = (pokemon: Pokemon) => {
-          // If pokemon has valid item, it can be selected
-          const meetsReqs = encounter.options[2].pokemonMeetsPrimaryRequirements(pokemon);
-          if (!meetsReqs) {
-            return getEncounterText(`${namespace}:invalidSelection`) ?? null;
-          }
-
-          return null;
-        };
-
-        return selectPokemonForOption(onPokemonSelected, undefined, selectableFilter);
-      })
-      .withOptionPhase(async () => {
-        const encounter = globalScene.currentBattle.mysteryEncounter!;
-        const modifier = encounter.misc.chosenModifier;
-        const chosenPokemon: PlayerPokemon = encounter.misc.chosenPokemon;
-
-        // Check if the player has max stacks of Healing Charm already
-        const existing = globalScene.findModifier(m => m instanceof HealingBoosterModifier) as HealingBoosterModifier;
-
-        if (existing && existing.getStackCount() >= existing.getMaxStackCount()) {
-          // At max stacks, give the first party pokemon a Shell Bell instead
-          const shellBell = generateModifierType(modifierTypes.SHELL_BELL) as PokemonHeldItemModifierType;
-          await applyModifierTypeToPlayerPokemon(globalScene.getPlayerParty()[0], shellBell);
-          audioManager.playSound("se/item_fanfare");
-          await showEncounterText(
-            i18next.t("battle:rewardGain", { modifierName: shellBell.name }),
-            null,
-            undefined,
-            true,
-          );
-          doEventReward();
-        } else {
-          globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypes.HEALING_CHARM);
-          doEventReward();
-        }
-
-        chosenPokemon.loseHeldItem(modifier, false);
-
-        leaveEncounterWithoutBattle(true);
-      })
-      .build(),
-  )
+  .withOption(buildDelibirdyMoneyOption(0))
+  .withOption(buildDelibirdyFoodOption(0))
+  .withOption(buildDelibirdyItemOption(0))
   .build();
