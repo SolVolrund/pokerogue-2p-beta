@@ -724,7 +724,7 @@ export async function catchPokemon(
         });
       };
       Promise.all([pokemon.hideInfo(), capturingPlayerGameData.setPokemonCaught(pokemon)]).then(() => {
-        globalScene.savePlayerSystemSaveLocal(playerIndex);
+        void globalScene.savePlayerSystemSave(playerIndex);
         if (!(isObtain || addStatus.value)) {
           removePokemon();
           end();

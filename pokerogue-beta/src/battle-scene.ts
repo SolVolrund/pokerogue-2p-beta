@@ -863,6 +863,14 @@ export class BattleScene extends SceneBase {
     this.applyTwoPlayerEggVoucherGrant();
   }
 
+  private ensurePlayerSystemSaves(): [GameData, GameData] {
+    if (!this.systemSaves) {
+      this.initializePlayerSystemSaves();
+    }
+
+    return this.systemSaves!;
+  }
+
   public configureTwoPlayerMode(enabled: boolean, partySize: 3 | 6 = 6): void {
     if (this.systemSaves?.[0]) {
       this.gameData = this.systemSaves[0];
@@ -942,6 +950,7 @@ export class BattleScene extends SceneBase {
 
     if (this.twoPlayerMode) {
       this.syncLegacyStateForActivePlayer();
+      this.syncActiveSystemSaveForActivePlayer();
     } else {
       this.syncSinglePlayerStateReference();
     }
@@ -1004,11 +1013,7 @@ export class BattleScene extends SceneBase {
       return this.gameData;
     }
 
-    if (!this.systemSaves && playerIndex === 1) {
-      this.initializePlayerSystemSaves();
-    }
-
-    return this.systemSaves?.[playerIndex] ?? this.gameData;
+    return this.ensurePlayerSystemSaves()[playerIndex];
   }
 
   public async savePlayerSystemSave(playerIndex: PlayerIndex = this.activePlayerIndex): Promise<boolean> {
@@ -1022,11 +1027,17 @@ export class BattleScene extends SceneBase {
   }
 
   public savePlayerSystemSaveLocal(playerIndex: PlayerIndex = this.activePlayerIndex): void {
-    if (!this.twoPlayerMode || playerIndex === 0) {
+    if (!this.twoPlayerMode) {
       return;
     }
 
-    localStorage.setItem(TWO_PLAYER_GUEST_SYSTEM_SAVE_KEY, this.getPlayerGameData(playerIndex).getSystemSaveDataString());
+    const gameData = this.getPlayerGameData(playerIndex);
+    if (playerIndex === 0) {
+      gameData.saveSystemLocal();
+      return;
+    }
+
+    localStorage.setItem(TWO_PLAYER_GUEST_SYSTEM_SAVE_KEY, gameData.getSystemSaveDataString());
   }
 
   private getModifierList(player = true, playerIndex: PlayerIndex = this.activePlayerIndex): PersistentModifier[] {

@@ -326,7 +326,7 @@ export class AttemptCapturePhase extends PokemonPhase {
           });
         };
         Promise.all([pokemon.hideInfo(), capturingPlayerGameData.setPokemonCaught(pokemon)]).then(() => {
-          globalScene.savePlayerSystemSaveLocal(this.playerIndex);
+          void globalScene.savePlayerSystemSave(this.playerIndex);
           if (!addStatus.value) {
             removePokemon();
             end();

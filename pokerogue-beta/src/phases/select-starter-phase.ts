@@ -27,16 +27,26 @@ export class SelectStarterPhase extends Phase {
     globalScene.setActivePlayerIndex(playerIndex);
     globalScene.ui.setMode(UiMode.STARTER_SELECT, (starters: Starter[]) => {
       globalScene.ui.clearText();
-      if (globalScene.twoPlayerMode && playerIndex === 1) {
-        this.initPlayerStarters(starters, playerIndex).then(() => this.beginBattle());
+      if (globalScene.twoPlayerMode) {
+        this.initPlayerStarters(starters, playerIndex).then(() => {
+          if (playerIndex === 0) {
+            globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+              globalScene.ui.showText("Player 2, choose your starters.", null, () => this.selectStartersForPlayer(1));
+            });
+            return;
+          }
+
+          globalScene.setActivePlayerIndex(0);
+          this.selectSaveSlot(() => this.beginBattle());
+        });
         return;
       }
 
-      this.selectSaveSlot(starters);
+      this.selectSaveSlot(() => this.initPlayerStarters(starters, 0).then(() => this.beginBattle()));
     });
   }
 
-  private selectSaveSlot(starters: Starter[]): void {
+  private selectSaveSlot(onSlotSelected: () => void): void {
     globalScene.ui.setMode(UiMode.SAVE_SLOT, SaveSlotUiMode.SAVE, (slotId: number) => {
       // If clicking cancel, back out to title screen
       if (slotId === -1) {
@@ -46,14 +56,7 @@ export class SelectStarterPhase extends Phase {
       }
       globalScene.sessionSlotId = slotId;
 
-      this.initPlayerStarters(starters, 0).then(() => {
-        if (!globalScene.twoPlayerMode) {
-          this.beginBattle();
-          return;
-        }
-
-        globalScene.ui.showText("Player 2, choose your starters.", null, () => this.selectStartersForPlayer(1));
-      });
+      onSlotSelected();
     });
   }
 

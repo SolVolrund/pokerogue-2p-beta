@@ -211,6 +211,10 @@ export class GameData {
     );
   }
 
+  public saveSystemLocal(): void {
+    localStorage.setItem(`data_${loggedInUser?.username}`, encrypt(this.getSystemSaveDataString(), bypassLogin));
+  }
+
   /**
    * Checks if an `Unlockable` has been unlocked.
    * @param unlockable The Unlockable to check
@@ -227,7 +231,7 @@ export class GameData {
     globalScene.ui.savingIcon.show();
     const systemData = this.getSystemSaveDataString();
 
-    localStorage.setItem(`data_${loggedInUser?.username}`, encrypt(systemData, bypassLogin));
+    this.saveSystemLocal();
 
     if (bypassLogin) {
       globalScene.ui.savingIcon.hide();
@@ -1319,9 +1323,10 @@ export class GameData {
 
     const maxIntAttrValue = 0x80000000;
 
+    const systemSaveSource = globalScene.twoPlayerMode ? globalScene.getPlayerGameData(0) : this;
     const systemData = useCachedSystem
       ? GameData.parseSystemData(decrypt(localStorage.getItem(`data_${loggedInUser?.username}`)!, bypassLogin))
-      : this.getSystemSaveData(); // TODO: is this bang correct?
+      : systemSaveSource.getSystemSaveData(); // TODO: is this bang correct?
 
     const request = {
       system: systemData,
@@ -1345,10 +1350,14 @@ export class GameData {
       encrypt(JSON.stringify(sessionData), bypassLogin),
     );
 
+    if (globalScene.twoPlayerMode) {
+      globalScene.savePlayerSystemSaveLocal(1);
+    }
+
     console.debug(`Session data saved to slot ${globalScene.sessionSlotId}!`);
 
     if (bypassLogin || !sync) {
-      const verified = await this.verify();
+      const verified = await systemSaveSource.verify();
       globalScene.ui.savingIcon.hide();
       return verified;
     }
@@ -1366,7 +1375,7 @@ export class GameData {
     // TODO: handle this more gracefully
     if (saveError.startsWith("session out of date")) {
       globalScene.phaseManager.clearPhaseQueue();
-      await this.reinitializeSaveData();
+      await systemSaveSource.reinitializeSaveData();
     }
     console.error(saveError);
     return false;
