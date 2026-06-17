@@ -13,6 +13,8 @@ type TwoPlayerInputMessageKind =
   | "state-checkpoint"
   | "profile-snapshot";
 
+export type TwoPlayerNetworkRole = "peer" | "host" | "guest";
+
 export interface TwoPlayerStateCheckpoint {
   fingerprint: string;
   summary: Record<string, unknown>;
@@ -41,6 +43,7 @@ interface TwoPlayerInputMessage {
   kind: TwoPlayerInputMessageKind;
   sessionId: string;
   senderId: string;
+  senderRole?: TwoPlayerNetworkRole;
   sequence: number;
   authoritySequence?: number;
   playerIndex: PlayerIndex;
@@ -53,7 +56,6 @@ interface TwoPlayerInputMessage {
 }
 
 type RawTwoPlayerInputMessage = Omit<TwoPlayerInputMessage, "kind"> & { kind?: TwoPlayerInputMessageKind };
-export type TwoPlayerNetworkRole = "peer" | "host" | "guest";
 
 export interface TwoPlayerInputTransportStatus {
   enabled: boolean;
@@ -94,6 +96,7 @@ export interface TwoPlayerInputDebugEvent {
   channelName?: string;
   webSocketUrl?: string;
   senderId?: string;
+  senderRole?: TwoPlayerNetworkRole;
   sequence?: number;
   authoritySequence?: number;
   messageKind?: TwoPlayerInputMessageKind;
@@ -181,6 +184,10 @@ function isValidMessageKind(kind: unknown): kind is TwoPlayerInputMessageKind {
     || kind === "profile-snapshot";
 }
 
+function isValidNetworkRole(role: unknown): role is TwoPlayerNetworkRole | undefined {
+  return role === undefined || role === "peer" || role === "host" || role === "guest";
+}
+
 function isValidRunBootstrap(runBootstrap: unknown): runBootstrap is TwoPlayerRunBootstrap {
   return !!runBootstrap
     && typeof runBootstrap === "object"
@@ -230,6 +237,7 @@ function parseTwoPlayerInputMessage(value: unknown): TwoPlayerInputMessage | und
     || !isValidMessageKind(kind)
     || typeof message.sessionId !== "string"
     || typeof message.senderId !== "string"
+    || !isValidNetworkRole(message.senderRole)
     || typeof message.sequence !== "number"
     || (message.authoritySequence !== undefined && typeof message.authoritySequence !== "number")
     || !isValidPlayerIndex(message.playerIndex)
@@ -249,6 +257,7 @@ function parseTwoPlayerInputMessage(value: unknown): TwoPlayerInputMessage | und
     kind,
     sessionId: message.sessionId,
     senderId: message.senderId,
+    ...(message.senderRole === undefined ? {} : { senderRole: message.senderRole }),
     sequence: message.sequence,
     ...(message.authoritySequence === undefined ? {} : { authoritySequence: message.authoritySequence }),
     playerIndex: message.playerIndex,
@@ -468,6 +477,7 @@ export class TwoPlayerInputTransport {
       kind,
       sessionId: this.sessionId,
       senderId: this.senderId,
+      senderRole: this.networkRole,
       sequence: ++this.sequence,
       ...(kind === "input-accepted" ? { authoritySequence: ++this.authoritySequence } : {}),
       playerIndex,
@@ -485,6 +495,7 @@ export class TwoPlayerInputTransport {
       channelName: this.channelName,
       ...(this.mode === "websocket" ? { webSocketUrl: this.webSocketUrl } : {}),
       senderId: this.senderId,
+      senderRole: this.networkRole,
       sequence: message.sequence,
       ...(message.authoritySequence === undefined ? {} : { authoritySequence: message.authoritySequence }),
       messageKind: message.kind,
@@ -654,6 +665,7 @@ export class TwoPlayerInputTransport {
         channelName: this.channelName,
         ...(this.mode === "websocket" ? { webSocketUrl: this.webSocketUrl } : {}),
         senderId: message.senderId,
+        ...(message.senderRole === undefined ? {} : { senderRole: message.senderRole }),
         sequence: message.sequence,
         ...(message.authoritySequence === undefined ? {} : { authoritySequence: message.authoritySequence }),
         messageKind: message.kind,
@@ -691,6 +703,11 @@ export class TwoPlayerInputTransport {
       return;
     }
 
+    if (this.shouldIgnoreDuplicateHostAcceptedInput(message)) {
+      this.logIgnoredMessage(message, "duplicate-host-input-accepted");
+      return;
+    }
+
     if (message.kind === "input" && this.networkRole !== "peer") {
       this.logIgnoredMessage(message, "direct-input-in-authority-mode");
       return;
@@ -703,6 +720,7 @@ export class TwoPlayerInputTransport {
       channelName: this.channelName,
       ...(this.mode === "websocket" ? { webSocketUrl: this.webSocketUrl } : {}),
       senderId: message.senderId,
+      ...(message.senderRole === undefined ? {} : { senderRole: message.senderRole }),
       sequence: message.sequence,
       ...(message.authoritySequence === undefined ? {} : { authoritySequence: message.authoritySequence }),
       messageKind: message.kind,
@@ -721,6 +739,7 @@ export class TwoPlayerInputTransport {
       channelName: this.channelName,
       ...(this.mode === "websocket" ? { webSocketUrl: this.webSocketUrl } : {}),
       senderId: message.senderId,
+      ...(message.senderRole === undefined ? {} : { senderRole: message.senderRole }),
       sequence: message.sequence,
       ...(message.authoritySequence === undefined ? {} : { authoritySequence: message.authoritySequence }),
       messageKind: message.kind,
@@ -780,6 +799,13 @@ export class TwoPlayerInputTransport {
         this.sendCheckpointForMessage(acceptedMessage);
       }
     }
+  }
+
+  private shouldIgnoreDuplicateHostAcceptedInput(message: TwoPlayerInputMessage): boolean {
+    return message.kind === "input-accepted"
+      && this.networkRole === "host"
+      && message.senderRole === "host"
+      && message.playerIndex === this.localSeat;
   }
 
   private handleRunBootstrap(message: TwoPlayerInputMessage): void {

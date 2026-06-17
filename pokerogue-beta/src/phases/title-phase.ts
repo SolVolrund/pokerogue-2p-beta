@@ -26,6 +26,7 @@ import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
 const NO_SAVE_SLOT = -1;
+const TWO_PLAYER_LOBBY_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 export class TitlePhase extends Phase {
   public readonly phaseName = "TitlePhase";
@@ -92,6 +93,10 @@ export class TitlePhase extends Phase {
   }
 
   private async showOptions(lastSessionSlot: number): Promise<void> {
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForPlayerInput(0);
+    }
+
     const options: OptionSelectItem[] = [];
     // Add a "continue" menu if the session slot ID is >-1
     if (lastSessionSlot > NO_SAVE_SLOT) {
@@ -123,6 +128,14 @@ export class TitlePhase extends Phase {
           });
           return true;
         },
+      },
+      {
+        label: "Multiplayer",
+        handler: () => {
+          this.showMultiplayerSelect();
+          return true;
+        },
+        keepOpen: true,
       },
       {
         label: i18next.t("menu:runHistory"),
@@ -172,6 +185,89 @@ export class TitlePhase extends Phase {
 
   private showOptionSelectWithText(text: string, options: OptionSelectItem[]): void {
     globalScene.ui.showText(text, null, () => this.showOptionSelect(options));
+  }
+
+  private showMultiplayerSelect(): void {
+    const options: OptionSelectItem[] = [
+      {
+        label: "Host",
+        handler: () => {
+          this.hostMultiplayerLobby();
+          return true;
+        },
+      },
+      {
+        label: "Join",
+        handler: () => {
+          this.joinMultiplayerLobby();
+          return true;
+        },
+      },
+      {
+        label: i18next.t("menu:cancel"),
+        handler: () => {
+          globalScene.phaseManager.toTitleScreen();
+          super.end();
+          return true;
+        },
+      },
+    ];
+
+    this.showOptionSelectWithText("Multiplayer", options);
+  }
+
+  private hostMultiplayerLobby(): void {
+    const lobbyCode = this.generateLobbyCode();
+    const lobbyUrl = this.getMultiplayerLobbyUrl(lobbyCode, "host");
+    const hostAddress = this.getDisplayHostAddress();
+
+    globalScene.ui.setMode(UiMode.MESSAGE);
+    globalScene.ui.showText(
+      `Lobby ${lobbyCode} created.$Give this code to Player 2.$Host address: ${hostAddress}`,
+      null,
+      () => {
+        window.location.assign(lobbyUrl);
+      },
+      null,
+      true,
+    );
+  }
+
+  private joinMultiplayerLobby(): void {
+    const lobbyCode = window
+      .prompt("Enter lobby code")
+      ?.trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
+    if (!lobbyCode) {
+      this.showMultiplayerSelect();
+      return;
+    }
+
+    window.location.assign(this.getMultiplayerLobbyUrl(lobbyCode, "guest"));
+  }
+
+  private generateLobbyCode(): string {
+    const values = new Uint32Array(6);
+    crypto.getRandomValues(values);
+    return [...values].map(value => TWO_PLAYER_LOBBY_CODE_CHARS[value % TWO_PLAYER_LOBBY_CODE_CHARS.length]).join("");
+  }
+
+  private getMultiplayerLobbyUrl(lobbyCode: string, role: "host" | "guest"): string {
+    const url = new URL(window.location.href);
+    url.searchParams.set("twoPlayer", "1");
+    url.searchParams.set("twoPlayerInputTransport", "websocket");
+    url.searchParams.set("twoPlayerNetworkRole", role);
+    url.searchParams.set("twoPlayerLocalPlayer", role === "host" ? "1" : "2");
+    url.searchParams.set("twoPlayerSession", lobbyCode);
+    return url.toString();
+  }
+
+  private getDisplayHostAddress(): string {
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.hash = "";
+    return url.toString();
   }
 
   private showNewGameModeSelect(): void {
@@ -355,7 +451,7 @@ export class TitlePhase extends Phase {
       return;
     }
 
-    globalScene.waitForSharedInput();
+    globalScene.waitForPlayerInput(0);
     globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
       globalScene.ui.showText("Waiting for both player profiles...", null, null, null, false);
       globalScene.waitForTwoPlayerProfileExchange().then(ready => {
