@@ -213,6 +213,10 @@ export class GameData {
   }
 
   public saveSystemLocal(): void {
+    if (globalScene.tryCacheRemoteTwoPlayerSystemSave(this)) {
+      return;
+    }
+
     localStorage.setItem(`data_${loggedInUser?.username}`, encrypt(this.getSystemSaveDataString(), bypassLogin));
   }
 
@@ -229,6 +233,10 @@ export class GameData {
   }
 
   public async saveSystem(): Promise<boolean> {
+    if (globalScene.tryCacheRemoteTwoPlayerSystemSave(this)) {
+      return true;
+    }
+
     globalScene.ui.savingIcon.show();
     const systemData = this.getSystemSaveDataString();
 
@@ -1314,6 +1322,11 @@ export class GameData {
 
     if (sync) {
       globalScene.ui.savingIcon.show();
+    }
+
+    if (globalScene.twoPlayerMode && !globalScene.isLocalPlayerSystemSaveLoaded()) {
+      globalScene.ui.savingIcon.hide();
+      return false;
     }
 
     const sessionData = useCachedSession

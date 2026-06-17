@@ -44,7 +44,7 @@ export class LoginPhase extends Phase {
     }
 
     await gameData.loadSystem();
-    globalScene.applyTwoPlayerEggVoucherGrant();
+    globalScene.markLocalPlayerSystemSaveLoaded();
     if (success || bypassLogin) {
       await this.end();
       return;
@@ -125,7 +125,7 @@ export class LoginPhase extends Phase {
         return;
       }
       await gameData.loadSystem();
-      globalScene.applyTwoPlayerEggVoucherGrant();
+      globalScene.markLocalPlayerSystemSaveLoaded();
       this.end();
     };
     audioManager.playSound("ui/menu_open");
@@ -146,6 +146,7 @@ export class LoginPhase extends Phase {
       if (!success) {
         return;
       }
+      globalScene.markLocalPlayerSystemSaveLoaded();
       this.end();
     };
     audioManager.playSound("ui/menu_open");

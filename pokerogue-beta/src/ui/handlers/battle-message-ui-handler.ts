@@ -13,6 +13,7 @@ export class BattleMessageUiHandler extends MessageUiHandler {
   private levelUpStatsContainer: Phaser.GameObjects.Container;
   private levelUpStatsIncrContent: Phaser.GameObjects.Text;
   private levelUpStatsValuesContent: BBCodeText;
+  private messageContainer: Phaser.GameObjects.Container;
   private nameBox: Phaser.GameObjects.NineSlice;
   private nameText: Phaser.GameObjects.Text;
 
@@ -61,6 +62,7 @@ export class BattleMessageUiHandler extends MessageUiHandler {
 
     const messageContainer = globalScene.add.container(12, -39);
     ui.add(messageContainer);
+    this.messageContainer = messageContainer;
 
     const message = addTextObject(0, 0, "", TextStyle.MESSAGE, {
       maxLines: 2,
@@ -139,6 +141,12 @@ export class BattleMessageUiHandler extends MessageUiHandler {
     levelUpStatsContainer.add(levelUpStatsValuesContent);
 
     this.levelUpStatsValuesContent = levelUpStatsValuesContent;
+  }
+
+  public bringMessageToTop(): void {
+    const ui = this.getUi();
+    ui.bringToTop(this.bg);
+    ui.bringToTop(this.messageContainer);
   }
 
   show(args: any[]): boolean {

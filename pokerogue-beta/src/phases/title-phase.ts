@@ -12,6 +12,7 @@ import { getDailyRunStarters, startDailyEventChallenges } from "#data/daily-seed
 import { modifierTypes } from "#data/data-lists";
 import { Gender } from "#data/gender";
 import { BattleType } from "#enums/battle-type";
+import { GameDataType } from "#enums/game-data-type";
 import { GameModes } from "#enums/game-modes";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import { UiMode } from "#enums/ui-mode";
@@ -130,6 +131,14 @@ export class TitlePhase extends Phase {
         },
       },
       {
+        label: "Save Data",
+        handler: () => {
+          this.showSaveDataSelect();
+          return true;
+        },
+        keepOpen: true,
+      },
+      {
         label: "Multiplayer",
         handler: () => {
           this.showMultiplayerSelect();
@@ -216,16 +225,132 @@ export class TitlePhase extends Phase {
     this.showOptionSelectWithText("Multiplayer", options);
   }
 
+  private showSaveDataSelect(): void {
+    const options: OptionSelectItem[] = [
+      {
+        label: "Export Profile",
+        handler: () => {
+          void globalScene.gameData.tryExportData(GameDataType.SYSTEM);
+          return true;
+        },
+        keepOpen: true,
+      },
+      {
+        label: "Import Profile",
+        handler: () => {
+          this.prepareTitleImportView();
+          globalScene.gameData.importData(GameDataType.SYSTEM);
+          return true;
+        },
+        keepOpen: true,
+      },
+      {
+        label: "Export Run",
+        handler: () => {
+          void this.showRunExportSlotSelect();
+          return true;
+        },
+        keepOpen: true,
+      },
+      {
+        label: "Import Run",
+        handler: () => {
+          this.showRunImportSlotSelect();
+          return true;
+        },
+        keepOpen: true,
+      },
+      {
+        label: i18next.t("menu:cancel"),
+        handler: () => {
+          globalScene.phaseManager.toTitleScreen();
+          super.end();
+          return true;
+        },
+      },
+    ];
+
+    this.showOptionSelectWithText("Save Data", options);
+  }
+
+  private async showRunExportSlotSelect(): Promise<void> {
+    const dataSlots: number[] = [];
+    await Promise.all(
+      new Array(5).fill(null).map((_, slotId) =>
+        globalScene.gameData.getSession(slotId).then(data => {
+          if (data) {
+            dataSlots.push(slotId);
+          }
+        }),
+      ),
+    );
+
+    if (!dataSlots.length) {
+      globalScene.ui.setMode(UiMode.MESSAGE);
+      globalScene.ui.showText("No run saves found.", null, () => this.showSaveDataSelect());
+      return;
+    }
+
+    this.showRunSlotSelect("Export Run", slotId => dataSlots.includes(slotId), slotId => {
+      void globalScene.gameData.tryExportData(GameDataType.SESSION, slotId);
+    });
+  }
+
+  private showRunImportSlotSelect(): void {
+    this.showRunSlotSelect("Import Run", () => true, slotId => {
+      this.prepareTitleImportView();
+      globalScene.gameData.importData(GameDataType.SESSION, slotId);
+    });
+  }
+
+  private prepareTitleImportView(): void {
+    globalScene.ui.setMode(UiMode.MESSAGE);
+    globalScene.ui.getMessageHandler().bringMessageToTop();
+    globalScene.ui.clearText();
+  }
+
+  private showRunSlotSelect(
+    title: string,
+    slotFilter: (slotId: number) => boolean,
+    handler: (slotId: number) => void,
+  ): void {
+    const options = new Array(5)
+      .fill(null)
+      .map((_, slotId) => slotId)
+      .filter(slotFilter)
+      .map<OptionSelectItem>(slotId => ({
+        label: `Slot ${slotId + 1}`,
+        handler: () => {
+          handler(slotId);
+          return true;
+        },
+        keepOpen: true,
+      }));
+
+    options.push({
+      label: i18next.t("menu:cancel"),
+      handler: () => {
+        this.showSaveDataSelect();
+        return true;
+      },
+      keepOpen: true,
+    });
+
+    this.showOptionSelectWithText(title, options);
+  }
+
   private hostMultiplayerLobby(): void {
     const lobbyCode = this.generateLobbyCode();
     const lobbyUrl = this.getMultiplayerLobbyUrl(lobbyCode, "host");
+    const guestUrl = this.getMultiplayerLobbyUrl(lobbyCode, "guest");
     const hostAddress = this.getDisplayHostAddress();
 
     globalScene.ui.setMode(UiMode.MESSAGE);
     globalScene.ui.showText(
-      `Lobby ${lobbyCode} created.$Give this code to Player 2.$Host address: ${hostAddress}`,
+      `Lobby ${lobbyCode} created.$Player 2 can join from ${hostAddress}$Code: ${lobbyCode}`,
       null,
       () => {
+        console.info(`[PokeRogue 2P] Guest lobby link: ${guestUrl}`);
         window.location.assign(lobbyUrl);
       },
       null,
@@ -234,11 +359,7 @@ export class TitlePhase extends Phase {
   }
 
   private joinMultiplayerLobby(): void {
-    const lobbyCode = window
-      .prompt("Enter lobby code")
-      ?.trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, "");
+    const lobbyCode = this.parseLobbyCode(window.prompt("Enter lobby code or lobby link") ?? "");
     if (!lobbyCode) {
       this.showMultiplayerSelect();
       return;
@@ -251,6 +372,51 @@ export class TitlePhase extends Phase {
     const values = new Uint32Array(6);
     crypto.getRandomValues(values);
     return [...values].map(value => TWO_PLAYER_LOBBY_CODE_CHARS[value % TWO_PLAYER_LOBBY_CODE_CHARS.length]).join("");
+  }
+
+  private parseLobbyCode(input: string): string {
+    const trimmedInput = input.trim();
+    if (!trimmedInput) {
+      return "";
+    }
+
+    const urlLobbyCode = this.parseLobbyCodeFromUrl(trimmedInput);
+    if (urlLobbyCode !== undefined) {
+      return urlLobbyCode;
+    }
+
+    if (this.looksLikeUrl(trimmedInput)) {
+      return "";
+    }
+
+    return this.normalizeLobbyCode(trimmedInput);
+  }
+
+  private parseLobbyCodeFromUrl(input: string): string | undefined {
+    try {
+      const urlInput = this.needsUrlScheme(input) ? `http://${input}` : input;
+      const url = new URL(urlInput, window.location.href);
+      if (!this.looksLikeUrl(input)) {
+        return undefined;
+      }
+
+      const sessionId = url.searchParams.get("twoPlayerSession");
+      return sessionId ? this.normalizeLobbyCode(sessionId) : "";
+    } catch {
+      return undefined;
+    }
+  }
+
+  private normalizeLobbyCode(input: string): string {
+    return input.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  }
+
+  private looksLikeUrl(input: string): boolean {
+    return /^[a-z][a-z0-9+.-]*:\/\//i.test(input) || input.includes("localhost") || input.includes("127.0.0.1");
+  }
+
+  private needsUrlScheme(input: string): boolean {
+    return /^(localhost|127\.0\.0\.1)(:\d+)?([/?#]|$)/i.test(input);
   }
 
   private getMultiplayerLobbyUrl(lobbyCode: string, role: "host" | "guest"): string {
