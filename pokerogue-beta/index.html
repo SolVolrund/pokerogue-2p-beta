@@ -46,6 +46,19 @@ SPDX-License-Identifier: AGPL-3.0-only
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
+        const isLocalDevHost = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+        if (isLocalDevHost) {
+          navigator.serviceWorker.getRegistrations().then(function (registrations) {
+            registrations.forEach(function (registration) {
+              registration.unregister();
+            });
+            if (registrations.length) {
+              console.log("ServiceWorker unregistered for local development");
+            }
+          });
+          return;
+        }
+
         navigator.serviceWorker.register("./service-worker.js").then(
           function (registration) {
             console.log("ServiceWorker registration successful");

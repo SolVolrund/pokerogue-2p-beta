@@ -6,6 +6,7 @@ import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { activeOverrides } from "#app/overrides";
 import { Phase } from "#app/phase";
+import type { TwoPlayerTitleStart } from "#app/two-player-input-transport";
 import { bypassLogin } from "#constants/app-constants";
 import { getDailyRunStarters, startDailyEventChallenges } from "#data/daily-seed/daily-run";
 import { modifierTypes } from "#data/data-lists";
@@ -29,11 +30,14 @@ const NO_SAVE_SLOT = -1;
 export class TitlePhase extends Phase {
   public readonly phaseName = "TitlePhase";
   private loaded = false;
+  private remoteTitleStartApplied = false;
   // TODO: Make `end` take a `GameModes` as a parameter rather than storing it on the class itself
   public gameMode: GameModes;
 
   async start(): Promise<void> {
     super.start();
+
+    globalScene.setTwoPlayerTitleStartHandler(titleStart => this.applyRemoteTwoPlayerTitleStart(titleStart));
 
     globalScene.ui.clearText();
     globalScene.ui.fadeIn(250);
@@ -46,6 +50,15 @@ export class TitlePhase extends Phase {
     }
 
     const lastSlot = await this.checkLastSaveSlot();
+    if (this.remoteTitleStartApplied) {
+      return;
+    }
+
+    const pendingTitleStart = globalScene.consumePendingTwoPlayerTitleStart();
+    if (pendingTitleStart && this.applyRemoteTwoPlayerTitleStart(pendingTitleStart)) {
+      return;
+    }
+
     await this.showOptions(lastSlot);
   }
 
@@ -137,6 +150,7 @@ export class TitlePhase extends Phase {
   }
 
   private setModeAndEnd(gameMode: GameModes): void {
+    globalScene.setTwoPlayerTitleStartHandler(undefined);
     this.gameMode = gameMode;
     globalScene.ui.setMode(UiMode.MESSAGE);
     globalScene.ui.clearText();
@@ -235,7 +249,12 @@ export class TitlePhase extends Phase {
         );
       } else {
         globalScene.configureTwoPlayerMode(true, partySize);
-        this.setModeAndEnd(gameMode);
+        const titleStart: TwoPlayerTitleStart = { action: "new-run", gameMode, partySize, seed: globalScene.seed };
+        globalScene.uiInputs?.broadcastTwoPlayerTitleStart(titleStart);
+        this.waitForTwoPlayerProfilesBeforeRun(() => {
+          globalScene.uiInputs?.broadcastTwoPlayerTitleStart(titleStart);
+          this.setModeAndEnd(gameMode);
+        });
       }
     };
 
@@ -268,7 +287,7 @@ export class TitlePhase extends Phase {
   }
 
   // TODO: Make callers actually wait for the save slot to load
-  private async loadSaveSlot(slotId: number): Promise<void> {
+  private async loadSaveSlot(slotId: number, fromRemoteStart = false, seedOverride?: string): Promise<void> {
     // TODO: Do we need to `await` this?
     globalScene.ui.setMode(UiMode.MESSAGE);
     globalScene.ui.resetModeChain();
@@ -277,7 +296,20 @@ export class TitlePhase extends Phase {
       const success = await globalScene.gameData.loadSession(slotId);
       if (success) {
         this.loaded = true;
-        globalScene.ui.showText(i18next.t("menu:sessionSuccess"), null, () => this.end());
+        if (seedOverride) {
+          globalScene.applyTwoPlayerRunBootstrap({ seed: seedOverride });
+        }
+        globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("session-loaded");
+        const titleStart: TwoPlayerTitleStart = { action: "load-session", slotId, seed: globalScene.seed };
+        if (globalScene.twoPlayerMode && !fromRemoteStart) {
+          globalScene.uiInputs?.broadcastTwoPlayerTitleStart(titleStart);
+        }
+        this.waitForTwoPlayerProfilesBeforeRun(() => {
+          if (globalScene.twoPlayerMode && !fromRemoteStart) {
+            globalScene.uiInputs?.broadcastTwoPlayerTitleStart(titleStart);
+          }
+          globalScene.ui.showText(i18next.t("menu:sessionSuccess"), null, () => this.end());
+        });
       } else {
         this.end();
       }
@@ -285,6 +317,59 @@ export class TitlePhase extends Phase {
       console.error(err);
       globalScene.ui.showText(i18next.t("menu:failedToLoadSession"), null);
     }
+  }
+
+  private applyRemoteTwoPlayerTitleStart(titleStart: TwoPlayerTitleStart): boolean {
+    if (!globalScene.twoPlayerMode) {
+      return false;
+    }
+
+    this.remoteTitleStartApplied = true;
+    globalScene.clearPendingTwoPlayerTitleStart(titleStart);
+    if (titleStart.seed) {
+      globalScene.applyTwoPlayerRunBootstrap({ seed: titleStart.seed });
+    }
+
+    if (titleStart.action === "new-run") {
+      const gameMode = titleStart.gameMode as GameModes | undefined;
+      if (gameMode === undefined || gameMode === GameModes.DAILY) {
+        return false;
+      }
+
+      globalScene.configureTwoPlayerMode(true, titleStart.partySize ?? 6);
+      this.waitForTwoPlayerProfilesBeforeRun(() => this.setModeAndEnd(gameMode));
+      return true;
+    }
+
+    if (titleStart.action === "load-session" && titleStart.slotId !== undefined) {
+      void this.loadSaveSlot(titleStart.slotId, true, titleStart.seed);
+      return true;
+    }
+
+    return false;
+  }
+
+  private waitForTwoPlayerProfilesBeforeRun(onReady: () => void): void {
+    if (!globalScene.twoPlayerMode || globalScene.isTwoPlayerProfileExchangeComplete()) {
+      onReady();
+      return;
+    }
+
+    globalScene.waitForSharedInput();
+    globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+      globalScene.ui.showText("Waiting for both player profiles...", null, null, null, false);
+      globalScene.waitForTwoPlayerProfileExchange().then(ready => {
+        if (ready) {
+          globalScene.ui.clearText();
+          onReady();
+          return;
+        }
+
+        globalScene.ui.showText("Still waiting for the other player profile.", null, () =>
+          this.waitForTwoPlayerProfilesBeforeRun(onReady),
+        );
+      });
+    });
   }
 
   initDailyRun(): void {
@@ -426,6 +511,8 @@ export class TitlePhase extends Phase {
 
   // TODO: Refactor this
   end(): void {
+    globalScene.setTwoPlayerTitleStartHandler(undefined);
+
     if (!this.loaded && !globalScene.gameMode.isDaily) {
       globalScene.gameMode = getGameMode(this.gameMode);
       if (this.gameMode === GameModes.CHALLENGE) {

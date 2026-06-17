@@ -622,6 +622,7 @@ export class EncounterPhase extends BattlePhase {
     }
     handleTutorial(Tutorial.ACCESS_MENU).then(() => super.end());
 
+    globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("encounter-generated");
     globalScene.phaseManager.pushNew("InitEncounterPhase");
   }
 

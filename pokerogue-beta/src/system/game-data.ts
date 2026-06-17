@@ -4,6 +4,7 @@ import { defaultStarterSpecies, saveKey } from "#app/constants";
 import { getGameMode } from "#app/game-mode";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { activeOverrides } from "#app/overrides";
 import { isIos } from "#app/touch-controls";
@@ -287,10 +288,10 @@ export class GameData {
    * @param dataStr - The raw JSON string of the `SystemSaveData`
    * @returns - A new `GameData` instance initialized with the parsed `SystemSaveData`
    */
-  public static fromRawSystem(dataStr: string, updateSettings = true): GameData {
+  public static fromRawSystem(dataStr: string, updateSettings = true, eggOwnerPlayerIndex?: PlayerIndex): GameData {
     const gameData = new GameData(true);
     const systemData = GameData.parseSystemData(dataStr);
-    gameData.initParsedSystem(systemData, updateSettings);
+    gameData.initParsedSystem(systemData, updateSettings, eggOwnerPlayerIndex);
     return gameData;
   }
 
@@ -298,7 +299,7 @@ export class GameData {
    * Initialize system data _after_ it has been parsed from JSON.
    * @param systemData The parsed `SystemSaveData` to initialize from
    */
-  private initParsedSystem(systemData: SystemSaveData, updateSettings = true): void {
+  private initParsedSystem(systemData: SystemSaveData, updateSettings = true, eggOwnerPlayerIndex?: PlayerIndex): void {
     applySystemVersionMigration(systemData);
 
     this.trainerId = systemData.trainerId;
@@ -376,7 +377,7 @@ export class GameData {
       });
     }
 
-    this.eggs = systemData.eggs ? systemData.eggs.map(e => e.toEgg()) : [];
+    this.eggs = systemData.eggs ? systemData.eggs.map(e => e.toEgg(eggOwnerPlayerIndex)) : [];
 
     this.eggPity = systemData.eggPity ? systemData.eggPity.slice(0) : [0, 0, 0, 0];
     this.unlockPity = systemData.unlockPity ? systemData.unlockPity.slice(0) : [0, 0, 0, 0];
@@ -1323,7 +1324,7 @@ export class GameData {
 
     const maxIntAttrValue = 0x80000000;
 
-    const systemSaveSource = globalScene.twoPlayerMode ? globalScene.getPlayerGameData(0) : this;
+    const systemSaveSource = globalScene.twoPlayerMode ? globalScene.getLocalPlayerGameData() : this;
     const systemData = useCachedSystem
       ? GameData.parseSystemData(decrypt(localStorage.getItem(`data_${loggedInUser?.username}`)!, bypassLogin))
       : systemSaveSource.getSystemSaveData(); // TODO: is this bang correct?
@@ -1351,7 +1352,7 @@ export class GameData {
     );
 
     if (globalScene.twoPlayerMode) {
-      globalScene.savePlayerSystemSaveLocal(1);
+      ([0, 1] as const).forEach(playerIndex => globalScene.savePlayerSystemSaveLocal(playerIndex));
     }
 
     console.debug(`Session data saved to slot ${globalScene.sessionSlotId}!`);

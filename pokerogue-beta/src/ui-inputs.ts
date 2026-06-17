@@ -10,7 +10,9 @@ import {
   isTwoPlayerInputDebugEnabled,
   TwoPlayerInputTransport,
   type TwoPlayerInputDebugEvent,
+  type TwoPlayerProfileSnapshot,
   type TwoPlayerRunBootstrap,
+  type TwoPlayerTitleStart,
   type TwoPlayerInputTransportStatus,
 } from "#app/two-player-input-transport";
 import type { MessageUiHandler } from "#ui/message-ui-handler";
@@ -37,6 +39,12 @@ declare global {
       release(player: RemoteDebugPlayer, button: RemoteButtonInput): boolean;
       checkpoint(): TwoPlayerDebugStateCheckpoint | undefined;
       sendRunBootstrap(seed?: string): boolean;
+      sendTitleStart(titleStart: TwoPlayerTitleStart): boolean;
+      sendProfileSnapshot(): boolean;
+      sendCheckpoint(reason?: string): boolean;
+      profileReady(): boolean;
+      profileSlotsReady(): [boolean, boolean];
+      syncStatus(): Record<string, unknown>;
       transportStatus(): TwoPlayerInputTransportStatus | undefined;
       debugEvents(): TwoPlayerInputDebugEvent[];
       clearDebugEvents(): void;
@@ -63,8 +71,11 @@ export class UiInputs {
       globalScene.twoPlayerLocalInputSeat,
       (playerIndex, button, pressed) => this.processRemoteInput(playerIndex, button, pressed),
       runBootstrap => this.applyRunBootstrap(runBootstrap),
+      titleStart => this.applyTitleStart(titleStart),
       event => this.recordInputDebugEvent(event),
-      this.twoPlayerInputDebugEnabled ? () => globalScene.getTwoPlayerDebugStateCheckpoint() : undefined,
+      () => globalScene.getTwoPlayerDebugStateCheckpoint(),
+      profileSnapshot => this.applyProfileSnapshot(profileSnapshot),
+      () => globalScene.getLocalTwoPlayerProfileSnapshot(),
     );
     this.exposeDebugRemoteInput();
   }
@@ -172,8 +183,28 @@ export class UiInputs {
     return this.twoPlayerInputTransport?.sendRunBootstrap({ seed }) ?? false;
   }
 
+  public broadcastTwoPlayerTitleStart(titleStart: TwoPlayerTitleStart): boolean {
+    return this.twoPlayerInputTransport?.sendTitleStart(titleStart) ?? false;
+  }
+
+  public broadcastTwoPlayerProfileSnapshot(): boolean {
+    return this.twoPlayerInputTransport?.sendProfileSnapshot(globalScene.getLocalTwoPlayerProfileSnapshot()) ?? false;
+  }
+
+  public broadcastTwoPlayerCheckpoint(reason?: string): boolean {
+    return this.twoPlayerInputTransport?.sendCheckpoint(reason) ?? false;
+  }
+
   private applyRunBootstrap(runBootstrap: TwoPlayerRunBootstrap): void {
     globalScene.applyTwoPlayerRunBootstrap(runBootstrap);
+  }
+
+  private applyTitleStart(titleStart: TwoPlayerTitleStart): void {
+    globalScene.applyTwoPlayerTitleStart(titleStart);
+  }
+
+  private applyProfileSnapshot(profileSnapshot: TwoPlayerProfileSnapshot): boolean {
+    return globalScene.applyTwoPlayerProfileSnapshot(profileSnapshot);
   }
 
   private processButtonInput(button: Button, pressed: boolean): boolean {
@@ -222,7 +253,7 @@ export class UiInputs {
   }
 
   private recordInputDebugEvent(event: Omit<TwoPlayerInputDebugEvent, "at">): void {
-    if (!this.twoPlayerInputDebugEnabled) {
+    if (!this.twoPlayerInputDebugEnabled && event.action !== "desync") {
       return;
     }
 
@@ -232,7 +263,28 @@ export class UiInputs {
       this.twoPlayerInputDebugEvents.shift();
     }
 
+    if (debugEvent.action === "desync") {
+      console.warn("[PokeRogue 2P desync]", debugEvent);
+    }
     console.debug("[PokeRogue 2P input]", debugEvent);
+  }
+
+  private getTwoPlayerSyncStatus(): Record<string, unknown> {
+    const checkpoint = globalScene.getTwoPlayerDebugStateCheckpoint();
+    const lastDesync = [...this.twoPlayerInputDebugEvents].reverse().find(event => event.action === "desync");
+
+    return {
+      profileReady: globalScene.isTwoPlayerProfileExchangeComplete(),
+      profileSlotsReady: [...globalScene.twoPlayerProfileSlotsReady],
+      localSeat: globalScene.twoPlayerLocalInputSeat,
+      inputOwner: globalScene.inputOwner,
+      activePlayerIndex: globalScene.activePlayerIndex,
+      phase: globalScene.phaseManager.getCurrentPhase()?.phaseName ?? null,
+      transport: this.twoPlayerInputTransport?.getStatus(),
+      checkpointFingerprint: checkpoint?.fingerprint,
+      summary: checkpoint?.summary,
+      lastDesync,
+    };
   }
 
   private exposeDebugRemoteInput(): void {
@@ -245,6 +297,12 @@ export class UiInputs {
       release: (player, button) => this.processDebugRemoteInput(player, button, false),
       checkpoint: () => globalScene.getTwoPlayerDebugStateCheckpoint(),
       sendRunBootstrap: seed => this.broadcastTwoPlayerRunBootstrap(seed ?? globalScene.seed),
+      sendTitleStart: titleStart => this.broadcastTwoPlayerTitleStart(titleStart),
+      sendProfileSnapshot: () => this.broadcastTwoPlayerProfileSnapshot(),
+      sendCheckpoint: reason => this.broadcastTwoPlayerCheckpoint(reason),
+      profileReady: () => globalScene.isTwoPlayerProfileExchangeComplete(),
+      profileSlotsReady: () => [...globalScene.twoPlayerProfileSlotsReady] as [boolean, boolean],
+      syncStatus: () => this.getTwoPlayerSyncStatus(),
       transportStatus: () => this.twoPlayerInputTransport?.getStatus(),
       debugEvents: () => [...this.twoPlayerInputDebugEvents],
       clearDebugEvents: () => {

@@ -79,6 +79,8 @@ export interface IEggOptions {
   eggDescriptor?: string;
   /** Owner profile that should receive this egg when it is created by gacha/rewards. */
   playerIndex?: PlayerIndex;
+  /** Internal marker used when rebuilding eggs from save data. */
+  fromSave?: boolean;
 }
 
 export class Egg {
@@ -203,8 +205,11 @@ export class Egg {
       }
     };
 
+    const eggSeedIndex = eggOptions?.pulled && !eggOptions.fromSave
+      ? this.getOwnerGameData().eggs.length
+      : (eggOptions?.id ?? 0);
     const seedOverride = globalScene.twoPlayerMode
-      ? `${globalScene.seed}:egg:${this.ownerPlayerIndex}:${this.getOwnerGameData().eggs.length}`
+      ? `${globalScene.seed}:egg:${this.ownerPlayerIndex}:${eggSeedIndex}`
       : randomString(24);
     globalScene.executeWithSeedOffset(
       () => {

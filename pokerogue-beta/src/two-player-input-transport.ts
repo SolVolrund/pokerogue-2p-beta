@@ -4,7 +4,14 @@ import { Button } from "#enums/buttons";
 const LOCAL_INPUT_PROTOCOL = "pokerogue-2p-local-input";
 const LOCAL_INPUT_PROTOCOL_VERSION = 1;
 
-type TwoPlayerInputMessageKind = "input" | "input-request" | "input-accepted" | "run-bootstrap" | "state-checkpoint";
+type TwoPlayerInputMessageKind =
+  | "input"
+  | "input-request"
+  | "input-accepted"
+  | "run-bootstrap"
+  | "title-start"
+  | "state-checkpoint"
+  | "profile-snapshot";
 
 export interface TwoPlayerStateCheckpoint {
   fingerprint: string;
@@ -13,6 +20,19 @@ export interface TwoPlayerStateCheckpoint {
 
 export interface TwoPlayerRunBootstrap {
   seed: string;
+}
+
+export interface TwoPlayerTitleStart {
+  action: "new-run" | "load-session";
+  gameMode?: number;
+  partySize?: 3 | 6;
+  slotId?: number;
+  seed?: string;
+}
+
+export interface TwoPlayerProfileSnapshot {
+  playerIndex: PlayerIndex;
+  systemSave: string;
 }
 
 interface TwoPlayerInputMessage {
@@ -27,7 +47,9 @@ interface TwoPlayerInputMessage {
   button: Button;
   pressed: boolean;
   runBootstrap?: TwoPlayerRunBootstrap;
+  titleStart?: TwoPlayerTitleStart;
   checkpoint?: TwoPlayerStateCheckpoint;
+  profileSnapshot?: TwoPlayerProfileSnapshot;
 }
 
 type RawTwoPlayerInputMessage = Omit<TwoPlayerInputMessage, "kind"> & { kind?: TwoPlayerInputMessageKind };
@@ -47,6 +69,9 @@ export interface TwoPlayerInputTransportStatus {
 
 export type RemoteInputHandler = (playerIndex: PlayerIndex, button: Button, pressed: boolean) => boolean;
 export type TwoPlayerRunBootstrapHandler = (bootstrap: TwoPlayerRunBootstrap) => void;
+export type TwoPlayerTitleStartHandler = (titleStart: TwoPlayerTitleStart) => void;
+export type TwoPlayerProfileSnapshotHandler = (profileSnapshot: TwoPlayerProfileSnapshot) => boolean;
+export type TwoPlayerProfileSnapshotProvider = () => TwoPlayerProfileSnapshot | undefined;
 export type TwoPlayerStateCheckpointProvider = () => TwoPlayerStateCheckpoint | undefined;
 export type TwoPlayerInputDebugAction =
   | "accepted"
@@ -82,6 +107,7 @@ export interface TwoPlayerInputDebugEvent {
   localFingerprint?: string;
   remoteFingerprint?: string;
   checkpointSummary?: Record<string, unknown>;
+  profilePlayerIndex?: PlayerIndex;
 }
 
 export type TwoPlayerInputDebugLogger = (event: Omit<TwoPlayerInputDebugEvent, "at">) => void;
@@ -150,7 +176,9 @@ function isValidMessageKind(kind: unknown): kind is TwoPlayerInputMessageKind {
     || kind === "input-request"
     || kind === "input-accepted"
     || kind === "run-bootstrap"
-    || kind === "state-checkpoint";
+    || kind === "title-start"
+    || kind === "state-checkpoint"
+    || kind === "profile-snapshot";
 }
 
 function isValidRunBootstrap(runBootstrap: unknown): runBootstrap is TwoPlayerRunBootstrap {
@@ -160,12 +188,33 @@ function isValidRunBootstrap(runBootstrap: unknown): runBootstrap is TwoPlayerRu
     && (runBootstrap as Partial<TwoPlayerRunBootstrap>).seed!.length > 0;
 }
 
+function isValidTitleStart(titleStart: unknown): titleStart is TwoPlayerTitleStart {
+  if (!titleStart || typeof titleStart !== "object") {
+    return false;
+  }
+
+  const data = titleStart as Partial<TwoPlayerTitleStart>;
+  return (data.action === "new-run" || data.action === "load-session")
+    && (data.gameMode === undefined || typeof data.gameMode === "number")
+    && (data.partySize === undefined || data.partySize === 3 || data.partySize === 6)
+    && (data.slotId === undefined || typeof data.slotId === "number")
+    && (data.seed === undefined || (typeof data.seed === "string" && data.seed.length > 0));
+}
+
 function isValidCheckpoint(checkpoint: unknown): checkpoint is TwoPlayerStateCheckpoint {
   return !!checkpoint
     && typeof checkpoint === "object"
     && typeof (checkpoint as Partial<TwoPlayerStateCheckpoint>).fingerprint === "string"
     && !!(checkpoint as Partial<TwoPlayerStateCheckpoint>).summary
     && typeof (checkpoint as Partial<TwoPlayerStateCheckpoint>).summary === "object";
+}
+
+function isValidProfileSnapshot(profileSnapshot: unknown): profileSnapshot is TwoPlayerProfileSnapshot {
+  return !!profileSnapshot
+    && typeof profileSnapshot === "object"
+    && isValidPlayerIndex((profileSnapshot as Partial<TwoPlayerProfileSnapshot>).playerIndex)
+    && typeof (profileSnapshot as Partial<TwoPlayerProfileSnapshot>).systemSave === "string"
+    && (profileSnapshot as Partial<TwoPlayerProfileSnapshot>).systemSave!.length > 0;
 }
 
 function parseTwoPlayerInputMessage(value: unknown): TwoPlayerInputMessage | undefined {
@@ -187,7 +236,9 @@ function parseTwoPlayerInputMessage(value: unknown): TwoPlayerInputMessage | und
     || !isValidButton(message.button)
     || typeof message.pressed !== "boolean"
     || (kind === "run-bootstrap" && !isValidRunBootstrap(message.runBootstrap))
+    || (kind === "title-start" && !isValidTitleStart(message.titleStart))
     || (kind === "state-checkpoint" && !isValidCheckpoint(message.checkpoint))
+    || (kind === "profile-snapshot" && !isValidProfileSnapshot(message.profileSnapshot))
   ) {
     return undefined;
   }
@@ -204,7 +255,9 @@ function parseTwoPlayerInputMessage(value: unknown): TwoPlayerInputMessage | und
     button: message.button,
     pressed: message.pressed,
     ...(kind === "run-bootstrap" ? { runBootstrap: message.runBootstrap } : {}),
+    ...(kind === "title-start" ? { titleStart: message.titleStart } : {}),
     ...(kind === "state-checkpoint" ? { checkpoint: message.checkpoint } : {}),
+    ...(kind === "profile-snapshot" ? { profileSnapshot: message.profileSnapshot } : {}),
   };
 }
 
@@ -220,14 +273,20 @@ export class TwoPlayerInputTransport {
   private sequence = 0;
   private authoritySequence = 0;
   private pendingRunBootstrap: TwoPlayerRunBootstrap | undefined;
+  private pendingTitleStart: TwoPlayerTitleStart | undefined;
+  private pendingProfileSnapshot: TwoPlayerProfileSnapshot | undefined;
+  private profileSnapshotResponseSent = false;
 
   private constructor(
     mode: "local" | "websocket",
     private readonly localSeat: PlayerIndex,
     private readonly onRemoteInput: RemoteInputHandler,
     private readonly onRunBootstrap?: TwoPlayerRunBootstrapHandler,
+    private readonly onTitleStart?: TwoPlayerTitleStartHandler,
     private readonly logDebug?: TwoPlayerInputDebugLogger,
     private readonly getCheckpoint?: TwoPlayerStateCheckpointProvider,
+    private readonly onProfileSnapshot?: TwoPlayerProfileSnapshotHandler,
+    private readonly getProfileSnapshot?: TwoPlayerProfileSnapshotProvider,
   ) {
     this.mode = mode;
   }
@@ -236,8 +295,11 @@ export class TwoPlayerInputTransport {
     localSeat: LocalInputSeat,
     onRemoteInput: RemoteInputHandler,
     onRunBootstrap?: TwoPlayerRunBootstrapHandler,
+    onTitleStart?: TwoPlayerTitleStartHandler,
     logDebug?: TwoPlayerInputDebugLogger,
     getCheckpoint?: TwoPlayerStateCheckpointProvider,
+    onProfileSnapshot?: TwoPlayerProfileSnapshotHandler,
+    getProfileSnapshot?: TwoPlayerProfileSnapshotProvider,
   ): TwoPlayerInputTransport | undefined {
     const mode = getLocalTransportMode();
     if (localSeat === "both") {
@@ -254,8 +316,11 @@ export class TwoPlayerInputTransport {
         localSeat,
         onRemoteInput,
         onRunBootstrap,
+        onTitleStart,
         logDebug,
         getCheckpoint,
+        onProfileSnapshot,
+        getProfileSnapshot,
       );
       transport.startLocal();
       return transport;
@@ -271,8 +336,11 @@ export class TwoPlayerInputTransport {
         localSeat,
         onRemoteInput,
         onRunBootstrap,
+        onTitleStart,
         logDebug,
         getCheckpoint,
+        onProfileSnapshot,
+        getProfileSnapshot,
       );
       transport.startWebSocket();
       return transport;
@@ -301,6 +369,24 @@ export class TwoPlayerInputTransport {
     return this.flushPendingRunBootstrap();
   }
 
+  public sendTitleStart(titleStart: TwoPlayerTitleStart): boolean {
+    if (this.networkRole !== "host") {
+      return false;
+    }
+
+    this.pendingTitleStart = titleStart;
+    return this.flushPendingTitleStart();
+  }
+
+  public sendProfileSnapshot(profileSnapshot = this.getProfileSnapshot?.()): boolean {
+    if (!profileSnapshot) {
+      return false;
+    }
+
+    this.pendingProfileSnapshot = profileSnapshot;
+    return this.flushPendingProfileSnapshot();
+  }
+
   private flushPendingRunBootstrap(): boolean {
     if (!this.pendingRunBootstrap) {
       return false;
@@ -314,6 +400,42 @@ export class TwoPlayerInputTransport {
     this.logMessageSend(sent, message, sent ? "run-bootstrap" : "transport-not-open");
     if (sent) {
       this.pendingRunBootstrap = undefined;
+    }
+
+    return sent;
+  }
+
+  private flushPendingTitleStart(): boolean {
+    if (!this.pendingTitleStart) {
+      return false;
+    }
+
+    const message = {
+      ...this.createMessage("title-start", this.localSeat, Button.ACTION, true),
+      titleStart: this.pendingTitleStart,
+    };
+    const sent = this.sendMessage(message);
+    this.logMessageSend(sent, message, sent ? "title-start" : "transport-not-open");
+    if (sent) {
+      this.pendingTitleStart = undefined;
+    }
+
+    return sent;
+  }
+
+  private flushPendingProfileSnapshot(): boolean {
+    if (!this.pendingProfileSnapshot) {
+      return false;
+    }
+
+    const message = {
+      ...this.createMessage("profile-snapshot", this.pendingProfileSnapshot.playerIndex, Button.ACTION, true),
+      profileSnapshot: this.pendingProfileSnapshot,
+    };
+    const sent = this.sendMessage(message);
+    this.logMessageSend(sent, message, sent ? "profile-snapshot" : "transport-not-open");
+    if (sent) {
+      this.pendingProfileSnapshot = undefined;
     }
 
     return sent;
@@ -377,6 +499,7 @@ export class TwoPlayerInputTransport {
             checkpointSummary: message.checkpoint.summary,
           }
         : {}),
+      ...(message.profileSnapshot ? { profilePlayerIndex: message.profileSnapshot.playerIndex } : {}),
     });
   }
 
@@ -413,6 +536,21 @@ export class TwoPlayerInputTransport {
     this.logMessageSend(sent, checkpointMessage, sent ? undefined : "transport-not-open");
   }
 
+  public sendCheckpoint(reason = "manual-checkpoint"): boolean {
+    const checkpoint = this.getCheckpoint?.();
+    if (!checkpoint) {
+      return false;
+    }
+
+    const message = {
+      ...this.createMessage("state-checkpoint", this.localSeat, Button.ACTION, true),
+      checkpoint,
+    };
+    const sent = this.sendMessage(message);
+    this.logMessageSend(sent, message, sent ? reason : "transport-not-open");
+    return sent;
+  }
+
   public getStatus(): TwoPlayerInputTransportStatus {
     return {
       enabled: !!this.channel || this.webSocket?.readyState === WebSocket.OPEN,
@@ -445,7 +583,9 @@ export class TwoPlayerInputTransport {
   private startLocal(): void {
     this.channel = new BroadcastChannel(this.channelName);
     this.channel.addEventListener("message", this.onMessage);
+    this.sendProfileSnapshot();
     this.flushPendingRunBootstrap();
+    this.flushPendingTitleStart();
   }
 
   private startWebSocket(): void {
@@ -458,7 +598,9 @@ export class TwoPlayerInputTransport {
         webSocketUrl: this.webSocketUrl,
         localSeat: this.localSeat,
       });
+      this.sendProfileSnapshot();
       this.flushPendingRunBootstrap();
+      this.flushPendingTitleStart();
     });
     this.webSocket.addEventListener("message", event => {
       this.onMessageData(event.data);
@@ -534,8 +676,18 @@ export class TwoPlayerInputTransport {
       return;
     }
 
+    if (message.kind === "title-start") {
+      this.handleTitleStart(message);
+      return;
+    }
+
     if (message.kind === "state-checkpoint") {
       this.handleStateCheckpoint(message);
+      return;
+    }
+
+    if (message.kind === "profile-snapshot") {
+      this.handleProfileSnapshot(message);
       return;
     }
 
@@ -660,6 +812,36 @@ export class TwoPlayerInputTransport {
     });
   }
 
+  private handleTitleStart(message: TwoPlayerInputMessage): void {
+    if (!message.titleStart) {
+      this.logIgnoredMessage(message, "missing-title-start");
+      return;
+    }
+
+    if (this.networkRole === "host") {
+      this.logIgnoredMessage(message, "title-start-received-by-host");
+      return;
+    }
+
+    this.onTitleStart?.(message.titleStart);
+    this.logDebug?.({
+      action: "received",
+      source: "transport",
+      reason: "title-start",
+      sessionId: message.sessionId,
+      channelName: this.channelName,
+      ...(this.mode === "websocket" ? { webSocketUrl: this.webSocketUrl } : {}),
+      senderId: message.senderId,
+      sequence: message.sequence,
+      messageKind: message.kind,
+      localSeat: this.localSeat,
+      playerIndex: message.playerIndex,
+      button: message.button,
+      buttonName: Button[message.button] as keyof typeof Button,
+      pressed: message.pressed,
+    });
+  }
+
   private handleStateCheckpoint(message: TwoPlayerInputMessage): void {
     const remoteCheckpoint = message.checkpoint;
     const localCheckpoint = this.getCheckpoint?.();
@@ -686,6 +868,38 @@ export class TwoPlayerInputTransport {
       ...(remoteFingerprint ? { checkpointFingerprint: remoteFingerprint, remoteFingerprint } : {}),
       ...(localFingerprint ? { localFingerprint } : {}),
       ...(remoteCheckpoint ? { checkpointSummary: remoteCheckpoint.summary } : {}),
+    });
+  }
+
+  private handleProfileSnapshot(message: TwoPlayerInputMessage): void {
+    const profileSnapshot = message.profileSnapshot;
+    if (!profileSnapshot) {
+      this.logIgnoredMessage(message, "missing-profile-snapshot");
+      return;
+    }
+
+    const accepted = this.onProfileSnapshot?.(profileSnapshot) ?? false;
+    if (!this.profileSnapshotResponseSent) {
+      this.profileSnapshotResponseSent = true;
+      this.sendProfileSnapshot();
+    }
+
+    this.logDebug?.({
+      action: accepted ? "accepted" : "rejected",
+      source: "transport",
+      ...(accepted ? { reason: "profile-snapshot" } : { reason: "profile-snapshot-rejected" }),
+      sessionId: message.sessionId,
+      channelName: this.channelName,
+      ...(this.mode === "websocket" ? { webSocketUrl: this.webSocketUrl } : {}),
+      senderId: message.senderId,
+      sequence: message.sequence,
+      messageKind: message.kind,
+      localSeat: this.localSeat,
+      playerIndex: message.playerIndex,
+      profilePlayerIndex: profileSnapshot.playerIndex,
+      button: message.button,
+      buttonName: Button[message.button] as keyof typeof Button,
+      pressed: message.pressed,
     });
   }
 

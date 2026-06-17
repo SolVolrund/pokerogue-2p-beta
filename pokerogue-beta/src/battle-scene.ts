@@ -24,7 +24,11 @@ import { InvertPostFX } from "#app/pipelines/invert";
 import { SpritePipeline } from "#app/pipelines/sprite";
 import { SceneBase } from "#app/scene-base";
 import { TurnCommandManager } from "#app/turn-command-manager";
-import type { TwoPlayerRunBootstrap } from "#app/two-player-input-transport";
+import type {
+  TwoPlayerProfileSnapshot,
+  TwoPlayerRunBootstrap,
+  TwoPlayerTitleStart,
+} from "#app/two-player-input-transport";
 import { UiInputs } from "#app/ui-inputs";
 import { STARTING_WAVE } from "#balance/misc";
 import { FRIENDSHIP_GAIN_FROM_BATTLE } from "#balance/starters";
@@ -168,6 +172,11 @@ export type PlayerIndex = 0 | 1;
 export type InputOwner = PlayerIndex | "both" | "none";
 export type LocalInputSeat = PlayerIndex | "both";
 const TWO_PLAYER_GUEST_SYSTEM_SAVE_KEY = "pokerogue_2p_guest_system_save";
+const TWO_PLAYER_SESSION_SYSTEM_SAVE_KEYS = [
+  "pokerogue_2p_session_system_save_0",
+  "pokerogue_2p_session_system_save_1",
+] as const;
+const TWO_PLAYER_PROFILE_HANDSHAKE_BUILD = "profile-handshake-2026-06-17c";
 const TWO_PLAYER_TEST_STARTING_MONEY = 1000;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.MYSTERIOUS_CHEST,
@@ -399,6 +408,7 @@ export class BattleScene extends SceneBase {
 
   public gameData: GameData;
   public systemSaves: [GameData, GameData] | undefined;
+  private localPlayerSystemSave: GameData | undefined;
   /** The numeric slot number of the current save slot being played. */
   public sessionSlotId: number;
 
@@ -452,8 +462,12 @@ export class BattleScene extends SceneBase {
   public twoPlayerLocalInputSeat: LocalInputSeat = getTwoPlayerLocalInputSeat();
   public twoPlayerGuestGender: PlayerGender = PlayerGender.FEMALE;
   public twoPlayerMysteryDecisionPriority: PlayerIndex = 0;
+  public twoPlayerProfileSlotsReady: [boolean, boolean] = [false, false];
   public readonly fieldSlotOwners: [PlayerIndex, PlayerIndex] = [0, 1];
   public players: [PlayerRunState, PlayerRunState] = [createPlayerRunState(), createPlayerRunState()];
+  private twoPlayerProfileReadyResolvers: Array<(ready: boolean) => void> = [];
+  private pendingTwoPlayerTitleStart: TwoPlayerTitleStart | undefined;
+  private twoPlayerTitleStartHandler: ((titleStart: TwoPlayerTitleStart) => void) | undefined;
   /** Session save data that pertains to Mystery Encounters */
   public mysteryEncounterSaveData: MysteryEncounterSaveData = new MysteryEncounterSaveData();
   /** If the previous wave was a MysteryEncounter, tracks the object with this variable. Mostly used for visual object cleanup */
@@ -909,7 +923,20 @@ export class BattleScene extends SceneBase {
   }
 
   private initializePlayerSystemSaves(): void {
-    this.systemSaves = [this.gameData, this.loadGuestSystemSave()];
+    console.info(`[PokeRogue 2P] ${TWO_PLAYER_PROFILE_HANDSHAKE_BUILD}`);
+    const localSystemSave = this.getLocalPlayerSystemSave();
+    const localSeat = this.getLocalSystemSaveSeat();
+    this.refreshTwoPlayerProfileSlotsReady();
+
+    if (localSeat === 1) {
+      const placeholderRemoteSave = new GameData(true);
+      this.systemSaves = [placeholderRemoteSave, localSystemSave];
+      this.systemSaves[0] = this.loadSessionSystemSave(0) ?? placeholderRemoteSave;
+    } else {
+      const placeholderRemoteSave = new GameData(true);
+      this.systemSaves = [localSystemSave, placeholderRemoteSave];
+      this.systemSaves[1] = this.loadSessionSystemSave(1) ?? this.loadGuestSystemSave();
+    }
     this.applyTwoPlayerEggVoucherGrant();
   }
 
@@ -922,21 +949,31 @@ export class BattleScene extends SceneBase {
   }
 
   public configureTwoPlayerMode(enabled: boolean, partySize: 3 | 6 = 6): void {
-    if (this.systemSaves?.[0]) {
+    if (!this.twoPlayerMode) {
+      this.localPlayerSystemSave = this.gameData;
+    }
+
+    const localSystemSave = this.getLocalPlayerSystemSave();
+    if (this.systemSaves && this.isLocalSystemSaveOwner(0)) {
       this.gameData = this.systemSaves[0];
+    } else {
+      this.gameData = localSystemSave;
     }
 
     this.twoPlayerMode = enabled;
     this.twoPlayerPartySize = enabled ? partySize : 6;
     this.activePlayerIndex = 0;
     this.inputOwner = "none";
+    this.refreshTwoPlayerProfileSlotsReady();
 
     if (enabled) {
       if (!this.systemSaves) {
         this.initializePlayerSystemSaves();
       }
       this.syncLegacyStateForActivePlayer();
+      this.uiInputs?.broadcastTwoPlayerProfileSnapshot();
     } else {
+      this.gameData = localSystemSave;
       this.systemSaves = undefined;
       this.syncSinglePlayerStateReference();
     }
@@ -951,15 +988,14 @@ export class BattleScene extends SceneBase {
     }
 
     if (!this.systemSaves) {
-      this.systemSaves = [this.gameData, this.loadGuestSystemSave()];
+      this.initializePlayerSystemSaves();
     }
 
     for (const playerIndex of [0, 1] as const) {
       this.systemSaves![playerIndex].voucherCounts[VoucherType.REGULAR] = this.twoPlayerEggVoucherGrant;
     }
 
-    void this.savePlayerSystemSave(0);
-    this.savePlayerSystemSaveLocal(1);
+    ([0, 1] as const).forEach(playerIndex => this.savePlayerSystemSaveLocal(playerIndex));
   }
 
   private loadGuestSystemSave(): GameData {
@@ -969,11 +1005,157 @@ export class BattleScene extends SceneBase {
     }
 
     try {
-      return GameData.fromRawSystem(guestSystemSave, false);
+      return GameData.fromRawSystem(guestSystemSave, false, 1);
     } catch (err) {
       console.warn("Failed to load 2P guest profile; creating a fresh guest profile.", err);
       return new GameData(true);
     }
+  }
+
+  private getLocalPlayerSystemSave(): GameData {
+    if (!this.localPlayerSystemSave) {
+      this.localPlayerSystemSave = this.gameData;
+    }
+
+    return this.localPlayerSystemSave;
+  }
+
+  public getLocalTwoPlayerProfileSnapshot(): TwoPlayerProfileSnapshot | undefined {
+    if (!this.twoPlayerMode || !this.gameData) {
+      return undefined;
+    }
+
+    const localSeat = this.getLocalSystemSaveSeat();
+    if (localSeat === "host-and-guest-local") {
+      return undefined;
+    }
+
+    return {
+      playerIndex: localSeat,
+      systemSave: this.getLocalPlayerGameData().getSystemSaveDataString(),
+    };
+  }
+
+  public applyTwoPlayerProfileSnapshot(profileSnapshot: TwoPlayerProfileSnapshot): boolean {
+    if (!this.twoPlayerMode || this.isLocalSystemSaveOwner(profileSnapshot.playerIndex)) {
+      return false;
+    }
+
+    let gameData: GameData;
+    try {
+      gameData = GameData.fromRawSystem(profileSnapshot.systemSave, false, profileSnapshot.playerIndex);
+    } catch (err) {
+      console.warn(`Failed to import 2P profile snapshot for player ${profileSnapshot.playerIndex}.`, err);
+      return false;
+    }
+
+    const systemSaves = this.ensurePlayerSystemSaves();
+    systemSaves[profileSnapshot.playerIndex] = gameData;
+    this.twoPlayerProfileSlotsReady[profileSnapshot.playerIndex] = true;
+    this.saveSessionSystemSaveLocal(profileSnapshot.playerIndex, gameData);
+
+    if (this.activePlayerIndex === profileSnapshot.playerIndex) {
+      this.syncActiveSystemSaveForActivePlayer();
+    }
+
+    this.resolveTwoPlayerProfileReadyWaiters();
+    return true;
+  }
+
+  private refreshTwoPlayerProfileSlotsReady(): void {
+    if (!this.twoPlayerMode) {
+      this.twoPlayerProfileSlotsReady = [true, true];
+      this.resolveTwoPlayerProfileReadyWaiters();
+      return;
+    }
+
+    const localSeat = this.getLocalSystemSaveSeat();
+    const localReady: [boolean, boolean] =
+      localSeat === "host-and-guest-local"
+        ? [true, true]
+        : [localSeat === 0, localSeat === 1];
+
+    this.twoPlayerProfileSlotsReady = [
+      this.twoPlayerProfileSlotsReady[0] || localReady[0],
+      this.twoPlayerProfileSlotsReady[1] || localReady[1],
+    ];
+    this.resolveTwoPlayerProfileReadyWaiters();
+  }
+
+  public isTwoPlayerProfileExchangeComplete(): boolean {
+    return !this.twoPlayerMode || this.twoPlayerProfileSlotsReady.every(Boolean);
+  }
+
+  public waitForTwoPlayerProfileExchange(timeoutMs = 15000): Promise<boolean> {
+    if (this.isTwoPlayerProfileExchangeComplete()) {
+      return Promise.resolve(true);
+    }
+
+    return new Promise(resolve => {
+      const resolver = (ready: boolean) => {
+        clearTimeout(timeout);
+        resolve(ready);
+      };
+      const timeout = setTimeout(() => {
+        this.twoPlayerProfileReadyResolvers = this.twoPlayerProfileReadyResolvers.filter(r => r !== resolver);
+        resolve(this.isTwoPlayerProfileExchangeComplete());
+      }, timeoutMs);
+
+      this.twoPlayerProfileReadyResolvers.push(resolver);
+    });
+  }
+
+  private resolveTwoPlayerProfileReadyWaiters(): void {
+    if (!this.isTwoPlayerProfileExchangeComplete() || !this.twoPlayerProfileReadyResolvers.length) {
+      return;
+    }
+
+    const resolvers = this.twoPlayerProfileReadyResolvers.splice(0, this.twoPlayerProfileReadyResolvers.length);
+    resolvers.forEach(resolve => resolve(true));
+  }
+
+  public getLocalSystemSaveSeat(): PlayerIndex | "host-and-guest-local" {
+    if (!this.twoPlayerMode || this.twoPlayerLocalInputSeat === "both") {
+      return "host-and-guest-local";
+    }
+
+    return this.twoPlayerLocalInputSeat;
+  }
+
+  public isLocalSystemSaveOwner(playerIndex: PlayerIndex): boolean {
+    if (!this.twoPlayerMode) {
+      return true;
+    }
+
+    const localSeat = this.getLocalSystemSaveSeat();
+    return localSeat === "host-and-guest-local" ? playerIndex === 0 : localSeat === playerIndex;
+  }
+
+  public getLocalPlayerGameData(): GameData {
+    if (!this.twoPlayerMode) {
+      return this.getLocalPlayerSystemSave();
+    }
+
+    const localSeat = this.getLocalSystemSaveSeat();
+    return this.ensurePlayerSystemSaves()[localSeat === "host-and-guest-local" ? 0 : localSeat];
+  }
+
+  private loadSessionSystemSave(playerIndex: PlayerIndex): GameData | undefined {
+    const systemSave = localStorage.getItem(TWO_PLAYER_SESSION_SYSTEM_SAVE_KEYS[playerIndex]);
+    if (!systemSave) {
+      return undefined;
+    }
+
+    try {
+      return GameData.fromRawSystem(systemSave, false, playerIndex);
+    } catch (err) {
+      console.warn(`Failed to load temporary 2P session profile for player ${playerIndex}; creating a fresh profile.`, err);
+      return undefined;
+    }
+  }
+
+  private saveSessionSystemSaveLocal(playerIndex: PlayerIndex, gameData = this.getPlayerGameData(playerIndex)): void {
+    localStorage.setItem(TWO_PLAYER_SESSION_SYSTEM_SAVE_KEYS[playerIndex], gameData.getSystemSaveDataString());
   }
 
   private syncActiveSystemSaveForActivePlayer(): void {
@@ -1086,6 +1268,7 @@ export class BattleScene extends SceneBase {
       seed: this.seed ?? null,
       waveSeed: this.waveSeed ?? null,
       biome: this.arena?.biomeId ?? null,
+      phase: this.phaseManager.getCurrentPhase()?.phaseName ?? null,
       activePlayerIndex: this.activePlayerIndex,
       inputOwner: this.inputOwner,
       fieldOwners: this.getPlayerFieldOwners(),
@@ -1200,11 +1383,11 @@ export class BattleScene extends SceneBase {
 
   public async savePlayerSystemSave(playerIndex: PlayerIndex = this.activePlayerIndex): Promise<boolean> {
     const gameData = this.getPlayerGameData(playerIndex);
-    if (!this.twoPlayerMode || playerIndex === 0) {
+    if (!this.twoPlayerMode || this.isLocalSystemSaveOwner(playerIndex)) {
       return await gameData.saveSystem();
     }
 
-    localStorage.setItem(TWO_PLAYER_GUEST_SYSTEM_SAVE_KEY, gameData.getSystemSaveDataString());
+    this.saveSessionSystemSaveLocal(playerIndex, gameData);
     return true;
   }
 
@@ -1214,12 +1397,12 @@ export class BattleScene extends SceneBase {
     }
 
     const gameData = this.getPlayerGameData(playerIndex);
-    if (playerIndex === 0) {
+    if (this.isLocalSystemSaveOwner(playerIndex)) {
       gameData.saveSystemLocal();
       return;
     }
 
-    localStorage.setItem(TWO_PLAYER_GUEST_SYSTEM_SAVE_KEY, gameData.getSystemSaveDataString());
+    this.saveSessionSystemSaveLocal(playerIndex, gameData);
   }
 
   private getModifierList(player = true, playerIndex: PlayerIndex = this.activePlayerIndex): PersistentModifier[] {
@@ -1694,6 +1877,35 @@ export class BattleScene extends SceneBase {
     }
   }
 
+  public applyTwoPlayerTitleStart(titleStart: TwoPlayerTitleStart): void {
+    if (!this.twoPlayerMode) {
+      return;
+    }
+
+    if (!this.twoPlayerTitleStartHandler && !this.phaseManager.getCurrentPhase().is("TitlePhase")) {
+      return;
+    }
+
+    this.pendingTwoPlayerTitleStart = titleStart;
+    this.twoPlayerTitleStartHandler?.(titleStart);
+  }
+
+  public setTwoPlayerTitleStartHandler(handler: ((titleStart: TwoPlayerTitleStart) => void) | undefined): void {
+    this.twoPlayerTitleStartHandler = handler;
+  }
+
+  public clearPendingTwoPlayerTitleStart(titleStart: TwoPlayerTitleStart): void {
+    if (this.pendingTwoPlayerTitleStart === titleStart) {
+      this.pendingTwoPlayerTitleStart = undefined;
+    }
+  }
+
+  public consumePendingTwoPlayerTitleStart(): TwoPlayerTitleStart | undefined {
+    const titleStart = this.pendingTwoPlayerTitleStart;
+    this.pendingTwoPlayerTitleStart = undefined;
+    return titleStart;
+  }
+
   /**
    * Generates a random number using the current battle's seed
    *
@@ -1712,6 +1924,7 @@ export class BattleScene extends SceneBase {
   reset(clearScene = false, clearData = false, reloadI18n = false): void {
     if (clearData) {
       this.gameData = new GameData();
+      this.localPlayerSystemSave = this.gameData;
       this.systemSaves = undefined;
     }
 

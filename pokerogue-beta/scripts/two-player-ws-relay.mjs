@@ -52,6 +52,7 @@ function decodeFrames(client, data, onFrame) {
   while (client.buffer.length >= 2) {
     const firstByte = client.buffer[0];
     const secondByte = client.buffer[1];
+    const fin = (firstByte & 0x80) !== 0;
     const opcode = firstByte & 0x0f;
     const masked = (secondByte & 0x80) !== 0;
     let payloadLength = secondByte & 0x7f;
@@ -89,7 +90,51 @@ function decodeFrames(client, data, onFrame) {
     }
 
     client.buffer = client.buffer.subarray(frameLength);
-    onFrame(opcode, payload);
+    onFrame(opcode, payload, fin);
+  }
+}
+
+function handleDataFrame(client, opcode, payload, fin) {
+  if (opcode === 0x1 || opcode === 0x2) {
+    if (client.fragmentedMessage) {
+      client.socket.end(encodeFrame(Buffer.from("Unexpected data frame while continuation pending"), 0x8));
+      return;
+    }
+
+    if (fin) {
+      if (opcode === 0x1) {
+        broadcast(client, payload.toString("utf8"));
+      }
+      return;
+    }
+
+    client.fragmentedMessage = {
+      opcode,
+      chunks: [payload],
+    };
+    return;
+  }
+
+  if (opcode !== 0x0) {
+    return;
+  }
+
+  if (!client.fragmentedMessage) {
+    client.socket.end(encodeFrame(Buffer.from("Unexpected continuation frame"), 0x8));
+    return;
+  }
+
+  client.fragmentedMessage.chunks.push(payload);
+  if (!fin) {
+    return;
+  }
+
+  const message = Buffer.concat(client.fragmentedMessage.chunks);
+  const messageOpcode = client.fragmentedMessage.opcode;
+  client.fragmentedMessage = undefined;
+
+  if (messageOpcode === 0x1) {
+    broadcast(client, message.toString("utf8"));
   }
 }
 
@@ -146,14 +191,15 @@ server.on("upgrade", (request, socket) => {
     id: randomUUID(),
     socket,
     buffer: Buffer.alloc(0),
+    fragmentedMessage: undefined,
   };
   clients.set(client.id, client);
   console.log(`[relay] connected ${client.id} from ${request.socket.remoteAddress}`);
 
   socket.on("data", data => {
-    decodeFrames(client, data, (opcode, payload) => {
-      if (opcode === 0x1) {
-        broadcast(client, payload.toString("utf8"));
+    decodeFrames(client, data, (opcode, payload, fin) => {
+      if (opcode === 0x0 || opcode === 0x1 || opcode === 0x2) {
+        handleDataFrame(client, opcode, payload, fin);
       } else if (opcode === 0x8) {
         socket.end(encodeFrame(Buffer.alloc(0), 0x8));
       } else if (opcode === 0x9) {

@@ -553,6 +553,7 @@ export class EggGachaUiHandler extends MessageUiHandler {
     }
 
     this.showSummary(eggs);
+    globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("egg-gacha-pulled");
   }
 
   /**

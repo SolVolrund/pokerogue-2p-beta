@@ -91,6 +91,7 @@ export class SelectModifierPhase extends BattlePhase {
             () => {
               globalScene.ui.revertMode();
               globalScene.ui.setMode(UiMode.MESSAGE);
+              globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("reward-skipped");
               super.end();
             },
             () => this.resetModifierSelect(modifierSelectCallback),
@@ -144,6 +145,7 @@ export class SelectModifierPhase extends BattlePhase {
     if (this.typeOptions.length === 0) {
       globalScene.ui.clearText();
       globalScene.ui.setMode(UiMode.MESSAGE);
+      globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("reward-empty");
       super.end();
       return true;
     }
@@ -221,6 +223,7 @@ export class SelectModifierPhase extends BattlePhase {
       globalScene.animateMoneyChanged(false);
     }
     audioManager.playSound("se/buy");
+    globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("reward-rerolled");
     return true;
   }
 
@@ -302,12 +305,14 @@ export class SelectModifierPhase extends BattlePhase {
         }
         audioManager.playSound("se/buy");
         (globalScene.ui.getHandler() as ModifierSelectUiHandler).updateCostText();
+        globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("shop-purchased");
       } else {
         globalScene.ui.playError();
       }
     } else {
       globalScene.ui.clearText();
       globalScene.ui.setMode(UiMode.MESSAGE);
+      globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("reward-picked");
       super.end();
     }
   }

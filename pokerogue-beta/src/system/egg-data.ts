@@ -3,6 +3,7 @@ import type { EggSourceType } from "#enums/egg-source-types";
 import type { EggTier } from "#enums/egg-type";
 import type { SpeciesId } from "#enums/species-id";
 import type { VariantTier } from "#enums/variant-tier";
+import type { PlayerIndex } from "#app/battle-scene";
 
 export class EggData {
   public id: number;
@@ -36,7 +37,7 @@ export class EggData {
     this.overrideHiddenAbility = sourceEgg ? sourceEgg.overrideHiddenAbility : source.overrideHiddenAbility;
   }
 
-  toEgg(): Egg {
+  toEgg(playerIndex?: PlayerIndex): Egg {
     // Species will be 0 if an old legacy is loaded from DB
     if (!this.species) {
       return new Egg({
@@ -45,6 +46,8 @@ export class EggData {
         sourceType: this.sourceType,
         timestamp: this.timestamp,
         tier: Math.floor(this.id / EGG_SEED),
+        fromSave: true,
+        ...(playerIndex === undefined ? {} : { playerIndex }),
       });
     }
     return new Egg({
@@ -58,6 +61,8 @@ export class EggData {
       species: this.species,
       eggMoveIndex: this.eggMoveIndex,
       overrideHiddenAbility: this.overrideHiddenAbility,
+      fromSave: true,
+      ...(playerIndex === undefined ? {} : { playerIndex }),
     });
   }
 }

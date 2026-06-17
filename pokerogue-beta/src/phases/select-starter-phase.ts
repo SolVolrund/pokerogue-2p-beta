@@ -38,12 +38,15 @@ export class SelectStarterPhase extends Phase {
       if (globalScene.twoPlayerMode) {
         this.initPlayerStarters(starters, playerIndex).then(() => {
           if (playerIndex === 0) {
-            globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-              globalScene.ui.showText("Player 2, choose your starters.", null, () => this.selectStartersForPlayer(1));
+            this.waitForTwoPlayerProfilesBeforeAction(() => {
+              globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+                globalScene.ui.showText("Player 2, choose your starters.", null, () => this.selectStartersForPlayer(1));
+              });
             });
             return;
           }
 
+          globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("starters-selected");
           globalScene.waitForSharedInput();
           this.selectSaveSlot(() => this.beginBattle());
         });
@@ -159,7 +162,35 @@ export class SelectStarterPhase extends Phase {
     return Promise.all(loadPokemonAssets).then(() => undefined);
   }
 
+  private waitForTwoPlayerProfilesBeforeAction(onReady: () => void): void {
+    if (!globalScene.twoPlayerMode || globalScene.isTwoPlayerProfileExchangeComplete()) {
+      onReady();
+      return;
+    }
+
+    globalScene.waitForSharedInput();
+    globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+      globalScene.ui.showText("Waiting for both player profiles...", null, null, null, false);
+      globalScene.waitForTwoPlayerProfileExchange().then(ready => {
+        if (ready) {
+          globalScene.ui.clearText();
+          onReady();
+          return;
+        }
+
+        globalScene.ui.showText("Still waiting for the other player profile.", null, () =>
+          this.waitForTwoPlayerProfilesBeforeAction(onReady),
+        );
+      });
+    });
+  }
+
   private beginBattle(): void {
+    if (globalScene.twoPlayerMode && !globalScene.isTwoPlayerProfileExchangeComplete()) {
+      this.waitForTwoPlayerProfilesBeforeAction(() => this.beginBattle());
+      return;
+    }
+
     if (globalScene.twoPlayerMode) {
       globalScene.waitForPlayerInput(0);
     } else {
@@ -173,6 +204,7 @@ export class SelectStarterPhase extends Phase {
     }
     globalScene.newBattle();
     globalScene.arena.init();
+    globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("new-battle-created");
     globalScene.sessionPlayTime = 0;
     globalScene.lastSavePlayTime = 0;
 
