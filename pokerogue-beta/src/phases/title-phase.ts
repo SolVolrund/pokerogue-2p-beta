@@ -15,6 +15,7 @@ import { BattleType } from "#enums/battle-type";
 import { GameDataType } from "#enums/game-data-type";
 import { GameModes } from "#enums/game-modes";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
+import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import { getBiomeKey } from "#field/arena";
 import type { Modifier } from "#modifiers/modifier";
@@ -28,6 +29,7 @@ import i18next from "i18next";
 
 const NO_SAVE_SLOT = -1;
 const TWO_PLAYER_LOBBY_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const TWO_PLAYER_WS_PORT = "8787";
 
 export class TitlePhase extends Phase {
   public readonly phaseName = "TitlePhase";
@@ -99,16 +101,21 @@ export class TitlePhase extends Phase {
     }
 
     const options: OptionSelectItem[] = [];
-    // Add a "continue" menu if the session slot ID is >-1
-    if (lastSessionSlot > NO_SAVE_SLOT) {
-      options.push({
-        label: i18next.t("continue", { ns: "menu" }),
-        handler: () => {
+    const continueOption: OptionSelectItem = {
+      label: i18next.t("continue", { ns: "menu" }),
+      handler: () => {
+        if (lastSessionSlot > NO_SAVE_SLOT) {
           this.loadSaveSlot(lastSessionSlot);
           return true;
-        },
-      });
+        }
+
+        return false;
+      },
+    };
+    if (lastSessionSlot <= NO_SAVE_SLOT) {
+      continueOption.style = TextStyle.SETTINGS_LOCKED;
     }
+    options.push(continueOption);
     options.push(
       {
         label: i18next.t("menu:newGame"),
@@ -341,9 +348,10 @@ export class TitlePhase extends Phase {
 
   private hostMultiplayerLobby(): void {
     const lobbyCode = this.generateLobbyCode();
-    const lobbyUrl = this.getMultiplayerLobbyUrl(lobbyCode, "host");
-    const guestUrl = this.getMultiplayerLobbyUrl(lobbyCode, "guest");
-    const hostAddress = this.getDisplayHostAddress();
+    const lanAddress = this.getLobbyLanAddress();
+    const lobbyUrl = this.getMultiplayerLobbyUrl(lobbyCode, "host", lanAddress);
+    const guestUrl = this.getMultiplayerLobbyUrl(lobbyCode, "guest", lanAddress);
+    const hostAddress = this.getDisplayHostAddress(lanAddress);
 
     globalScene.ui.setMode(UiMode.MESSAGE);
     globalScene.ui.showText(
@@ -359,13 +367,13 @@ export class TitlePhase extends Phase {
   }
 
   private joinMultiplayerLobby(): void {
-    const lobbyCode = this.parseLobbyCode(window.prompt("Enter lobby code or lobby link") ?? "");
-    if (!lobbyCode) {
+    const lobbyUrl = this.getJoinLobbyUrl(window.prompt("Enter lobby code or lobby link") ?? "");
+    if (!lobbyUrl) {
       this.showMultiplayerSelect();
       return;
     }
 
-    window.location.assign(this.getMultiplayerLobbyUrl(lobbyCode, "guest"));
+    window.location.assign(lobbyUrl);
   }
 
   private generateLobbyCode(): string {
@@ -394,7 +402,7 @@ export class TitlePhase extends Phase {
 
   private parseLobbyCodeFromUrl(input: string): string | undefined {
     try {
-      const urlInput = this.needsUrlScheme(input) ? `http://${input}` : input;
+      const urlInput = this.needsUrlScheme(input) ? `${window.location.protocol}//${input}` : input;
       const url = new URL(urlInput, window.location.href);
       if (!this.looksLikeUrl(input)) {
         return undefined;
@@ -407,33 +415,117 @@ export class TitlePhase extends Phase {
     }
   }
 
+  private getJoinLobbyUrl(input: string): string {
+    const trimmedInput = input.trim();
+    if (!trimmedInput) {
+      return "";
+    }
+
+    const lobbyUrl = this.parseLobbyUrl(trimmedInput);
+    if (lobbyUrl) {
+      const sessionId = lobbyUrl.searchParams.get("twoPlayerSession");
+      if (!sessionId) {
+        return "";
+      }
+
+      return this.configureMultiplayerLobbyUrl(lobbyUrl, this.normalizeLobbyCode(sessionId), "guest").toString();
+    }
+
+    const lobbyCode = this.parseLobbyCode(trimmedInput);
+    return lobbyCode ? this.getMultiplayerLobbyUrl(lobbyCode, "guest") : "";
+  }
+
+  private parseLobbyUrl(input: string): URL | undefined {
+    if (!this.looksLikeUrl(input)) {
+      return undefined;
+    }
+
+    try {
+      const urlInput = this.needsUrlScheme(input) ? `${window.location.protocol}//${input}` : input;
+      return new URL(urlInput, window.location.href);
+    } catch {
+      return undefined;
+    }
+  }
+
   private normalizeLobbyCode(input: string): string {
     return input.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
   }
 
   private looksLikeUrl(input: string): boolean {
-    return /^[a-z][a-z0-9+.-]*:\/\//i.test(input) || input.includes("localhost") || input.includes("127.0.0.1");
+    return /^[a-z][a-z0-9+.-]*:\/\//i.test(input)
+      || input.includes("localhost")
+      || input.includes("127.0.0.1")
+      || /^\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?(?:[/?#]|$)/.test(input);
   }
 
   private needsUrlScheme(input: string): boolean {
-    return /^(localhost|127\.0\.0\.1)(:\d+)?([/?#]|$)/i.test(input);
+    return /^(localhost|127\.0\.0\.1|\d{1,3}(?:\.\d{1,3}){3})(:\d+)?([/?#]|$)/i.test(input);
   }
 
-  private getMultiplayerLobbyUrl(lobbyCode: string, role: "host" | "guest"): string {
+  private getMultiplayerLobbyUrl(lobbyCode: string, role: "host" | "guest", lanAddress?: string): string {
     const url = new URL(window.location.href);
+    this.applyLobbyHostAddress(url, lanAddress);
+    return this.configureMultiplayerLobbyUrl(url, lobbyCode, role).toString();
+  }
+
+  private configureMultiplayerLobbyUrl(url: URL, lobbyCode: string, role: "host" | "guest"): URL {
     url.searchParams.set("twoPlayer", "1");
     url.searchParams.set("twoPlayerInputTransport", "websocket");
     url.searchParams.set("twoPlayerNetworkRole", role);
     url.searchParams.set("twoPlayerLocalPlayer", role === "host" ? "1" : "2");
     url.searchParams.set("twoPlayerSession", lobbyCode);
-    return url.toString();
+    url.searchParams.set("twoPlayerWsUrl", this.getMultiplayerWsUrl(url));
+    return url;
   }
 
-  private getDisplayHostAddress(): string {
+  private getDisplayHostAddress(lanAddress?: string): string {
     const url = new URL(window.location.href);
+    this.applyLobbyHostAddress(url, lanAddress);
     url.search = "";
     url.hash = "";
     return url.toString();
+  }
+
+  private getLobbyLanAddress(): string | undefined {
+    if (!this.isLoopbackHost(window.location.hostname)) {
+      return undefined;
+    }
+
+    return window.prompt(
+      "Enter this computer's LAN address for Player 2, or leave blank to use this browser address.",
+      "",
+    )?.trim() || undefined;
+  }
+
+  private isLoopbackHost(hostname: string): boolean {
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  }
+
+  private applyLobbyHostAddress(url: URL, lanAddress?: string): void {
+    if (!lanAddress) {
+      return;
+    }
+
+    try {
+      const parsedAddress = new URL(this.needsUrlScheme(lanAddress) ? `${url.protocol}//${lanAddress}` : lanAddress);
+      url.hostname = parsedAddress.hostname;
+      if (parsedAddress.port) {
+        url.port = parsedAddress.port;
+      }
+    } catch {
+      url.hostname = lanAddress;
+    }
+  }
+
+  private getMultiplayerWsUrl(url: URL): string {
+    const existingWsUrl = url.searchParams.get("twoPlayerWsUrl");
+    if (existingWsUrl) {
+      return existingWsUrl;
+    }
+
+    const protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${url.hostname}:${TWO_PLAYER_WS_PORT}`;
   }
 
   private showNewGameModeSelect(): void {

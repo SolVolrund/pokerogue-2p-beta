@@ -145,7 +145,13 @@ function getWebSocketUrl(): string {
     return "ws://127.0.0.1:8787";
   }
 
-  return new URLSearchParams(window.location.search).get("twoPlayerWsUrl") || "ws://127.0.0.1:8787";
+  const configuredUrl = new URLSearchParams(window.location.search).get("twoPlayerWsUrl");
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.hostname || "127.0.0.1"}:8787`;
 }
 
 function getLocalTransportSessionId(): string {

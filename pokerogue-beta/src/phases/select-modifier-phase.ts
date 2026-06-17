@@ -82,6 +82,12 @@ export class SelectModifierPhase extends BattlePhase {
     const modifierCount = this.getModifierCount();
 
     this.typeOptions = this.getModifierTypeOptions(modifierCount);
+    globalScene.recordTwoPlayerRewardDebugState(
+      this.playerIndex,
+      this.rerollCount,
+      this.getRewardSeedOffset(),
+      this.typeOptions.map(option => option.type.id),
+    );
 
     const modifierSelectCallback = (rowCursor: number, cursor: number) => {
       if (rowCursor < 0 || cursor < 0) {
@@ -432,7 +438,12 @@ export class SelectModifierPhase extends BattlePhase {
   }
 
   updateSeed(): void {
-    globalScene.resetSeed();
+    globalScene.resetSeed(this.getRewardSeedOffset());
+  }
+
+  private getRewardSeedOffset(): number {
+    const waveIndex = globalScene.currentBattle?.waveIndex ?? 0;
+    return globalScene.twoPlayerMode ? waveIndex + this.playerIndex * 10000 : waveIndex;
   }
 
   isPlayer(): boolean {

@@ -222,6 +222,16 @@ export interface TwoPlayerDebugStateCheckpoint {
   summary: Record<string, unknown>;
 }
 
+interface TwoPlayerRewardDebugState {
+  waveIndex: number | null;
+  playerIndex: PlayerIndex;
+  rerollCount: number;
+  rewardSeedOffset: number;
+  party: Array<Record<string, unknown>>;
+  modifiers: Array<Record<string, unknown>>;
+  rewards: string[];
+}
+
 function createDefaultPokeballCounts(): PokeballCounts {
   const pokeballCounts = Object.fromEntries(
     getEnumValues(PokeballType)
@@ -450,6 +460,7 @@ export class BattleScene extends SceneBase {
   public readonly fieldSlotOwners: [PlayerIndex, PlayerIndex] = [0, 1];
   public players: [PlayerRunState, PlayerRunState] = [createPlayerRunState(), createPlayerRunState()];
   private localPlayerSystemSaveLoaded = false;
+  private twoPlayerLastRewardDebugState: TwoPlayerRewardDebugState | undefined;
   private twoPlayerProfileReadyResolvers: Array<(ready: boolean) => void> = [];
   private pendingTwoPlayerTitleStart: TwoPlayerTitleStart | undefined;
   private twoPlayerTitleStartHandler: ((titleStart: TwoPlayerTitleStart) => void) | undefined;
@@ -1288,6 +1299,29 @@ export class BattleScene extends SceneBase {
     this.setInputOwner("both");
   }
 
+  public recordTwoPlayerRewardDebugState(
+    playerIndex: PlayerIndex,
+    rerollCount: number,
+    rewardSeedOffset: number,
+    rewards: string[],
+  ): void {
+    if (!this.twoPlayerMode) {
+      return;
+    }
+
+    this.twoPlayerLastRewardDebugState = {
+      waveIndex: this.currentBattle?.waveIndex ?? null,
+      playerIndex,
+      rerollCount,
+      rewardSeedOffset,
+      party: this.getPlayerParty(playerIndex).map(pokemon => this.getTwoPlayerDebugPokemonState(pokemon) ?? {}),
+      modifiers: this.getPlayerModifiers(playerIndex).map(modifier => this.getTwoPlayerDebugModifierState(modifier)),
+      rewards,
+    };
+
+    console.debug("[PokeRogue 2P reward]", this.twoPlayerLastRewardDebugState);
+  }
+
   public canAcceptLocalInput(): boolean {
     if (!this.twoPlayerMode || this.twoPlayerLocalInputSeat === "both") {
       return true;
@@ -1319,6 +1353,7 @@ export class BattleScene extends SceneBase {
       phase: this.phaseManager.getCurrentPhase()?.phaseName ?? null,
       activePlayerIndex: this.activePlayerIndex,
       inputOwner: this.inputOwner,
+      lastReward: this.twoPlayerLastRewardDebugState ?? null,
       fieldOwners: this.getPlayerFieldOwners(),
       players: ([0, 1] as const).map(playerIndex => ({
         playerIndex,
