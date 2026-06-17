@@ -1,8 +1,9 @@
 import { globalScene } from "#app/global-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import { Stat } from "#enums/stat";
 import { TextStyle } from "#enums/text-style";
 import { UiTheme } from "#enums/ui-theme";
-import type { EnemyPokemon } from "#field/pokemon";
+import type { EnemyPokemon, Pokemon } from "#field/pokemon";
 import { BattleFlyout } from "#ui/battle-flyout";
 import type { BattleInfoParamList } from "#ui/battle-info";
 import { BattleInfo } from "#ui/battle-info";
@@ -16,7 +17,9 @@ export class EnemyBattleInfo extends BattleInfo {
   protected player: false = false;
   protected championRibbon: Phaser.GameObjects.Sprite;
   protected ownedIcon: Phaser.GameObjects.Sprite;
+  protected guestOwnedIcon: Phaser.GameObjects.Sprite;
   protected flyoutMenu: BattleFlyout;
+  protected pokemon: EnemyPokemon | undefined;
 
   protected hpBarSegmentDividers: GameObjects.Rectangle[] = [];
 
@@ -68,6 +71,13 @@ export class EnemyBattleInfo extends BattleInfo {
       .setOrigin(0, 0)
       .setPositionRelative(this.nameText, 0, 11.75);
 
+    this.guestOwnedIcon = globalScene.add
+      .sprite(0, 0, "icon_owned")
+      .setName("icon_owned_guest")
+      .setVisible(false)
+      .setOrigin(0, 0)
+      .setPositionRelative(this.nameText, 8, 11.75);
+
     this.championRibbon = globalScene.add
       .sprite(0, 0, "champion_ribbon")
       .setName("icon_champion_ribbon")
@@ -75,7 +85,7 @@ export class EnemyBattleInfo extends BattleInfo {
       .setOrigin(0, 0)
       .setPositionRelative(this.nameText, 8, 11.75);
     // Ensure these two icons are positioned below the stats container
-    this.addAt([this.ownedIcon, this.championRibbon], this.getIndex(this.statsContainer));
+    this.addAt([this.ownedIcon, this.guestOwnedIcon, this.championRibbon], this.getIndex(this.statsContainer));
 
     this.flyoutMenu = new BattleFlyout(this.player);
     this.add(this.flyoutMenu);
@@ -94,9 +104,11 @@ export class EnemyBattleInfo extends BattleInfo {
     this.effectivenessContainer.add([this.effectivenessWindow, this.effectivenessText]);
   }
 
-  override initInfo(pokemon: EnemyPokemon): void {
-    this.flyoutMenu.initInfo(pokemon);
-    super.initInfo(pokemon);
+  override initInfo(pokemon: Pokemon): void {
+    const enemyPokemon = pokemon as EnemyPokemon;
+    this.pokemon = enemyPokemon;
+    this.flyoutMenu.initInfo(enemyPokemon);
+    super.initInfo(enemyPokemon);
 
     if (this.nameText.visible) {
       this.nameText
@@ -104,42 +116,85 @@ export class EnemyBattleInfo extends BattleInfo {
           globalScene.ui.showTooltip(
             "",
             i18next.t("battleInfo:generation", {
-              generation: i18next.t(`starterSelectUiHandler:gen${pokemon.species.generation}`),
+              generation: i18next.t(`starterSelectUiHandler:gen${enemyPokemon.species.generation}`),
             }),
           ),
         )
         .on("pointerout", () => globalScene.ui.hideTooltip());
     }
 
-    const dexEntry = globalScene.gameData.dexData[pokemon.species.speciesId];
-    this.ownedIcon.setVisible(!!dexEntry.caughtAttr);
-    const opponentPokemonDexAttr = pokemon.getDexAttr();
-    if (
-      globalScene.gameMode.isClassic
-      && globalScene.gameData.starterData[pokemon.species.getRootSpeciesId()].classicWinCount > 0
-      && globalScene.gameData.starterData[pokemon.species.getRootSpeciesId(true)].classicWinCount > 0
-    ) {
-      // move the ribbon to the left if there is no owned icon
-      const championRibbonX = this.ownedIcon.visible ? 8 : 0;
-      this.championRibbon.setPositionRelative(this.nameText, championRibbonX, 11.75);
-      this.championRibbon.setVisible(true);
-    }
-
-    // Check if Player owns all genders and forms of the Pokemon
-    const missingDexAttrs = (dexEntry.caughtAttr & opponentPokemonDexAttr) < opponentPokemonDexAttr;
-
-    const ownedAbilityAttrs = globalScene.gameData.starterData[pokemon.species.getRootSpeciesId()].abilityAttr;
-
-    // Check if the player owns ability for the root form
-    const playerOwnsThisAbility = pokemon.checkIfPlayerHasAbilityOfStarter(ownedAbilityAttrs);
-
-    if (missingDexAttrs || !playerOwnsThisAbility) {
-      this.ownedIcon.setTint(0x808080);
-    }
+    this.refreshOwnedIcon(enemyPokemon);
 
     if (this.boss) {
-      this.updateBossSegmentDividers(pokemon as EnemyPokemon);
+      this.updateBossSegmentDividers(enemyPokemon);
     }
+  }
+
+  override refreshOwnedIcon(pokemon: Pokemon = this.pokemon!, _playerIndex?: PlayerIndex): void {
+    if (!pokemon) {
+      return;
+    }
+
+    const enemyPokemon = pokemon as EnemyPokemon;
+    const p1Visible = this.refreshOwnedIconForPlayer(this.ownedIcon, enemyPokemon, 0);
+    const p2Visible = globalScene.twoPlayerMode
+      ? this.refreshOwnedIconForPlayer(this.guestOwnedIcon, enemyPokemon, 1)
+      : false;
+
+    if (!globalScene.twoPlayerMode) {
+      this.guestOwnedIcon.setVisible(false);
+    }
+
+    const occupiedOwnedIconSlots = globalScene.twoPlayerMode ? (p1Visible || p2Visible ? 2 : 0) : p1Visible ? 1 : 0;
+    this.refreshChampionRibbon(enemyPokemon, occupiedOwnedIconSlots);
+    this.updateStatusIcon(enemyPokemon, occupiedOwnedIconSlots * 8 + (this.championRibbon.visible ? 8 : 0));
+  }
+
+  private refreshOwnedIconForPlayer(
+    icon: Phaser.GameObjects.Sprite,
+    enemyPokemon: EnemyPokemon,
+    playerIndex: PlayerIndex,
+  ): boolean {
+    const gameData = globalScene.twoPlayerMode ? globalScene.getPlayerGameData(playerIndex) : globalScene.gameData;
+    const dexEntry = gameData.dexData[enemyPokemon.species.speciesId];
+    const caughtAttr = BigInt(dexEntry.caughtAttr);
+
+    icon.clearTint();
+    icon.setVisible(!!caughtAttr);
+
+    if (caughtAttr) {
+      const rootStarterData = gameData.starterData[enemyPokemon.species.getRootSpeciesId()];
+      const opponentPokemonDexAttr = enemyPokemon.getDexAttr();
+      const missingDexAttrs = (caughtAttr & opponentPokemonDexAttr) < opponentPokemonDexAttr;
+      const playerOwnsThisAbility = enemyPokemon.checkIfPlayerHasAbilityOfStarter(rootStarterData.abilityAttr);
+
+      if (missingDexAttrs || !playerOwnsThisAbility) {
+        icon.setTint(0x808080);
+      }
+    }
+
+    return icon.visible;
+  }
+
+  private refreshChampionRibbon(enemyPokemon: EnemyPokemon, occupiedOwnedIconSlots: number): void {
+    if (!globalScene.gameMode.isClassic) {
+      this.championRibbon.setVisible(false);
+      return;
+    }
+
+    const playerIndexes = globalScene.twoPlayerMode ? ([0, 1] as const) : ([0] as const);
+    const hasClassicWin = playerIndexes.some(playerIndex => {
+      const gameData = globalScene.twoPlayerMode ? globalScene.getPlayerGameData(playerIndex) : globalScene.gameData;
+      const rootSpeciesId = enemyPokemon.species.getRootSpeciesId();
+      const rootFusionSpeciesId = enemyPokemon.species.getRootSpeciesId(true);
+      return (
+        gameData.starterData[rootSpeciesId].classicWinCount > 0
+        && gameData.starterData[rootFusionSpeciesId].classicWinCount > 0
+      );
+    });
+
+    this.championRibbon.setPositionRelative(this.nameText, occupiedOwnedIconSlots * 8, 11.75);
+    this.championRibbon.setVisible(hasClassicWin);
   }
 
   /**
@@ -185,6 +240,7 @@ export class EnemyBattleInfo extends BattleInfo {
         this.splicedIcon,
         this.shinyIcon,
         this.ownedIcon,
+        this.guestOwnedIcon,
         this.championRibbon,
         this.statusIndicator,
         this.statValuesContainer,
@@ -231,8 +287,18 @@ export class EnemyBattleInfo extends BattleInfo {
     }
   }
 
-  override updateStatusIcon(pokemon: EnemyPokemon): void {
-    super.updateStatusIcon(pokemon, (this.ownedIcon.visible ? 8 : 0) + (this.championRibbon.visible ? 8 : 0));
+  override updateStatusIcon(pokemon: EnemyPokemon, xOffset?: number): void {
+    const occupiedOwnedIconSlots = globalScene.twoPlayerMode
+      ? this.ownedIcon.visible || this.guestOwnedIcon.visible
+        ? 2
+        : 0
+      : this.ownedIcon.visible
+        ? 1
+        : 0;
+    super.updateStatusIcon(
+      pokemon,
+      xOffset ?? occupiedOwnedIconSlots * 8 + (this.championRibbon.visible ? 8 : 0),
+    );
   }
 
   protected override updatePokemonHp(

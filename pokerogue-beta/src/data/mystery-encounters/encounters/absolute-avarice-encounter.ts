@@ -41,7 +41,6 @@ import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encount
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { PersistentModifierRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import type { HeldModifierConfig } from "#types/held-modifier-config";
-import { updateWindowType } from "#ui/ui-theme";
 import { randInt } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
@@ -139,8 +138,7 @@ function seedAbsoluteAvariceTestBerries(): void {
     globalScene.updateModifiers(true, undefined, playerIndex);
   }
 
-  globalScene.setActivePlayerIndex(0);
-  updateWindowType(1);
+  globalScene.waitForPlayerInput(0);
 }
 
 function getBossModifierConfigs(playerIndex: PlayerIndex): HeldModifierConfig[] {
@@ -252,8 +250,7 @@ async function hideAbsoluteAvariceNonBattleTrainers(battlePlayers: PlayerIndex[]
 }
 
 function showAbsoluteAvaricePlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
 
   globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
     globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
@@ -271,8 +268,7 @@ function storeAbsoluteAvariceChoice(optionIndex: AbsoluteAvariceOptionIndex, pla
     return true;
   }
 
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
 
   const data = getAbsoluteAvariceData();
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
@@ -284,8 +280,7 @@ function storeAbsoluteAvariceChoice(optionIndex: AbsoluteAvariceOptionIndex, pla
   }
 
   data.skipSelectedDialogueOnce = true;
-  globalScene.setActivePlayerIndex(0);
-  updateWindowType(1);
+  globalScene.waitForPlayerInput(0);
   return true;
 }
 
@@ -293,8 +288,7 @@ function returnSomeBerries(playerIndex: PlayerIndex): void {
   const data = getAbsoluteAvariceData();
   const berryMap = data.berryItemsByPlayer[playerIndex] ?? data.berryItemsMap;
 
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
   globalScene.getPlayerParty(playerIndex).forEach(pokemon => {
     const stolenBerries: BerryModifier[] = berryMap.get(pokemon.id) ?? [];
     const berryTypesAsArray: BerryType[] = [];
@@ -313,8 +307,7 @@ function returnSomeBerries(playerIndex: PlayerIndex): void {
 }
 
 function givePartyPokemonReviverSeeds(playerIndex: PlayerIndex): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
 
   const revSeed = generateModifierType(modifierTypes.REVIVER_SEED);
   globalScene.currentBattle.mysteryEncounter!.setDialogueToken(
@@ -332,8 +325,7 @@ function givePartyPokemonReviverSeeds(playerIndex: PlayerIndex): void {
 }
 
 async function giveGreedentToPlayer(playerIndex: PlayerIndex): Promise<void> {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
 
   const level = Math.max(getHighestLevelPlayerPokemon(false, true, playerIndex).level - 2, 1);
   const greedent = new EnemyPokemon(getPokemonSpecies(SpeciesId.GREEDENT), level, TrainerSlot.NONE, false, true);
@@ -446,8 +438,7 @@ async function runTwoPlayerAbsoluteAvariceChoices(): Promise<boolean> {
   const feedChoices = choices.filter(choice => choice.optionIndex === 3);
 
   for (const choice of choices) {
-    globalScene.setActivePlayerIndex(choice.playerIndex);
-    updateWindowType(choice.playerIndex + 1);
+    globalScene.waitForPlayerInput(choice.playerIndex);
     await showEncounterText(`${namespace}:option.${choice.optionIndex}.selected`);
   }
 

@@ -51,7 +51,6 @@ import { getRandomPartyMemberFunc, trainerConfigs } from "#trainers/trainer-conf
 import { TrainerPartyCompoundTemplate, TrainerPartyTemplate } from "#trainers/trainer-party-template";
 import type { OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
-import { updateWindowType } from "#ui/ui-theme";
 import { randSeedInt, randSeedShuffle } from "#utils/common";
 import i18next from "i18next";
 
@@ -310,8 +309,7 @@ async function hideBugTypeSuperfanNonBattleTrainers(battlePlayers: PlayerIndex[]
 }
 
 function showBugTypeSuperfanPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
 
   globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
     globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
@@ -339,8 +337,7 @@ function storeBugTypeSuperfanChoice(choice: BugTypeSuperfanChoice, startingCurso
   }
 
   data.skipSelectedDialogueOnce = true;
-  globalScene.setActivePlayerIndex(0);
-  updateWindowType(1);
+  globalScene.waitForPlayerInput(0);
   return true;
 }
 
@@ -371,8 +368,7 @@ function storeShowBugTypesChoice(playerIndex: PlayerIndex): boolean {
 }
 
 async function storeGiftBugItemChoice(playerIndex: PlayerIndex): Promise<boolean> {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
 
   let selectedChoice: BugTypeSuperfanChoice | undefined;
   const encounter = globalScene.currentBattle.mysteryEncounter!;
@@ -442,8 +438,7 @@ function getShowBugTypesTextKey(numBugTypes: number): string {
 }
 
 function setShowBugTypesRewards(choice: BugTypeSuperfanChoice): void {
-  globalScene.setActivePlayerIndex(choice.playerIndex);
-  updateWindowType(choice.playerIndex + 1);
+  globalScene.waitForPlayerInput(choice.playerIndex);
 
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const numBugTypes = globalScene.getPlayerParty(choice.playerIndex).filter(p => p.isOfType(PokemonType.BUG)).length;
@@ -529,8 +524,7 @@ function setGiftBugItemRewards(choice: BugTypeSuperfanChoice): void {
     return;
   }
 
-  globalScene.setActivePlayerIndex(choice.playerIndex);
-  updateWindowType(choice.playerIndex + 1);
+  globalScene.waitForPlayerInput(choice.playerIndex);
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   encounter.setDialogueToken("selectedItem", choice.chosenModifier.type.name);
 
@@ -554,8 +548,7 @@ function setGiftBugItemRewards(choice: BugTypeSuperfanChoice): void {
 
 async function showBugTypeSuperfanSelectedDialogue(choice: BugTypeSuperfanChoice): Promise<void> {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
-  globalScene.setActivePlayerIndex(choice.playerIndex);
-  updateWindowType(choice.playerIndex + 1);
+  globalScene.waitForPlayerInput(choice.playerIndex);
 
   if (choice.optionIndex === 1) {
     await showEncounterDialogue(`${namespace}:option.1.selected`, `${namespace}:speaker`);
@@ -600,8 +593,7 @@ async function runTwoPlayerBugTypeSuperfanChoices(): Promise<boolean> {
   }
 
   if (battleChoices.length === 0) {
-    globalScene.setActivePlayerIndex(0);
-    updateWindowType(1);
+    globalScene.waitForPlayerInput(0);
     leaveEncounterWithoutBattle(true);
     return true;
   }
@@ -616,8 +608,7 @@ async function runTwoPlayerBugTypeSuperfanChoices(): Promise<boolean> {
 
   const battlePlayers = battleChoices.map(choice => choice.playerIndex);
   globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
-  globalScene.setActivePlayerIndex(0);
-  updateWindowType(1);
+  globalScene.waitForPlayerInput(0);
   await transitionMysteryEncounterIntroVisuals(true, true);
   await hideBugTypeSuperfanNonBattleTrainers(battlePlayers);
   await initBattleWithEnemyConfig(createBugTypeSuperfanBattleConfig(battleChoices));
@@ -1064,8 +1055,7 @@ function getTrainerConfigForWave(waveIndex: number) {
 function doBugTypeMoveTutor(playerIndex: PlayerIndex, moveOptions: PokemonMove[]): Promise<void> {
   // biome-ignore lint/suspicious/noAsyncPromiseExecutor: TODO explain
   return new Promise<void>(async resolve => {
-    globalScene.setActivePlayerIndex(playerIndex);
-    updateWindowType(playerIndex + 1);
+    globalScene.waitForPlayerInput(playerIndex);
     await showEncounterDialogue(`${namespace}:battleWon`, `${namespace}:speaker`);
 
     const moveInfoOverlay = new MoveInfoOverlay({

@@ -26,7 +26,7 @@ import { MessageUiHandler } from "#ui/message-ui-handler";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
 import { PokemonIconAnimHelper, PokemonIconAnimMode } from "#ui/pokemon-icon-anim-helper";
 import { addBBCodeTextObject, addTextObject, getTextColor } from "#ui/text";
-import { addWindow, updateWindowType } from "#ui/ui-theme";
+import { addWindow } from "#ui/ui-theme";
 import { applyChallenges } from "#utils/challenge-utils";
 import { BooleanHolder, getLocalizedSpriteKey, randInt } from "#utils/common";
 import { toCamelCase, toTitleCase } from "#utils/strings";
@@ -378,8 +378,7 @@ export class PartyUiHandler extends MessageUiHandler {
     this.fieldIndex = args.length > 1 ? (args[1] as number) : -1;
     if (globalScene.twoPlayerMode) {
       const playerIndex = this.getPlayerIndex();
-      globalScene.setActivePlayerIndex(playerIndex);
-      updateWindowType(playerIndex + 1);
+      globalScene.waitForPlayerInput(playerIndex);
     }
 
     this.selectCallback = args.length > 2 && args[2] instanceof Function ? args[2] : undefined;

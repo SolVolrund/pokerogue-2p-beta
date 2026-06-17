@@ -5,7 +5,6 @@ import { BattlerTagType } from "#enums/battler-tag-type";
 import { SwitchType } from "#enums/switch-type";
 import { UiMode } from "#enums/ui-mode";
 import { BattlePhase } from "#phases/battle-phase";
-import { updateWindowType } from "#ui/ui-theme";
 import i18next from "i18next";
 
 export class CheckSwitchPhase extends BattlePhase {
@@ -63,8 +62,7 @@ export class CheckSwitchPhase extends BattlePhase {
     }
 
     if (globalScene.twoPlayerMode) {
-      globalScene.setActivePlayerIndex(playerIndex);
-      updateWindowType(playerIndex + 1);
+      globalScene.waitForPlayerInput(playerIndex);
     }
 
     globalScene.ui.showText(
@@ -74,7 +72,7 @@ export class CheckSwitchPhase extends BattlePhase {
       null,
       () => {
         if (globalScene.twoPlayerMode) {
-          updateWindowType(playerIndex + 1);
+          globalScene.waitForPlayerInput(playerIndex);
         }
         globalScene.ui.setMode(
           UiMode.CONFIRM,

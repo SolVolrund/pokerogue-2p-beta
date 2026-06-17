@@ -21,7 +21,6 @@ import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encount
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import { EXTORTION_ABILITIES, EXTORTION_MOVES } from "#mystery-encounters/requirement-groups";
-import { updateWindowType } from "#ui/ui-theme";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -204,8 +203,7 @@ function getOfferIntroPlayerIndex(): PlayerIndex {
 }
 
 function showOfferPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
   setOfferTokens(playerIndex);
 
   globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
@@ -231,15 +229,13 @@ function storeOfferChoice(choice: OfferChoice): boolean {
 
   if (globalScene.twoPlayerMode) {
     data.skipSelectedDialogueOnce = true;
-    globalScene.setActivePlayerIndex(0);
-    updateWindowType(1);
+    globalScene.waitForPlayerInput(0);
   }
   return true;
 }
 
 function collectOfferChoice(playerIndex: PlayerIndex, optionIndex: OfferChoiceIndex): boolean {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
   setOfferTokens(playerIndex);
 
   const playerData = getOfferPlayerData(playerIndex);
@@ -274,8 +270,7 @@ function addOfferMoney(amount: number, playerIndex: PlayerIndex): void {
 }
 
 async function resolveOfferChoice(choice: OfferChoice): Promise<void> {
-  globalScene.setActivePlayerIndex(choice.playerIndex);
-  updateWindowType(choice.playerIndex + 1);
+  globalScene.waitForPlayerInput(choice.playerIndex);
   setOfferTokens(choice.playerIndex);
 
   if (globalScene.twoPlayerMode) {
@@ -310,8 +305,7 @@ async function runOfferChoices(): Promise<boolean> {
   }
 
   if (globalScene.twoPlayerMode) {
-    globalScene.setActivePlayerIndex(0);
-    updateWindowType(1);
+    globalScene.waitForPlayerInput(0);
   }
   leaveEncounterWithoutBattle(true);
   return true;

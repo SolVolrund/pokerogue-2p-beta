@@ -18,13 +18,21 @@ export class SelectStarterPhase extends Phase {
     super.start();
 
     audioManager.playBgm("menu");
-    globalScene.setActivePlayerIndex(0);
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForPlayerInput(0);
+    } else {
+      globalScene.setActivePlayerIndex(0);
+    }
 
     this.selectStartersForPlayer(0);
   }
 
   private selectStartersForPlayer(playerIndex: 0 | 1): void {
-    globalScene.setActivePlayerIndex(playerIndex);
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForPlayerInput(playerIndex);
+    } else {
+      globalScene.setActivePlayerIndex(playerIndex);
+    }
     globalScene.ui.setMode(UiMode.STARTER_SELECT, (starters: Starter[]) => {
       globalScene.ui.clearText();
       if (globalScene.twoPlayerMode) {
@@ -36,7 +44,7 @@ export class SelectStarterPhase extends Phase {
             return;
           }
 
-          globalScene.setActivePlayerIndex(0);
+          globalScene.waitForSharedInput();
           this.selectSaveSlot(() => this.beginBattle());
         });
         return;
@@ -73,7 +81,11 @@ export class SelectStarterPhase extends Phase {
    * @param starters - Array of {@linkcode Starter}s with which to start the battle
    */
   initPlayerStarters(starters: Starter[], playerIndex: 0 | 1): Promise<void> {
-    globalScene.setActivePlayerIndex(playerIndex);
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForPlayerInput(playerIndex);
+    } else {
+      globalScene.setActivePlayerIndex(playerIndex);
+    }
     const party = globalScene.getPlayerParty(playerIndex);
     party.splice(0, party.length);
     const loadPokemonAssets: Promise<void>[] = [];
@@ -148,7 +160,11 @@ export class SelectStarterPhase extends Phase {
   }
 
   private beginBattle(): void {
-    globalScene.setActivePlayerIndex(0);
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForPlayerInput(0);
+    } else {
+      globalScene.setActivePlayerIndex(0);
+    }
     audioManager.playBgm(undefined, true);
     if (globalScene.gameMode.isClassic) {
       globalScene.gameData.gameStats.classicSessionsPlayed++;

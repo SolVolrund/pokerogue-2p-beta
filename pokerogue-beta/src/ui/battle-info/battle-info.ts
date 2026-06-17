@@ -1,4 +1,5 @@
 import { globalScene } from "#app/global-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import { Gender, getGenderColor, getGenderSymbol } from "#data/gender";
 import { getTypeRgb } from "#data/type";
 import { PokemonType } from "#enums/pokemon-type";
@@ -396,6 +397,8 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
     this.updateStats(stats);
   }
 
+  refreshOwnedIcon(_pokemon: Pokemon, _playerIndex?: PlayerIndex): void {}
+
   // #endregion Initialization methods
 
   /**
@@ -440,9 +443,9 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
       if (this.lastStatus !== StatusEffect.NONE) {
         this.statusIndicator.setFrame(StatusEffect[this.lastStatus].toLowerCase());
       }
-
-      this.statusIndicator.setVisible(!!this.lastStatus).setPositionRelative(this.nameText, xOffset, 11.5);
     }
+
+    this.statusIndicator.setVisible(!!this.lastStatus).setPositionRelative(this.nameText, xOffset, 11.5);
   }
 
   /** Update the pokemon name inside the container */

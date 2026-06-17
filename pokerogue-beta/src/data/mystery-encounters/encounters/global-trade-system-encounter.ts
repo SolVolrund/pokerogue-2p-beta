@@ -41,7 +41,6 @@ import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter
 import { PokemonData } from "#system/pokemon-data";
 import { MusicPreference } from "#system/settings";
 import type { OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
-import { updateWindowType } from "#ui/ui-theme";
 import { randInt, randSeedInt, randSeedItem, randSeedShuffle } from "#utils/common";
 import { getEnumKeys } from "#utils/enums";
 import { getRandomLocaleEntry } from "#utils/i18n";
@@ -138,8 +137,7 @@ function getPlayerTradeOptionsMap(playerIndex: PlayerIndex): Map<number, EnemyPo
 }
 
 function showGlobalTradeSystemPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
 
   globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
     globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
@@ -167,8 +165,7 @@ function storeGlobalTradeSystemChoice(choice: GlobalTradeSystemChoice, startingC
   }
 
   data.skipSelectedDialogueOnce = true;
-  globalScene.setActivePlayerIndex(0);
-  updateWindowType(1);
+  globalScene.waitForPlayerInput(0);
   return true;
 }
 
@@ -236,8 +233,7 @@ async function resolvePokemonTrade(choice: GlobalTradeSystemChoice): Promise<voi
   }
 
   const encounter = globalScene.currentBattle.mysteryEncounter!;
-  globalScene.setActivePlayerIndex(choice.playerIndex);
-  updateWindowType(choice.playerIndex + 1);
+  globalScene.waitForPlayerInput(choice.playerIndex);
   setPokemonTradeTokens(choice);
 
   const tradedPokemon = choice.tradedPokemon;
@@ -290,8 +286,7 @@ async function resolveItemTrade(choice: GlobalTradeSystemChoice): Promise<void> 
 
   const party = globalScene.getPlayerParty(choice.playerIndex);
   const modifier = choice.chosenModifier;
-  globalScene.setActivePlayerIndex(choice.playerIndex);
-  updateWindowType(choice.playerIndex + 1);
+  globalScene.waitForPlayerInput(choice.playerIndex);
 
   const type = modifier.type.withTierFromPool(ModifierPoolType.PLAYER, party);
   let tier = type.tier ?? ModifierTier.GREAT;
@@ -339,8 +334,7 @@ async function runTwoPlayerGlobalTradeSystemChoices(): Promise<boolean> {
   const choices = (data.choices ?? []).toSorted((a, b) => a.playerIndex - b.playerIndex);
 
   for (const choice of choices) {
-    globalScene.setActivePlayerIndex(choice.playerIndex);
-    updateWindowType(choice.playerIndex + 1);
+    globalScene.waitForPlayerInput(choice.playerIndex);
 
     if (choice.optionIndex === 1 || choice.optionIndex === 2) {
       await resolvePokemonTrade(choice);
@@ -351,8 +345,7 @@ async function runTwoPlayerGlobalTradeSystemChoices(): Promise<boolean> {
     }
   }
 
-  globalScene.setActivePlayerIndex(0);
-  updateWindowType(1);
+  globalScene.waitForPlayerInput(0);
   leaveEncounterWithoutBattle(true);
   return true;
 }
@@ -367,8 +360,7 @@ function buildCheckTradeOffersOption(playerIndex: PlayerIndex): MysteryEncounter
       secondOptionPrompt: `${namespace}:option.1.tradeOptionsPrompt`,
     })
     .withPreOptionPhase(async (): Promise<boolean> => {
-      globalScene.setActivePlayerIndex(playerIndex);
-      updateWindowType(playerIndex + 1);
+      globalScene.waitForPlayerInput(playerIndex);
       const onPokemonSelected = (pokemon: PlayerPokemon) => {
         const tradeOptions = getPlayerTradeOptionsMap(playerIndex).get(pokemon.id);
         if (!tradeOptions) {
@@ -430,8 +422,7 @@ function buildWonderTradeOption(playerIndex: PlayerIndex): MysteryEncounterOptio
       buttonTooltip: `${namespace}:option.2.tooltip`,
     })
     .withPreOptionPhase(async (): Promise<boolean> => {
-      globalScene.setActivePlayerIndex(playerIndex);
-      updateWindowType(playerIndex + 1);
+      globalScene.waitForPlayerInput(playerIndex);
       const onPokemonSelected = (pokemon: PlayerPokemon) => {
         const tradePokemon = createWonderTradePokemon(pokemon, playerIndex);
         const choice = { playerIndex, optionIndex: 2, tradedPokemon: pokemon, receivedPokemon: tradePokemon } satisfies GlobalTradeSystemChoice;
@@ -463,8 +454,7 @@ function buildTradeItemOption(playerIndex: PlayerIndex): MysteryEncounterOption 
       secondOptionPrompt: `${namespace}:option.3.tradeOptionsPrompt`,
     })
     .withPreOptionPhase(async (): Promise<boolean> => {
-      globalScene.setActivePlayerIndex(playerIndex);
-      updateWindowType(playerIndex + 1);
+      globalScene.waitForPlayerInput(playerIndex);
       const onPokemonSelected = (pokemon: PlayerPokemon) => {
         return getTradeableHeldItems(pokemon).map((modifier: PokemonHeldItemModifier) => {
           const option: OptionSelectItem = {

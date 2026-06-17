@@ -23,7 +23,6 @@ import { getMoveTargets } from "#moves/move-utils";
 import { FieldPhase } from "#phases/field-phase";
 import type { MoveTargetSet } from "#types/move-target-set";
 import type { TurnMove } from "#types/turn-move";
-import { updateWindowType } from "#ui/ui-theme";
 import i18next from "i18next";
 
 export class CommandPhase extends FieldPhase {
@@ -47,8 +46,7 @@ export class CommandPhase extends FieldPhase {
     }
 
     const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
-    globalScene.setActivePlayerIndex(playerIndex);
-    updateWindowType(playerIndex + 1);
+    globalScene.waitForPlayerInput(playerIndex);
   }
 
   /**

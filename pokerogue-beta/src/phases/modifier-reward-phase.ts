@@ -4,7 +4,6 @@ import { globalScene } from "#app/global-scene";
 import type { ModifierType } from "#modifiers/modifier-type";
 import { BattlePhase } from "#phases/battle-phase";
 import type { ModifierTypeFunc } from "#types/modifier-types";
-import { updateWindowType } from "#ui/ui-theme";
 import { getModifierType } from "#utils/modifier-utils";
 import i18next from "i18next";
 
@@ -32,8 +31,7 @@ export class ModifierRewardPhase extends BattlePhase {
 
   protected setRewardPlayer(): void {
     if (globalScene.twoPlayerMode) {
-      globalScene.setActivePlayerIndex(this.playerIndex);
-      updateWindowType(this.playerIndex + 1);
+      globalScene.waitForPlayerInput(this.playerIndex);
     }
   }
 

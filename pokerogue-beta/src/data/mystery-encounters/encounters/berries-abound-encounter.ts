@@ -38,7 +38,6 @@ import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { PokemonData } from "#system/pokemon-data";
-import { updateWindowType } from "#ui/ui-theme";
 import { randSeedItem } from "#utils/common";
 import { getEnumValues } from "#utils/enums";
 import i18next from "i18next";
@@ -100,8 +99,7 @@ function setBerriesAboundPlayerTokens(playerIndex: PlayerIndex): void {
 }
 
 function showBerriesAboundPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
   setBerriesAboundPlayerTokens(playerIndex);
 
   globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
@@ -158,8 +156,7 @@ function storeBerriesAboundChoice(optionIndex: BerriesAboundOptionIndex, playerI
     return true;
   }
 
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
   setBerriesAboundPlayerTokens(playerIndex);
 
   const data = getBerriesAboundData();
@@ -172,8 +169,7 @@ function storeBerriesAboundChoice(optionIndex: BerriesAboundOptionIndex, playerI
   }
 
   data.skipSelectedDialogueOnce = true;
-  globalScene.setActivePlayerIndex(0);
-  updateWindowType(1);
+  globalScene.waitForPlayerInput(0);
   return true;
 }
 
@@ -194,8 +190,7 @@ function setBerryRewards(
   prioritizedPokemon?: PlayerPokemon,
 ): void {
   const doBerryRewards = () => {
-    globalScene.setActivePlayerIndex(playerIndex);
-    updateWindowType(playerIndex + 1);
+    globalScene.waitForPlayerInput(playerIndex);
     const berryText = i18next.t(`${namespace}:berries`);
 
     audioManager.playSound("se/item_fanfare");
@@ -273,8 +268,7 @@ function createBerriesAboundBattleConfig(battlePlayers: PlayerIndex[], enraged: 
 }
 
 async function startBerriesAboundBattle(battlePlayers: PlayerIndex[], enraged: boolean): Promise<void> {
-  globalScene.setActivePlayerIndex(battlePlayers[0]);
-  updateWindowType(battlePlayers[0] + 1);
+  globalScene.waitForPlayerInput(battlePlayers[0]);
   globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
   await hideBerriesAboundNonBattleTrainers(battlePlayers);
   await initBattleWithEnemyConfig(createBerriesAboundBattleConfig(battlePlayers, enraged));
@@ -314,8 +308,7 @@ async function runTwoPlayerBerriesAboundChoices(): Promise<boolean> {
   let hasRewards = false;
 
   for (const choice of choices) {
-    globalScene.setActivePlayerIndex(choice.playerIndex);
-    updateWindowType(choice.playerIndex + 1);
+    globalScene.waitForPlayerInput(choice.playerIndex);
     setBerriesAboundPlayerTokens(choice.playerIndex);
 
     if (choice.optionIndex === 1) {

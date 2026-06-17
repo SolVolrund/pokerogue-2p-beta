@@ -139,7 +139,7 @@ import { PokeballTray } from "#ui/pokeball-tray";
 import { PokemonInfoContainer } from "#ui/pokemon-info-container";
 import { addTextObject, getTextColor, RAINBOW_TINT } from "#ui/text";
 import { UI } from "#ui/ui";
-import { addUiThemeOverrides } from "#ui/ui-theme";
+import { addUiThemeOverrides, updateWindowType } from "#ui/ui-theme";
 import { playTween } from "#utils/anim-utils";
 import {
   BooleanHolder,
@@ -164,6 +164,7 @@ import i18next from "i18next";
 import Phaser from "phaser";
 export type PokeballCounts = Record<Exclude<PokeballType, PokeballType.LUXURY_BALL>, number>;
 export type PlayerIndex = 0 | 1;
+export type InputOwner = PlayerIndex | "both" | "none";
 const TWO_PLAYER_GUEST_SYSTEM_SAVE_KEY = "pokerogue_2p_guest_system_save";
 const TWO_PLAYER_TEST_STARTING_MONEY = 1000;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
@@ -400,6 +401,7 @@ export class BattleScene extends SceneBase {
   public twoPlayerPartySize: 3 | 6 = getTwoPlayerPartySize();
   private readonly twoPlayerEggVoucherGrant: number | undefined = getTwoPlayerEggVoucherGrant();
   public activePlayerIndex: PlayerIndex = 0;
+  public inputOwner: InputOwner = "none";
   public twoPlayerGuestGender: PlayerGender = PlayerGender.FEMALE;
   public twoPlayerMysteryDecisionPriority: PlayerIndex = 0;
   public readonly fieldSlotOwners: [PlayerIndex, PlayerIndex] = [0, 1];
@@ -879,6 +881,7 @@ export class BattleScene extends SceneBase {
     this.twoPlayerMode = enabled;
     this.twoPlayerPartySize = enabled ? partySize : 6;
     this.activePlayerIndex = 0;
+    this.inputOwner = "none";
 
     if (enabled) {
       if (!this.systemSaves) {
@@ -947,6 +950,7 @@ export class BattleScene extends SceneBase {
   private resetPlayerRunStates(): void {
     this.players = [createPlayerRunState(), createPlayerRunState()];
     this.activePlayerIndex = 0;
+    this.inputOwner = "none";
 
     if (this.twoPlayerMode) {
       this.syncLegacyStateForActivePlayer();
@@ -971,6 +975,47 @@ export class BattleScene extends SceneBase {
     this.syncActiveSystemSaveForActivePlayer();
     this.updateMoneyText(false);
     this.refreshPlayerModifierBar();
+  }
+
+  public setInputOwner(inputOwner: InputOwner): void {
+    this.inputOwner = inputOwner;
+
+    if (!this.twoPlayerMode) {
+      return;
+    }
+
+    switch (inputOwner) {
+      case 0:
+        updateWindowType(1);
+        break;
+      case 1:
+        updateWindowType(2);
+        break;
+      case "both":
+        updateWindowType(5);
+        break;
+    }
+  }
+
+  public clearInputOwner(): void {
+    this.inputOwner = "none";
+  }
+
+  public waitForPlayerInput(playerIndex: PlayerIndex): void {
+    this.setActivePlayerIndex(playerIndex);
+    this.setInputOwner(playerIndex);
+  }
+
+  public waitForSharedInput(): void {
+    this.setInputOwner("both");
+  }
+
+  public refreshEnemyOwnedIconsForInputOwner(): void {
+    if (!this.twoPlayerMode) {
+      return;
+    }
+
+    this.getEnemyField().forEach(pokemon => pokemon.getBattleInfo().refreshOwnedIcon(pokemon));
   }
 
   public getTrainerGender(playerIndex: PlayerIndex = 0): PlayerGender {

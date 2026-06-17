@@ -27,7 +27,6 @@ import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encount
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import type { TrainerConfig } from "#trainers/trainer-config";
 import { trainerConfigs } from "#trainers/trainer-config";
-import { updateWindowType } from "#ui/ui-theme";
 import { randSeedInt } from "#utils/common";
 import i18next from "i18next";
 
@@ -205,8 +204,7 @@ function buildIntroSpriteConfigs(trainerInfos: StatTrainerInfo[]) {
 }
 
 function showATrainersTestPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
 
   globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
     globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
@@ -262,8 +260,7 @@ function storeATrainersTestChoice(optionIndex: ATrainersTestOptionIndex, playerI
     return true;
   }
 
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
 
   const data = getATrainersTestData();
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
@@ -275,8 +272,7 @@ function storeATrainersTestChoice(optionIndex: ATrainersTestOptionIndex, playerI
   }
 
   data.skipSelectedDialogueOnce = true;
-  globalScene.setActivePlayerIndex(0);
-  updateWindowType(1);
+  globalScene.waitForPlayerInput(0);
   return true;
 }
 
@@ -284,8 +280,7 @@ async function showATrainersTestSelectedDialogue(choice: ATrainersTestChoice): P
   const data = getATrainersTestData();
   const info = data.trainerInfos[choice.playerIndex];
 
-  globalScene.setActivePlayerIndex(choice.playerIndex);
-  updateWindowType(choice.playerIndex + 1);
+  globalScene.waitForPlayerInput(choice.playerIndex);
   await showEncounterDialogue(
     `${namespace}:${info.trainerNameKey}.${choice.optionIndex === 1 ? "accept" : "decline"}`,
     `trainerNames:${info.trainerNameKey}`,
@@ -343,8 +338,7 @@ function setATrainersTestRewardMessages(choices: ATrainersTestChoice[]): void {
 
   encounter.onRewards = async () => {
     for (const choice of choices.toSorted((a, b) => a.playerIndex - b.playerIndex)) {
-      globalScene.setActivePlayerIndex(choice.playerIndex);
-      updateWindowType(choice.playerIndex + 1);
+      globalScene.waitForPlayerInput(choice.playerIndex);
       const info = data.trainerInfos[choice.playerIndex];
       const trainerName = getTrainerDisplayName(info);
       const eggType = i18next.t(

@@ -48,7 +48,6 @@ import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encou
 import { trainerConfigs } from "#trainers/trainer-config";
 import { TrainerPartyCompoundTemplate, TrainerPartyTemplate } from "#trainers/trainer-party-template";
 import type { OptionSelectConfig } from "#ui/abstract-option-select-ui-handler";
-import { updateWindowType } from "#ui/ui-theme";
 import { randSeedInt, randSeedShuffle } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
@@ -103,8 +102,7 @@ function getClowningAroundData(): ClowningAroundData {
 }
 
 function showClowningAroundPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
 
   globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
     globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
@@ -160,8 +158,7 @@ function storeClowningAroundChoice(optionIndex: ClowningAroundOptionIndex, playe
     return true;
   }
 
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
 
   const data = getClowningAroundData();
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
@@ -173,15 +170,13 @@ function storeClowningAroundChoice(optionIndex: ClowningAroundOptionIndex, playe
   }
 
   data.skipSelectedDialogueOnce = true;
-  globalScene.setActivePlayerIndex(0);
-  updateWindowType(1);
+  globalScene.waitForPlayerInput(0);
   return true;
 }
 
 function applyClowningAroundItemShuffle(playerIndex: PlayerIndex): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
 
   const party = globalScene.getPlayerParty(playerIndex);
   let mostHeldItemsPokemon = party[0];
@@ -233,8 +228,7 @@ function applyClowningAroundItemShuffle(playerIndex: PlayerIndex): void {
 }
 
 function applyClowningAroundTypeShuffle(playerIndex: PlayerIndex): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
 
   for (const pokemon of globalScene.getPlayerParty(playerIndex)) {
     const originalTypes = pokemon.getTypes({
@@ -307,8 +301,7 @@ async function runTwoPlayerClowningAroundChoices(): Promise<boolean> {
   const battlePlayers: PlayerIndex[] = [];
 
   for (const choice of choices) {
-    globalScene.setActivePlayerIndex(choice.playerIndex);
-    updateWindowType(choice.playerIndex + 1);
+    globalScene.waitForPlayerInput(choice.playerIndex);
     await showEncounterDialogue(`${namespace}:option.${choice.optionIndex}.selected`, `${namespace}:speaker`);
 
     if (choice.optionIndex === 1) {
@@ -335,8 +328,7 @@ async function runTwoPlayerClowningAroundChoices(): Promise<boolean> {
     return true;
   }
 
-  globalScene.setActivePlayerIndex(battlePlayers[0]);
-  updateWindowType(battlePlayers[0] + 1);
+  globalScene.waitForPlayerInput(battlePlayers[0]);
   globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
   queueClowningAroundStartOfBattleEffects(battlePlayers);
   await transitionMysteryEncounterIntroVisuals();
@@ -579,8 +571,7 @@ export const ClowningAroundEncounter: MysteryEncounter = MysteryEncounterBuilder
 async function runClowningAroundPostOptionPhase(): Promise<boolean> {
   const data = getClowningAroundData();
   for (const playerIndex of data.battlePlayers) {
-    globalScene.setActivePlayerIndex(playerIndex);
-    updateWindowType(playerIndex + 1);
+    globalScene.waitForPlayerInput(playerIndex);
     const abilityWasSwapped = await handleSwapAbility(playerIndex);
     if (abilityWasSwapped) {
       await showEncounterText(`${namespace}:option.1.abilityGained`);
@@ -609,16 +600,14 @@ async function runClowningAroundPostOptionPhase(): Promise<boolean> {
     await transitionMysteryEncounterIntroVisuals(true, true, 200);
   }
 
-  globalScene.setActivePlayerIndex(0);
-  updateWindowType(1);
+  globalScene.waitForPlayerInput(0);
   return true;
 }
 
 async function handleSwapAbility(playerIndex: PlayerIndex) {
   // biome-ignore lint/suspicious/noAsyncPromiseExecutor: TODO: Consider refactoring to avoid async promise executor
   return new Promise<boolean>(async resolve => {
-    globalScene.setActivePlayerIndex(playerIndex);
-    updateWindowType(playerIndex + 1);
+    globalScene.waitForPlayerInput(playerIndex);
     await showEncounterDialogue(`${namespace}:option.1.applyAbilityDialogue`, `${namespace}:speaker`);
     await showEncounterText(`${namespace}:option.1.applyAbilityMessage`);
 
@@ -629,8 +618,7 @@ async function handleSwapAbility(playerIndex: PlayerIndex) {
 }
 
 function displayYesNoOptions(resolve: (value: boolean) => void, playerIndex: PlayerIndex) {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
   showEncounterText(`${namespace}:option.1.abilityPrompt`, null, 500, false);
   const fullOptions = [
     {
@@ -673,8 +661,7 @@ function onYesAbilitySwap(resolve: (value: boolean) => void, playerIndex: Player
     });
   };
 
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
   selectPokemonForOption(onPokemonSelected, onPokemonNotSelected);
 }
 

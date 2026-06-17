@@ -10,7 +10,6 @@ import { MysteryEncounterMode } from "#enums/mystery-encounter-mode";
 import { TrainerSlot } from "#enums/trainer-slot";
 import type { Pokemon } from "#field/pokemon";
 import { PartyMemberPokemonPhase } from "#phases/party-member-pokemon-phase";
-import { updateWindowType } from "#ui/ui-theme";
 import i18next from "i18next";
 
 export class SummonPhase extends PartyMemberPokemonPhase {
@@ -39,8 +38,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
     }
 
     const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
-    globalScene.setActivePlayerIndex(playerIndex);
-    updateWindowType(playerIndex + 1);
+    globalScene.waitForPlayerInput(playerIndex);
   }
 
   start() {

@@ -241,8 +241,7 @@ function setDancingLessonsPlayerOptionTokens(playerIndex: PlayerIndex): void {
 }
 
 function showDancingLessonsPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(playerIndex);
   setDancingLessonsPlayerOptionTokens(playerIndex);
 
   globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
@@ -268,8 +267,7 @@ function finishDancingLessonsChoiceCollection(playerIndex: PlayerIndex, starting
 
   const data = getDancingLessonsData();
   data.skipSelectedDialogueOnce = true;
-  globalScene.setActivePlayerIndex(0);
-  updateWindowType(1);
+  globalScene.waitForPlayerInput(0);
   return true;
 }
 

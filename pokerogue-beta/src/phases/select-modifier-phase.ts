@@ -29,7 +29,6 @@ import { BattlePhase } from "#phases/battle-phase";
 import type { ModifierSelectUiHandler } from "#ui/modifier-select-ui-handler";
 import { SHOP_OPTIONS_ROW_LIMIT } from "#ui/modifier-select-ui-handler";
 import { PartyOption, PartyUiHandler, PartyUiMode } from "#ui/party-ui-handler";
-import { updateWindowType } from "#ui/ui-theme";
 import { NumberHolder } from "#utils/common";
 import i18next from "i18next";
 
@@ -133,9 +132,10 @@ export class SelectModifierPhase extends BattlePhase {
   }
 
   private setActiveRewardPlayer(): void {
-    globalScene.setActivePlayerIndex(this.playerIndex);
     if (globalScene.twoPlayerMode) {
-      updateWindowType(this.playerIndex + 1);
+      globalScene.waitForPlayerInput(this.playerIndex);
+    } else {
+      globalScene.setActivePlayerIndex(this.playerIndex);
     }
   }
 

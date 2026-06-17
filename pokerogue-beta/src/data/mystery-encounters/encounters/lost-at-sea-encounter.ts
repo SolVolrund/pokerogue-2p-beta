@@ -18,7 +18,6 @@ import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { EncounterPokemonRequirement } from "#mystery-encounters/mystery-encounter-requirements";
-import { updateWindowType } from "#ui/ui-theme";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 
 const OPTION_1_REQUIRED_MOVE = MoveId.SURF;
@@ -126,16 +125,14 @@ function storeLostAtSeaChoice(optionIndex: LostAtSeaOptionIndex, playerIndex: Pl
 
   if (playerIndex === 0) {
     data.selectingPlayerIndex = 1;
-    globalScene.setActivePlayerIndex(1);
-    updateWindowType(2);
+    globalScene.waitForPlayerInput(1);
     showLostAtSeaPlayerMenu(1, optionIndex - 1);
     return false;
   }
 
   delete data.selectingPlayerIndex;
   data.skipSelectedDialogueOnce = true;
-  globalScene.setActivePlayerIndex(0);
-  updateWindowType(1);
+  globalScene.waitForPlayerInput(0);
   return true;
 }
 
@@ -225,8 +222,7 @@ async function runTwoPlayerLostAtSeaChoices(): Promise<boolean> {
   const laprasSpecies = getPokemonSpecies(SpeciesId.LAPRAS);
 
   for (const choice of data.choices) {
-    globalScene.setActivePlayerIndex(choice.playerIndex);
-    updateWindowType(choice.playerIndex + 1);
+    globalScene.waitForPlayerInput(choice.playerIndex);
 
     if (choice.optionIndex === 3) {
       await showEncounterText(`${namespace}:option.3.selected`);
@@ -248,8 +244,7 @@ async function runTwoPlayerLostAtSeaChoices(): Promise<boolean> {
     setEncounterExp(guidePokemon.id, laprasSpecies.baseExp, true, choice.playerIndex);
   }
 
-  globalScene.setActivePlayerIndex(0);
-  updateWindowType(1);
+  globalScene.waitForPlayerInput(0);
   leaveEncounterWithoutBattle();
   return true;
 }

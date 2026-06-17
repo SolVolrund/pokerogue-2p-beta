@@ -16,7 +16,6 @@ import type { OptionSelectSettings } from "#mystery-encounters/encounter-phase-u
 import { transitionMysteryEncounterIntroVisuals } from "#mystery-encounters/encounter-phase-utils";
 import type { MysteryEncounterOption, OptionPhaseCallback } from "#mystery-encounters/mystery-encounter-option";
 import { SeenEncounterData } from "#mystery-encounters/mystery-encounter-save-data";
-import { updateWindowType } from "#ui/ui-theme";
 import { randSeedItem } from "#utils/common";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import i18next from "i18next";
@@ -67,6 +66,10 @@ export class MysteryEncounterPhase extends Phase {
       );
     }
 
+    if (globalScene.twoPlayerMode && !this.optionSelectSettings) {
+      globalScene.waitForPlayerInput(0);
+    }
+
     // Initiates encounter dialogue window and option select
     globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, this.optionSelectSettings);
   }
@@ -106,8 +109,7 @@ export class MysteryEncounterPhase extends Phase {
 
     if (shouldAskSecondPlayer) {
       this.firstTwoPlayerDecisionIndex = index;
-      globalScene.setActivePlayerIndex(1);
-      updateWindowType(2);
+      globalScene.waitForPlayerInput(1);
       globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
         slideInDescription: false,
         overrideTitle: "Player 2",
@@ -130,8 +132,11 @@ export class MysteryEncounterPhase extends Phase {
       }
     }
 
-    globalScene.setActivePlayerIndex(0);
-    updateWindowType(1);
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForPlayerInput(0);
+    } else {
+      globalScene.setActivePlayerIndex(0);
+    }
 
     // Set option selected flag
     encounter.selectedOption = option;
