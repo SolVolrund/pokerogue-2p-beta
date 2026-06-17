@@ -1,10 +1,17 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import type { InputsController } from "#app/inputs-controller";
+import type { PlayerIndex } from "#app/battle-scene";
 import { isDev } from "#constants/app-constants";
 import { Button } from "#enums/buttons";
 import { UiMode } from "#enums/ui-mode";
 import { Setting, SettingKeys, settingIndex } from "#system/settings";
+import {
+  isTwoPlayerInputDebugEnabled,
+  TwoPlayerInputTransport,
+  type TwoPlayerInputDebugEvent,
+  type TwoPlayerInputTransportStatus,
+} from "#app/two-player-input-transport";
 import type { MessageUiHandler } from "#ui/message-ui-handler";
 import { PokedexPageUiHandler } from "#ui/pokedex-page-ui-handler";
 import { PokedexUiHandler } from "#ui/pokedex-ui-handler";
@@ -18,10 +25,27 @@ import { StarterSelectUiHandler } from "#ui/starter-select-ui-handler";
 import Phaser from "phaser";
 
 type ActionKeys = Record<Button, () => void>;
+type RemoteButtonInput = Button | keyof typeof Button;
+type RemoteDebugPlayer = 1 | 2 | "1" | "2" | "p1" | "p2" | "player1" | "player2" | "host" | "guest";
+
+declare global {
+  interface Window {
+    pokerogueTwoPlayerInput?: {
+      press(player: RemoteDebugPlayer, button: RemoteButtonInput): boolean;
+      release(player: RemoteDebugPlayer, button: RemoteButtonInput): boolean;
+      transportStatus(): TwoPlayerInputTransportStatus | undefined;
+      debugEvents(): TwoPlayerInputDebugEvent[];
+      clearDebugEvents(): void;
+    };
+  }
+}
 
 export class UiInputs {
   private events: Phaser.Events.EventEmitter;
   private inputsController: InputsController;
+  private twoPlayerInputTransport: TwoPlayerInputTransport | undefined;
+  private readonly twoPlayerInputDebugEnabled = isTwoPlayerInputDebugEnabled();
+  private readonly twoPlayerInputDebugEvents: TwoPlayerInputDebugEvent[] = [];
 
   constructor(inputsController: InputsController) {
     this.inputsController = inputsController;
@@ -31,6 +55,12 @@ export class UiInputs {
   init(): void {
     this.events = this.inputsController.events;
     this.listenInputs();
+    this.twoPlayerInputTransport = TwoPlayerInputTransport.create(
+      globalScene.twoPlayerLocalInputSeat,
+      (playerIndex, button, pressed) => this.processRemoteInput(playerIndex, button, pressed),
+      event => this.recordInputDebugEvent(event),
+    );
+    this.exposeDebugRemoteInput();
   }
 
   detectInputMethod(evt): void {
@@ -50,13 +80,22 @@ export class UiInputs {
     this.events.on(
       "input_down",
       event => {
-        this.detectInputMethod(event);
-
-        const actions = this.getActionsKeyDown();
-        if (!Object.hasOwn(actions, event.button)) {
+        if (!globalScene.canAcceptLocalInput()) {
+          this.recordInputDebugEvent({
+            action: "rejected",
+            source: "local",
+            reason: "local-seat-mismatch",
+            localSeat: globalScene.twoPlayerLocalInputSeat,
+            inputOwner: globalScene.inputOwner,
+            button: event.button,
+            buttonName: Button[event.button] as keyof typeof Button,
+            pressed: true,
+          });
           return;
         }
-        actions[event.button]();
+
+        this.detectInputMethod(event);
+        this.processLocalButtonInput(event.button, true);
       },
       this,
     );
@@ -64,14 +103,155 @@ export class UiInputs {
     this.events.on(
       "input_up",
       event => {
-        const actions = this.getActionsKeyUp();
-        if (!Object.hasOwn(actions, event.button)) {
+        if (!globalScene.canAcceptLocalInput()) {
+          this.recordInputDebugEvent({
+            action: "rejected",
+            source: "local",
+            reason: "local-seat-mismatch",
+            localSeat: globalScene.twoPlayerLocalInputSeat,
+            inputOwner: globalScene.inputOwner,
+            button: event.button,
+            buttonName: Button[event.button] as keyof typeof Button,
+            pressed: false,
+          });
           return;
         }
-        actions[event.button]();
+
+        this.processLocalButtonInput(event.button, false);
       },
       this,
     );
+  }
+
+  public processRemoteInput(playerIndex: PlayerIndex, button: Button, pressed = true): boolean {
+    if (!globalScene.canAcceptRemoteInput(playerIndex)) {
+      this.recordInputDebugEvent({
+        action: "rejected",
+        source: "remote",
+        reason: "remote-owner-mismatch",
+        localSeat: globalScene.twoPlayerLocalInputSeat,
+        inputOwner: globalScene.inputOwner,
+        playerIndex,
+        button,
+        buttonName: Button[button] as keyof typeof Button,
+        pressed,
+      });
+      return false;
+    }
+
+    if (globalScene.inputOwner === playerIndex) {
+      globalScene.setActivePlayerIndex(playerIndex);
+    }
+
+    const processed = this.processButtonInput(button, pressed);
+    this.recordInputDebugEvent({
+      action: processed ? "accepted" : "rejected",
+      source: "remote",
+      ...(processed ? {} : { reason: "unknown-button" }),
+      localSeat: globalScene.twoPlayerLocalInputSeat,
+      inputOwner: globalScene.inputOwner,
+      playerIndex,
+      button,
+      buttonName: Button[button] as keyof typeof Button,
+      pressed,
+    });
+    return processed;
+  }
+
+  private processButtonInput(button: Button, pressed: boolean): boolean {
+    const actions = pressed ? this.getActionsKeyDown() : this.getActionsKeyUp();
+    if (!Object.hasOwn(actions, button)) {
+      return false;
+    }
+
+    actions[button]();
+    return true;
+  }
+
+  private processLocalButtonInput(button: Button, pressed: boolean): boolean {
+    const processed = this.processButtonInput(button, pressed);
+    this.recordInputDebugEvent({
+      action: processed ? "accepted" : "rejected",
+      source: "local",
+      ...(processed ? {} : { reason: "unknown-button" }),
+      localSeat: globalScene.twoPlayerLocalInputSeat,
+      inputOwner: globalScene.inputOwner,
+      button,
+      buttonName: Button[button] as keyof typeof Button,
+      pressed,
+    });
+
+    if (processed) {
+      this.twoPlayerInputTransport?.send(button, pressed);
+    }
+
+    return processed;
+  }
+
+  private recordInputDebugEvent(event: Omit<TwoPlayerInputDebugEvent, "at">): void {
+    if (!this.twoPlayerInputDebugEnabled) {
+      return;
+    }
+
+    const debugEvent = { at: new Date().toISOString(), ...event };
+    this.twoPlayerInputDebugEvents.push(debugEvent);
+    if (this.twoPlayerInputDebugEvents.length > 100) {
+      this.twoPlayerInputDebugEvents.shift();
+    }
+
+    console.debug("[PokeRogue 2P input]", debugEvent);
+  }
+
+  private exposeDebugRemoteInput(): void {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.pokerogueTwoPlayerInput = {
+      press: (player, button) => this.processDebugRemoteInput(player, button, true),
+      release: (player, button) => this.processDebugRemoteInput(player, button, false),
+      transportStatus: () => this.twoPlayerInputTransport?.getStatus(),
+      debugEvents: () => [...this.twoPlayerInputDebugEvents],
+      clearDebugEvents: () => {
+        this.twoPlayerInputDebugEvents.length = 0;
+      },
+    };
+  }
+
+  private processDebugRemoteInput(player: RemoteDebugPlayer, button: RemoteButtonInput, pressed: boolean): boolean {
+    const playerIndex = this.parseDebugRemotePlayer(player);
+    const parsedButton = this.parseRemoteButton(button);
+
+    return playerIndex !== undefined && parsedButton !== undefined
+      ? this.processRemoteInput(playerIndex, parsedButton, pressed)
+      : false;
+  }
+
+  private parseDebugRemotePlayer(player: RemoteDebugPlayer): PlayerIndex | undefined {
+    const normalizedPlayer = `${player}`.toLowerCase();
+    switch (normalizedPlayer) {
+      case "1":
+      case "p1":
+      case "player1":
+      case "host":
+        return 0;
+      case "2":
+      case "p2":
+      case "player2":
+      case "guest":
+        return 1;
+      default:
+        return undefined;
+    }
+  }
+
+  private parseRemoteButton(button: RemoteButtonInput): Button | undefined {
+    if (typeof button === "number") {
+      return Button[button] !== undefined ? button : undefined;
+    }
+
+    const parsedButton = Button[button.toUpperCase() as keyof typeof Button];
+    return typeof parsedButton === "number" ? parsedButton : undefined;
   }
 
   doVibration(inputSuccess: boolean, vibrationLength: number): void {

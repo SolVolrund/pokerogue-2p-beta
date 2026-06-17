@@ -165,6 +165,7 @@ import Phaser from "phaser";
 export type PokeballCounts = Record<Exclude<PokeballType, PokeballType.LUXURY_BALL>, number>;
 export type PlayerIndex = 0 | 1;
 export type InputOwner = PlayerIndex | "both" | "none";
+export type LocalInputSeat = PlayerIndex | "both";
 const TWO_PLAYER_GUEST_SYSTEM_SAVE_KEY = "pokerogue_2p_guest_system_save";
 const TWO_PLAYER_TEST_STARTING_MONEY = 1000;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
@@ -245,6 +246,28 @@ function getTwoPlayerPartySize(): 3 | 6 {
   }
 
   return new URLSearchParams(window.location.search).get("twoPlayerPartySize") === "3" ? 3 : 6;
+}
+
+function getTwoPlayerLocalInputSeat(): LocalInputSeat {
+  if (typeof window === "undefined") {
+    return "both";
+  }
+
+  const localPlayer = new URLSearchParams(window.location.search).get("twoPlayerLocalPlayer")?.toLowerCase();
+  switch (localPlayer) {
+    case "1":
+    case "p1":
+    case "player1":
+    case "host":
+      return 0;
+    case "2":
+    case "p2":
+    case "player2":
+    case "guest":
+      return 1;
+    default:
+      return "both";
+  }
 }
 
 function getTwoPlayerEggVoucherGrant(): number | undefined {
@@ -402,6 +425,7 @@ export class BattleScene extends SceneBase {
   private readonly twoPlayerEggVoucherGrant: number | undefined = getTwoPlayerEggVoucherGrant();
   public activePlayerIndex: PlayerIndex = 0;
   public inputOwner: InputOwner = "none";
+  public twoPlayerLocalInputSeat: LocalInputSeat = getTwoPlayerLocalInputSeat();
   public twoPlayerGuestGender: PlayerGender = PlayerGender.FEMALE;
   public twoPlayerMysteryDecisionPriority: PlayerIndex = 0;
   public readonly fieldSlotOwners: [PlayerIndex, PlayerIndex] = [0, 1];
@@ -1008,6 +1032,22 @@ export class BattleScene extends SceneBase {
 
   public waitForSharedInput(): void {
     this.setInputOwner("both");
+  }
+
+  public canAcceptLocalInput(): boolean {
+    if (!this.twoPlayerMode || this.twoPlayerLocalInputSeat === "both") {
+      return true;
+    }
+
+    return this.inputOwner === "none" || this.inputOwner === "both" || this.inputOwner === this.twoPlayerLocalInputSeat;
+  }
+
+  public canAcceptRemoteInput(playerIndex: PlayerIndex): boolean {
+    if (!this.twoPlayerMode) {
+      return false;
+    }
+
+    return this.inputOwner === "none" || this.inputOwner === "both" || this.inputOwner === playerIndex;
   }
 
   public refreshEnemyOwnedIconsForInputOwner(): void {
