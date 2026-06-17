@@ -24,6 +24,7 @@ import { InvertPostFX } from "#app/pipelines/invert";
 import { SpritePipeline } from "#app/pipelines/sprite";
 import { SceneBase } from "#app/scene-base";
 import { TurnCommandManager } from "#app/turn-command-manager";
+import type { TwoPlayerRunBootstrap } from "#app/two-player-input-transport";
 import { UiInputs } from "#app/ui-inputs";
 import { STARTING_WAVE } from "#balance/misc";
 import { FRIENDSHIP_GAIN_FROM_BATTLE } from "#balance/starters";
@@ -208,6 +209,11 @@ export interface PlayerRunState {
   modifiers: PersistentModifier[];
 }
 
+export interface TwoPlayerDebugStateCheckpoint {
+  fingerprint: string;
+  summary: Record<string, unknown>;
+}
+
 function createDefaultPokeballCounts(): PokeballCounts {
   const pokeballCounts = Object.fromEntries(
     getEnumValues(PokeballType)
@@ -277,11 +283,29 @@ function getTwoPlayerEggVoucherGrant(): number | undefined {
 
   const grantValue = new URLSearchParams(window.location.search).get("grantEggVouchers");
   if (!grantValue) {
-    return undefined;
+    return 10;
   }
 
   const grantCount = Number.parseInt(grantValue, 10);
   return Number.isFinite(grantCount) && grantCount >= 0 ? grantCount : undefined;
+}
+
+function getTwoPlayerRunSeedOverride(): string | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  return new URLSearchParams(window.location.search).get("twoPlayerRunSeed") ?? undefined;
+}
+
+function getTwoPlayerDebugHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+
+  return `fnv1a-${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 export interface InfoToggle {
@@ -1050,6 +1074,79 @@ export class BattleScene extends SceneBase {
     return this.inputOwner === "none" || this.inputOwner === "both" || this.inputOwner === playerIndex;
   }
 
+  public getTwoPlayerDebugStateCheckpoint(): TwoPlayerDebugStateCheckpoint | undefined {
+    if (!this.twoPlayerMode) {
+      return undefined;
+    }
+
+    const summary = {
+      waveIndex: this.currentBattle?.waveIndex ?? null,
+      battleType: this.currentBattle?.battleType ?? null,
+      double: this.currentBattle?.double ?? false,
+      seed: this.seed ?? null,
+      waveSeed: this.waveSeed ?? null,
+      biome: this.arena?.biomeId ?? null,
+      activePlayerIndex: this.activePlayerIndex,
+      inputOwner: this.inputOwner,
+      fieldOwners: this.getPlayerFieldOwners(),
+      players: ([0, 1] as const).map(playerIndex => ({
+        playerIndex,
+        money: this.getPlayerMoney(playerIndex),
+        pokeballs: [...Object.entries(this.getPlayerPokeballCounts(playerIndex))]
+          .sort(([left], [right]) => Number(left) - Number(right)),
+        party: this.getPlayerParty(playerIndex).map(pokemon => this.getTwoPlayerDebugPokemonState(pokemon)),
+        modifiers: this.getPlayerModifiers(playerIndex).map(modifier => this.getTwoPlayerDebugModifierState(modifier)),
+      })),
+      enemies: this.getEnemyParty().map(pokemon => this.getTwoPlayerDebugPokemonState(pokemon)),
+    };
+
+    return {
+      fingerprint: getTwoPlayerDebugHash(JSON.stringify(summary)),
+      summary,
+    };
+  }
+
+  private getTwoPlayerDebugPokemonState(pokemon: Pokemon | undefined): Record<string, unknown> | null {
+    if (!pokemon) {
+      return null;
+    }
+
+    return {
+      id: pokemon.id,
+      speciesId: pokemon.species.speciesId,
+      formIndex: pokemon.formIndex,
+      fusionSpeciesId: pokemon.fusionSpecies?.speciesId ?? null,
+      fusionFormIndex: pokemon.fusionFormIndex ?? null,
+      level: pokemon.level,
+      exp: pokemon.exp,
+      hp: pokemon.hp,
+      maxHp: pokemon.getMaxHp(),
+      status: pokemon.status?.effect ?? null,
+      abilityIndex: pokemon.abilityIndex,
+      gender: pokemon.gender,
+      shiny: pokemon.shiny,
+      variant: pokemon.variant,
+      isActive: pokemon.isActive(),
+      switchOutStatus: pokemon.switchOutStatus,
+      moves: pokemon.getMoveset(true).map(move => ({
+        moveId: move.moveId,
+        ppUsed: move.ppUsed,
+        ppUp: move.ppUp,
+        maxPpOverride: move.maxPpOverride ?? null,
+      })),
+    };
+  }
+
+  private getTwoPlayerDebugModifierState(modifier: PersistentModifier): Record<string, unknown> {
+    return {
+      kind: modifier.constructor.name,
+      typeId: modifier.type.id,
+      iconImage: modifier.type.iconImage,
+      stackCount: modifier.stackCount,
+      args: modifier.getArgs(),
+    };
+  }
+
   public refreshEnemyOwnedIconsForInputOwner(): void {
     if (!this.twoPlayerMode) {
       return;
@@ -1580,6 +1677,23 @@ export class BattleScene extends SceneBase {
     this.offsetGym = this.gameMode.isClassic && this.getGeneratedOffsetGym();
   }
 
+  public applyTwoPlayerRunBootstrap(runBootstrap: TwoPlayerRunBootstrap): void {
+    if (!this.twoPlayerMode || !runBootstrap.seed || this.seed === runBootstrap.seed) {
+      return;
+    }
+
+    const canApplyBeforeBattle = !this.currentBattle;
+    this.setSeed(runBootstrap.seed);
+    this.resetSeed();
+
+    if (!canApplyBeforeBattle) {
+      console.warn(
+        "Received 2P run seed after battle generation had already started. Restart the run to fully resync.",
+        runBootstrap,
+      );
+    }
+  }
+
   /**
    * Generates a random number using the current battle's seed
    *
@@ -1637,9 +1751,10 @@ export class BattleScene extends SceneBase {
 
     // Reset RNG after end of game or save & quit.
     // This needs to happen after clearing this.currentBattle or the seed will be affected by the last wave played
-    this.setSeed(activeOverrides.SEED_OVERRIDE || randomString(24));
+    this.setSeed(activeOverrides.SEED_OVERRIDE || getTwoPlayerRunSeedOverride() || randomString(24));
     console.log("Seed:", this.seed);
     this.resetSeed();
+    this.uiInputs?.broadcastTwoPlayerRunBootstrap(this.seed);
 
     this.biomeWaveText.setText(STARTING_WAVE.toString());
     this.biomeWaveText.setVisible(false);

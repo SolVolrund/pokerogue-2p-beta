@@ -41,7 +41,7 @@ import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter
 import { PokemonData } from "#system/pokemon-data";
 import { MusicPreference } from "#system/settings";
 import type { OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
-import { randInt, randSeedInt, randSeedItem, randSeedShuffle } from "#utils/common";
+import { randSeedInt, randSeedItem, randSeedShuffle } from "#utils/common";
 import { getEnumKeys } from "#utils/enums";
 import { getRandomLocaleEntry } from "#utils/i18n";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
@@ -248,7 +248,7 @@ async function resolvePokemonTrade(choice: GlobalTradeSystemChoice): Promise<voi
   globalScene.removePokemonFromPlayerParty(tradedPokemon, false);
 
   receivedPokemonData.passive = tradedPokemon.passive;
-  receivedPokemonData.pokeball = randInt(4) as PokeballType;
+  receivedPokemonData.pokeball = randSeedInt(4) as PokeballType;
   const dataSource = new PokemonData(receivedPokemonData);
   const newPlayerPokemon = globalScene.addPlayerPokemon(
     receivedPokemonData.species,

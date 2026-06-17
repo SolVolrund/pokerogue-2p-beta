@@ -1,5 +1,5 @@
 import { StatusEffect } from "#enums/status-effect";
-import { randIntRange } from "#utils/common";
+import { randSeedIntRange } from "#utils/common";
 import type { ParseKeys } from "i18next";
 import i18next from "i18next";
 
@@ -125,7 +125,7 @@ export function getStatusEffectCatchRateMultiplier(statusEffect: StatusEffect): 
  * Returns a random non-volatile StatusEffect
  */
 export function generateRandomStatusEffect(): StatusEffect {
-  return randIntRange(1, 6);
+  return randSeedIntRange(1, 6);
 }
 
 /**
@@ -141,7 +141,7 @@ export function getRandomStatusEffect(statusEffectA: StatusEffect, statusEffectB
     return statusEffectA;
   }
 
-  return randIntRange(0, 1) ? statusEffectA : statusEffectB;
+  return randSeedIntRange(0, 1) ? statusEffectA : statusEffectB;
 }
 
 /**
@@ -157,7 +157,7 @@ export function getRandomStatus(statusA: Status | null, statusB: Status | null):
     return statusA;
   }
 
-  return randIntRange(0, 1) ? statusA : statusB;
+  return randSeedIntRange(0, 1) ? statusA : statusB;
 }
 
 /**

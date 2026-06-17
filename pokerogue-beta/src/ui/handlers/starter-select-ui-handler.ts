@@ -68,6 +68,7 @@ import {
   NumberHolder,
   padInt,
   randIntRange,
+  randSeedInt,
   truncateString,
 } from "#utils/common";
 import type { StarterPreferences } from "#utils/data";
@@ -1838,8 +1839,17 @@ export class StarterSelectUiHandler extends MessageUiHandler {
             error = true; // No valid starters available
             break;
           }
-          // Select random starter
-          const randomStarter = validStarters[Math.floor(Math.random() * validStarters.length)];
+          // Select a deterministic random starter so local 2P renderers stay in sync.
+          const randomStarterSeed = `${globalScene.seed}:random-starter:${globalScene.activePlayerIndex}:${this.starterSpecies.map(s => s.speciesId).join(",")}`;
+          let randomStarterIndex = 0;
+          globalScene.executeWithSeedOffset(
+            () => {
+              randomStarterIndex = randSeedInt(validStarters.length);
+            },
+            0,
+            randomStarterSeed,
+          );
+          const randomStarter = validStarters[randomStarterIndex];
           const randomSpecies = randomStarter.species;
           // Set species and prepare attributes
           this.setSpecies(randomSpecies);

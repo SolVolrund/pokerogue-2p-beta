@@ -22,6 +22,25 @@ export interface FixedBattleConfigs {
  * Champion on 190
  */
 export const classicFixedBattles: FixedBattleConfigs = {
+  [2]: new FixedBattleConfig()
+    .setBattleType(BattleType.TRAINER)
+    .setGetTrainerFunc(
+      getRandomTrainerFunc(
+        [
+          TrainerType.ROCKET_GRUNT,
+          TrainerType.MAGMA_GRUNT,
+          TrainerType.AQUA_GRUNT,
+          TrainerType.GALACTIC_GRUNT,
+          TrainerType.PLASMA_GRUNT,
+          TrainerType.FLARE_GRUNT,
+          TrainerType.AETHER_GRUNT,
+          TrainerType.SKULL_GRUNT,
+          TrainerType.MACRO_GRUNT,
+          TrainerType.STAR_GRUNT,
+        ],
+        true,
+      ),
+    ),
   [ClassicFixedBossWaves.TOWN_YOUNGSTER]: new FixedBattleConfig()
     .setBattleType(BattleType.TRAINER)
     .setGetTrainerFunc(

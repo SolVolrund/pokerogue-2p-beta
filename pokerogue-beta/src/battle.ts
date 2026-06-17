@@ -25,7 +25,6 @@ import type { TurnMove } from "#types/turn-move";
 import {
   isBetween,
   NumberHolder,
-  randInt,
   randomString,
   randSeedFloat,
   randSeedInt,
@@ -593,7 +592,7 @@ export function getRandomTrainerFunc(
 
     let trainerGender = TrainerVariant.DEFAULT;
     if (randomGender) {
-      trainerGender = randInt(2) === 0 ? TrainerVariant.FEMALE : TrainerVariant.DEFAULT;
+      trainerGender = randSeedInt(2) === 0 ? TrainerVariant.FEMALE : TrainerVariant.DEFAULT;
     }
 
     /* 1/3 chance for evil team grunts to be double battles */
@@ -621,7 +620,7 @@ export function getRandomTrainerFunc(
     }
 
     if (trainerConfigs[choice].hasDouble && isEvilTeamGrunt) {
-      return new Trainer(choice, randInt(3) === 0 ? TrainerVariant.DOUBLE : trainerGender);
+      return new Trainer(choice, randSeedInt(3) === 0 ? TrainerVariant.DOUBLE : trainerGender);
     }
 
     return new Trainer(choice, trainerGender);

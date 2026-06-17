@@ -4,28 +4,50 @@ import { Button } from "#enums/buttons";
 const LOCAL_INPUT_PROTOCOL = "pokerogue-2p-local-input";
 const LOCAL_INPUT_PROTOCOL_VERSION = 1;
 
+type TwoPlayerInputMessageKind = "input" | "input-request" | "input-accepted" | "run-bootstrap" | "state-checkpoint";
+
+export interface TwoPlayerStateCheckpoint {
+  fingerprint: string;
+  summary: Record<string, unknown>;
+}
+
+export interface TwoPlayerRunBootstrap {
+  seed: string;
+}
+
 interface TwoPlayerInputMessage {
   protocol: typeof LOCAL_INPUT_PROTOCOL;
   version: typeof LOCAL_INPUT_PROTOCOL_VERSION;
+  kind: TwoPlayerInputMessageKind;
   sessionId: string;
   senderId: string;
   sequence: number;
+  authoritySequence?: number;
   playerIndex: PlayerIndex;
   button: Button;
   pressed: boolean;
+  runBootstrap?: TwoPlayerRunBootstrap;
+  checkpoint?: TwoPlayerStateCheckpoint;
 }
+
+type RawTwoPlayerInputMessage = Omit<TwoPlayerInputMessage, "kind"> & { kind?: TwoPlayerInputMessageKind };
+export type TwoPlayerNetworkRole = "peer" | "host" | "guest";
 
 export interface TwoPlayerInputTransportStatus {
   enabled: boolean;
   mode?: "local" | "websocket";
+  networkRole: TwoPlayerNetworkRole;
   channelName?: string;
   webSocketUrl?: string;
   webSocketState?: number;
   localSeat: LocalInputSeat;
   sequence: number;
+  authoritySequence: number;
 }
 
 export type RemoteInputHandler = (playerIndex: PlayerIndex, button: Button, pressed: boolean) => boolean;
+export type TwoPlayerRunBootstrapHandler = (bootstrap: TwoPlayerRunBootstrap) => void;
+export type TwoPlayerStateCheckpointProvider = () => TwoPlayerStateCheckpoint | undefined;
 export type TwoPlayerInputDebugAction =
   | "accepted"
   | "rejected"
@@ -34,7 +56,9 @@ export type TwoPlayerInputDebugAction =
   | "ignored"
   | "connected"
   | "disconnected"
-  | "error";
+  | "error"
+  | "checkpoint"
+  | "desync";
 
 export interface TwoPlayerInputDebugEvent {
   at: string;
@@ -46,12 +70,18 @@ export interface TwoPlayerInputDebugEvent {
   webSocketUrl?: string;
   senderId?: string;
   sequence?: number;
+  authoritySequence?: number;
+  messageKind?: TwoPlayerInputMessageKind;
   localSeat?: LocalInputSeat;
   inputOwner?: InputOwner;
   playerIndex?: PlayerIndex;
   button?: Button;
   buttonName?: keyof typeof Button;
   pressed?: boolean;
+  checkpointFingerprint?: string;
+  localFingerprint?: string;
+  remoteFingerprint?: string;
+  checkpointSummary?: Record<string, unknown>;
 }
 
 export type TwoPlayerInputDebugLogger = (event: Omit<TwoPlayerInputDebugEvent, "at">) => void;
@@ -62,6 +92,23 @@ function getLocalTransportMode(): string | undefined {
   }
 
   return new URLSearchParams(window.location.search).get("twoPlayerInputTransport")?.toLowerCase();
+}
+
+function getNetworkRole(): TwoPlayerNetworkRole {
+  if (typeof window === "undefined") {
+    return "peer";
+  }
+
+  const role = new URLSearchParams(window.location.search).get("twoPlayerNetworkRole")?.toLowerCase();
+  switch (role) {
+    case "host":
+      return "host";
+    case "guest":
+    case "client":
+      return "guest";
+    default:
+      return "peer";
+  }
 }
 
 function getWebSocketUrl(): string {
@@ -97,26 +144,73 @@ function isValidButton(button: unknown): button is Button {
   return typeof button === "number" && Button[button] !== undefined;
 }
 
-function isTwoPlayerInputMessage(value: unknown): value is TwoPlayerInputMessage {
+function isValidMessageKind(kind: unknown): kind is TwoPlayerInputMessageKind {
+  return kind === undefined
+    || kind === "input"
+    || kind === "input-request"
+    || kind === "input-accepted"
+    || kind === "run-bootstrap"
+    || kind === "state-checkpoint";
+}
+
+function isValidRunBootstrap(runBootstrap: unknown): runBootstrap is TwoPlayerRunBootstrap {
+  return !!runBootstrap
+    && typeof runBootstrap === "object"
+    && typeof (runBootstrap as Partial<TwoPlayerRunBootstrap>).seed === "string"
+    && (runBootstrap as Partial<TwoPlayerRunBootstrap>).seed!.length > 0;
+}
+
+function isValidCheckpoint(checkpoint: unknown): checkpoint is TwoPlayerStateCheckpoint {
+  return !!checkpoint
+    && typeof checkpoint === "object"
+    && typeof (checkpoint as Partial<TwoPlayerStateCheckpoint>).fingerprint === "string"
+    && !!(checkpoint as Partial<TwoPlayerStateCheckpoint>).summary
+    && typeof (checkpoint as Partial<TwoPlayerStateCheckpoint>).summary === "object";
+}
+
+function parseTwoPlayerInputMessage(value: unknown): TwoPlayerInputMessage | undefined {
   if (!value || typeof value !== "object") {
-    return false;
+    return undefined;
   }
 
-  const message = value as Partial<TwoPlayerInputMessage>;
-  return (
-    message.protocol === LOCAL_INPUT_PROTOCOL
-    && message.version === LOCAL_INPUT_PROTOCOL_VERSION
-    && typeof message.sessionId === "string"
-    && typeof message.senderId === "string"
-    && typeof message.sequence === "number"
-    && isValidPlayerIndex(message.playerIndex)
-    && isValidButton(message.button)
-    && typeof message.pressed === "boolean"
-  );
+  const message = value as Partial<RawTwoPlayerInputMessage>;
+  const kind = message.kind ?? "input";
+  if (
+    message.protocol !== LOCAL_INPUT_PROTOCOL
+    || message.version !== LOCAL_INPUT_PROTOCOL_VERSION
+    || !isValidMessageKind(kind)
+    || typeof message.sessionId !== "string"
+    || typeof message.senderId !== "string"
+    || typeof message.sequence !== "number"
+    || (message.authoritySequence !== undefined && typeof message.authoritySequence !== "number")
+    || !isValidPlayerIndex(message.playerIndex)
+    || !isValidButton(message.button)
+    || typeof message.pressed !== "boolean"
+    || (kind === "run-bootstrap" && !isValidRunBootstrap(message.runBootstrap))
+    || (kind === "state-checkpoint" && !isValidCheckpoint(message.checkpoint))
+  ) {
+    return undefined;
+  }
+
+  return {
+    protocol: message.protocol,
+    version: message.version,
+    kind,
+    sessionId: message.sessionId,
+    senderId: message.senderId,
+    sequence: message.sequence,
+    ...(message.authoritySequence === undefined ? {} : { authoritySequence: message.authoritySequence }),
+    playerIndex: message.playerIndex,
+    button: message.button,
+    pressed: message.pressed,
+    ...(kind === "run-bootstrap" ? { runBootstrap: message.runBootstrap } : {}),
+    ...(kind === "state-checkpoint" ? { checkpoint: message.checkpoint } : {}),
+  };
 }
 
 export class TwoPlayerInputTransport {
   private readonly mode: "local" | "websocket";
+  private readonly networkRole = getNetworkRole();
   private readonly sessionId = getLocalTransportSessionId();
   private readonly senderId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   private readonly channelName = `pokerogue-2p-input:${this.sessionId}`;
@@ -124,12 +218,16 @@ export class TwoPlayerInputTransport {
   private channel: BroadcastChannel | undefined;
   private webSocket: WebSocket | undefined;
   private sequence = 0;
+  private authoritySequence = 0;
+  private pendingRunBootstrap: TwoPlayerRunBootstrap | undefined;
 
   private constructor(
     mode: "local" | "websocket",
     private readonly localSeat: PlayerIndex,
     private readonly onRemoteInput: RemoteInputHandler,
+    private readonly onRunBootstrap?: TwoPlayerRunBootstrapHandler,
     private readonly logDebug?: TwoPlayerInputDebugLogger,
+    private readonly getCheckpoint?: TwoPlayerStateCheckpointProvider,
   ) {
     this.mode = mode;
   }
@@ -137,7 +235,9 @@ export class TwoPlayerInputTransport {
   public static create(
     localSeat: LocalInputSeat,
     onRemoteInput: RemoteInputHandler,
+    onRunBootstrap?: TwoPlayerRunBootstrapHandler,
     logDebug?: TwoPlayerInputDebugLogger,
+    getCheckpoint?: TwoPlayerStateCheckpointProvider,
   ): TwoPlayerInputTransport | undefined {
     const mode = getLocalTransportMode();
     if (localSeat === "both") {
@@ -149,7 +249,14 @@ export class TwoPlayerInputTransport {
         return undefined;
       }
 
-      const transport = new TwoPlayerInputTransport("local", localSeat, onRemoteInput, logDebug);
+      const transport = new TwoPlayerInputTransport(
+        "local",
+        localSeat,
+        onRemoteInput,
+        onRunBootstrap,
+        logDebug,
+        getCheckpoint,
+      );
       transport.startLocal();
       return transport;
     }
@@ -159,7 +266,14 @@ export class TwoPlayerInputTransport {
         return undefined;
       }
 
-      const transport = new TwoPlayerInputTransport("websocket", localSeat, onRemoteInput, logDebug);
+      const transport = new TwoPlayerInputTransport(
+        "websocket",
+        localSeat,
+        onRemoteInput,
+        onRunBootstrap,
+        logDebug,
+        getCheckpoint,
+      );
       transport.startWebSocket();
       return transport;
     }
@@ -167,46 +281,150 @@ export class TwoPlayerInputTransport {
     return undefined;
   }
 
+  public shouldRequestHostAuthority(): boolean {
+    return this.networkRole === "guest";
+  }
+
+  public requestInput(button: Button, pressed: boolean): boolean {
+    const message = this.createMessage("input-request", this.localSeat, button, pressed);
+    const sent = this.sendMessage(message);
+    this.logMessageSend(sent, message, sent ? undefined : "transport-not-open");
+    return sent;
+  }
+
+  public sendRunBootstrap(runBootstrap: TwoPlayerRunBootstrap): boolean {
+    if (this.networkRole !== "host") {
+      return false;
+    }
+
+    this.pendingRunBootstrap = runBootstrap;
+    return this.flushPendingRunBootstrap();
+  }
+
+  private flushPendingRunBootstrap(): boolean {
+    if (!this.pendingRunBootstrap) {
+      return false;
+    }
+
+    const message = {
+      ...this.createMessage("run-bootstrap", this.localSeat, Button.ACTION, true),
+      runBootstrap: this.pendingRunBootstrap,
+    };
+    const sent = this.sendMessage(message);
+    this.logMessageSend(sent, message, sent ? "run-bootstrap" : "transport-not-open");
+    if (sent) {
+      this.pendingRunBootstrap = undefined;
+    }
+
+    return sent;
+  }
+
   public send(button: Button, pressed: boolean): void {
-    const message: TwoPlayerInputMessage = {
+    const message = this.createMessage(
+      this.networkRole === "host" ? "input-accepted" : "input",
+      this.localSeat,
+      button,
+      pressed,
+    );
+
+    const sent = this.sendMessage(message);
+    this.logMessageSend(sent, message, sent ? undefined : "transport-not-open");
+    if (sent) {
+      this.sendCheckpointForMessage(message);
+    }
+  }
+
+  private createMessage(
+    kind: TwoPlayerInputMessageKind,
+    playerIndex: PlayerIndex,
+    button: Button,
+    pressed: boolean,
+  ): TwoPlayerInputMessage {
+    return {
       protocol: LOCAL_INPUT_PROTOCOL,
       version: LOCAL_INPUT_PROTOCOL_VERSION,
+      kind,
       sessionId: this.sessionId,
       senderId: this.senderId,
       sequence: ++this.sequence,
-      playerIndex: this.localSeat,
+      ...(kind === "input-accepted" ? { authoritySequence: ++this.authoritySequence } : {}),
+      playerIndex,
       button,
       pressed,
     };
+  }
 
-    const sent = this.sendMessage(message);
+  private logMessageSend(sent: boolean, message: TwoPlayerInputMessage, reason?: string): void {
     this.logDebug?.({
       action: sent ? "sent" : "rejected",
       source: "transport",
-      ...(sent ? {} : { reason: "transport-not-open" }),
+      ...(reason ? { reason } : {}),
       sessionId: this.sessionId,
       channelName: this.channelName,
       ...(this.mode === "websocket" ? { webSocketUrl: this.webSocketUrl } : {}),
       senderId: this.senderId,
       sequence: message.sequence,
+      ...(message.authoritySequence === undefined ? {} : { authoritySequence: message.authoritySequence }),
+      messageKind: message.kind,
       localSeat: this.localSeat,
       playerIndex: message.playerIndex,
       button: message.button,
       buttonName: Button[message.button] as keyof typeof Button,
       pressed: message.pressed,
+      ...(message.checkpoint
+        ? {
+            checkpointFingerprint: message.checkpoint.fingerprint,
+            checkpointSummary: message.checkpoint.summary,
+          }
+        : {}),
     });
+  }
+
+  private createCheckpointMessage(triggerMessage: TwoPlayerInputMessage): TwoPlayerInputMessage | undefined {
+    const checkpoint = this.getCheckpoint?.();
+    if (!checkpoint) {
+      return undefined;
+    }
+
+    return {
+      protocol: LOCAL_INPUT_PROTOCOL,
+      version: LOCAL_INPUT_PROTOCOL_VERSION,
+      kind: "state-checkpoint",
+      sessionId: this.sessionId,
+      senderId: this.senderId,
+      sequence: ++this.sequence,
+      ...(triggerMessage.authoritySequence === undefined
+        ? {}
+        : { authoritySequence: triggerMessage.authoritySequence }),
+      playerIndex: triggerMessage.playerIndex,
+      button: triggerMessage.button,
+      pressed: triggerMessage.pressed,
+      checkpoint,
+    };
+  }
+
+  private sendCheckpointForMessage(triggerMessage: TwoPlayerInputMessage): void {
+    const checkpointMessage = this.createCheckpointMessage(triggerMessage);
+    if (!checkpointMessage) {
+      return;
+    }
+
+    const sent = this.sendMessage(checkpointMessage);
+    this.logMessageSend(sent, checkpointMessage, sent ? undefined : "transport-not-open");
   }
 
   public getStatus(): TwoPlayerInputTransportStatus {
     return {
       enabled: !!this.channel || this.webSocket?.readyState === WebSocket.OPEN,
       mode: this.mode,
+      networkRole: this.networkRole,
       ...(this.mode === "local" ? { channelName: this.channelName } : {}),
       ...(this.mode === "websocket"
         ? { webSocketUrl: this.webSocketUrl, ...(this.webSocket ? { webSocketState: this.webSocket.readyState } : {}) }
         : {}),
       localSeat: this.localSeat,
       sequence: this.sequence,
+      authoritySequence: this.authoritySequence,
     };
   }
 
@@ -227,6 +445,7 @@ export class TwoPlayerInputTransport {
   private startLocal(): void {
     this.channel = new BroadcastChannel(this.channelName);
     this.channel.addEventListener("message", this.onMessage);
+    this.flushPendingRunBootstrap();
   }
 
   private startWebSocket(): void {
@@ -239,6 +458,7 @@ export class TwoPlayerInputTransport {
         webSocketUrl: this.webSocketUrl,
         localSeat: this.localSeat,
       });
+      this.flushPendingRunBootstrap();
     });
     this.webSocket.addEventListener("message", event => {
       this.onMessageData(event.data);
@@ -269,8 +489,8 @@ export class TwoPlayerInputTransport {
   };
 
   private onMessageData(data: unknown): void {
-    const message = this.parseMessageData(data);
-    if (!isTwoPlayerInputMessage(message)) {
+    const message = parseTwoPlayerInputMessage(this.parseMessageData(data));
+    if (!message) {
       this.logDebug?.({
         action: "ignored",
         source: "transport",
@@ -293,12 +513,34 @@ export class TwoPlayerInputTransport {
         ...(this.mode === "websocket" ? { webSocketUrl: this.webSocketUrl } : {}),
         senderId: message.senderId,
         sequence: message.sequence,
+        ...(message.authoritySequence === undefined ? {} : { authoritySequence: message.authoritySequence }),
+        messageKind: message.kind,
         localSeat: this.localSeat,
         playerIndex: message.playerIndex,
         button: message.button,
         buttonName: Button[message.button] as keyof typeof Button,
         pressed: message.pressed,
       });
+      return;
+    }
+
+    if (message.kind === "input-request") {
+      this.handleInputRequest(message);
+      return;
+    }
+
+    if (message.kind === "run-bootstrap") {
+      this.handleRunBootstrap(message);
+      return;
+    }
+
+    if (message.kind === "state-checkpoint") {
+      this.handleStateCheckpoint(message);
+      return;
+    }
+
+    if (message.kind === "input" && this.networkRole !== "peer") {
+      this.logIgnoredMessage(message, "direct-input-in-authority-mode");
       return;
     }
 
@@ -310,6 +552,8 @@ export class TwoPlayerInputTransport {
       ...(this.mode === "websocket" ? { webSocketUrl: this.webSocketUrl } : {}),
       senderId: message.senderId,
       sequence: message.sequence,
+      ...(message.authoritySequence === undefined ? {} : { authoritySequence: message.authoritySequence }),
+      messageKind: message.kind,
       localSeat: this.localSeat,
       playerIndex: message.playerIndex,
       button: message.button,
@@ -326,6 +570,137 @@ export class TwoPlayerInputTransport {
       ...(this.mode === "websocket" ? { webSocketUrl: this.webSocketUrl } : {}),
       senderId: message.senderId,
       sequence: message.sequence,
+      ...(message.authoritySequence === undefined ? {} : { authoritySequence: message.authoritySequence }),
+      messageKind: message.kind,
+      localSeat: this.localSeat,
+      playerIndex: message.playerIndex,
+      button: message.button,
+      buttonName: Button[message.button] as keyof typeof Button,
+      pressed: message.pressed,
+    });
+  }
+
+  private handleInputRequest(message: TwoPlayerInputMessage): void {
+    if (this.networkRole !== "host") {
+      this.logIgnoredMessage(message, "input-request-received-by-non-host");
+      return;
+    }
+
+    this.logDebug?.({
+      action: "received",
+      source: "transport",
+      sessionId: message.sessionId,
+      channelName: this.channelName,
+      ...(this.mode === "websocket" ? { webSocketUrl: this.webSocketUrl } : {}),
+      senderId: message.senderId,
+      sequence: message.sequence,
+      messageKind: message.kind,
+      localSeat: this.localSeat,
+      playerIndex: message.playerIndex,
+      button: message.button,
+      buttonName: Button[message.button] as keyof typeof Button,
+      pressed: message.pressed,
+    });
+
+    const accepted = this.onRemoteInput(message.playerIndex, message.button, message.pressed);
+    this.logDebug?.({
+      action: accepted ? "accepted" : "rejected",
+      source: "remote",
+      ...(accepted ? {} : { reason: "remote-input-rejected" }),
+      sessionId: message.sessionId,
+      channelName: this.channelName,
+      ...(this.mode === "websocket" ? { webSocketUrl: this.webSocketUrl } : {}),
+      senderId: message.senderId,
+      sequence: message.sequence,
+      messageKind: message.kind,
+      localSeat: this.localSeat,
+      playerIndex: message.playerIndex,
+      button: message.button,
+      buttonName: Button[message.button] as keyof typeof Button,
+      pressed: message.pressed,
+    });
+
+    if (accepted) {
+      const acceptedMessage = this.createMessage("input-accepted", message.playerIndex, message.button, message.pressed);
+      const sent = this.sendMessage(acceptedMessage);
+      this.logMessageSend(sent, acceptedMessage, sent ? undefined : "transport-not-open");
+      if (sent) {
+        this.sendCheckpointForMessage(acceptedMessage);
+      }
+    }
+  }
+
+  private handleRunBootstrap(message: TwoPlayerInputMessage): void {
+    if (!message.runBootstrap) {
+      this.logIgnoredMessage(message, "missing-run-bootstrap");
+      return;
+    }
+
+    if (this.networkRole === "host") {
+      this.logIgnoredMessage(message, "run-bootstrap-received-by-host");
+      return;
+    }
+
+    this.onRunBootstrap?.(message.runBootstrap);
+    this.logDebug?.({
+      action: "received",
+      source: "transport",
+      reason: "run-bootstrap",
+      sessionId: message.sessionId,
+      channelName: this.channelName,
+      ...(this.mode === "websocket" ? { webSocketUrl: this.webSocketUrl } : {}),
+      senderId: message.senderId,
+      sequence: message.sequence,
+      messageKind: message.kind,
+      localSeat: this.localSeat,
+      playerIndex: message.playerIndex,
+      button: message.button,
+      buttonName: Button[message.button] as keyof typeof Button,
+      pressed: message.pressed,
+    });
+  }
+
+  private handleStateCheckpoint(message: TwoPlayerInputMessage): void {
+    const remoteCheckpoint = message.checkpoint;
+    const localCheckpoint = this.getCheckpoint?.();
+    const remoteFingerprint = remoteCheckpoint?.fingerprint;
+    const localFingerprint = localCheckpoint?.fingerprint;
+    const isDesynced = !!localFingerprint && !!remoteFingerprint && localFingerprint !== remoteFingerprint;
+
+    this.logDebug?.({
+      action: isDesynced ? "desync" : "checkpoint",
+      source: "transport",
+      ...(localCheckpoint ? {} : { reason: "checkpoint-unavailable" }),
+      sessionId: message.sessionId,
+      channelName: this.channelName,
+      ...(this.mode === "websocket" ? { webSocketUrl: this.webSocketUrl } : {}),
+      senderId: message.senderId,
+      sequence: message.sequence,
+      ...(message.authoritySequence === undefined ? {} : { authoritySequence: message.authoritySequence }),
+      messageKind: message.kind,
+      localSeat: this.localSeat,
+      playerIndex: message.playerIndex,
+      button: message.button,
+      buttonName: Button[message.button] as keyof typeof Button,
+      pressed: message.pressed,
+      ...(remoteFingerprint ? { checkpointFingerprint: remoteFingerprint, remoteFingerprint } : {}),
+      ...(localFingerprint ? { localFingerprint } : {}),
+      ...(remoteCheckpoint ? { checkpointSummary: remoteCheckpoint.summary } : {}),
+    });
+  }
+
+  private logIgnoredMessage(message: TwoPlayerInputMessage, reason: string): void {
+    this.logDebug?.({
+      action: "ignored",
+      source: "transport",
+      reason,
+      sessionId: message.sessionId,
+      channelName: this.channelName,
+      ...(this.mode === "websocket" ? { webSocketUrl: this.webSocketUrl } : {}),
+      senderId: message.senderId,
+      sequence: message.sequence,
+      ...(message.authoritySequence === undefined ? {} : { authoritySequence: message.authoritySequence }),
+      messageKind: message.kind,
       localSeat: this.localSeat,
       playerIndex: message.playerIndex,
       button: message.button,

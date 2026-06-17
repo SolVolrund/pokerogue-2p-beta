@@ -31,7 +31,7 @@ import { EggTier } from "#enums/egg-type";
 import { SpeciesId } from "#enums/species-id";
 import { VariantTier } from "#enums/variant-tier";
 import type { PlayerPokemon } from "#field/pokemon";
-import { getIvsFromId, randInt, randomString, randSeedInt } from "#utils/common";
+import { getIvsFromId, randomString, randSeedInt } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -171,7 +171,7 @@ export class Egg {
         this.checkForPityTierOverrides();
       }
 
-      this._id = eggOptions?.id ?? randInt(EGG_SEED, EGG_SEED * this._tier);
+      this._id = eggOptions?.id ?? randSeedInt(EGG_SEED, EGG_SEED * this._tier);
 
       this._sourceType = eggOptions?.sourceType ?? undefined;
       this._hatchWaves = eggOptions?.hatchWaves ?? this.getEggTierDefaultHatchWaves();
@@ -203,7 +203,9 @@ export class Egg {
       }
     };
 
-    const seedOverride = randomString(24);
+    const seedOverride = globalScene.twoPlayerMode
+      ? `${globalScene.seed}:egg:${this.ownerPlayerIndex}:${this.getOwnerGameData().eggs.length}`
+      : randomString(24);
     globalScene.executeWithSeedOffset(
       () => {
         generateEggProperties(eggOptions);
@@ -391,7 +393,7 @@ export class Egg {
   private rollEggTier(): EggTier {
     const tierValueOffset =
       this._sourceType === EggSourceType.GACHA_LEGENDARY ? GACHA_LEGENDARY_UP_THRESHOLD_OFFSET : 0;
-    const tierValue = randInt(256);
+    const tierValue = randSeedInt(256);
     return tierValue >= GACHA_DEFAULT_COMMON_EGG_THRESHOLD + tierValueOffset
       ? EggTier.COMMON
       : tierValue >= GACHA_DEFAULT_RARE_EGG_THRESHOLD + tierValueOffset

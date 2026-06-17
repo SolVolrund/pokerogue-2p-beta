@@ -26,6 +26,8 @@ Implemented first local-render hook:
 - `?twoPlayerInputTransport=local` enables same-browser tab-to-tab input messages through `BroadcastChannel`.
 - `?twoPlayerInputTransport=websocket` enables browser-to-browser input messages through the local/LAN WebSocket relay.
 - `?twoPlayerWsUrl=ws://127.0.0.1:8787` selects the relay URL for WebSocket mode.
+- `?twoPlayerNetworkRole=host` makes the tab host-authoritative.
+- `?twoPlayerNetworkRole=guest` makes the tab send local input as requests and wait for host acceptance.
 - `?twoPlayerInputDebug=1` enables console/debug-history logging for accepted, rejected, sent, received, and ignored input messages.
 
 This uses the existing `inputOwner` state:
@@ -150,7 +152,26 @@ http://HOST_LAN_IP:5173/?twoPlayer=1&twoPlayerLocalPlayer=1&twoPlayerInputTransp
 http://HOST_LAN_IP:5173/?twoPlayer=1&twoPlayerLocalPlayer=2&twoPlayerInputTransport=websocket&twoPlayerWsUrl=ws://HOST_LAN_IP:8787&twoPlayerSession=test&twoPlayerInputDebug=1
 ```
 
-The relay only forwards input messages. It is not authoritative yet, and it does not sync game state.
+The relay only forwards input messages. Authority lives in the host tab, and full game-state checkpoints are not synced yet.
+
+## Current Host-Authority Mode
+
+Add network roles to the WebSocket URLs:
+
+```text
+http://127.0.0.1:5173/?twoPlayer=1&twoPlayerLocalPlayer=1&twoPlayerInputTransport=websocket&twoPlayerNetworkRole=host&twoPlayerWsUrl=ws://127.0.0.1:8787&twoPlayerSession=test&twoPlayerInputDebug=1
+http://127.0.0.1:5173/?twoPlayer=1&twoPlayerLocalPlayer=2&twoPlayerInputTransport=websocket&twoPlayerNetworkRole=guest&twoPlayerWsUrl=ws://127.0.0.1:8787&twoPlayerSession=test&twoPlayerInputDebug=1
+```
+
+Authority behavior:
+
+- Host local input applies immediately and broadcasts as `input-accepted`.
+- Guest local input sends `input-request` and waits.
+- Host receives `input-request`, validates ownership, applies it, and broadcasts `input-accepted`.
+- Guest receives `input-accepted` and applies that input locally.
+- Direct `input` messages are ignored while a tab has a host/guest role.
+
+This still only synchronizes accepted input. It does not yet send full game-state checkpoints.
 
 ## Why Local Rendering Is Harder Than Streaming
 

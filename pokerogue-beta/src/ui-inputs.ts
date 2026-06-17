@@ -1,7 +1,7 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import type { InputsController } from "#app/inputs-controller";
-import type { PlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex, TwoPlayerDebugStateCheckpoint } from "#app/battle-scene";
 import { isDev } from "#constants/app-constants";
 import { Button } from "#enums/buttons";
 import { UiMode } from "#enums/ui-mode";
@@ -10,6 +10,7 @@ import {
   isTwoPlayerInputDebugEnabled,
   TwoPlayerInputTransport,
   type TwoPlayerInputDebugEvent,
+  type TwoPlayerRunBootstrap,
   type TwoPlayerInputTransportStatus,
 } from "#app/two-player-input-transport";
 import type { MessageUiHandler } from "#ui/message-ui-handler";
@@ -18,6 +19,7 @@ import { PokedexUiHandler } from "#ui/pokedex-ui-handler";
 import { RunInfoUiHandler } from "#ui/run-info-ui-handler";
 import { SettingsAudioUiHandler } from "#ui/settings-audio-ui-handler";
 import { SettingsDisplayUiHandler } from "#ui/settings-display-ui-handler";
+import { SettingsEventsUiHandler } from "#ui/settings-events-ui-handler";
 import { SettingsGamepadUiHandler } from "#ui/settings-gamepad-ui-handler";
 import { SettingsKeyboardUiHandler } from "#ui/settings-keyboard-ui-handler";
 import { SettingsUiHandler } from "#ui/settings-ui-handler";
@@ -33,6 +35,8 @@ declare global {
     pokerogueTwoPlayerInput?: {
       press(player: RemoteDebugPlayer, button: RemoteButtonInput): boolean;
       release(player: RemoteDebugPlayer, button: RemoteButtonInput): boolean;
+      checkpoint(): TwoPlayerDebugStateCheckpoint | undefined;
+      sendRunBootstrap(seed?: string): boolean;
       transportStatus(): TwoPlayerInputTransportStatus | undefined;
       debugEvents(): TwoPlayerInputDebugEvent[];
       clearDebugEvents(): void;
@@ -58,7 +62,9 @@ export class UiInputs {
     this.twoPlayerInputTransport = TwoPlayerInputTransport.create(
       globalScene.twoPlayerLocalInputSeat,
       (playerIndex, button, pressed) => this.processRemoteInput(playerIndex, button, pressed),
+      runBootstrap => this.applyRunBootstrap(runBootstrap),
       event => this.recordInputDebugEvent(event),
+      this.twoPlayerInputDebugEnabled ? () => globalScene.getTwoPlayerDebugStateCheckpoint() : undefined,
     );
     this.exposeDebugRemoteInput();
   }
@@ -158,6 +164,18 @@ export class UiInputs {
     return processed;
   }
 
+  public broadcastTwoPlayerRunBootstrap(seed = globalScene.seed): boolean {
+    if (!seed) {
+      return false;
+    }
+
+    return this.twoPlayerInputTransport?.sendRunBootstrap({ seed }) ?? false;
+  }
+
+  private applyRunBootstrap(runBootstrap: TwoPlayerRunBootstrap): void {
+    globalScene.applyTwoPlayerRunBootstrap(runBootstrap);
+  }
+
   private processButtonInput(button: Button, pressed: boolean): boolean {
     const actions = pressed ? this.getActionsKeyDown() : this.getActionsKeyUp();
     if (!Object.hasOwn(actions, button)) {
@@ -169,6 +187,21 @@ export class UiInputs {
   }
 
   private processLocalButtonInput(button: Button, pressed: boolean): boolean {
+    if (this.twoPlayerInputTransport?.shouldRequestHostAuthority()) {
+      const requested = this.twoPlayerInputTransport.requestInput(button, pressed);
+      this.recordInputDebugEvent({
+        action: requested ? "sent" : "rejected",
+        source: "local",
+        ...(requested ? { reason: "awaiting-host-authority" } : { reason: "authority-request-failed" }),
+        localSeat: globalScene.twoPlayerLocalInputSeat,
+        inputOwner: globalScene.inputOwner,
+        button,
+        buttonName: Button[button] as keyof typeof Button,
+        pressed,
+      });
+      return requested;
+    }
+
     const processed = this.processButtonInput(button, pressed);
     this.recordInputDebugEvent({
       action: processed ? "accepted" : "rejected",
@@ -210,6 +243,8 @@ export class UiInputs {
     window.pokerogueTwoPlayerInput = {
       press: (player, button) => this.processDebugRemoteInput(player, button, true),
       release: (player, button) => this.processDebugRemoteInput(player, button, false),
+      checkpoint: () => globalScene.getTwoPlayerDebugStateCheckpoint(),
+      sendRunBootstrap: seed => this.broadcastTwoPlayerRunBootstrap(seed ?? globalScene.seed),
       transportStatus: () => this.twoPlayerInputTransport?.getStatus(),
       debugEvents: () => [...this.twoPlayerInputDebugEvents],
       clearDebugEvents: () => {
@@ -399,6 +434,7 @@ export class UiInputs {
       RunInfoUiHandler,
       SettingsDisplayUiHandler,
       SettingsAudioUiHandler,
+      SettingsEventsUiHandler,
       SettingsGamepadUiHandler,
       SettingsKeyboardUiHandler,
     ];
