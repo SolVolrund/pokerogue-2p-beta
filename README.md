@@ -1,20 +1,20 @@
 PokeRogue 2P LAN Setup
 ----------------------------------------------------
-Install
+## Install
 1. Unpack the folder into the desired location.
 2. Install Node.js from nodejs.org.
 3. Open PowerShell inside the pokerogue-beta folder.
 ----------------------------------------------------
-Run:
+## Run:
 corepack enable
 $env:COREPACK_HOME = "$PWD\.corepack"
 corepack pnpm install
 ----------------------------------------------------
-##Host Over LAN
+## Host Over LAN
 
 Open two PowerShell windows inside pokerogue-beta.
 ----------------------------------------------------
-##In the first window, run:
+## In the first window, run:
 $env:COREPACK_HOME = "$PWD\.corepack"
 corepack pnpm run start:dev:lan
 
@@ -29,7 +29,7 @@ corepack pnpm run start:2p-ws:lan
 Example:
 [relay] listening on ws://0.0.0.0:8787
 ----------------------------------------------------
-##Open a third PowerShell window and run:
+## Open a third PowerShell window and run:
 
 ipconfig
 
@@ -39,7 +39,7 @@ this will be used wherever you see [HOST_IP]
 Example:
    IPv4 Address. . . . . . . . . . . : 001.002.003.004
 ----------------------------------------------------
-##Host Player
+## Host Player
 
 Open the following page in a web browser:
 http://localhost:8000
@@ -53,7 +53,7 @@ Record the lobby code the game gives you.
 Continue through the text windows until your page refreshes, do not take any further action until player 2 is connected.
 
 -----------------------------------------------------
-##Guest Player
+## Guest Player
 
 Open this in a web browser:
 http://[HOST_IP]:8000
