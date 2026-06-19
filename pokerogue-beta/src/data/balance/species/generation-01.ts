@@ -51,7 +51,6 @@ export function initGenerationOne(): SpeciesDataMapConfig {
       [1, MoveId.TACKLE],
       [1, MoveId.GROWL],
       [3, MoveId.VINE_WHIP],
-      [4, MoveId.BULLET_SEED],
       [6, MoveId.GROWTH],
       [9, MoveId.LEECH_SEED],
       [12, MoveId.RAZOR_LEAF],

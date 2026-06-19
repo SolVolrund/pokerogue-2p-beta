@@ -1125,6 +1125,29 @@ export class GameData {
     globalScene.updateModifiers(false);
 
     await Promise.all(loadPokemonAssets);
+    await this.reloadShinyBadgeHolderAssets();
+  }
+
+  private async reloadShinyBadgeHolderAssets(): Promise<void> {
+    const playerIndexes = globalScene.twoPlayerMode ? ([0, 1] as const) : ([0] as const);
+    const loadPokemonAssets: Promise<void>[] = [];
+
+    for (const playerIndex of playerIndexes) {
+      const shinyBadgePokemonIds = new Set(
+        globalScene
+          .getPlayerModifiers(playerIndex)
+          .filter((modifier): modifier is Modifier.ShinyBadgeModifier => modifier instanceof Modifier.ShinyBadgeModifier)
+          .map(modifier => modifier.pokemonId),
+      );
+
+      for (const pokemon of globalScene.getPlayerParty(playerIndex)) {
+        if (shinyBadgePokemonIds.has(pokemon.id)) {
+          loadPokemonAssets.push(pokemon.loadAssets(false).then(() => pokemon.playAnim()));
+        }
+      }
+    }
+
+    await Promise.all(loadPokemonAssets);
   }
 
   /**

@@ -2653,9 +2653,11 @@ export class PokemonFriendshipBoosterModifier extends PokemonHeldItemModifier {
   }
 }
 
-type ShinyBadgeEffect = "survive" | "status" | "dodge" | "revive" | "partyRevive" | "crit";
+type ShinyBadgeEffect = "shiny" | "survive" | "status" | "dodge" | "revive" | "partyRevive" | "crit";
 
 export class ShinyBadgeModifier extends PokemonHeldItemModifier {
+  public isTransferable = false;
+
   matchType(modifier: Modifier): boolean {
     return modifier instanceof ShinyBadgeModifier;
   }
@@ -2767,12 +2769,27 @@ export class ShinyBadgeModifier extends PokemonHeldItemModifier {
     return true;
   }
 
+  private applyShiny(pokemon: Pokemon): boolean {
+    if (!pokemon.shiny) {
+      pokemon.shiny = true;
+      pokemon.variant = 0;
+    }
+
+    if (pokemon.isOnField()) {
+      pokemon.loadAssets(false).then(() => pokemon.playAnim());
+      pokemon.updateInfo();
+    }
+    return true;
+  }
+
   override apply(
     pokemon: Pokemon,
     effect: ShinyBadgeEffect = "survive",
     value?: BooleanHolder | NumberHolder,
   ): boolean {
     switch (effect) {
+      case "shiny":
+        return this.applyShiny(pokemon);
       case "survive":
         return this.applySurvive(pokemon, value);
       case "status":

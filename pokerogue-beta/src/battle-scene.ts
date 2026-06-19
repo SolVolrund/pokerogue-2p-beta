@@ -103,6 +103,7 @@ import {
   PokemonHpRestoreModifier,
   PokemonIncrementingStatModifier,
   RememberMoveModifier,
+  ShinyBadgeModifier,
 } from "#modifiers/modifier";
 import {
   getDefaultModifierTypeForTier,
@@ -182,7 +183,7 @@ const TWO_PLAYER_SESSION_SYSTEM_SAVE_KEYS = [
   "pokerogue_2p_session_system_save_1",
 ] as const;
 const TWO_PLAYER_PROFILE_HANDSHAKE_BUILD = "profile-handshake-2026-06-17c";
-const SHINY_BADGE_FORCED_TEST_WAVE: number | null = 2;
+const SHINY_BADGE_FORCED_TEST_WAVE: number | null = null;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.MYSTERIOUS_CHEST,
   MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
@@ -3376,6 +3377,12 @@ export class BattleScene extends SceneBase {
             success = modifier.apply(pokemon, true);
           }
         }
+        if (modifier instanceof ShinyBadgeModifier) {
+          const pokemon = this.getPokemonById(modifier.pokemonId);
+          if (pokemon) {
+            success = modifier.apply(pokemon, "shiny");
+          }
+        }
         if (playSound && !this.sound.get(soundName)) {
           audioManager.playSound(soundName);
         }
@@ -3489,6 +3496,10 @@ export class BattleScene extends SceneBase {
     ignoreUpdate?: boolean,
     itemLost = true,
   ): boolean {
+    if (!itemModifier.isTransferable) {
+      return false;
+    }
+
     const source = itemModifier.pokemonId ? itemModifier.getPokemon() : null;
     const cancelled = new BooleanHolder(false);
 
@@ -3578,6 +3589,10 @@ export class BattleScene extends SceneBase {
   }
 
   canTransferHeldItemModifier(itemModifier: PokemonHeldItemModifier, target: Pokemon, transferQuantity = 1): boolean {
+    if (!itemModifier.isTransferable) {
+      return false;
+    }
+
     const mod = itemModifier.clone() as PokemonHeldItemModifier;
     const source = mod.pokemonId ? mod.getPokemon() : null;
     const cancelled = new BooleanHolder(false);

@@ -853,6 +853,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       }
     }
     // With everything loaded, now begin playing the animation.
+    if (this.isShiny(true) && !this.shinySparkle) {
+      this.initShinySparkle();
+    }
     this.playAnim();
 
     // update the fusion palette
@@ -1749,19 +1752,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     if (useIllusion && this.summonData.illusion) {
       return this.summonData.illusion.shiny;
     }
-    return this.shiny || this.hasShinyBadgeVisualOverride();
-  }
-
-  private hasShinyBadgeVisualOverride(): boolean {
-    if (!this.isPlayer() || this.shiny || !globalScene) {
-      return false;
-    }
-
-    const playerIndex = globalScene.getPlayerIndexForPokemon(this) ?? this.encounterModifierPlayerIndex ?? 0;
-    return !!globalScene.findModifierForPlayer(
-      modifier => modifier instanceof ShinyBadgeModifier && modifier.pokemonId === this.id,
-      playerIndex,
-    );
+    return this.shiny;
   }
 
   /**
@@ -1812,7 +1803,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     if (useIllusion && illusion) {
       return illusion.variant ?? this.variant;
     }
-    return !this.shiny && this.hasShinyBadgeVisualOverride() ? (0 as Variant) : this.variant;
+    return this.variant;
   }
 
   /**

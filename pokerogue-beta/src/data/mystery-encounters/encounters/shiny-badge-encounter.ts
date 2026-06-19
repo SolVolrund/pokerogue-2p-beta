@@ -1,3 +1,4 @@
+import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
@@ -243,7 +244,7 @@ export const ShinyBadgeEncounter: MysteryEncounter = MysteryEncounterBuilder.wit
   MysteryEncounterType.SHINY_BADGE,
 )
   .withEncounterTier(MysteryEncounterTier.ULTRA)
-  .withSceneWaveRangeRequirement(2)
+  .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withSceneRequirement(new ShinyBadgeSpawnRequirement())
   .withMaxAllowedEncounters(1)
   .withHideWildIntroMessage(true)
