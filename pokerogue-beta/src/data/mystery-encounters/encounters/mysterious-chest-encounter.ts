@@ -311,7 +311,7 @@ function setMysteriousChestTrainerVisible(playerIndex: PlayerIndex): void {
     .setVisible(true)
     .setTexture(globalScene.getTrainerBackTextureKey(playerIndex))
     .setFrame(0)
-    .setPosition(playerIndex === 1 ? 122 : 90, 186);
+    .setPosition(playerIndex === 1 ? 122 : 90, globalScene.getTrainerBackSpriteY(playerIndex));
 }
 
 function showTwoPlayerMysteriousChestTrainers(): void {

@@ -1,5 +1,5 @@
-import { audioManager } from "#app/global-audio-manager";
 import type { PlayerIndex } from "#app/battle-scene";
+import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
@@ -478,7 +478,7 @@ export function trainerThrowPokeball(
   return new Promise(resolve => {
     const trainerSprite = playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
     if (globalScene.twoPlayerMode) {
-      trainerSprite.setPosition(playerIndex === 1 ? 122 : 90, 186);
+      globalScene.setTrainerBackSpritePosition(trainerSprite, playerIndex, playerIndex === 1 ? 122 : 90);
     }
     trainerSprite.setVisible(true);
     trainerSprite.setTexture(globalScene.getTrainerBackTextureKey(playerIndex, true));
@@ -490,9 +490,7 @@ export function trainerThrowPokeball(
       globalScene.time.delayedCall(256, () => {
         trainerSprite.setFrame("3");
         globalScene.time.delayedCall(768, () => {
-          trainerSprite.setTexture(
-            globalScene.getTrainerBackTextureKey(playerIndex),
-          );
+          trainerSprite.setTexture(globalScene.getTrainerBackTextureKey(playerIndex));
         });
       });
 

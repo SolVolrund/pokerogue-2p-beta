@@ -108,7 +108,7 @@ function spendSafariEntryFee(playerIndex: PlayerIndex, cost: number): void {
 
 function getSafariTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
   const trainerSprite = playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
-  trainerSprite.setPosition(playerIndex === 1 ? 122 : 90, 186);
+  globalScene.setTrainerBackSpritePosition(trainerSprite, playerIndex, playerIndex === 1 ? 122 : 90);
   return trainerSprite;
 }
 
@@ -117,12 +117,12 @@ function showTwoPlayerSafariTrainers(): void {
     .setVisible(true)
     .setTexture(globalScene.getTrainerBackTextureKey(0))
     .setFrame(0)
-    .setPosition(90, 186);
+    .setPosition(90, globalScene.getTrainerBackSpriteY(0));
   globalScene.trainerPartner
     .setVisible(true)
     .setTexture(globalScene.getTrainerBackTextureKey(1))
     .setFrame(0)
-    .setPosition(122, 186);
+    .setPosition(122, globalScene.getTrainerBackSpriteY(1));
 }
 
 function getActiveSafariPlayerIndexes(): PlayerIndex[] {

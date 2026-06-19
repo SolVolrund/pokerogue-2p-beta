@@ -1,37 +1,39 @@
 import { globalScene } from "#app/global-scene";
 import { Phase } from "#app/phase";
 import { PlayerGender } from "#enums/player-gender";
+import {
+  PLAYER_BOY_TRAINER_SPRITES,
+  PLAYER_GIRL_TRAINER_SPRITES,
+  PLAYER_TRAINER_SPRITE_OPTIONS,
+} from "#enums/player-trainer-sprite";
 import { UiMode } from "#enums/ui-mode";
 import { SettingKeys } from "#system/settings";
-import i18next from "i18next";
 
 export class SelectGenderPhase extends Phase {
   public readonly phaseName = "SelectGenderPhase";
   start(): void {
     super.start();
 
-    globalScene.ui.showText(i18next.t("menu:boyOrGirl"), null, () => {
+    globalScene.ui.showText("Choose your trainer.", null, () => {
       globalScene.ui.setMode(UiMode.OPTION_SELECT, {
-        options: [
-          {
-            label: i18next.t("settings:boy"),
-            handler: () => {
-              globalScene.gameData.gender = PlayerGender.MALE;
-              globalScene.gameData.saveSetting(SettingKeys.Player_Gender, 0);
-              globalScene.gameData.saveSystem().then(() => this.end());
-              return true;
-            },
+        options: PLAYER_TRAINER_SPRITE_OPTIONS.map(option => ({
+          label: option.label,
+          handler: () => {
+            const genderSettingIndex = option.gender === PlayerGender.FEMALE ? 1 : 0;
+            const trainerSpriteOptions =
+              option.gender === PlayerGender.FEMALE ? PLAYER_GIRL_TRAINER_SPRITES : PLAYER_BOY_TRAINER_SPRITES;
+            const trainerSpriteSettingKey =
+              option.gender === PlayerGender.FEMALE
+                ? SettingKeys.Player_Girl_Trainer_Sprite
+                : SettingKeys.Player_Boy_Trainer_Sprite;
+            globalScene.gameData.gender = option.gender;
+            globalScene.gameData.saveSetting(SettingKeys.Player_Gender, genderSettingIndex);
+            globalScene.gameData.saveSetting(trainerSpriteSettingKey, trainerSpriteOptions.indexOf(option.sprite));
+            globalScene.gameData.saveSystem().then(() => this.end());
+            return true;
           },
-          {
-            label: i18next.t("settings:girl"),
-            handler: () => {
-              globalScene.gameData.gender = PlayerGender.FEMALE;
-              globalScene.gameData.saveSetting(SettingKeys.Player_Gender, 1);
-              globalScene.gameData.saveSystem().then(() => this.end());
-              return true;
-            },
-          },
-        ],
+        })),
+        maxOptions: 7,
       });
     });
   }

@@ -1,5 +1,5 @@
-import { audioManager } from "#app/global-audio-manager";
 import type { PlayerIndex } from "#app/battle-scene";
+import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { Phase } from "#app/phase";
 import { getCharVariantFromDialogue } from "#data/dialogue";
@@ -86,12 +86,12 @@ export class MysteryEncounterPhase extends Phase {
       .setVisible(true)
       .setTexture(globalScene.getTrainerBackTextureKey(0))
       .setFrame(0)
-      .setPosition(90, 186);
+      .setPosition(90, globalScene.getTrainerBackSpriteY(0));
     globalScene.trainerPartner
       .setVisible(true)
       .setTexture(globalScene.getTrainerBackTextureKey(1))
       .setFrame(0)
-      .setPosition(122, 186);
+      .setPosition(122, globalScene.getTrainerBackSpriteY(1));
   }
 
   /**
@@ -533,7 +533,9 @@ export class MysteryEncounterBattlePhase extends Phase {
     if (encounterMode !== MysteryEncounterMode.TRAINER_BATTLE && !this.disableSwitch) {
       const minPartySize = globalScene.twoPlayerMode
         ? playerFieldOwners.length
-        : globalScene.currentBattle.double ? 2 : 1;
+        : globalScene.currentBattle.double
+          ? 2
+          : 1;
       if (availablePartyMembers.length > minPartySize) {
         globalScene.phaseManager.pushNew("CheckSwitchPhase", 0, globalScene.currentBattle.double);
         if (globalScene.currentBattle.double && playerFieldOwners.length > 1) {

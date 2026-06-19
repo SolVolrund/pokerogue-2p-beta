@@ -6,6 +6,7 @@ import { SceneBase } from "#app/scene-base";
 import { isMobile } from "#app/touch-controls";
 import { BiomeId } from "#enums/biome-id";
 import { GachaType } from "#enums/gacha-types";
+import { getPlayerTrainerSpriteBackTextureKey, PLAYER_TRAINER_SPRITE_OPTIONS } from "#enums/player-trainer-sprite";
 import { getBiomeHasProps } from "#field/arena";
 import { CacheBustedLoaderPlugin } from "#plugins/cache-busted-loader-plugin";
 import { getWindowVariantSuffix, WindowVariant } from "#ui/ui-theme";
@@ -159,11 +160,6 @@ export class LoadingScene extends SceneBase {
       .loadImage("default_bg", "arenas")
       .loadBiomeImages(startingBiome)
 
-      // Load trainer images
-      .loadAtlas("trainer_m_back", "trainer")
-      .loadAtlas("trainer_m_back_pb", "trainer")
-      .loadAtlas("trainer_f_back", "trainer")
-      .loadAtlas("trainer_f_back_pb", "trainer")
       // Load character sprites
       .loadAtlas("c_rival_m", "character", "rival_m")
       .loadAtlas("c_rival_f", "character", "rival_f")
@@ -181,6 +177,14 @@ export class LoadingScene extends SceneBase {
       .loadAtlas("tera_sparkle", "effects")
       .loadAtlas("pb", "")
       .loadAtlas("items", "");
+
+    for (const option of PLAYER_TRAINER_SPRITE_OPTIONS) {
+      this.loadAtlas(getPlayerTrainerSpriteBackTextureKey(option.sprite), "trainer", option.atlasKey).loadAtlas(
+        getPlayerTrainerSpriteBackTextureKey(option.sprite, true),
+        "trainer",
+        `${option.atlasKey}_pb`,
+      );
+    }
 
     this.load
       .bitmapFont("item-count", "fonts/item-count.png", "fonts/item-count.xml")

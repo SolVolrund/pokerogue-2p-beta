@@ -59,6 +59,11 @@ import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { Nature } from "#enums/nature";
 import { PlayerGender } from "#enums/player-gender";
+import {
+  PlayerTrainerSprite,
+  getPlayerTrainerSpriteBackTextureKey,
+  getPlayerTrainerSpriteYOffset,
+} from "#enums/player-trainer-sprite";
 import { PokeballType } from "#enums/pokeball";
 import type { PokemonAnimType } from "#enums/pokemon-anim-type";
 import { PokemonType } from "#enums/pokemon-type";
@@ -456,7 +461,9 @@ export class BattleScene extends SceneBase {
   public activePlayerIndex: PlayerIndex = 0;
   public inputOwner: InputOwner = "none";
   public twoPlayerLocalInputSeat: LocalInputSeat = getTwoPlayerLocalInputSeat();
+  public playerTrainerSprite: PlayerTrainerSprite = PlayerTrainerSprite.BASE_BOY;
   public twoPlayerGuestGender: PlayerGender = PlayerGender.FEMALE;
+  public twoPlayerGuestTrainerSprite: PlayerTrainerSprite = PlayerTrainerSprite.BASE_GIRL;
   public twoPlayerMysteryDecisionPriority: PlayerIndex = 0;
   public twoPlayerProfileSlotsReady: [boolean, boolean] = [false, false];
   public readonly fieldSlotOwners: [PlayerIndex, PlayerIndex] = [0, 1];
@@ -1427,9 +1434,25 @@ export class BattleScene extends SceneBase {
     return playerIndex === 1 ? this.twoPlayerGuestGender : this.getPlayerGameData(0).gender;
   }
 
+  public getTrainerSprite(playerIndex: PlayerIndex = 0): PlayerTrainerSprite {
+    return playerIndex === 1 ? this.twoPlayerGuestTrainerSprite : this.playerTrainerSprite;
+  }
+
   public getTrainerBackTextureKey(playerIndex: PlayerIndex = 0, pokeball = false): string {
-    const genderPrefix = this.getTrainerGender(playerIndex) === PlayerGender.FEMALE ? "f" : "m";
-    return `trainer_${genderPrefix}_back${pokeball ? "_pb" : ""}`;
+    return getPlayerTrainerSpriteBackTextureKey(this.getTrainerSprite(playerIndex), pokeball);
+  }
+
+  public getTrainerBackSpriteY(playerIndex: PlayerIndex = 0, baseY = 186): number {
+    return baseY + getPlayerTrainerSpriteYOffset(this.getTrainerSprite(playerIndex));
+  }
+
+  public setTrainerBackSpritePosition(
+    trainerSprite: Phaser.GameObjects.Sprite,
+    playerIndex: PlayerIndex,
+    x: number,
+    baseY = 186,
+  ): Phaser.GameObjects.Sprite {
+    return trainerSprite.setPosition(x, this.getTrainerBackSpriteY(playerIndex, baseY));
   }
 
   // TODO: Add a `getPartyOnSide` function for getting the party of a pokemon
@@ -2099,10 +2122,10 @@ export class BattleScene extends SceneBase {
     this.arena.init();
 
     this.trainer.setTexture(this.getTrainerBackTextureKey(0));
-    this.trainer.setPosition(406, 186);
+    this.setTrainerBackSpritePosition(this.trainer, 0, 406);
     this.trainer.setVisible(true);
     this.trainerPartner.setTexture(this.getTrainerBackTextureKey(1));
-    this.trainerPartner.setPosition(438, 186);
+    this.setTrainerBackSpritePosition(this.trainerPartner, 1, 438);
     this.trainerPartner.setVisible(false);
 
     this.mysteryEncounterSaveData = new MysteryEncounterSaveData();

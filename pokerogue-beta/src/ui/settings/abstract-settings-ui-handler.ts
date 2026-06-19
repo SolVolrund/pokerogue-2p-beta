@@ -403,6 +403,9 @@ export class AbstractSettingsUiHandler extends MessageUiHandler {
       settingIndex = this.cursor + this.scrollCursor;
     }
     const setting = this.settings[settingIndex];
+    if (!this.optionValueLabels[settingIndex][cursor]) {
+      cursor = setting.default;
+    }
     const lastCursor = this.optionCursors[settingIndex];
     // do nothing if the option isn't changing
     if (cursor === lastCursor) {

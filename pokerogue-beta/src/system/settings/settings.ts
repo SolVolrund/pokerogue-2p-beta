@@ -5,6 +5,12 @@ import { isDev } from "#constants/app-constants";
 import { EaseType } from "#enums/ease-type";
 import { MoneyFormat } from "#enums/money-format";
 import { PlayerGender } from "#enums/player-gender";
+import {
+  getPlayerTrainerSpriteOption,
+  PLAYER_BOY_TRAINER_SPRITES,
+  PLAYER_GIRL_TRAINER_SPRITES,
+  type PlayerTrainerSprite,
+} from "#enums/player-trainer-sprite";
 import { ShopCursorTarget } from "#enums/shop-cursor-target";
 import { UiMode } from "#enums/ui-mode";
 import { CandyUpgradeNotificationChangedEvent } from "#events/battle-scene";
@@ -39,6 +45,54 @@ const OFF_ON: SettingOption[] = [
     label: i18next.t("settings:on"),
   },
 ];
+
+function getTrainerSpriteSettingOptions(sprites: PlayerTrainerSprite[]): SettingOption[] {
+  return sprites.map(sprite => ({
+    value: sprite.toString(),
+    label: getPlayerTrainerSpriteOption(sprite).label,
+  }));
+}
+
+function getSavedSettingCursor(settingKey: string, defaultValue: number): number {
+  if (!Object.hasOwn(localStorage, "settings")) {
+    return defaultValue;
+  }
+
+  const settings = JSON.parse(localStorage.getItem("settings")!);
+  const value = settings[settingKey];
+  return Number.isInteger(value) ? value : defaultValue;
+}
+
+function getSpriteFromSavedSetting(settingKey: string, sprites: PlayerTrainerSprite[]): PlayerTrainerSprite {
+  const cursor = getSavedSettingCursor(settingKey, 0);
+  return sprites[cursor] ?? sprites[0];
+}
+
+function getPlayerSpriteSettingKeyForGender(gender: PlayerGender): string {
+  return gender === PlayerGender.FEMALE
+    ? SettingKeys.Player_Girl_Trainer_Sprite
+    : SettingKeys.Player_Boy_Trainer_Sprite;
+}
+
+function getGuestSpriteSettingKeyForGender(gender: PlayerGender): string {
+  return gender === PlayerGender.FEMALE ? SettingKeys.Guest_Girl_Trainer_Sprite : SettingKeys.Guest_Boy_Trainer_Sprite;
+}
+
+function getTrainerSpritesForGender(gender: PlayerGender): PlayerTrainerSprite[] {
+  return gender === PlayerGender.FEMALE ? PLAYER_GIRL_TRAINER_SPRITES : PLAYER_BOY_TRAINER_SPRITES;
+}
+
+function getSavedPlayerSpriteForGender(gender: PlayerGender): PlayerTrainerSprite {
+  return getSpriteFromSavedSetting(getPlayerSpriteSettingKeyForGender(gender), getTrainerSpritesForGender(gender));
+}
+
+function getSavedGuestSpriteForGender(gender: PlayerGender): PlayerTrainerSprite {
+  return getSpriteFromSavedSetting(getGuestSpriteSettingKeyForGender(gender), getTrainerSpritesForGender(gender));
+}
+
+function getCurrentPlayerGender(): PlayerGender | null {
+  return globalScene.gameData ? globalScene.getPlayerGameData(0).gender : null;
+}
 
 const AUTO_DISABLED: SettingOption[] = [
   {
@@ -174,7 +228,11 @@ export const SettingKeys = {
   Sprite_Set: "SPRITE_SET",
   Fusion_Palette_Swaps: "FUSION_PALETTE_SWAPS",
   Player_Gender: "PLAYER_GENDER",
+  Player_Boy_Trainer_Sprite: "PLAYER_BOY_TRAINER_SPRITE",
+  Player_Girl_Trainer_Sprite: "PLAYER_GIRL_TRAINER_SPRITE",
   Guest_Gender: "GUEST_GENDER",
+  Guest_Boy_Trainer_Sprite: "GUEST_BOY_TRAINER_SPRITE",
+  Guest_Girl_Trainer_Sprite: "GUEST_GIRL_TRAINER_SPRITE",
   Type_Hints: "TYPE_HINTS",
   Master_Volume: "MASTER_VOLUME",
   BGM_Volume: "BGM_VOLUME",
@@ -628,6 +686,20 @@ export const Setting: Setting[] = [
     type: SettingType.DISPLAY,
   },
   {
+    key: SettingKeys.Player_Boy_Trainer_Sprite,
+    label: "Player Boy",
+    options: getTrainerSpriteSettingOptions(PLAYER_BOY_TRAINER_SPRITES),
+    default: 0,
+    type: SettingType.DISPLAY,
+  },
+  {
+    key: SettingKeys.Player_Girl_Trainer_Sprite,
+    label: "Player Girl",
+    options: getTrainerSpriteSettingOptions(PLAYER_GIRL_TRAINER_SPRITES),
+    default: 0,
+    type: SettingType.DISPLAY,
+  },
+  {
     key: SettingKeys.Guest_Gender,
     label: i18next.t("settings:guestGender"),
     options: [
@@ -641,6 +713,20 @@ export const Setting: Setting[] = [
       },
     ],
     default: 1,
+    type: SettingType.DISPLAY,
+  },
+  {
+    key: SettingKeys.Guest_Boy_Trainer_Sprite,
+    label: "Guest Boy",
+    options: getTrainerSpriteSettingOptions(PLAYER_BOY_TRAINER_SPRITES),
+    default: 0,
+    type: SettingType.DISPLAY,
+  },
+  {
+    key: SettingKeys.Guest_Girl_Trainer_Sprite,
+    label: "Guest Girl",
+    options: getTrainerSpriteSettingOptions(PLAYER_GIRL_TRAINER_SPRITES),
+    default: 0,
     type: SettingType.DISPLAY,
   },
   {
@@ -791,6 +877,9 @@ export function setSetting(setting: string, value: number): boolean {
   if (index === -1) {
     return false;
   }
+  if (!Setting[index].options[value]) {
+    value = Setting[index].default;
+  }
   switch (Setting[index].key) {
     case SettingKeys.Game_Speed:
       globalScene.gameSpeed = Number.parseFloat(Setting[index].options[value].value);
@@ -932,16 +1021,63 @@ export function setSetting(setting: string, value: number): boolean {
       if (globalScene.gameData) {
         const female = Setting[index].options[value].value === "Girl";
         globalScene.getPlayerGameData(0).gender = female ? PlayerGender.FEMALE : PlayerGender.MALE;
-        globalScene.trainer?.setTexture(globalScene.getTrainerBackTextureKey(0));
+        globalScene.playerTrainerSprite = getSavedPlayerSpriteForGender(globalScene.getPlayerGameData(0).gender);
+        if (globalScene.trainer) {
+          globalScene.trainer.setTexture(globalScene.getTrainerBackTextureKey(0));
+          globalScene.setTrainerBackSpritePosition(globalScene.trainer, 0, globalScene.trainer.x);
+        }
       } else {
         return false;
       }
       break;
+    case SettingKeys.Player_Boy_Trainer_Sprite:
+      if (getCurrentPlayerGender() === PlayerGender.MALE) {
+        globalScene.playerTrainerSprite = Number.parseInt(Setting[index].options[value].value) as PlayerTrainerSprite;
+        if (globalScene.trainer) {
+          globalScene.trainer.setTexture(globalScene.getTrainerBackTextureKey(0));
+          globalScene.setTrainerBackSpritePosition(globalScene.trainer, 0, globalScene.trainer.x);
+        }
+      }
+      break;
+    case SettingKeys.Player_Girl_Trainer_Sprite:
+      if (getCurrentPlayerGender() === PlayerGender.FEMALE) {
+        globalScene.playerTrainerSprite = Number.parseInt(Setting[index].options[value].value) as PlayerTrainerSprite;
+        if (globalScene.trainer) {
+          globalScene.trainer.setTexture(globalScene.getTrainerBackTextureKey(0));
+          globalScene.setTrainerBackSpritePosition(globalScene.trainer, 0, globalScene.trainer.x);
+        }
+      }
+      break;
     case SettingKeys.Guest_Gender:
-      globalScene.twoPlayerGuestGender = Setting[index].options[value].value === "Girl"
-        ? PlayerGender.FEMALE
-        : PlayerGender.MALE;
-      globalScene.trainerPartner?.setTexture(globalScene.getTrainerBackTextureKey(1));
+      globalScene.twoPlayerGuestGender =
+        Setting[index].options[value].value === "Girl" ? PlayerGender.FEMALE : PlayerGender.MALE;
+      globalScene.twoPlayerGuestTrainerSprite = getSavedGuestSpriteForGender(globalScene.twoPlayerGuestGender);
+      if (globalScene.trainerPartner) {
+        globalScene.trainerPartner.setTexture(globalScene.getTrainerBackTextureKey(1));
+        globalScene.setTrainerBackSpritePosition(globalScene.trainerPartner, 1, globalScene.trainerPartner.x);
+      }
+      break;
+    case SettingKeys.Guest_Boy_Trainer_Sprite:
+      if (globalScene.twoPlayerGuestGender === PlayerGender.MALE) {
+        globalScene.twoPlayerGuestTrainerSprite = Number.parseInt(
+          Setting[index].options[value].value,
+        ) as PlayerTrainerSprite;
+        if (globalScene.trainerPartner) {
+          globalScene.trainerPartner.setTexture(globalScene.getTrainerBackTextureKey(1));
+          globalScene.setTrainerBackSpritePosition(globalScene.trainerPartner, 1, globalScene.trainerPartner.x);
+        }
+      }
+      break;
+    case SettingKeys.Guest_Girl_Trainer_Sprite:
+      if (globalScene.twoPlayerGuestGender === PlayerGender.FEMALE) {
+        globalScene.twoPlayerGuestTrainerSprite = Number.parseInt(
+          Setting[index].options[value].value,
+        ) as PlayerTrainerSprite;
+        if (globalScene.trainerPartner) {
+          globalScene.trainerPartner.setTexture(globalScene.getTrainerBackTextureKey(1));
+          globalScene.setTrainerBackSpritePosition(globalScene.trainerPartner, 1, globalScene.trainerPartner.x);
+        }
+      }
       break;
     case SettingKeys.Touch_Controls: {
       globalScene.enableTouchControls = Setting[index].options[value].value !== "Disabled" && hasTouchscreen();
