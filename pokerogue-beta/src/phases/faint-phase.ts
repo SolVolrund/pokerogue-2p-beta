@@ -15,7 +15,7 @@ import { HitResult } from "#enums/hit-result";
 import { StatusEffect } from "#enums/status-effect";
 import { SwitchType } from "#enums/switch-type";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
-import { PokemonInstantReviveModifier } from "#modifiers/modifier";
+import { PokemonInstantReviveModifier, ShinyBadgeModifier } from "#modifiers/modifier";
 import { PokemonMove } from "#moves/pokemon-move";
 import { PokemonPhase } from "#phases/pokemon-phase";
 import { inSpeedOrder } from "#utils/speed-order-generator";
@@ -58,6 +58,18 @@ export class FaintPhase extends PokemonPhase {
     }
 
     faintPokemon.resetSummonData();
+
+    const shinyBadgeModifier = globalScene.applyModifierForPokemon(
+      ShinyBadgeModifier,
+      faintPokemon,
+      faintPokemon,
+      "revive",
+    );
+
+    if (shinyBadgeModifier) {
+      this.end();
+      return;
+    }
 
     if (!this.preventInstantRevive) {
       const instantReviveModifier = globalScene.applyModifier(

@@ -1423,6 +1423,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     const critStage = new NumberHolder(0);
     applyMoveAttrs("HighCritAttr", source, this, move, critStage);
     globalScene.applyModifiersForPokemon(CritBoosterModifier, source, source, critStage);
+    globalScene.applyModifiersForPokemon(ShinyBadgeModifier, source, source, "crit", critStage);
     globalScene.applyModifiersForPokemon(TempCritBoosterModifier, source, critStage);
     applyAbAttrs("BonusCritAbAttr", { pokemon: source, critStage });
     const critBoostTag = source.getTag(CritBoostTag);
@@ -4037,6 +4038,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
       if (!surviveDamage.value) {
         globalScene.applyModifiersForPokemon(SurviveDamageModifier, this, this, surviveDamage);
+      }
+      if (!surviveDamage.value) {
+        globalScene.applyModifiersForPokemon(ShinyBadgeModifier, this, this, "survive", surviveDamage);
       }
 
       if (surviveDamage.value) {

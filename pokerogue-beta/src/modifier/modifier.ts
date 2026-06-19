@@ -2653,6 +2653,8 @@ export class PokemonFriendshipBoosterModifier extends PokemonHeldItemModifier {
   }
 }
 
+type ShinyBadgeEffect = "survive" | "status" | "dodge" | "revive" | "partyRevive" | "crit";
+
 export class ShinyBadgeModifier extends PokemonHeldItemModifier {
   matchType(modifier: Modifier): boolean {
     return modifier instanceof ShinyBadgeModifier;
@@ -2662,8 +2664,128 @@ export class ShinyBadgeModifier extends PokemonHeldItemModifier {
     return new ShinyBadgeModifier(this.type, this.pokemonId, this.stackCount);
   }
 
-  override apply(_pokemon: Pokemon): boolean {
+  private getFriendshipTier(pokemon: Pokemon): number {
+    return Math.min(Math.max(Math.floor(pokemon.friendship / 51), 0), 5);
+  }
+
+  private rollFriendshipChance(pokemon: Pokemon, chancePerTier: number): boolean {
+    const chance = this.getFriendshipTier(pokemon) * chancePerTier;
+    return chance > 0 && pokemon.randBattleSeedInt(100) < chance;
+  }
+
+  private applySurvive(pokemon: Pokemon, surviveDamage?: BooleanHolder | NumberHolder): boolean {
+    if (
+      !(surviveDamage instanceof BooleanHolder)
+      || surviveDamage.value
+      || !this.rollFriendshipChance(pokemon, 5)
+    ) {
+      return false;
+    }
+
+    surviveDamage.value = true;
+    globalScene.phaseManager.queueMessage(
+      i18next.t("modifier:surviveDamageApply", {
+        pokemonNameWithAffix: getPokemonNameWithAffix(pokemon),
+        typeName: this.type.name,
+      }),
+    );
     return true;
+  }
+
+  private applyStatusCure(pokemon: Pokemon): boolean {
+    if (!pokemon.status || pokemon.status.effect === StatusEffect.FAINT || !this.rollFriendshipChance(pokemon, 4)) {
+      return false;
+    }
+
+    globalScene.phaseManager.queueMessage(
+      getStatusEffectHealText(pokemon.status.effect, getPokemonNameWithAffix(pokemon)),
+    );
+    pokemon.resetStatus();
+    pokemon.updateInfo();
+    return true;
+  }
+
+  private applyDodge(pokemon: Pokemon, dodged?: BooleanHolder | NumberHolder): boolean {
+    if (!(dodged instanceof BooleanHolder) || dodged.value || !this.rollFriendshipChance(pokemon, 2)) {
+      return false;
+    }
+
+    dodged.value = true;
+    return true;
+  }
+
+  private applyRevive(pokemon: Pokemon): boolean {
+    if (!this.rollFriendshipChance(pokemon, 1)) {
+      return false;
+    }
+
+    globalScene.phaseManager.unshiftNew(
+      "PokemonHealPhase",
+      pokemon.getBattlerIndex(),
+      toDmgValue(pokemon.getMaxHp() / 2),
+      i18next.t("modifier:pokemonInstantReviveApply", {
+        pokemonNameWithAffix: getPokemonNameWithAffix(pokemon),
+        typeName: this.type.name,
+      }),
+      false,
+      false,
+      true,
+    );
+    pokemon.resetStatus(true, false, true, false);
+    for (const p of pokemon.getAlliesGenerator()) {
+      applyAbAttrs("CommanderAbAttr", { pokemon: p });
+    }
+    return true;
+  }
+
+  private applyPartyRevive(pokemon: Pokemon): boolean {
+    if (!pokemon.isFainted(true) || pokemon.isOnField() || pokemon.friendship < 245 || pokemon.randBattleSeedInt(100) >= 5) {
+      return false;
+    }
+
+    pokemon.resetTurnData();
+    pokemon.resetStatus(true, false, false, false);
+    pokemon.heal(Math.min(toDmgValue(0.5 * pokemon.getMaxHp()), pokemon.getMaxHp()));
+    globalScene.phaseManager.queueMessage(
+      i18next.t("modifier:pokemonInstantReviveApply", {
+        pokemonNameWithAffix: getPokemonNameWithAffix(pokemon),
+        typeName: this.type.name,
+      }),
+      0,
+      true,
+    );
+    pokemon.updateInfo();
+    return true;
+  }
+
+  private applyCritStage(pokemon: Pokemon, critStage?: BooleanHolder | NumberHolder): boolean {
+    if (!(critStage instanceof NumberHolder) || this.getFriendshipTier(pokemon) < 5) {
+      return false;
+    }
+
+    critStage.value++;
+    return true;
+  }
+
+  override apply(
+    pokemon: Pokemon,
+    effect: ShinyBadgeEffect = "survive",
+    value?: BooleanHolder | NumberHolder,
+  ): boolean {
+    switch (effect) {
+      case "survive":
+        return this.applySurvive(pokemon, value);
+      case "status":
+        return this.applyStatusCure(pokemon);
+      case "dodge":
+        return this.applyDodge(pokemon, value);
+      case "revive":
+        return this.applyRevive(pokemon);
+      case "partyRevive":
+        return this.applyPartyRevive(pokemon);
+      case "crit":
+        return this.applyCritStage(pokemon, value);
+    }
   }
 
   getMaxHeldItemCount(_pokemon?: Pokemon): number {

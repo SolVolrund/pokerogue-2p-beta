@@ -9,6 +9,7 @@ import type { Pokemon } from "#field/pokemon";
 import {
   EnemyStatusEffectHealChanceModifier,
   EnemyTurnHealModifier,
+  ShinyBadgeModifier,
   TurnHealModifier,
   TurnHeldItemTransferModifier,
   TurnStatusEffectModifier,
@@ -52,6 +53,8 @@ export class TurnEndPhase extends FieldPhase {
           globalScene.applyModifier(EnemyStatusEffectHealChanceModifier, false, pokemon);
         }
 
+        globalScene.applyModifiersForPokemon(ShinyBadgeModifier, pokemon, pokemon, "status");
+
         applyAbAttrs("PostTurnAbAttr", { pokemon });
       }
 
@@ -64,6 +67,7 @@ export class TurnEndPhase extends FieldPhase {
 
     if (!this.upcomingInterlude) {
       this.executeForAll(handlePokemon);
+      this.applyShinyBadgePartyRevives();
 
       globalScene.arena.lapseTags();
     }
@@ -78,5 +82,17 @@ export class TurnEndPhase extends FieldPhase {
     }
 
     this.end();
+  }
+
+  private applyShinyBadgePartyRevives(): void {
+    const playerIndexes = globalScene.twoPlayerMode ? ([0, 1] as const) : ([globalScene.activePlayerIndex] as const);
+
+    for (const playerIndex of playerIndexes) {
+      for (const pokemon of globalScene.getPlayerParty(playerIndex)) {
+        if (!pokemon.isOnField() && pokemon.isFainted(true)) {
+          globalScene.applyModifiersForPokemon(ShinyBadgeModifier, pokemon, pokemon, "partyRevive");
+        }
+      }
+    }
   }
 }

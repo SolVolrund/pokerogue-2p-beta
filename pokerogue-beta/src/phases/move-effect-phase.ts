@@ -30,6 +30,7 @@ import {
   FlinchChanceModifier,
   HitHealModifier,
   PokemonMultiHitModifier,
+  ShinyBadgeModifier,
 } from "#modifiers/modifier";
 import { applyFilteredMoveAttrs, applyMoveAttrs } from "#moves/apply-attrs";
 import type { Move, MoveAttr } from "#moves/move";
@@ -429,6 +430,12 @@ export class MoveEffectPhase extends PokemonPhase {
     const rand = user.randBattleSeedInt(100);
 
     if (rand < moveAccuracy * accuracyMultiplier) {
+      const dodged = new BooleanHolder(false);
+      globalScene.applyModifiersForPokemon(ShinyBadgeModifier, target, target, "dodge", dodged);
+      if (dodged.value) {
+        return [HitCheckResult.MISS, 0];
+      }
+
       return [HitCheckResult.HIT, effectiveness];
     }
 
