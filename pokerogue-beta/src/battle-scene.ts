@@ -177,6 +177,7 @@ const TWO_PLAYER_SESSION_SYSTEM_SAVE_KEYS = [
   "pokerogue_2p_session_system_save_1",
 ] as const;
 const TWO_PLAYER_PROFILE_HANDSHAKE_BUILD = "profile-handshake-2026-06-17c";
+const GTS_MALFUNCTION_FORCED_TEST_WAVE: number | null = 2;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.MYSTERIOUS_CHEST,
   MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
@@ -207,6 +208,7 @@ const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.FUN_AND_GAMES,
   MysteryEncounterType.UNCOMMON_BREED,
   MysteryEncounterType.GLOBAL_TRADE_SYSTEM,
+  MysteryEncounterType.GTS_MALFUNCTION,
   MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
 ];
 
@@ -4409,6 +4411,11 @@ export class BattleScene extends SceneBase {
     if (getDailyMysteryEncounter(waveIndex) != null) {
       return true;
     }
+
+    if (this.isGtsMalfunctionForcedTestWave(battleType, waveIndex)) {
+      return true;
+    }
+
     if (!this.isMysteryEncounterValidForWave(battleType, waveIndex)) {
       return false;
     }
@@ -4447,6 +4454,24 @@ export class BattleScene extends SceneBase {
       roll = randSeedInt(MYSTERY_ENCOUNTER_SPAWN_MAX_WEIGHT);
     }, waveIndex * 3000);
     return roll < successRate;
+  }
+
+  private isGtsMalfunctionForcedTestWave(battleType: BattleType, waveIndex: number): boolean {
+    return (
+      GTS_MALFUNCTION_FORCED_TEST_WAVE != null
+      && waveIndex === GTS_MALFUNCTION_FORCED_TEST_WAVE
+      && this.twoPlayerMode
+      && this.gameMode.hasMysteryEncounters
+      && battleType === BattleType.WILD
+      && !this.gameMode.isBoss(waveIndex)
+      && !this.gameMode.isFixedBattle(waveIndex)
+      && !this.gameMode.isWaveFinal(waveIndex)
+      && this.isMysteryEncounterEnabled(MysteryEncounterType.GTS_MALFUNCTION)
+      && !this.mysteryEncounterSaveData.encounteredEvents.some(
+        event => event.type === MysteryEncounterType.GTS_MALFUNCTION,
+      )
+      && ([0, 1] as PlayerIndex[]).every(playerIndex => this.getPokemonAllowedInBattle(playerIndex).length >= 2)
+    );
   }
 
   /**
@@ -4529,6 +4554,17 @@ export class BattleScene extends SceneBase {
 
     if (encounter) {
       encounter = new MysteryEncounter(encounter);
+      encounter.populateDialogueTokensFromRequirements();
+      return encounter;
+    }
+
+    const gtsMalfunctionEncounter = allMysteryEncounters[MysteryEncounterType.GTS_MALFUNCTION];
+    if (
+      gtsMalfunctionEncounter
+      && this.isGtsMalfunctionForcedTestWave(BattleType.WILD, this.currentBattle.waveIndex)
+      && gtsMalfunctionEncounter.meetsRequirements()
+    ) {
+      encounter = new MysteryEncounter(gtsMalfunctionEncounter);
       encounter.populateDialogueTokensFromRequirements();
       return encounter;
     }

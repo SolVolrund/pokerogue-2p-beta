@@ -38,6 +38,7 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
 
   start() {
     super.start();
+    this.setLearnMoveInputOwner();
 
     const pokemon = this.getPokemon();
     const move = allMoves[this.moveId];
@@ -71,6 +72,7 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
    * @param Pokemon The Pokemon learning the move
    */
   async replaceMoveCheck(move: Move, pokemon: Pokemon) {
+    this.setLearnMoveInputOwner();
     const learnMovePrompt = i18next.t("battle:learnMovePrompt", {
       pokemonName: getPokemonNameWithAffix(pokemon),
       moveName: move.name,
@@ -107,6 +109,7 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
    * @param Pokemon The Pokemon learning the move
    */
   async forgetMoveProcess(move: Move, pokemon: Pokemon) {
+    this.setLearnMoveInputOwner();
     globalScene.ui.setMode(this.messageMode);
     await globalScene.ui.showTextPromise(i18next.t("battle:learnMoveForgetQuestion"), undefined, true);
     await globalScene.ui.setModeWithoutClear(
@@ -142,6 +145,7 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
    * @param Pokemon The Pokemon learning the move
    */
   async rejectMoveAndEnd(move: Move, pokemon: Pokemon) {
+    this.setLearnMoveInputOwner();
     if (globalScene.hideMoveSkipConfirm) {
       globalScene.ui.setMode(this.messageMode);
       globalScene.ui
@@ -199,6 +203,7 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
    * @param Pokemon The Pokemon learning the move
    */
   async learnMove(index: number, move: Move, pokemon: Pokemon, textMessage?: string) {
+    this.setLearnMoveInputOwner();
     if (this.learnMoveType === LearnMoveType.TM) {
       if (!pokemon.usedTMs) {
         pokemon.usedTMs = [];
@@ -240,5 +245,13 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
       this.messageMode === UiMode.EVOLUTION_SCENE ? 1000 : undefined,
       true,
     );
+  }
+
+  private setLearnMoveInputOwner(): void {
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForPlayerInput(this.playerIndex);
+    } else {
+      globalScene.setActivePlayerIndex(this.playerIndex);
+    }
   }
 }

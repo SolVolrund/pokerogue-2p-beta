@@ -1,5 +1,5 @@
-import { audioManager } from "#app/global-audio-manager";
 import type { PlayerIndex } from "#app/battle-scene";
+import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { activeOverrides } from "#app/overrides";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
@@ -9,6 +9,7 @@ import type { Modifier } from "#modifiers/modifier";
 import {
   ExtraModifierModifier,
   HealShopCostModifier,
+  LinkingCordGoldModifier,
   PokemonHeldItemModifier,
   TempExtraModifierModifier,
 } from "#modifiers/modifier";
@@ -28,7 +29,7 @@ import {
 import { BattlePhase } from "#phases/battle-phase";
 import type { ModifierSelectUiHandler } from "#ui/modifier-select-ui-handler";
 import { SHOP_OPTIONS_ROW_LIMIT } from "#ui/modifier-select-ui-handler";
-import { PartyOption, PartyUiHandler, PartyUiMode } from "#ui/party-ui-handler";
+import { PartyOption, PartyUiHandler, PartyUiMode, type PokemonSelectFilter } from "#ui/party-ui-handler";
 import { NumberHolder } from "#utils/common";
 import i18next from "i18next";
 
@@ -114,13 +115,15 @@ export class SelectModifierPhase extends BattlePhase {
               return this.rerollModifiers();
             case 1:
               return this.openModifierTransferScreen(modifierSelectCallback);
-            // Check the party, pass a callback to restore the modifier select screen.
             case 2:
+              return this.openTradeScreen(modifierSelectCallback);
+            // Check the party, pass a callback to restore the modifier select screen.
+            case 3:
               globalScene.ui.setModeWithoutClear(UiMode.PARTY, PartyUiMode.CHECK, -1, () => {
                 this.resetModifierSelect(modifierSelectCallback);
               });
               return true;
-            case 3:
+            case 4:
               return this.toggleRerollLock();
             default:
               return false;
@@ -269,6 +272,143 @@ export class SelectModifierPhase extends BattlePhase {
       PartyUiHandler.FilterItemMaxStacks,
     );
     return true;
+  }
+
+  private openTradeScreen(modifierSelectCallback: ModifierSelectCallback): boolean {
+    if (!globalScene.twoPlayerMode || !this.hasLinkingCordGold(this.playerIndex)) {
+      globalScene.ui.playError();
+      return false;
+    }
+
+    const sourcePlayerIndex = this.playerIndex;
+    const targetPlayerIndex = (sourcePlayerIndex === 0 ? 1 : 0) as PlayerIndex;
+    const restoreRewardScreen = () => this.resetModifierSelect(modifierSelectCallback);
+    const filterActivePokemon: PokemonSelectFilter = pokemon =>
+      pokemon.isOnField() ? "Pokemon currently in battle cannot be traded." : null;
+    const openPartySelect = (
+      playerIndex: PlayerIndex,
+      callback: (partyIndex: number, option: PartyOption) => void,
+      inputPlayerIndex = playerIndex,
+    ) => {
+      const showPartySelect = () => {
+        globalScene.ui
+          .setModeWithoutClear(
+            UiMode.PARTY,
+            PartyUiMode.SELECT,
+            this.getFieldSlotForPlayer(playerIndex),
+            callback,
+            filterActivePokemon,
+          )
+          .then(() => globalScene.waitForPlayerInput(inputPlayerIndex));
+      };
+
+      if (globalScene.ui.getMode() === UiMode.PARTY) {
+        globalScene.ui.setMode(UiMode.MESSAGE).then(showPartySelect);
+      } else {
+        showPartySelect();
+      }
+    };
+
+    openPartySelect(sourcePlayerIndex, (sourcePartyIndex: number, sourceOption: PartyOption) => {
+      if (sourceOption === PartyOption.CANCEL) {
+        restoreRewardScreen();
+        return;
+      }
+      if (sourceOption !== PartyOption.SELECT || !this.isValidPartyIndex(sourcePlayerIndex, sourcePartyIndex)) {
+        globalScene.ui.playError();
+        restoreRewardScreen();
+        return;
+      }
+
+      openPartySelect(
+        targetPlayerIndex,
+        (targetPartyIndex: number, targetOption: PartyOption) => {
+          if (targetOption === PartyOption.CANCEL) {
+            restoreRewardScreen();
+            return;
+          }
+          if (targetOption !== PartyOption.SELECT || !this.isValidPartyIndex(targetPlayerIndex, targetPartyIndex)) {
+            globalScene.ui.playError();
+            restoreRewardScreen();
+            return;
+          }
+
+          this.tradePlayerPokemon(sourcePlayerIndex, sourcePartyIndex, targetPlayerIndex, targetPartyIndex);
+          restoreRewardScreen();
+        },
+        sourcePlayerIndex,
+      );
+    });
+
+    return true;
+  }
+
+  private hasLinkingCordGold(playerIndex: PlayerIndex): boolean {
+    return globalScene
+      .findModifiersForPlayer(modifier => modifier instanceof LinkingCordGoldModifier, playerIndex)
+      .some(Boolean);
+  }
+
+  private getFieldSlotForPlayer(playerIndex: PlayerIndex): number {
+    const fieldSlot = globalScene.getPlayerFieldOwners().indexOf(playerIndex);
+    return fieldSlot > -1 ? fieldSlot : playerIndex;
+  }
+
+  private isValidPartyIndex(playerIndex: PlayerIndex, partyIndex: number): boolean {
+    return partyIndex >= 0 && partyIndex < globalScene.getPlayerParty(playerIndex).length;
+  }
+
+  private getPlayerHeldItemModifiers(pokemonId: number, playerIndex: PlayerIndex): PokemonHeldItemModifier[] {
+    return globalScene.findModifiersForPlayer(
+      modifier => modifier instanceof PokemonHeldItemModifier && modifier.pokemonId === pokemonId,
+      playerIndex,
+    ) as PokemonHeldItemModifier[];
+  }
+
+  private moveHeldItemModifiers(
+    modifiers: PokemonHeldItemModifier[],
+    fromPlayer: PlayerIndex,
+    toPlayer: PlayerIndex,
+  ): void {
+    const sourceModifiers = globalScene.getPlayerModifiers(fromPlayer);
+    const targetModifiers = globalScene.getPlayerModifiers(toPlayer);
+
+    for (const modifier of modifiers) {
+      const sourceIndex = sourceModifiers.indexOf(modifier);
+      if (sourceIndex > -1) {
+        sourceModifiers.splice(sourceIndex, 1);
+        targetModifiers.push(modifier);
+      }
+    }
+  }
+
+  private tradePlayerPokemon(
+    firstPlayerIndex: PlayerIndex,
+    firstPartyIndex: number,
+    secondPlayerIndex: PlayerIndex,
+    secondPartyIndex: number,
+  ): void {
+    const firstParty = globalScene.getPlayerParty(firstPlayerIndex);
+    const secondParty = globalScene.getPlayerParty(secondPlayerIndex);
+    const firstPokemon = firstParty[firstPartyIndex];
+    const secondPokemon = secondParty[secondPartyIndex];
+
+    if (!firstPokemon || !secondPokemon) {
+      return;
+    }
+
+    const firstPokemonHeldItems = this.getPlayerHeldItemModifiers(firstPokemon.id, firstPlayerIndex);
+    const secondPokemonHeldItems = this.getPlayerHeldItemModifiers(secondPokemon.id, secondPlayerIndex);
+
+    firstParty[firstPartyIndex] = secondPokemon;
+    secondParty[secondPartyIndex] = firstPokemon;
+
+    this.moveHeldItemModifiers(firstPokemonHeldItems, firstPlayerIndex, secondPlayerIndex);
+    this.moveHeldItemModifiers(secondPokemonHeldItems, secondPlayerIndex, firstPlayerIndex);
+
+    for (const playerIndex of [firstPlayerIndex, secondPlayerIndex]) {
+      globalScene.updateModifiers(true, true, playerIndex);
+    }
   }
 
   // Toggle reroll lock
@@ -434,6 +574,7 @@ export class SelectModifierPhase extends BattlePhase {
       this.typeOptions,
       modifierSelectCallback,
       this.getRerollCost(globalScene.lockModifierTiers),
+      globalScene.twoPlayerMode && this.hasLinkingCordGold(this.playerIndex),
     );
   }
 

@@ -56,6 +56,9 @@ const TATE_LIZA_STRONG_PAIRS: TateLizaPair[] = [
   [SpeciesId.KORAIDON, SpeciesId.MIRAIDON],
 ];
 
+// `shiftCharCodes` uses `String.fromCharCode`, so offsets that differ by 2^16 produce identical seeds.
+const TRAINER_PARTNER_SEED_OFFSET = 0x7fff;
+
 function isTateLizaTrainerType(trainerType?: TrainerType): boolean {
   return trainerType === TrainerType.TATE || trainerType === TrainerType.LIZA;
 }
@@ -829,11 +832,13 @@ export class Trainer extends Phaser.GameObjects.Container {
         ret = globalScene.addEnemyPokemon(species, level, trainerSlot);
       },
       config.hasStaticParty
-        ? config.getDerivedType() + ((index + 1) << 8) + (trainerSlot === TrainerSlot.TRAINER_PARTNER ? 1 << 16 : 0)
+        ? config.getDerivedType()
+            + ((index + 1) << 8)
+            + (trainerSlot === TrainerSlot.TRAINER_PARTNER ? TRAINER_PARTNER_SEED_OFFSET : 0)
         : globalScene.currentBattle.waveIndex
             + (config.getDerivedType() << 10)
             + (((config.useSameSeedForAllMembers ? 0 : index) + 1) << 8)
-            + (trainerSlot === TrainerSlot.TRAINER_PARTNER ? 1 << 16 : 0),
+            + (trainerSlot === TrainerSlot.TRAINER_PARTNER ? TRAINER_PARTNER_SEED_OFFSET : 0),
     );
 
     return ret!;

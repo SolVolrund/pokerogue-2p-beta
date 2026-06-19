@@ -47,6 +47,7 @@ const EVENT_TITLE_KEYS: Record<MysteryEncounterType, string> = {
   [MysteryEncounterType.FUN_AND_GAMES]: "mysteryEncounters/funAndGames:title",
   [MysteryEncounterType.UNCOMMON_BREED]: "mysteryEncounters/uncommonBreed:title",
   [MysteryEncounterType.GLOBAL_TRADE_SYSTEM]: "mysteryEncounters/globalTradeSystem:title",
+  [MysteryEncounterType.GTS_MALFUNCTION]: "mysteryEncounters/gtsMalfunction:title",
   [MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER]: "mysteryEncounters/theExpertPokemonBreeder:title",
 };
 

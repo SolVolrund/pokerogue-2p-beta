@@ -15,6 +15,7 @@ import { FieryFalloutEncounter } from "#mystery-encounters/fiery-fallout-encount
 import { FightOrFlightEncounter } from "#mystery-encounters/fight-or-flight-encounter";
 import { FunAndGamesEncounter } from "#mystery-encounters/fun-and-games-encounter";
 import { GlobalTradeSystemEncounter } from "#mystery-encounters/global-trade-system-encounter";
+import { GtsMalfunctionEncounter } from "#mystery-encounters/gts-malfunction-encounter";
 import { LostAtSeaEncounter } from "#mystery-encounters/lost-at-sea-encounter";
 import { MysteriousChallengersEncounter } from "#mystery-encounters/mysterious-challengers-encounter";
 import { MysteriousChestEncounter } from "#mystery-encounters/mysterious-chest-encounter";
@@ -179,6 +180,7 @@ const anyBiomeEncounters: MysteryEncounterType[] = [
   MysteryEncounterType.TELEPORTING_HIJINKS,
   MysteryEncounterType.BUG_TYPE_SUPERFAN,
   MysteryEncounterType.UNCOMMON_BREED,
+  MysteryEncounterType.GTS_MALFUNCTION,
 ];
 
 /**
@@ -256,6 +258,7 @@ export function initMysteryEncounters() {
   allMysteryEncounters[MysteryEncounterType.FUN_AND_GAMES] = FunAndGamesEncounter;
   allMysteryEncounters[MysteryEncounterType.UNCOMMON_BREED] = UncommonBreedEncounter;
   allMysteryEncounters[MysteryEncounterType.GLOBAL_TRADE_SYSTEM] = GlobalTradeSystemEncounter;
+  allMysteryEncounters[MysteryEncounterType.GTS_MALFUNCTION] = GtsMalfunctionEncounter;
   allMysteryEncounters[MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER] = TheExpertPokemonBreederEncounter;
 
   // Add extreme encounters to biome map

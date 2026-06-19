@@ -602,6 +602,24 @@ export class MapModifier extends PersistentModifier {
   }
 }
 
+export class LinkingCordGoldModifier extends PersistentModifier {
+  clone(): LinkingCordGoldModifier {
+    return new LinkingCordGoldModifier(this.type, this.stackCount);
+  }
+
+  match(modifier: Modifier): boolean {
+    return modifier instanceof LinkingCordGoldModifier;
+  }
+
+  override apply(..._args: unknown[]): boolean {
+    return true;
+  }
+
+  getMaxStackCount(): number {
+    return 1;
+  }
+}
+
 export class MegaEvolutionAccessModifier extends PersistentModifier {
   clone(): MegaEvolutionAccessModifier {
     return new MegaEvolutionAccessModifier(this.type, this.stackCount);
@@ -3834,6 +3852,7 @@ const ModifierClassMap = Object.freeze({
   TempStatStageBoosterModifier,
   TempCritBoosterModifier,
   MapModifier,
+  LinkingCordGoldModifier,
   MegaEvolutionAccessModifier,
   GigantamaxAccessModifier,
   TerastallizeAccessModifier,

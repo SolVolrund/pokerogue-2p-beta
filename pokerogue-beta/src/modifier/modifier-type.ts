@@ -68,6 +68,7 @@ import {
   HitHealModifier,
   IvScannerModifier,
   LevelIncrementBoosterModifier,
+  LinkingCordGoldModifier,
   LockModifierTiersModifier,
   MapModifier,
   MegaEvolutionAccessModifier,
@@ -1852,6 +1853,12 @@ const modifierTypeInitObj = Object.freeze({
     ),
 
   MAP: () => new ModifierType("modifierType:ModifierType.MAP", "map", (type, _args) => new MapModifier(type)),
+  LINKING_CORD_GOLD: () =>
+    new ModifierType(
+      "modifierType:ModifierType.LINKING_CORD_GOLD",
+      "linking_cord_gold",
+      (type, _args) => new LinkingCordGoldModifier(type),
+    ),
 
   POTION: () => new PokemonHpRestoreModifierType("modifierType:ModifierType.POTION", "potion", 20, 10),
   SUPER_POTION: () =>

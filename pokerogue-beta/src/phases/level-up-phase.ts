@@ -29,6 +29,7 @@ export class LevelUpPhase extends PlayerPartyMemberPokemonPhase {
 
   public override start(): void {
     super.start();
+    this.setLevelUpInputOwner();
 
     if (this.level > globalScene.gameData.gameStats.highestLevel) {
       globalScene.gameData.gameStats.highestLevel = this.level;
@@ -47,6 +48,7 @@ export class LevelUpPhase extends PlayerPartyMemberPokemonPhase {
         return;
       case ExpNotification.ONLY_LEVEL_UP:
         // we still want to display the stats if activated
+        this.setLevelUpInputOwner();
         globalScene.ui
           .getMessageHandler()
           .promptLevelUpStats(this.partyMemberIndex, prevStats, false)
@@ -59,6 +61,7 @@ export class LevelUpPhase extends PlayerPartyMemberPokemonPhase {
   }
 
   private async showLevelUpMessages(prevStats: number[]): Promise<void> {
+    this.setLevelUpInputOwner();
     audioManager.playSound("se/level_up_fanfare");
 
     const { promise, resolve } = Promise.withResolvers<void>();
@@ -98,5 +101,13 @@ export class LevelUpPhase extends PlayerPartyMemberPokemonPhase {
     }
     super.end();
     return;
+  }
+
+  private setLevelUpInputOwner(): void {
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForPlayerInput(this.playerIndex);
+    } else {
+      globalScene.setActivePlayerIndex(this.playerIndex);
+    }
   }
 }

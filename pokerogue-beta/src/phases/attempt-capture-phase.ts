@@ -253,6 +253,9 @@ export class AttemptCapturePhase extends PokemonPhase {
   catch() {
     const pokemon = this.getPokemon() as EnemyPokemon;
     globalScene.currentBattle.capturedBattlerIndexesThisTurn.add(this.battlerIndex);
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForPlayerInput(this.playerIndex);
+    }
 
     const speciesForm = pokemon.fusionSpecies ? pokemon.getFusionSpeciesForm() : pokemon.getSpeciesForm();
 
@@ -334,6 +337,9 @@ export class AttemptCapturePhase extends PokemonPhase {
           }
           if (globalScene.getPlayerParty(this.playerIndex).length === PLAYER_PARTY_MAX_SIZE) {
             const promptRelease = () => {
+              if (globalScene.twoPlayerMode) {
+                globalScene.waitForPlayerInput(this.playerIndex);
+              }
               globalScene.ui.showText(
                 i18next.t("battle:partyFull", {
                   pokemonName: pokemon.getNameToRender(),

@@ -1,3 +1,4 @@
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { allBiomes } from "#data/data-lists";
 import { BiomeId } from "#enums/biome-id";
@@ -5,7 +6,7 @@ import { ChallengeType } from "#enums/challenge-type";
 import { UiMode } from "#enums/ui-mode";
 import { MapModifier, MoneyInterestModifier } from "#modifiers/modifier";
 import { BattlePhase } from "#phases/battle-phase";
-import type { OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
+import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { applyChallenges } from "#utils/challenge-utils";
 import { BooleanHolder, getBiomeName, randSeedInt, randSeedItem } from "#utils/common";
 import { enumValueToKey } from "#utils/enums";
@@ -43,21 +44,8 @@ export class SelectBiomePhase extends BattlePhase {
         .filter(b => !Array.isArray(b) || !randSeedInt(b[1]))
         .map(b => (Array.isArray(b) ? b[0] : b));
 
-      if (biomes.length > 1 && globalScene.findModifier(m => m instanceof MapModifier)) {
-        const biomeSelectItems = biomes.map(b => {
-          return {
-            label: getBiomeName(b),
-            handler: () => {
-              globalScene.ui.setMode(UiMode.MESSAGE);
-              this.setNextBiomeAndEnd(b);
-              return true;
-            },
-          } satisfies OptionSelectItem as OptionSelectItem;
-        });
-        globalScene.ui.setMode(UiMode.OPTION_SELECT, {
-          options: biomeSelectItems,
-          delay: 1000,
-        });
+      if (biomes.length > 1 && this.shouldShowMapSelect()) {
+        this.showMapSelect(biomes);
       } else {
         this.setNextBiomeAndEnd(randSeedItem(biomes));
       }
@@ -85,6 +73,109 @@ export class SelectBiomePhase extends BattlePhase {
 
   private generateNextBiome(waveIndex: number): BiomeId {
     return waveIndex % 50 === 0 ? BiomeId.END : globalScene.generateRandomBiome(waveIndex);
+  }
+
+  private shouldShowMapSelect(): boolean {
+    if (!globalScene.twoPlayerMode) {
+      return !!globalScene.findModifier(m => m instanceof MapModifier);
+    }
+
+    return this.getMapPlayerIndexes().length > 0;
+  }
+
+  private getMapPlayerIndexes(): PlayerIndex[] {
+    return ([0, 1] as PlayerIndex[]).filter(playerIndex =>
+      globalScene.findModifierForPlayer(modifier => modifier instanceof MapModifier, playerIndex),
+    );
+  }
+
+  private showMapSelect(biomes: BiomeId[]): void {
+    if (!globalScene.twoPlayerMode) {
+      this.showMapSelectForPlayer(globalScene.activePlayerIndex, biomes, biome => {
+        globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.setNextBiomeAndEnd(biome));
+      });
+      return;
+    }
+
+    const mapPlayerIndexes = this.getMapPlayerIndexes();
+    if (mapPlayerIndexes.length === 1) {
+      this.showMapSelectForPlayer(mapPlayerIndexes[0], biomes, biome => {
+        globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.setNextBiomeAndEndForTwoPlayer(biome));
+      });
+      return;
+    }
+
+    this.showTwoPlayerMapVote(biomes);
+  }
+
+  private showTwoPlayerMapVote(biomes: BiomeId[]): void {
+    let firstPlayerBiome: BiomeId;
+
+    this.showMapSelectForPlayer(0, biomes, biome => {
+      firstPlayerBiome = biome;
+      globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+        this.showMapSelectForPlayer(
+          1,
+          biomes,
+          secondPlayerBiome => {
+            globalScene.ui
+              .setMode(UiMode.MESSAGE)
+              .then(() =>
+                this.setNextBiomeAndEndForTwoPlayer(this.resolveTwoPlayerMapVote(firstPlayerBiome, secondPlayerBiome)),
+              );
+          },
+          biomes.indexOf(firstPlayerBiome),
+        );
+      });
+    });
+  }
+
+  private resolveTwoPlayerMapVote(firstPlayerBiome: BiomeId, secondPlayerBiome: BiomeId): BiomeId {
+    if (firstPlayerBiome === secondPlayerBiome) {
+      return firstPlayerBiome;
+    }
+
+    const winningPlayerIndex = globalScene.twoPlayerMysteryDecisionPriority;
+    globalScene.twoPlayerMysteryDecisionPriority = winningPlayerIndex === 0 ? 1 : 0;
+    return winningPlayerIndex === 0 ? firstPlayerBiome : secondPlayerBiome;
+  }
+
+  private showMapSelectForPlayer(
+    playerIndex: PlayerIndex,
+    biomes: BiomeId[],
+    onSelect: (biome: BiomeId) => void,
+    startingCursorIndex = 0,
+  ): void {
+    const biomeSelectItems = biomes.map(b => {
+      return {
+        label: getBiomeName(b),
+        handler: () => {
+          onSelect(b);
+          return true;
+        },
+      } satisfies OptionSelectItem as OptionSelectItem;
+    });
+
+    const config: OptionSelectConfig = {
+      options: biomeSelectItems,
+      delay: 1000,
+      noCancel: true,
+    };
+
+    globalScene.waitForPlayerInput(playerIndex);
+    globalScene.ui.showText(`Player ${playerIndex + 1}, choose the next biome.`, null, () => {
+      globalScene.ui.setMode(UiMode.OPTION_SELECT, config).then(() => {
+        const handler = globalScene.ui.getHandler();
+        if ("setCursor" in handler && startingCursorIndex > 0) {
+          handler.setCursor(startingCursorIndex);
+        }
+      });
+    });
+  }
+
+  private setNextBiomeAndEndForTwoPlayer(nextBiome: BiomeId): void {
+    globalScene.waitForPlayerInput(0);
+    this.setNextBiomeAndEnd(nextBiome);
   }
 
   private setNextBiomeAndEnd(nextBiome: BiomeId): void {
