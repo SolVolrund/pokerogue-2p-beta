@@ -1,4 +1,5 @@
 import { audioManager } from "#app/global-audio-manager";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { PokeballType } from "#enums/pokeball";
 import { NumberHolder } from "#utils/common";
@@ -88,13 +89,18 @@ export function getPokeballTintColor(type: PokeballType): number {
  * @param modifiedCatchRate the modified catch rate as calculated in {@linkcode AttemptCapturePhase}
  * @returns the chance of getting a critical capture, out of 256
  */
-export function getCriticalCaptureChance(modifiedCatchRate: number): number {
+export function getCriticalCaptureChance(
+  modifiedCatchRate: number,
+  playerIndex: PlayerIndex = globalScene.activePlayerIndex,
+): number {
   if (globalScene.gameMode.isFreshStartChallenge()) {
     return 0;
   }
-  const dexCount = globalScene.gameData.getSpeciesCount(d => !!d.caughtAttr);
+  const dexCount = globalScene.getPlayerGameData(playerIndex).getSpeciesCount(d => !!d.caughtAttr);
   const catchingCharmMultiplier = new NumberHolder(1);
-  globalScene.findModifier(m => m.is("CriticalCatchChanceBoosterModifier"))?.apply(catchingCharmMultiplier);
+  globalScene
+    .findModifierForPlayer(m => m.is("CriticalCatchChanceBoosterModifier"), playerIndex)
+    ?.apply(catchingCharmMultiplier);
   const dexMultiplier =
     globalScene.gameMode.isDaily || dexCount > 800
       ? 2.5

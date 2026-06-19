@@ -3,7 +3,7 @@ import type { Ability } from "#abilities/ability";
 import { applyAbAttrs, applyOnGainAbAttrs, applyOnLoseAbAttrs } from "#abilities/apply-ab-attrs";
 import { generateMoveset } from "#app/ai/ai-moveset-gen";
 import type { Battle } from "#app/battle";
-import type { BattleScene } from "#app/battle-scene";
+import type { BattleScene, PlayerIndex } from "#app/battle-scene";
 import { EVOLVE_MOVE, PLAYER_PARTY_MAX_SIZE, RARE_CANDY_FRIENDSHIP_CAP, RELEARN_MOVE } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
@@ -103,7 +103,7 @@ import {
 } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
 import { SwitchType } from "#enums/switch-type";
-import type { TrainerSlot } from "#enums/trainer-slot";
+import { TrainerSlot } from "#enums/trainer-slot";
 import { UiMode } from "#enums/ui-mode";
 import { VolumeSetting } from "#enums/volume-setting";
 import { WeatherType } from "#enums/weather-type";
@@ -305,6 +305,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   public usedTMs: MoveId[];
 
   private shinySparkle: Phaser.GameObjects.Sprite;
+  private readonly encounterModifierPlayerIndex: PlayerIndex | undefined;
+  private readonly constructorHasTrainer: boolean | undefined;
 
   // TODO: Rework this eventually
   constructor(
@@ -320,9 +322,13 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     ivs?: number[],
     nature?: Nature,
     dataSource?: Pokemon | PokemonData,
+    encounterModifierPlayerIndex?: PlayerIndex,
+    constructorHasTrainer?: boolean,
   ) {
     super(globalScene, x, y);
 
+    this.encounterModifierPlayerIndex = encounterModifierPlayerIndex;
+    this.constructorHasTrainer = constructorHasTrainer;
     this.species = species;
     this.pokeball = dataSource?.pokeball || PokeballType.POKEBALL;
     this.level = level;
@@ -626,8 +632,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     const hiddenAbilityChance = new ValueHolder(BASE_HIDDEN_ABILITY_RATE);
     // Ability Charms should only affect wild Pokemon
     // TODO: move this `if` check into the ability charm code
-    if (!this.hasTrainer()) {
-      globalScene.applyModifiers(HiddenAbilityRateBoosterModifier, true, hiddenAbilityChance);
+    if (!(this.constructorHasTrainer ?? this.hasTrainer())) {
+      this.applyHiddenAbilityRateModifiers(hiddenAbilityChance);
     }
 
     // Neither RNG roll depends on the outcome of the other, so that Ability Charms do not affect RNG.
@@ -2964,6 +2970,26 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * @param thresholdOverride - number that is divided by 2^16 (65536) to get the shiny chance, overrides {@linkcode shinyThreshold} if set (bypassing shiny rate modifiers such as Shiny Charm)
    * @returns true if the Pokemon has been set as a shiny, false otherwise
    */
+  protected applyShinyRateModifiers(shinyThreshold: NumberHolder): void {
+    const playerIndex = this.encounterModifierPlayerIndex;
+    if (playerIndex !== undefined) {
+      globalScene.applyModifiersForPlayer(ShinyRateBoosterModifier, playerIndex, shinyThreshold);
+      return;
+    }
+
+    globalScene.applyModifiers(ShinyRateBoosterModifier, true, shinyThreshold);
+  }
+
+  protected applyHiddenAbilityRateModifiers(hiddenAbilityChance: NumberHolder): void {
+    const playerIndex = this.encounterModifierPlayerIndex;
+    if (playerIndex !== undefined) {
+      globalScene.applyModifiersForPlayer(HiddenAbilityRateBoosterModifier, playerIndex, hiddenAbilityChance);
+      return;
+    }
+
+    globalScene.applyModifiers(HiddenAbilityRateBoosterModifier, true, hiddenAbilityChance);
+  }
+
   trySetShiny(thresholdOverride?: number): boolean {
     // Shiny Pokemon should not spawn in the end biome in endless
     if (globalScene.gameMode.isEndless && globalScene.arena.biomeId === BiomeId.END) {
@@ -2989,7 +3015,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       }
       if (this.isPlayer() || !this.hasTrainer()) {
         // Apply shiny modifiers only to Player or wild mons
-        globalScene.applyModifiers(ShinyRateBoosterModifier, true, shinyThreshold);
+        this.applyShinyRateModifiers(shinyThreshold);
       }
     } else {
       shinyThreshold.value = thresholdOverride;
@@ -3028,7 +3054,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
         if (timedEventManager.isEventActive()) {
           shinyThreshold.value *= timedEventManager.getShinyEncounterMultiplier();
         }
-        globalScene.applyModifiers(ShinyRateBoosterModifier, true, shinyThreshold);
+        this.applyShinyRateModifiers(shinyThreshold);
       }
 
       if (maxThreshold && maxThreshold > 0) {
@@ -3105,7 +3131,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     }
 
     const hiddenAbilityChance = new ValueHolder(haThreshold);
-    globalScene.applyModifiers(HiddenAbilityRateBoosterModifier, true, hiddenAbilityChance);
+    this.applyHiddenAbilityRateModifiers(hiddenAbilityChance);
 
     if (!randSeedInt(hiddenAbilityChance.value)) {
       this.abilityIndex = 2;
@@ -3119,7 +3145,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   public generateFusionSpecies(forStarter?: boolean): void {
     const hiddenAbilityChance = new ValueHolder(BASE_HIDDEN_ABILITY_RATE);
     if (!this.hasTrainer()) {
-      globalScene.applyModifiers(HiddenAbilityRateBoosterModifier, true, hiddenAbilityChance);
+      this.applyHiddenAbilityRateModifiers(hiddenAbilityChance);
     }
 
     const hasHiddenAbility = !randSeedInt(hiddenAbilityChance.value);
@@ -6486,6 +6512,10 @@ export class EnemyPokemon extends Pokemon {
       undefined,
       dataSource ? dataSource.nature : undefined,
       dataSource,
+      globalScene.twoPlayerMode && trainerSlot === TrainerSlot.NONE
+        ? (((globalScene.currentBattle?.enemyParty.length ?? 0) % 2) as PlayerIndex)
+        : undefined,
+      trainerSlot !== TrainerSlot.NONE,
     );
 
     this.trainerSlot = trainerSlot;

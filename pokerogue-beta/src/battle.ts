@@ -1,4 +1,5 @@
 import type { GameMode } from "#app/game-mode";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { ArenaTagType } from "#enums/arena-tag-type";
 import { BattleType } from "#enums/battle-type";
@@ -18,6 +19,7 @@ import { Trainer } from "#field/trainer";
 import { MoneyMultiplierModifier, type PokemonHeldItemModifier } from "#modifiers/modifier";
 import type { CustomModifierSettings } from "#modifiers/modifier-type";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
+import { MoneyAchv } from "#system/achv";
 import { MusicPreference } from "#system/settings";
 import { trainerConfigs } from "#trainers/trainer-config";
 import type { NewBattleResolvedProps } from "#types/new-battle-props";
@@ -198,17 +200,28 @@ export class Battle {
   }
 
   pickUpScatteredMoney(): void {
-    const moneyAmount = new NumberHolder(globalScene.currentBattle.moneyScattered);
-    globalScene.applyModifiers(MoneyMultiplierModifier, true, moneyAmount);
+    const rewardPlayerIndexes = globalScene.twoPlayerMode
+      ? globalScene.getPlayerFieldOwners()
+      : ([globalScene.activePlayerIndex] as PlayerIndex[]);
+    const payouts = rewardPlayerIndexes.map(playerIndex => {
+      const moneyAmount = new NumberHolder(globalScene.currentBattle.moneyScattered);
+      globalScene.applyModifiersForPlayer(MoneyMultiplierModifier, playerIndex, moneyAmount);
 
-    if (globalScene.arena.getTag(ArenaTagType.HAPPY_HOUR)) {
-      moneyAmount.value *= 2;
+      if (globalScene.arena.getTag(ArenaTagType.HAPPY_HOUR)) {
+        moneyAmount.value *= 2;
+      }
+
+      globalScene.addMoneyForPlayer(moneyAmount.value, playerIndex, !globalScene.twoPlayerMode);
+      return moneyAmount.value;
+    });
+
+    if (globalScene.twoPlayerMode) {
+      globalScene.updateMoneyText();
+      globalScene.validateAchvs(MoneyAchv);
     }
 
-    globalScene.addMoney(moneyAmount.value);
-
     const userLocale = navigator.language || "en-US";
-    const formattedMoneyAmount = moneyAmount.value.toLocaleString(userLocale);
+    const formattedMoneyAmount = Math.min(...payouts).toLocaleString(userLocale);
     const message = i18next.t("battle:moneyPickedUp", {
       moneyAmount: formattedMoneyAmount,
     });

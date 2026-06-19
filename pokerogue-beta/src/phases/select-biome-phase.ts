@@ -184,7 +184,13 @@ export class SelectBiomePhase extends BattlePhase {
     const nextWaveIndex = currentWaveIndex + 1;
 
     if (nextWaveIndex % 10 === 1) {
-      globalScene.applyModifiers(MoneyInterestModifier, true);
+      if (globalScene.twoPlayerMode) {
+        ([0, 1] as PlayerIndex[]).forEach(playerIndex => {
+          globalScene.applyModifierForPlayer(MoneyInterestModifier, playerIndex, playerIndex);
+        });
+      } else {
+        globalScene.applyModifiers(MoneyInterestModifier, true);
+      }
       const healStatus = new BooleanHolder(true);
       applyChallenges(ChallengeType.PARTY_HEAL, healStatus);
       if (healStatus.value) {

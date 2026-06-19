@@ -326,9 +326,16 @@ async function summonTwoPlayerSafariPokemonPair(): Promise<void> {
   globalScene.phaseManager.unshiftNew("SummonPhase", 0, false);
   globalScene.phaseManager.unshiftNew("PostSummonPhase", BattlerIndex.ENEMY);
 
-  const ivScannerModifier = globalScene.findModifier(m => m instanceof IvScannerModifier);
-  if (ivScannerModifier) {
+  const leftIvScannerModifier = globalScene.twoPlayerMode
+    ? globalScene.findModifierForPlayer(m => m instanceof IvScannerModifier, 0)
+    : globalScene.findModifier(m => m instanceof IvScannerModifier);
+  if (leftIvScannerModifier) {
     globalScene.phaseManager.pushNew("ScanIvsPhase", leftPokemon.getBattlerIndex());
+  }
+  const rightIvScannerModifier = globalScene.twoPlayerMode
+    ? globalScene.findModifierForPlayer(m => m instanceof IvScannerModifier, 1)
+    : globalScene.findModifier(m => m instanceof IvScannerModifier);
+  if (rightIvScannerModifier) {
     globalScene.phaseManager.pushNew("ScanIvsPhase", rightPokemon.getBattlerIndex());
   }
 }
@@ -762,7 +769,9 @@ async function summonSafariPokemon() {
   // shows up and the IV scanner breaks. For now, we place the IV scanner code
   // separately so that at least the IV scanner works.
 
-  const ivScannerModifier = globalScene.findModifier(m => m instanceof IvScannerModifier);
+  const ivScannerModifier = globalScene.twoPlayerMode
+    ? globalScene.findModifierForPlayer(m => m instanceof IvScannerModifier, globalScene.activePlayerIndex)
+    : globalScene.findModifier(m => m instanceof IvScannerModifier);
   if (ivScannerModifier) {
     globalScene.phaseManager.pushNew("ScanIvsPhase", pokemon.getBattlerIndex());
   }

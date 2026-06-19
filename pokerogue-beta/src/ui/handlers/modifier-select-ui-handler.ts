@@ -1,4 +1,5 @@
 import { audioManager } from "#app/global-audio-manager";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { activeOverrides } from "#app/overrides";
 import { handleTutorial, Tutorial } from "#app/tutorial";
@@ -186,11 +187,18 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     this.getUi().clearText();
 
     this.player = args[0];
+    const playerIndex = (args[5] ?? globalScene.activePlayerIndex) as PlayerIndex;
 
     const partyHasHeldItem =
       this.player
-      && globalScene.findModifiers(m => m instanceof PokemonHeldItemModifier && m.isTransferable).length > 0;
-    const canLockRarities = !!globalScene.findModifier(m => m instanceof LockModifierTiersModifier);
+      && globalScene.findModifiersForPlayer(
+        m => m instanceof PokemonHeldItemModifier && m.isTransferable,
+        playerIndex,
+      ).length > 0;
+    const canLockRarities = !!globalScene.findModifierForPlayer(
+      m => m instanceof LockModifierTiersModifier,
+      playerIndex,
+    );
     const canTrade = !!args[4];
 
     this.transferButtonContainer.setVisible(false);
@@ -220,7 +228,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     const typeOptions = args[1] as ModifierTypeOption[];
     const hasShop = globalScene.gameMode.getShopStatus();
     const baseShopCost = new NumberHolder(globalScene.getWaveMoneyAmount(1));
-    globalScene.applyModifier(HealShopCostModifier, true, baseShopCost);
+    globalScene.applyModifierForPlayer(HealShopCostModifier, playerIndex, baseShopCost);
     const shopTypeOptions = hasShop
       ? getPlayerShopModifierTypeOptionsForWave(globalScene.currentBattle.waveIndex, baseShopCost.value)
       : [];

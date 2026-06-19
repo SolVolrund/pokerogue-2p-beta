@@ -3391,7 +3391,7 @@ export class EatBerryAttr extends MoveEffectAttr {
     this.chosenBerry = heldBerries[user.randBattleSeedInt(heldBerries.length)];
     const preserve = new BooleanHolder(false);
     // check for berry pouch preservation
-    globalScene.applyModifiers(PreserveBerryModifier, pokemon.isPlayer(), pokemon, preserve);
+    globalScene.applyModifiersForPokemon(PreserveBerryModifier, pokemon, pokemon, preserve);
     if (!preserve.value) {
       this.reduceBerryModifier(pokemon);
     }

@@ -10,6 +10,7 @@ import {
   ExtraModifierModifier,
   HealShopCostModifier,
   LinkingCordGoldModifier,
+  LockModifierTiersModifier,
   PokemonHeldItemModifier,
   TempExtraModifierModifier,
 } from "#modifiers/modifier";
@@ -210,7 +211,7 @@ export class SelectModifierPhase extends BattlePhase {
 
   // Reroll rewards
   private rerollModifiers() {
-    const rerollCost = this.getRerollCost(globalScene.lockModifierTiers);
+    const rerollCost = this.getRerollCost(this.shouldLockRarities());
     if (rerollCost < 0 || globalScene.getPlayerMoney(this.playerIndex) < rerollCost) {
       globalScene.ui.playError();
       return false;
@@ -413,7 +414,12 @@ export class SelectModifierPhase extends BattlePhase {
 
   // Toggle reroll lock
   private toggleRerollLock() {
-    const rerollCost = this.getRerollCost(globalScene.lockModifierTiers);
+    if (!this.hasLockCapsule()) {
+      globalScene.ui.playError();
+      return false;
+    }
+
+    const rerollCost = this.getRerollCost(this.shouldLockRarities());
     if (rerollCost < 0) {
       // Reroll lock button is also disabled when reroll is disabled
       globalScene.ui.playError();
@@ -421,7 +427,7 @@ export class SelectModifierPhase extends BattlePhase {
     }
     globalScene.lockModifierTiers = !globalScene.lockModifierTiers;
     const uiHandler = globalScene.ui.getHandler() as ModifierSelectUiHandler;
-    uiHandler.setRerollCost(this.getRerollCost(globalScene.lockModifierTiers));
+    uiHandler.setRerollCost(this.getRerollCost(this.shouldLockRarities()));
     uiHandler.updateLockRaritiesText();
     uiHandler.updateRerollCostText();
     return false;
@@ -573,8 +579,9 @@ export class SelectModifierPhase extends BattlePhase {
       this.isPlayer(),
       this.typeOptions,
       modifierSelectCallback,
-      this.getRerollCost(globalScene.lockModifierTiers),
+      this.getRerollCost(this.shouldLockRarities()),
       globalScene.twoPlayerMode && this.hasLinkingCordGold(this.playerIndex),
+      this.playerIndex,
     );
   }
 
@@ -635,9 +642,17 @@ export class SelectModifierPhase extends BattlePhase {
     return getPlayerModifierTypeOptions(
       modifierCount,
       globalScene.getPlayerParty(this.playerIndex),
-      globalScene.lockModifierTiers ? this.modifierTiers : undefined,
+      this.shouldLockRarities() ? this.modifierTiers : undefined,
       this.customModifierSettings,
     );
+  }
+
+  private hasLockCapsule(): boolean {
+    return !!globalScene.findModifierForPlayer(m => m instanceof LockModifierTiersModifier, this.playerIndex);
+  }
+
+  private shouldLockRarities(): boolean {
+    return globalScene.lockModifierTiers && this.hasLockCapsule();
   }
 
   copy(): SelectModifierPhase {

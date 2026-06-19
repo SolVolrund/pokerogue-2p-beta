@@ -76,7 +76,7 @@ export class AttemptCapturePhase extends PokemonPhase {
       (((_3m - _2h) * catchRate * pokeballMultiplier) / _3m) * statusMultiplier * shinyMultiplier,
     );
     const shakeProbability = Math.round(65536 / Math.pow(255 / modifiedCatchRate, 0.1875)); // Formula taken from gen 6
-    const criticalCaptureChance = getCriticalCaptureChance(modifiedCatchRate);
+    const criticalCaptureChance = getCriticalCaptureChance(modifiedCatchRate, this.playerIndex);
 
     if ((isBeta || isDev) && !IS_TEST) {
       console.log(

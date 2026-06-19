@@ -1850,7 +1850,7 @@ export class BerryModifier extends PokemonHeldItemModifier {
    */
   override apply(pokemon: Pokemon): boolean {
     const preserve = new BooleanHolder(false);
-    globalScene.applyModifiers(PreserveBerryModifier, pokemon.isPlayer(), pokemon, preserve);
+    globalScene.applyModifiersForPokemon(PreserveBerryModifier, pokemon, pokemon, preserve);
     this.consumed = !preserve.value;
 
     // munch the berry and trigger unburden-like effects
@@ -2954,10 +2954,16 @@ export class DamageMoneyRewardModifier extends PokemonHeldItemModifier {
    * @param multiplier {@linkcode NumberHolder} holding the multiplier value
    * @returns always `true`
    */
-  override apply(_pokemon: Pokemon, multiplier: NumberHolder): boolean {
+  override apply(pokemon: Pokemon, multiplier: NumberHolder): boolean {
     const moneyAmount = new NumberHolder(Math.floor(multiplier.value * (0.5 * this.getStackCount())));
-    globalScene.applyModifiers(MoneyMultiplierModifier, true, moneyAmount);
-    globalScene.addMoney(moneyAmount.value);
+    const playerIndex = pokemon.isPlayer() ? globalScene.getPlayerIndexForPokemon(pokemon) : undefined;
+    if (playerIndex !== undefined) {
+      globalScene.applyModifiersForPlayer(MoneyMultiplierModifier, playerIndex, moneyAmount);
+      globalScene.addMoneyForPlayer(moneyAmount.value, playerIndex);
+    } else {
+      globalScene.applyModifiers(MoneyMultiplierModifier, true, moneyAmount);
+      globalScene.addMoney(moneyAmount.value);
+    }
 
     return true;
   }
@@ -2976,9 +2982,9 @@ export class MoneyInterestModifier extends PersistentModifier {
    * Applies {@linkcode MoneyInterestModifier}
    * @returns always `true`
    */
-  override apply(): boolean {
-    const interestAmount = Math.floor(globalScene.money * 0.1 * this.getStackCount());
-    globalScene.addMoney(interestAmount);
+  override apply(playerIndex = globalScene.activePlayerIndex): boolean {
+    const interestAmount = Math.floor(globalScene.getPlayerMoney(playerIndex) * 0.1 * this.getStackCount());
+    globalScene.addMoneyForPlayer(interestAmount, playerIndex);
 
     const userLocale = navigator.language || "en-US";
     const formattedMoneyAmount = interestAmount.toLocaleString(userLocale);

@@ -1,4 +1,5 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
+import type { PlayerIndex } from "#app/battle-scene";
 import { PLAYER_PARTY_MAX_SIZE, WEIGHT_INCREMENT_ON_SPAWN_MISS } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
@@ -556,10 +557,14 @@ export class EncounterPhase extends BattlePhase {
     });
 
     if (![BattleType.TRAINER, BattleType.MYSTERY_ENCOUNTER].includes(globalScene.currentBattle.battleType)) {
-      const ivScannerModifier = globalScene.findModifier(m => m instanceof IvScannerModifier);
-      if (ivScannerModifier) {
-        enemyField.map(p => globalScene.phaseManager.pushNew("ScanIvsPhase", p.getBattlerIndex()));
-      }
+      enemyField.forEach((pokemon, index) => {
+        const ivScannerModifier = globalScene.twoPlayerMode
+          ? globalScene.findModifierForPlayer(m => m instanceof IvScannerModifier, (index % 2) as PlayerIndex)
+          : globalScene.findModifier(m => m instanceof IvScannerModifier);
+        if (ivScannerModifier) {
+          globalScene.phaseManager.pushNew("ScanIvsPhase", pokemon.getBattlerIndex());
+        }
+      });
     }
 
     if (!this.loaded) {

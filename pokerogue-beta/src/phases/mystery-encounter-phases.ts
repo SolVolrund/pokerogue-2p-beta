@@ -492,10 +492,14 @@ export class MysteryEncounterBattlePhase extends Phase {
     // PostSummon and ShinySparkle phases are handled by SummonPhase
 
     if (encounterMode !== MysteryEncounterMode.TRAINER_BATTLE) {
-      const ivScannerModifier = globalScene.findModifier(m => m instanceof IvScannerModifier);
-      if (ivScannerModifier) {
-        enemyField.map(p => globalScene.phaseManager.pushNew("ScanIvsPhase", p.getBattlerIndex()));
-      }
+      enemyField.forEach((pokemon, index) => {
+        const ivScannerModifier = globalScene.twoPlayerMode
+          ? globalScene.findModifierForPlayer(m => m instanceof IvScannerModifier, (index % 2) as PlayerIndex)
+          : globalScene.findModifier(m => m instanceof IvScannerModifier);
+        if (ivScannerModifier) {
+          globalScene.phaseManager.pushNew("ScanIvsPhase", pokemon.getBattlerIndex());
+        }
+      });
     }
 
     const playerFieldOwners = globalScene.getPlayerFieldOwners();
