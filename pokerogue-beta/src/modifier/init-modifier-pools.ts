@@ -616,6 +616,7 @@ function initMasterModifierPool() {
   modifierPool[ModifierTier.MASTER] = [
     new WeightedModifierType(modifierTypes.MASTER_BALL, () => (hasMaximumBalls(PokeballType.MASTER_BALL) ? 0 : 24), 24),
     new WeightedModifierType(modifierTypes.SHINY_CHARM, 14),
+    new WeightedModifierType(modifierTypes.SHINY_BADGE, 0),
     new WeightedModifierType(modifierTypes.HEALING_CHARM, 18),
     new WeightedModifierType(modifierTypes.MULTI_LENS, 18),
     new WeightedModifierType(

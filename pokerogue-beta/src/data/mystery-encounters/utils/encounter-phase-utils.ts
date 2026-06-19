@@ -152,6 +152,8 @@ export interface EnemyPartyConfig {
   forceDoubleBattle?: boolean;
   /** `true` or leaving undefined will increment dex seen count for the encounter battle, `false` will not */
   countAsSeen?: boolean;
+  /** Allows mystery encounter battles that intentionally have no enemy-side Pokemon. */
+  allowEmptyEnemyParty?: boolean;
 }
 
 /**
@@ -218,7 +220,9 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
     // Wild
     globalScene.currentBattle.mysteryEncounter!.encounterMode = MysteryEncounterMode.WILD_BATTLE;
     const numEnemies =
-      partyConfig?.pokemonConfigs && partyConfig.pokemonConfigs.length > 0
+      partyConfig.allowEmptyEnemyParty && partyConfig?.pokemonConfigs?.length === 0
+        ? 0
+        : partyConfig?.pokemonConfigs && partyConfig.pokemonConfigs.length > 0
         ? partyConfig?.pokemonConfigs?.length
         : doubleBattle
           ? 2

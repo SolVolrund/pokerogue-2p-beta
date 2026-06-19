@@ -31,4 +31,5 @@ export enum MysteryEncounterType {
   GLOBAL_TRADE_SYSTEM,
   GTS_MALFUNCTION,
   THE_EXPERT_POKEMON_BREEDER,
+  SHINY_BADGE,
 }

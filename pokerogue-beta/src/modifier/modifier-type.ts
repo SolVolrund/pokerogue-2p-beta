@@ -100,6 +100,7 @@ import {
   RememberMoveModifier,
   ResetNegativeStatStageModifier,
   ShinyRateBoosterModifier,
+  ShinyBadgeModifier,
   SpeciesCritBoosterModifier,
   SpeciesStatBoosterModifier,
   SurviveDamageModifier,
@@ -2184,6 +2185,12 @@ const modifierTypeInitObj = Object.freeze({
       "modifierType:ModifierType.SHINY_CHARM",
       "shiny_charm",
       (type, _args) => new ShinyRateBoosterModifier(type),
+    ),
+  SHINY_BADGE: () =>
+    new PokemonHeldItemModifierType(
+      "modifierType:ModifierType.SHINY_BADGE",
+      "shiny_badge",
+      (type, args) => new ShinyBadgeModifier(type, (args[0] as Pokemon).id),
     ),
   ABILITY_CHARM: () =>
     new ModifierType(

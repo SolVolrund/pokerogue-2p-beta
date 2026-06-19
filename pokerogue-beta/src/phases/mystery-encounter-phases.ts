@@ -400,10 +400,12 @@ export class MysteryEncounterBattlePhase extends Phase {
       ? i18next.t("battle:singleWildAppeared", {
           pokemonName: enemyField[0].name,
         })
-      : i18next.t("battle:multiWildAppeared", {
+      : enemyField.length > 1
+      ? i18next.t("battle:multiWildAppeared", {
           pokemonName1: enemyField[0].name,
           pokemonName2: enemyField[1].name,
-        });
+        })
+      : "";
   }
 
   /**
@@ -417,12 +419,14 @@ export class MysteryEncounterBattlePhase extends Phase {
         audioManager.playBgm();
       }
       const availablePartyMembers = globalScene.getEnemyParty().filter(p => !p.isFainted()).length;
-      globalScene.phaseManager.unshiftNew("SummonPhase", 0, false);
+      if (availablePartyMembers > 0) {
+        globalScene.phaseManager.unshiftNew("SummonPhase", 0, false);
+      }
       if (globalScene.currentBattle.double && availablePartyMembers > 1) {
         globalScene.phaseManager.unshiftNew("SummonPhase", 1, false);
       }
 
-      if (globalScene.currentBattle.mysteryEncounter?.hideBattleIntroMessage) {
+      if (globalScene.currentBattle.mysteryEncounter?.hideBattleIntroMessage || availablePartyMembers === 0) {
         this.endBattleSetup();
       } else {
         globalScene.ui.showText(this.getBattleMessage(), null, () => this.endBattleSetup(), 0);

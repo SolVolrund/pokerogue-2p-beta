@@ -42,6 +42,7 @@ import type {
 } from "#modifiers/modifier-type";
 import type { VoucherType } from "#system/voucher";
 import type { ModifierInstanceMap, ModifierString } from "#types/modifier-types";
+import { addModifierIconSprite } from "#ui/modifier-icon";
 import { addTextObject } from "#ui/text";
 import { hslToHex } from "#utils/color-utils";
 import { BooleanHolder, NumberHolder, randSeedFloat, toDmgValue } from "#utils/common";
@@ -249,8 +250,7 @@ export abstract class PersistentModifier extends Modifier {
   getIcon(_forSummary?: boolean): Phaser.GameObjects.Container {
     const container = globalScene.add.container(0, 0);
 
-    const item = globalScene.add.sprite(0, 12, "items");
-    item.setFrame(this.type.iconImage);
+    const item = addModifierIconSprite(0, 12, this.type.iconImage);
     item.setOrigin(0, 0.5);
     container.add(item);
 
@@ -728,10 +728,9 @@ export abstract class PokemonHeldItemModifier extends PersistentModifier {
         container.setName(pokemon.id.toString());
       }
 
-      const item = globalScene.add.sprite(16, this.virtualStackCount ? 8 : 16, "items");
+      const item = addModifierIconSprite(16, this.virtualStackCount ? 8 : 16, this.type.iconImage);
       item.setScale(0.5);
       item.setOrigin(0, 0.5);
-      item.setTexture("items", this.type.iconImage);
       container.add(item);
 
       const stackText = this.getIconStackText();
@@ -2654,6 +2653,24 @@ export class PokemonFriendshipBoosterModifier extends PokemonHeldItemModifier {
   }
 }
 
+export class ShinyBadgeModifier extends PokemonHeldItemModifier {
+  matchType(modifier: Modifier): boolean {
+    return modifier instanceof ShinyBadgeModifier;
+  }
+
+  clone(): PersistentModifier {
+    return new ShinyBadgeModifier(this.type, this.pokemonId, this.stackCount);
+  }
+
+  override apply(_pokemon: Pokemon): boolean {
+    return true;
+  }
+
+  getMaxHeldItemCount(_pokemon?: Pokemon): number {
+    return 1;
+  }
+}
+
 export class PokemonNatureWeightModifier extends PokemonHeldItemModifier {
   matchType(modifier: Modifier): boolean {
     return modifier instanceof PokemonNatureWeightModifier;
@@ -3907,6 +3924,7 @@ const ModifierClassMap = Object.freeze({
   ExpShareModifier,
   ExpBalanceModifier,
   PokemonFriendshipBoosterModifier,
+  ShinyBadgeModifier,
   PokemonNatureWeightModifier,
   PokemonMoveAccuracyBoosterModifier,
   PokemonMultiHitModifier,

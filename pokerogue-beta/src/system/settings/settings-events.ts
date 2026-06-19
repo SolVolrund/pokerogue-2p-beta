@@ -49,6 +49,7 @@ const EVENT_TITLE_KEYS: Record<MysteryEncounterType, string> = {
   [MysteryEncounterType.GLOBAL_TRADE_SYSTEM]: "mysteryEncounters/globalTradeSystem:title",
   [MysteryEncounterType.GTS_MALFUNCTION]: "mysteryEncounters/gtsMalfunction:title",
   [MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER]: "mysteryEncounters/theExpertPokemonBreeder:title",
+  [MysteryEncounterType.SHINY_BADGE]: "mysteryEncounters/shinyBadge:title",
 };
 
 export function getMysteryEncounterSettingKey(encounterType: MysteryEncounterType): string {
@@ -60,9 +61,10 @@ export function getMysteryEncounterEventSettings(): Setting[] {
     .filter((value): value is MysteryEncounterType => typeof value === "number")
     .map(encounterType => ({
       key: getMysteryEncounterSettingKey(encounterType),
-      label: encounterType === MysteryEncounterType.SLUMBERING_SNORLAX
-        ? "Slumbering Snorlax"
-        : i18next.t(EVENT_TITLE_KEYS[encounterType]),
+      label:
+        encounterType === MysteryEncounterType.SLUMBERING_SNORLAX
+          ? "Slumbering Snorlax"
+          : i18next.t(EVENT_TITLE_KEYS[encounterType]),
       options: EVENT_SETTING_OPTIONS,
       default: 1,
       type: SettingType.EVENTS,

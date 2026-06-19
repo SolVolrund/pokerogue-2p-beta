@@ -122,6 +122,7 @@ import {
   PokemonIncrementingStatModifier,
   PokemonMultiHitModifier,
   PokemonNatureWeightModifier,
+  ShinyBadgeModifier,
   ShinyRateBoosterModifier,
   StatBoosterModifier,
   SurviveDamageModifier,
@@ -955,8 +956,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     return this.getSpeciesForm(ignoreOverride, true).getSpriteId(
       this.getGender(ignoreOverride, true) === Gender.FEMALE,
       formIndex,
-      this.shiny,
-      this.variant,
+      this.isBaseShiny(true),
+      this.getBaseVariant(true),
     );
   }
 
@@ -970,8 +971,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     return this.getSpeciesForm(ignoreOverride, true).getSpriteId(
       this.getGender(ignoreOverride, true) === Gender.FEMALE,
       formIndex,
-      this.shiny,
-      this.variant,
+      this.isBaseShiny(true),
+      this.getBaseVariant(true),
       back,
     );
   }
@@ -1025,11 +1026,11 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
   getIconAtlasKey(ignoreOverride = false, useIllusion = true): string {
     const illusion = this.summonData.illusion;
-    const { formIndex, variant } = useIllusion && illusion ? illusion : this;
+    const formIndex = useIllusion && illusion ? illusion.formIndex : this.formIndex;
     return this.getSpeciesForm(ignoreOverride, useIllusion).getIconAtlasKey(
       formIndex,
       this.isBaseShiny(useIllusion),
-      variant,
+      this.getBaseVariant(useIllusion),
     );
   }
 
@@ -1045,12 +1046,12 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
   getIconId(ignoreOverride?: boolean, useIllusion = false): string {
     const illusion = this.summonData.illusion;
-    const { formIndex, variant } = useIllusion && illusion ? illusion : this;
+    const formIndex = useIllusion && illusion ? illusion.formIndex : this.formIndex;
     return this.getSpeciesForm(ignoreOverride, useIllusion).getIconId(
       this.getGender(ignoreOverride, useIllusion) === Gender.FEMALE,
       formIndex,
-      this.isBaseShiny(),
-      variant,
+      this.isBaseShiny(useIllusion),
+      this.getBaseVariant(useIllusion),
     );
   }
 
@@ -1744,7 +1745,22 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * @returns Whether the pokemon is shiny
    */
   isBaseShiny(useIllusion = false) {
-    return useIllusion ? (this.summonData.illusion?.shiny ?? this.shiny) : this.shiny;
+    if (useIllusion && this.summonData.illusion) {
+      return this.summonData.illusion.shiny;
+    }
+    return this.shiny || this.hasShinyBadgeVisualOverride();
+  }
+
+  private hasShinyBadgeVisualOverride(): boolean {
+    if (!this.isPlayer() || this.shiny || !globalScene) {
+      return false;
+    }
+
+    const playerIndex = globalScene.getPlayerIndexForPokemon(this) ?? this.encounterModifierPlayerIndex ?? 0;
+    return !!globalScene.findModifierForPlayer(
+      modifier => modifier instanceof ShinyBadgeModifier && modifier.pokemonId === this.id,
+      playerIndex,
+    );
   }
 
   /**
@@ -1777,7 +1793,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    */
   getVariant(useIllusion = false): Variant {
     const illusion = this.summonData.illusion;
-    const baseVariant = useIllusion ? (illusion?.variant ?? this.variant) : this.variant;
+    const baseVariant = this.getBaseVariant(useIllusion);
     if (!this.isFusion(useIllusion)) {
       return baseVariant;
     }
@@ -1792,7 +1808,10 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    */
   getBaseVariant(useIllusion = false): Variant {
     const illusion = this.summonData.illusion;
-    return useIllusion && illusion ? (illusion.variant ?? this.variant) : this.variant;
+    if (useIllusion && illusion) {
+      return illusion.variant ?? this.variant;
+    }
+    return !this.shiny && this.hasShinyBadgeVisualOverride() ? (0 as Variant) : this.variant;
   }
 
   /**

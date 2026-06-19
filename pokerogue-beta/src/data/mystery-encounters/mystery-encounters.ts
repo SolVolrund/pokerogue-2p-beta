@@ -23,6 +23,7 @@ import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { PartTimerEncounter } from "#mystery-encounters/part-timer-encounter";
 import { SafariZoneEncounter } from "#mystery-encounters/safari-zone-encounter";
 import { ShadyVitaminDealerEncounter } from "#mystery-encounters/shady-vitamin-dealer-encounter";
+import { ShinyBadgeEncounter } from "#mystery-encounters/shiny-badge-encounter";
 import { SlumberingSnorlaxEncounter } from "#mystery-encounters/slumbering-snorlax-encounter";
 import { TeleportingHijinksEncounter } from "#mystery-encounters/teleporting-hijinks-encounter";
 import { TheExpertPokemonBreederEncounter } from "#mystery-encounters/the-expert-pokemon-breeder-encounter";
@@ -181,6 +182,7 @@ const anyBiomeEncounters: MysteryEncounterType[] = [
   MysteryEncounterType.BUG_TYPE_SUPERFAN,
   MysteryEncounterType.UNCOMMON_BREED,
   MysteryEncounterType.GTS_MALFUNCTION,
+  MysteryEncounterType.SHINY_BADGE,
 ];
 
 /**
@@ -260,6 +262,7 @@ export function initMysteryEncounters() {
   allMysteryEncounters[MysteryEncounterType.GLOBAL_TRADE_SYSTEM] = GlobalTradeSystemEncounter;
   allMysteryEncounters[MysteryEncounterType.GTS_MALFUNCTION] = GtsMalfunctionEncounter;
   allMysteryEncounters[MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER] = TheExpertPokemonBreederEncounter;
+  allMysteryEncounters[MysteryEncounterType.SHINY_BADGE] = ShinyBadgeEncounter;
 
   // Add extreme encounters to biome map
   extremeBiomeEncounters.forEach(encounter => {

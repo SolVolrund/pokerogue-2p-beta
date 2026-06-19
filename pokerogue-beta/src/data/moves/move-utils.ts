@@ -1,3 +1,4 @@
+import { globalScene } from "#app/global-scene";
 import { allMoves } from "#data/data-lists";
 import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
@@ -63,6 +64,7 @@ export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: Move
   let set: Pokemon[] = [];
   let multiple = false;
   const ally: Pokemon | undefined = user.getAlly();
+  const duelTargets = getShinyBadgeDuelTargets(user, ally);
   switch (moveTarget) {
     case MoveTarget.USER:
     case MoveTarget.PARTY:
@@ -88,11 +90,11 @@ export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: Move
     case MoveTarget.ALL_NEAR_ENEMIES:
     case MoveTarget.ALL_ENEMIES:
     case MoveTarget.ENEMY_SIDE:
-      set = opponents;
+      set = duelTargets ?? opponents;
       multiple = moveTarget !== MoveTarget.NEAR_ENEMY;
       break;
     case MoveTarget.RANDOM_NEAR_ENEMY:
-      set = [opponents[user.randBattleSeedInt(opponents.length)]];
+      set = duelTargets ?? [opponents[user.randBattleSeedInt(opponents.length)]];
       break;
     case MoveTarget.ATTACKER:
       // TODO: Remove MoveTarget.ATTACKER and BattlerIndex.ATTACKER
@@ -121,6 +123,14 @@ export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: Move
       .filter(t => t !== undefined),
     multiple,
   };
+}
+
+function getShinyBadgeDuelTargets(user: Pokemon, ally?: Pokemon): Pokemon[] | undefined {
+  if (!user.isPlayer() || !globalScene.currentBattle?.mysteryEncounter?.misc?.shinyBadgeDuelActive || !ally) {
+    return;
+  }
+
+  return [ally];
 }
 
 export const frenzyMissFunc: UserMoveConditionFunc = (user: Pokemon, move: Move) => {

@@ -4,6 +4,7 @@ import { getSpriteKeysFromSpecies } from "#mystery-encounters/encounter-pokemon-
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { loadPokemonVariantAssets } from "#sprites/pokemon-sprite";
 import type { Variant } from "#sprites/variant";
+import { addModifierIconSprite } from "#ui/modifier-icon";
 import type { GameObjects } from "phaser";
 
 type PlayAnimationConfig = Phaser.Types.Animations.PlayAnimationConfig;
@@ -121,7 +122,7 @@ export class MysteryEncounterIntroVisuals extends Phaser.GameObjects.Container {
     };
 
     const getItemSprite = (spriteKey: string, hasShadow?: boolean, yShadow?: number) => {
-      const icon = globalScene.add.sprite(-19, 2, "items", spriteKey);
+      const icon = addModifierIconSprite(-19, 2, spriteKey);
       icon.setOrigin(0.5, 1);
       icon.setPipeline(globalScene.spritePipeline, {
         tone: [0.0, 0.0, 0.0, 0.0],

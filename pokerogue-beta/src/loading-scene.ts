@@ -84,6 +84,7 @@ export class LoadingScene extends SceneBase {
       .loadImage("shiny_star_small", "ui", "shiny_small.png")
       .loadImage("shiny_star_small_1", "ui", "shiny_small_1.png")
       .loadImage("shiny_star_small_2", "ui", "shiny_small_2.png")
+      .loadImage("shiny_badge", "items")
       .loadImage("favorite", "ui", "favorite.png")
       .loadImage("passive_bg", "ui", "passive_bg.png")
       .loadAtlas("shiny_icons", "ui")

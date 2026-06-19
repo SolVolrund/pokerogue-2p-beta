@@ -1,5 +1,5 @@
-import { audioManager } from "#app/global-audio-manager";
 import type { PlayerIndex } from "#app/battle-scene";
+import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { activeOverrides } from "#app/overrides";
 import { handleTutorial, Tutorial } from "#app/tutorial";
@@ -15,6 +15,7 @@ import type { ModifierTypeOption } from "#modifiers/modifier-type";
 import { getPlayerShopModifierTypeOptionsForWave, TmModifierType } from "#modifiers/modifier-type";
 import type { ModifierSelectCallback } from "#phases/select-modifier-phase";
 import { AwaitableUiHandler } from "#ui/awaitable-ui-handler";
+import { addModifierIconSprite } from "#ui/modifier-icon";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
 import { addTextObject, getModifierTierTextTint, getTextColor } from "#ui/text";
 import { formatMoney, NumberHolder } from "#utils/common";
@@ -852,7 +853,7 @@ class ModifierOption extends Phaser.GameObjects.Container {
     this.add(this.itemContainer);
 
     const getItem = () => {
-      const item = globalScene.add.sprite(0, 0, "items", this.modifierTypeOption.type?.iconImage);
+      const item = addModifierIconSprite(0, 0, this.modifierTypeOption.type?.iconImage!);
       return item;
     };
 

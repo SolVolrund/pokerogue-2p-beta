@@ -25,7 +25,6 @@ import { getPokemonSpecies } from "#utils/pokemon-utils";
 /** i18n namespace for the encounter */
 const namespace = "mysteryEncounters/gtsMalfunction";
 
-const GTS_MALFUNCTION_FORCED_TEST_WAVE: number | null = 2;
 const GTS_MALFUNCTION_SEED_OFFSET = 81237;
 
 type GtsPokemonPair = readonly [SpeciesId, SpeciesId];
@@ -112,10 +111,6 @@ function getGtsModsTeamSize(wave: number): number {
 }
 
 function getGtsMalfunctionTargetWave(): number {
-  if (GTS_MALFUNCTION_FORCED_TEST_WAVE != null) {
-    return GTS_MALFUNCTION_FORCED_TEST_WAVE;
-  }
-
   let targetWave = 10;
 
   globalScene.executeWithSeedOffset(() => {
@@ -342,7 +337,7 @@ export const GtsMalfunctionEncounter: MysteryEncounter = MysteryEncounterBuilder
   MysteryEncounterType.GTS_MALFUNCTION,
 )
   .withEncounterTier(MysteryEncounterTier.ROGUE)
-  .withSceneWaveRangeRequirement(GTS_MALFUNCTION_FORCED_TEST_WAVE ?? 10, GTS_MALFUNCTION_FORCED_TEST_WAVE ?? 180)
+  .withSceneWaveRangeRequirement(10, 180)
   .withSceneRequirement(new GtsMalfunctionSpawnRequirement())
   .withTwoPlayerSharedDecision()
   .withMaxAllowedEncounters(1)
