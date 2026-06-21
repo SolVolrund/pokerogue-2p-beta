@@ -1,6 +1,7 @@
 import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
+import { getPokemonNameWithAffix } from "#app/messages";
 import { activeOverrides } from "#app/overrides";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import type { ModifierTier } from "#enums/modifier-tier";
@@ -14,11 +15,12 @@ import {
   PokemonHeldItemModifier,
   TempExtraModifierModifier,
 } from "#modifiers/modifier";
-import type { CustomModifierSettings, ModifierType, ModifierTypeOption } from "#modifiers/modifier-type";
+import type { CustomModifierSettings, ModifierType } from "#modifiers/modifier-type";
 import {
   FusePokemonModifierType,
   getPlayerModifierTypeOptions,
   getPlayerShopModifierTypeOptionsForWave,
+  ModifierTypeOption,
   PokemonModifierType,
   PokemonMoveModifierType,
   PokemonPpRestoreModifierType,
@@ -31,6 +33,12 @@ import { BattlePhase } from "#phases/battle-phase";
 import type { ModifierSelectUiHandler } from "#ui/modifier-select-ui-handler";
 import { SHOP_OPTIONS_ROW_LIMIT } from "#ui/modifier-select-ui-handler";
 import { PartyOption, PartyUiHandler, PartyUiMode, type PokemonSelectFilter } from "#ui/party-ui-handler";
+import {
+  chooseComputerPartnerRecoveryOption,
+  chooseComputerPartnerRewardOption,
+  type ComputerPartnerRecoveryChoice,
+  type ComputerPartnerRewardChoice,
+} from "#utils/computer-partner-reward-ai";
 import { NumberHolder } from "#utils/common";
 import i18next from "i18next";
 
@@ -91,6 +99,10 @@ export class SelectModifierPhase extends BattlePhase {
       this.typeOptions.map(option => option.type.id),
     );
 
+    if (this.tryAutoComputerPartnerShopPurchases()) {
+      return;
+    }
+
     const modifierSelectCallback = (rowCursor: number, cursor: number) => {
       if (rowCursor < 0 || cursor < 0) {
         globalScene.ui.showText(i18next.t("battle:skipItemQuestion"), null, () => {
@@ -140,6 +152,156 @@ export class SelectModifierPhase extends BattlePhase {
     };
 
     this.resetModifierSelect(modifierSelectCallback);
+  }
+
+  private isComputerPartnerRewardPlayer(): boolean {
+    return globalScene.twoPlayerComputerPartner && globalScene.twoPlayerMode && this.playerIndex === 1;
+  }
+
+  private getComputerPartnerShopOptions(): ModifierTypeOption[] {
+    return getPlayerShopModifierTypeOptionsForWave(
+      globalScene.currentBattle.waveIndex,
+      globalScene.getWaveMoneyAmount(1),
+    ).map(option => {
+      const healingItemCost = new NumberHolder(option.cost);
+      globalScene.applyModifierForPlayer(HealShopCostModifier, this.playerIndex, healingItemCost);
+      return new ModifierTypeOption(option.type, option.upgradeCount, healingItemCost.value);
+    });
+  }
+
+  private tryAutoComputerPartnerShopPurchases(): boolean {
+    if (!this.isComputerPartnerRewardPlayer()) {
+      return false;
+    }
+
+    const messages: string[] = [];
+    const maxPurchases = 6;
+    let purchases = 0;
+    while (purchases < maxPurchases) {
+      const party = globalScene.getPlayerParty(this.playerIndex);
+      const shopOptions = this.getComputerPartnerShopOptions();
+      const choice = chooseComputerPartnerRecoveryOption(
+        shopOptions,
+        party,
+        activeOverrides.WAIVE_ROLL_FEE_OVERRIDE ? Number.MAX_SAFE_INTEGER : globalScene.getPlayerMoney(this.playerIndex),
+      );
+
+      if (!choice) {
+        break;
+      }
+
+      const message = this.applyComputerPartnerRecoveryChoice(choice);
+      if (!message) {
+        break;
+      }
+      messages.push(message);
+      purchases++;
+    }
+
+    const rewardChoice = chooseComputerPartnerRewardOption(this.typeOptions, globalScene.getPlayerParty(this.playerIndex), {
+      pokeballCounts: globalScene.getPlayerPokeballCounts(this.playerIndex),
+    });
+    const rewardModifier = rewardChoice ? this.createComputerPartnerChoiceModifier(rewardChoice) : null;
+    if (rewardChoice && rewardModifier) {
+      messages.push(this.getComputerPartnerChoiceMessage(rewardChoice, rewardModifier, false));
+      this.queueComputerPartnerChoiceMessages(messages);
+      this.applyComputerPartnerRewardModifier(rewardModifier);
+      return true;
+    }
+
+    this.queueComputerPartnerChoiceMessages(messages);
+    this.skipComputerPartnerReward();
+    return true;
+  }
+
+  private skipComputerPartnerReward(): void {
+    globalScene.ui.clearText();
+    globalScene.ui.setMode(UiMode.MESSAGE);
+    globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("reward-skipped");
+    super.end();
+  }
+
+  private applyComputerPartnerRecoveryChoice(choice: ComputerPartnerRecoveryChoice): string | undefined {
+    const modifier = this.createComputerPartnerChoiceModifier(choice);
+    if (!modifier) {
+      return undefined;
+    }
+    const result = globalScene.addModifier(modifier, false, true, undefined, undefined, choice.cost, this.playerIndex);
+    if (!result) {
+      return undefined;
+    }
+
+    if (!activeOverrides.WAIVE_ROLL_FEE_OVERRIDE) {
+      globalScene.setPlayerMoney(globalScene.getPlayerMoney(this.playerIndex) - choice.cost, this.playerIndex);
+      globalScene.updateMoneyText();
+      globalScene.animateMoneyChanged(false);
+    }
+    audioManager.playSound("se/buy");
+    globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("shop-purchased");
+    return this.getComputerPartnerChoiceMessage(choice, modifier, true);
+  }
+
+  private applyComputerPartnerRewardModifier(modifier: Modifier): void {
+    this.applyModifier(modifier, -1, true);
+  }
+
+  private createComputerPartnerChoiceModifier(
+    choice: ComputerPartnerRecoveryChoice | ComputerPartnerRewardChoice,
+  ): Modifier | null {
+    const party = globalScene.getPlayerParty(this.playerIndex);
+    const targetPokemon =
+      choice.targetPokemonIndex !== undefined ? party[choice.targetPokemonIndex] : undefined;
+    return (
+      targetPokemon && choice.targetMoveIndex !== undefined
+        ? choice.option.type.newModifier(targetPokemon, choice.targetMoveIndex)
+        : targetPokemon
+          ? choice.option.type.newModifier(targetPokemon)
+          : choice.option.type.newModifier()
+    );
+  }
+
+  private getComputerPartnerChoiceMessage(
+    choice: ComputerPartnerRecoveryChoice | ComputerPartnerRewardChoice,
+    modifier: Modifier,
+    isPurchase: boolean,
+  ): string {
+    const itemName = choice.option.type.name;
+    const action = isPurchase ? "Purchased" : "Selected";
+    const targetName = this.getComputerPartnerTargetPokemonName(choice);
+
+    if (this.isComputerPartnerTeamWideChoice(choice)) {
+      return `[Partner]: ${action} ${itemName} and used it on their team.`;
+    }
+
+    if (targetName) {
+      const targetAction = !isPurchase && modifier instanceof PokemonHeldItemModifier ? "gave it to" : "used it on";
+      return `[Partner]: ${action} ${itemName} and ${targetAction} ${targetName}.`;
+    }
+
+    return `[Partner]: ${action} ${itemName}.`;
+  }
+
+  private getComputerPartnerTargetPokemonName(
+    choice: ComputerPartnerRecoveryChoice | ComputerPartnerRewardChoice,
+  ): string | undefined {
+    if (choice.targetPokemonIndex === undefined) {
+      return undefined;
+    }
+
+    const targetPokemon = globalScene.getPlayerParty(this.playerIndex)[choice.targetPokemonIndex];
+    return targetPokemon ? getPokemonNameWithAffix(targetPokemon) : undefined;
+  }
+
+  private isComputerPartnerTeamWideChoice(choice: ComputerPartnerRecoveryChoice | ComputerPartnerRewardChoice): boolean {
+    return choice.itemId === "SACRED_ASH" || choice.itemId === "RARER_CANDY";
+  }
+
+  private queueComputerPartnerChoiceMessages(messages: string[]): void {
+    if (!messages.length) {
+      return;
+    }
+    globalScene.waitForPlayerInput(0);
+    messages.forEach(message => globalScene.phaseManager.queueMessage(message, null, true));
   }
 
   private setActiveRewardPlayer(): void {

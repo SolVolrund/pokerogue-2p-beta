@@ -171,6 +171,7 @@ import { cachedFetch } from "#utils/fetch-utils";
 import { getModifierPoolForType, getModifierType } from "#utils/modifier-utils";
 import { decodeNickname, getPokemonSpecies } from "#utils/pokemon-utils";
 import { capitalizeFirstLetterOnly } from "#utils/strings";
+import type { ComputerPartnerKey } from "#utils/computer-partner-profile";
 import i18next from "i18next";
 import Phaser from "phaser";
 export type PokeballCounts = Record<Exclude<PokeballType, PokeballType.LUXURY_BALL>, number>;
@@ -281,6 +282,10 @@ function getTwoPlayerPartySize(): 3 | 6 {
   }
 
   return new URLSearchParams(window.location.search).get("twoPlayerPartySize") === "3" ? 3 : 6;
+}
+
+function isTwoPlayerComputerPartnerEnabled(): boolean {
+  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("twoPlayerComputerPartner") === "1";
 }
 
 function getTwoPlayerLocalInputSeat(): LocalInputSeat {
@@ -456,12 +461,15 @@ export class BattleScene extends SceneBase {
   public trainerPartner: Phaser.GameObjects.Sprite;
   public lastEnemyTrainer: Trainer | null;
   public currentBattle: Battle;
+  public aiCommandInProgress = false;
   public pokeballCounts: PokeballCounts;
   public money: number;
   public pokemonInfoContainer: PokemonInfoContainer;
   private party: PlayerPokemon[];
   public twoPlayerMode: boolean = isTwoPlayerPrototypeEnabled();
   public twoPlayerPartySize: 3 | 6 = getTwoPlayerPartySize();
+  public twoPlayerComputerPartner: boolean = isTwoPlayerComputerPartnerEnabled();
+  public computerPartnerKey: ComputerPartnerKey = "alex";
   public activePlayerIndex: PlayerIndex = 0;
   public inputOwner: InputOwner = "none";
   public twoPlayerLocalInputSeat: LocalInputSeat = getTwoPlayerLocalInputSeat();
@@ -956,7 +964,7 @@ export class BattleScene extends SceneBase {
     return this.systemSaves!;
   }
 
-  public configureTwoPlayerMode(enabled: boolean, partySize: 3 | 6 = 6): void {
+  public configureTwoPlayerMode(enabled: boolean, partySize: 3 | 6 = 6, computerPartner = false): void {
     if (!this.twoPlayerMode) {
       this.localPlayerSystemSave = this.gameData;
     }
@@ -970,6 +978,10 @@ export class BattleScene extends SceneBase {
 
     this.twoPlayerMode = enabled;
     this.twoPlayerPartySize = enabled ? partySize : 6;
+    this.twoPlayerComputerPartner = enabled && computerPartner;
+    if (!this.twoPlayerComputerPartner) {
+      this.computerPartnerKey = "alex";
+    }
     this.activePlayerIndex = 0;
     this.inputOwner = "none";
     this.refreshTwoPlayerProfileSlotsReady();
@@ -980,7 +992,9 @@ export class BattleScene extends SceneBase {
       }
       this.syncLocalPlayerSystemSaveSlot();
       this.syncLegacyStateForActivePlayer();
-      this.uiInputs?.broadcastTwoPlayerProfileSnapshot();
+      if (!this.twoPlayerComputerPartner) {
+        this.uiInputs?.broadcastTwoPlayerProfileSnapshot();
+      }
     } else {
       this.gameData = localSystemSave;
       this.localPlayerSystemSave = this.gameData;
@@ -1090,6 +1104,12 @@ export class BattleScene extends SceneBase {
 
   private refreshTwoPlayerProfileSlotsReady(): void {
     if (!this.twoPlayerMode) {
+      this.twoPlayerProfileSlotsReady = [true, true];
+      this.resolveTwoPlayerProfileReadyWaiters();
+      return;
+    }
+
+    if (this.twoPlayerComputerPartner) {
       this.twoPlayerProfileSlotsReady = [true, true];
       this.resolveTwoPlayerProfileReadyWaiters();
       return;

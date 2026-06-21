@@ -35,6 +35,8 @@ import { getGoldenBugNetSpecies } from "#mystery-encounters/encounter-pokemon-ut
 import { BattlePhase } from "#phases/battle-phase";
 import { achvs } from "#system/achv";
 import { randSeedInt, randSeedItem } from "#utils/common";
+import { getComputerPartnerCaptureDecision } from "#utils/computer-partner-capture-ai";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
 import i18next from "i18next";
 
 export class EncounterPhase extends BattlePhase {
@@ -399,6 +401,34 @@ export class EncounterPhase extends BattlePhase {
         });
   }
 
+  getComputerPartnerCaptureAnnouncement(): string | undefined {
+    if (!globalScene.twoPlayerComputerPartner || globalScene.currentBattle.battleType !== BattleType.WILD) {
+      return undefined;
+    }
+
+    const partnerPokemon = globalScene
+      .getPlayerField(true)
+      .find(pokemon => globalScene.getPlayerIndexForPokemon(pokemon) === 1);
+    if (!partnerPokemon) {
+      return undefined;
+    }
+
+    const captureDecision = getComputerPartnerCaptureDecision(
+      globalScene.computerPartnerKey,
+      globalScene.getPlayerParty(1),
+      partnerPokemon,
+      globalScene.getEnemyField(),
+      globalScene.getPlayerPokeballCounts(1),
+    );
+
+    if (!captureDecision) {
+      return undefined;
+    }
+
+    const profile = getComputerPartnerProfile(globalScene.computerPartnerKey);
+    return `${profile.name} wants to capture ${captureDecision.target.getNameToRender()}.`;
+  }
+
   doEncounterCommon(showEncounterMessage = true) {
     this.incrementMysteryEncounterChance();
 
@@ -414,10 +444,18 @@ export class EncounterPhase extends BattlePhase {
         }
       }
       globalScene.updateFieldScale();
+      const showPartnerCaptureAnnouncement = () => {
+        const partnerCaptureMessage = this.getComputerPartnerCaptureAnnouncement();
+        if (partnerCaptureMessage) {
+          globalScene.ui.showText(partnerCaptureMessage, null, () => this.end(), 0, true);
+        } else {
+          this.end();
+        }
+      };
       if (showEncounterMessage) {
-        globalScene.ui.showText(this.getEncounterMessage(), null, () => this.end(), 1500);
+        globalScene.ui.showText(this.getEncounterMessage(), null, showPartnerCaptureAnnouncement, 1500);
       } else {
-        this.end();
+        showPartnerCaptureAnnouncement();
       }
     } else if (globalScene.currentBattle.battleType === BattleType.TRAINER) {
       const trainer = globalScene.currentBattle.trainer;

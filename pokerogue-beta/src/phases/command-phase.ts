@@ -6,6 +6,7 @@ import { TrappedTag } from "#data/battler-tags";
 import { getDailyEventSeedBoss } from "#data/daily-seed/daily-run";
 import { isDailyFinalBoss } from "#data/daily-seed/daily-seed-utils";
 import { AbilityId } from "#enums/ability-id";
+import { AiType } from "#enums/ai-type";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import { ArenaTagType } from "#enums/arena-tag-type";
 import { BattleType } from "#enums/battle-type";
@@ -23,6 +24,8 @@ import { getMoveTargets } from "#moves/move-utils";
 import { FieldPhase } from "#phases/field-phase";
 import type { MoveTargetSet } from "#types/move-target-set";
 import type { TurnMove } from "#types/turn-move";
+import { getComputerPartnerImprovedSwitchIndex, isComputerPartnerFieldIndex } from "#utils/computer-partner-ai";
+import { getComputerPartnerCaptureDecision } from "#utils/computer-partner-capture-ai";
 import i18next from "i18next";
 
 export class CommandPhase extends FieldPhase {
@@ -45,8 +48,123 @@ export class CommandPhase extends FieldPhase {
       return;
     }
 
+    if (this.isComputerPartnerCommand()) {
+      return;
+    }
+
     const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
     globalScene.waitForPlayerInput(playerIndex);
+  }
+
+  private isComputerPartnerCommand(): boolean {
+    return isComputerPartnerFieldIndex(this.fieldIndex);
+  }
+
+  private shouldComputerPartnerSwitch(): number | undefined {
+    const playerPokemon = this.getPokemon();
+
+    if (playerPokemon.getMoveQueue().length > 0 || playerPokemon.isTrapped()) {
+      return undefined;
+    }
+
+    const switchMultiplier =
+      1
+      - (globalScene.currentBattle.computerPartnerSwitchCounter
+        ? Math.pow(0.1, 1 / globalScene.currentBattle.computerPartnerSwitchCounter)
+        : 0);
+
+    return getComputerPartnerImprovedSwitchIndex(this.fieldIndex, switchMultiplier);
+  }
+
+  private handleComputerPartnerCaptureCommand(playerPokemon: PlayerPokemon): boolean {
+    if (globalScene.currentBattle.battleType !== BattleType.WILD) {
+      return false;
+    }
+
+    const captureDecision = getComputerPartnerCaptureDecision(
+      globalScene.computerPartnerKey,
+      globalScene.getPlayerParty(1),
+      playerPokemon,
+      globalScene.getEnemyField(),
+      globalScene.getPlayerPokeballCounts(1),
+    );
+
+    if (!captureDecision) {
+      return false;
+    }
+
+    if (captureDecision.shouldThrow) {
+      globalScene.currentBattle.turnCommands[this.fieldIndex] = {
+        command: Command.BALL,
+        cursor: captureDecision.ballType,
+        playerIndex: 1,
+        targets: [captureDecision.target.getBattlerIndex()],
+      };
+      this.end();
+      return true;
+    }
+
+    if (captureDecision.weakeningMoveIndex !== undefined) {
+      const weakeningMove = playerPokemon.getMoveset()[captureDecision.weakeningMoveIndex];
+      if (weakeningMove && !weakeningMove.isOutOfPp()) {
+        globalScene.currentBattle.turnCommands[this.fieldIndex] = {
+          command: Command.FIGHT,
+          cursor: captureDecision.weakeningMoveIndex,
+          move: {
+            move: weakeningMove.moveId,
+            targets: [captureDecision.target.getBattlerIndex()],
+            useMode: MoveUseMode.NORMAL,
+          },
+        };
+        this.end();
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private handleComputerPartnerCommand(): boolean {
+    const playerPokemon = this.getPokemon();
+    const previousAiType = playerPokemon.aiType;
+
+    if (this.handleComputerPartnerCaptureCommand(playerPokemon)) {
+      return true;
+    }
+
+    const switchIndex = this.shouldComputerPartnerSwitch();
+
+    if (switchIndex !== undefined) {
+      globalScene.currentBattle.turnCommands[this.fieldIndex] = {
+        command: Command.POKEMON,
+        cursor: switchIndex,
+        args: [false],
+      };
+      globalScene.currentBattle.computerPartnerSwitchCounter++;
+      this.end();
+      return true;
+    }
+
+    playerPokemon.aiType = AiType.SMART;
+    globalScene.aiCommandInProgress = true;
+    try {
+      const nextMove = playerPokemon.getNextMove();
+      globalScene.currentBattle.turnCommands[this.fieldIndex] = {
+        command: Command.FIGHT,
+        move: nextMove,
+      };
+    } finally {
+      playerPokemon.aiType = previousAiType;
+      globalScene.aiCommandInProgress = false;
+    }
+
+    globalScene.currentBattle.computerPartnerSwitchCounter = Math.max(
+      globalScene.currentBattle.computerPartnerSwitchCounter - 1,
+      0,
+    );
+
+    this.end();
+    return true;
   }
 
   /**
@@ -193,6 +311,10 @@ export class CommandPhase extends FieldPhase {
     }
 
     if (this.tryExecuteQueuedMove()) {
+      return;
+    }
+
+    if (this.isComputerPartnerCommand() && this.handleComputerPartnerCommand()) {
       return;
     }
 

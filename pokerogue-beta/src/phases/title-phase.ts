@@ -15,6 +15,8 @@ import { BattleType } from "#enums/battle-type";
 import { GameDataType } from "#enums/game-data-type";
 import { GameModes } from "#enums/game-modes";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
+import { PlayerGender } from "#enums/player-gender";
+import { PlayerTrainerSprite } from "#enums/player-trainer-sprite";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import { getBiomeKey } from "#field/arena";
@@ -24,6 +26,11 @@ import { vouchers } from "#system/voucher";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { SaveSlotUiMode } from "#ui/save-slot-select-ui-handler";
 import { isLocalServerConnected } from "#utils/common";
+import {
+  COMPUTER_PARTNER_KEYS,
+  getComputerPartnerProfile,
+  type ComputerPartnerKey,
+} from "#utils/computer-partner-profile";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -582,6 +589,21 @@ export class TitlePhase extends Phase {
         keepOpen: true,
       },
       {
+        label: i18next.t("menu:onePlayerOneComputer"),
+        handler: () => {
+          if (gameMode === GameModes.DAILY) {
+            globalScene.ui.setMode(UiMode.MESSAGE);
+            globalScene.ui.showText(i18next.t("menu:twoPlayerDailyUnavailable"), null, () =>
+              this.showPlayerCountSelect(gameMode),
+            );
+          } else {
+            this.showComputerPartnerSelect(gameMode);
+          }
+          return true;
+        },
+        keepOpen: true,
+      },
+      {
         label: i18next.t("menu:cancel"),
         handler: () => {
           this.showNewGameModeSelect();
@@ -592,6 +614,50 @@ export class TitlePhase extends Phase {
     ];
 
     this.showOptionSelectWithText(i18next.t("menu:selectPlayerCount"), options);
+  }
+
+  private showComputerPartnerSelect(gameMode: GameModes): void {
+    const options: OptionSelectItem[] = COMPUTER_PARTNER_KEYS.map(key => {
+      const profile = getComputerPartnerProfile(key);
+      return {
+        label: profile.name,
+        handler: () => {
+          this.setComputerPartner(key);
+          globalScene.configureTwoPlayerMode(true, 6, true);
+          this.setModeAndEnd(gameMode);
+          return true;
+        },
+      };
+    });
+
+    options.push({
+      label: i18next.t("menu:cancel"),
+      handler: () => {
+        this.showPlayerCountSelect(gameMode);
+        return true;
+      },
+      keepOpen: true,
+    });
+
+    this.showOptionSelectWithText(i18next.t("menu:selectComputerPartner"), options);
+  }
+
+  private setComputerPartner(key: ComputerPartnerKey): void {
+    const profile = getComputerPartnerProfile(key);
+    globalScene.computerPartnerKey = key;
+
+    if (profile.trainerSprite !== undefined && profile.trainerGender !== undefined) {
+      globalScene.twoPlayerGuestTrainerSprite = profile.trainerSprite;
+      globalScene.twoPlayerGuestGender = profile.trainerGender;
+      return;
+    }
+
+    const playerGender = globalScene.getPlayerGameData(0).gender;
+    globalScene.twoPlayerGuestGender = playerGender === PlayerGender.FEMALE ? PlayerGender.MALE : PlayerGender.FEMALE;
+    globalScene.twoPlayerGuestTrainerSprite =
+      globalScene.twoPlayerGuestGender === PlayerGender.FEMALE
+        ? PlayerTrainerSprite.BASE_GIRL
+        : PlayerTrainerSprite.BASE_BOY;
   }
 
   private showTwoPlayerModeSelect(gameMode: GameModes): void {

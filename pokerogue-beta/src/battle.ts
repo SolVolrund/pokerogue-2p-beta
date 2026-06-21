@@ -67,6 +67,7 @@ export class Battle {
   public double: boolean;
   public started = false;
   public enemySwitchCounter = 0;
+  public computerPartnerSwitchCounter = 0;
   public turn = 0;
   public preTurnCommands: TurnCommands;
   public turnCommands: TurnCommands;

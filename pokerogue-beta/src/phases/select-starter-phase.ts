@@ -10,7 +10,9 @@ import { overrideHeldItems, overrideModifiers } from "#modifiers/modifier";
 import type { Starter } from "#types/save-data";
 import { SaveSlotUiMode } from "#ui/handlers/save-slot-select-ui-handler";
 import { applyChallenges } from "#utils/challenge-utils";
+import { createComputerPartnerStarter, getComputerPartnerProfile } from "#utils/computer-partner-profile";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
+import i18next from "i18next";
 
 export class SelectStarterPhase extends Phase {
   public readonly phaseName = "SelectStarterPhase";
@@ -39,8 +41,21 @@ export class SelectStarterPhase extends Phase {
         this.initPlayerStarters(starters, playerIndex).then(() => {
           if (playerIndex === 0) {
             this.waitForTwoPlayerProfilesBeforeAction(() => {
+              const computerPartnerProfile = getComputerPartnerProfile(globalScene.computerPartnerKey);
+              if (globalScene.twoPlayerComputerPartner && !computerPartnerProfile.usesPlayerSelectedStarters) {
+                this.initComputerPartnerStarters().then(() => {
+                  globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("starters-selected");
+                  globalScene.waitForPlayerInput(0);
+                  this.selectSaveSlot(() => this.beginBattle());
+                });
+                return;
+              }
+
               globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-                globalScene.ui.showText("Player 2, choose your starters.", null, () => this.selectStartersForPlayer(1));
+                const playerTwoStarterPrompt = globalScene.twoPlayerComputerPartner
+                  ? i18next.t("menu:computerPartnerStarterPrompt")
+                  : i18next.t("menu:playerTwoStarterPrompt");
+                globalScene.ui.showText(playerTwoStarterPrompt, null, () => this.selectStartersForPlayer(1));
               });
             });
             return;
@@ -93,7 +108,7 @@ export class SelectStarterPhase extends Phase {
     party.splice(0, party.length);
     const loadPokemonAssets: Promise<void>[] = [];
     starters.forEach((starter: Starter, i: number) => {
-      if (!i && activeOverrides.STARTER_SPECIES_OVERRIDE) {
+      if (playerIndex === 0 && !i && activeOverrides.STARTER_SPECIES_OVERRIDE) {
         starter.speciesId = activeOverrides.STARTER_SPECIES_OVERRIDE;
       }
       const species = getPokemonSpecies(starter.speciesId);
@@ -160,6 +175,12 @@ export class SelectStarterPhase extends Phase {
     overrideModifiers();
     overrideHeldItems(party[0]);
     return Promise.all(loadPokemonAssets).then(() => undefined);
+  }
+
+  private initComputerPartnerStarters(): Promise<void> {
+    const profile = getComputerPartnerProfile(globalScene.computerPartnerKey);
+    const starters = createComputerPartnerStarter(profile);
+    return this.initPlayerStarters(starters, 1);
   }
 
   private waitForTwoPlayerProfilesBeforeAction(onReady: () => void): void {

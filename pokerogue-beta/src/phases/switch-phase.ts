@@ -3,6 +3,11 @@ import { SwitchType } from "#enums/switch-type";
 import { UiMode } from "#enums/ui-mode";
 import { BattlePhase } from "#phases/battle-phase";
 import { PartyOption, PartyUiHandler, PartyUiMode } from "#ui/party-ui-handler";
+import {
+  getComputerPartnerBestSwitchIndex,
+  getComputerPartnerImprovedSwitchIndex,
+  isComputerPartnerFieldIndex,
+} from "#utils/computer-partner-ai";
 
 /**
  * Opens the party selector UI and transitions into a {@linkcode SwitchSummonPhase}
@@ -72,6 +77,23 @@ export class SwitchPhase extends BattlePhase {
         : globalScene.currentBattle.getBattlerCount() === 1 || allowedPartyMembers.length > 1
         ? this.fieldIndex
         : 0;
+
+    if (isComputerPartnerFieldIndex(fieldIndex)) {
+      const switchIndex = this.isModal
+        ? getComputerPartnerBestSwitchIndex()
+        : getComputerPartnerImprovedSwitchIndex(fieldIndex);
+      if (switchIndex !== undefined) {
+        globalScene.phaseManager.unshiftNew(
+          "SwitchSummonPhase",
+          this.switchType,
+          fieldIndex,
+          switchIndex,
+          this.doReturn,
+        );
+      }
+      globalScene.ui.setMode(UiMode.MESSAGE).then(() => super.end());
+      return;
+    }
 
     globalScene.ui.setMode(
       UiMode.PARTY,

@@ -207,7 +207,7 @@ export const failIfDampCondition = new MoveCondition((user, _target, move) => {
   const cancelled = new BooleanHolder(false);
   // temporary workaround to prevent displaying the message during enemy command phase
   // TODO: either move this, or make the move condition func have a `simulated` param
-  const simulated = globalScene.phaseManager.getCurrentPhase()?.is("EnemyCommandPhase");
+  const simulated = globalScene.aiCommandInProgress || globalScene.phaseManager.getCurrentPhase()?.is("EnemyCommandPhase");
   for (const p of inSpeedOrder(ArenaTagSide.BOTH)) {
     applyAbAttrs("FieldPreventExplosiveMovesAbAttr", { pokemon: p, cancelled, simulated });
   }

@@ -5,6 +5,7 @@ import { BattlerTagType } from "#enums/battler-tag-type";
 import { SwitchType } from "#enums/switch-type";
 import { UiMode } from "#enums/ui-mode";
 import { BattlePhase } from "#phases/battle-phase";
+import { getComputerPartnerImprovedSwitchIndex, isComputerPartnerFieldIndex } from "#utils/computer-partner-ai";
 import i18next from "i18next";
 
 export class CheckSwitchPhase extends BattlePhase {
@@ -57,6 +58,22 @@ export class CheckSwitchPhase extends BattlePhase {
       || pokemon.isTrapped()
       || globalScene.getPlayerField().some(p => p.getTag(BattlerTagType.COMMANDED))
     ) {
+      this.end();
+      return;
+    }
+
+    if (isComputerPartnerFieldIndex(this.fieldIndex)) {
+      const switchIndex = getComputerPartnerImprovedSwitchIndex(this.fieldIndex);
+      if (switchIndex !== undefined) {
+        globalScene.ui.setMode(UiMode.MESSAGE);
+        globalScene.phaseManager.unshiftNew(
+          "SwitchSummonPhase",
+          SwitchType.INITIAL_SWITCH,
+          this.fieldIndex,
+          switchIndex,
+          true,
+        );
+      }
       this.end();
       return;
     }

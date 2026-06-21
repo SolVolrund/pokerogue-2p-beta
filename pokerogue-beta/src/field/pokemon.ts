@@ -5930,6 +5930,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
 export class PlayerPokemon extends Pokemon {
   protected declare battleInfo: PlayerBattleInfo;
+  public aiType: AiType = AiType.SMART_RANDOM;
 
   constructor(
     species: PokemonSpecies,
@@ -5991,6 +5992,14 @@ export class PlayerPokemon extends Pokemon {
 
   override isBoss(): boolean {
     return false;
+  }
+
+  getNextMove(): TurnMove {
+    return EnemyPokemon.prototype.getNextMove.call(this);
+  }
+
+  getNextTargets(moveId: MoveId): BattlerIndex[] {
+    return EnemyPokemon.prototype.getNextTargets.call(this, moveId);
   }
 
   getFieldIndex(): number {
