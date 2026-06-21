@@ -232,6 +232,16 @@ function setDancingLessonsChoiceTokens(choice: DancingLessonsChoice): void {
   }
 }
 
+function focusDancingLessonsPlayer(playerIndex: PlayerIndex): void {
+  if (globalScene.twoPlayerMode) {
+    globalScene.waitForPlayerInput(playerIndex);
+    return;
+  }
+
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+}
+
 function setDancingLessonsPlayerOptionTokens(playerIndex: PlayerIndex): void {
   const pokemon = new MoveRequirement(DANCING_MOVES, true).queryParty(globalScene.getPlayerParty(playerIndex))[0];
   const move = pokemon?.moveset.find(move => move && DANCING_MOVES.includes(move.getMove().id));
@@ -317,13 +327,24 @@ function queueDancingLessonsStartOfBattleEffects(
   }
 }
 
+function playDancingLessonsAnim(source: Pokemon | undefined, target: Pokemon | undefined): Promise<void> {
+  const sourceSprite = source?.getSprite();
+  const targetSprite = target?.getSprite();
+  if (!source?.isOnField() || !target?.isOnField() || !sourceSprite?.displayHeight || !targetSprite?.displayHeight) {
+    return Promise.resolve();
+  }
+
+  return new Promise(resolve => {
+    new EncounterBattleAnim(EncounterAnim.DANCE, source, target).play(false, resolve);
+  });
+}
+
 async function resolveDancingLessonsLearnChoice(choice: DancingLessonsChoice): Promise<void> {
   if (!choice.selectedPokemon) {
     return;
   }
 
-  globalScene.setActivePlayerIndex(choice.playerIndex);
-  updateWindowType(choice.playerIndex + 1);
+  focusDancingLessonsPlayer(choice.playerIndex);
   setDancingLessonsChoiceTokens(choice);
 
   globalScene.phaseManager.unshiftNew(
@@ -335,12 +356,10 @@ async function resolveDancingLessonsLearnChoice(choice: DancingLessonsChoice): P
     choice.playerIndex,
   );
 
-  const danceAnim = new EncounterBattleAnim(
-    EncounterAnim.DANCE,
-    globalScene.getEnemyParty()[choice.playerIndex] ?? globalScene.getEnemyPokemon()!,
-    globalScene.getPlayerPokemon(),
+  await playDancingLessonsAnim(
+    globalScene.getEnemyParty()[choice.playerIndex] ?? globalScene.getEnemyPokemon(false),
+    globalScene.getPlayerParty(choice.playerIndex).find(pokemon => pokemon.isOnField()),
   );
-  danceAnim.play();
 }
 
 async function resolveDancingLessonsRecruitChoice(choice: DancingLessonsChoice): Promise<void> {
@@ -348,8 +367,7 @@ async function resolveDancingLessonsRecruitChoice(choice: DancingLessonsChoice):
     return;
   }
 
-  globalScene.setActivePlayerIndex(choice.playerIndex);
-  updateWindowType(choice.playerIndex + 1);
+  focusDancingLessonsPlayer(choice.playerIndex);
   setDancingLessonsChoiceTokens(choice);
 
   const data = getDancingLessonsData();
@@ -376,8 +394,7 @@ async function runDancingLessonsChoices(): Promise<boolean> {
   const battlePlayers = battleChoices.map(choice => choice.playerIndex);
 
   for (const choice of choices) {
-    globalScene.setActivePlayerIndex(choice.playerIndex);
-    updateWindowType(choice.playerIndex + 1);
+    focusDancingLessonsPlayer(choice.playerIndex);
     setDancingLessonsChoiceTokens(choice);
 
     if (globalScene.twoPlayerMode) {
@@ -395,8 +412,7 @@ async function runDancingLessonsChoices(): Promise<boolean> {
     await hideOricorioPokemon(
       choices.filter(choice => choice.optionIndex !== 3).map(choice => choice.playerIndex),
     );
-    globalScene.setActivePlayerIndex(0);
-    updateWindowType(1);
+    focusDancingLessonsPlayer(0);
     leaveEncounterWithoutBattle(true);
     return true;
   }
@@ -415,8 +431,7 @@ async function runDancingLessonsChoices(): Promise<boolean> {
     );
   }
 
-  globalScene.setActivePlayerIndex(battlePlayers[0]);
-  updateWindowType(battlePlayers[0] + 1);
+  focusDancingLessonsPlayer(battlePlayers[0]);
   globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
   queueDancingLessonsStartOfBattleEffects(battlePlayers, enemyOwnerIndexes);
   await hideOricorioPokemon(enemyOwnerIndexes);
@@ -455,8 +470,7 @@ function buildDancingLessonsLearnOption(playerIndex: PlayerIndex): MysteryEncoun
       ],
     })
     .withPreOptionPhase(async () => {
-      globalScene.setActivePlayerIndex(playerIndex);
-      updateWindowType(playerIndex + 1);
+      focusDancingLessonsPlayer(playerIndex);
       let selectedPokemon: PlayerPokemon | undefined;
       const selected = await selectPokemonForOption(pokemon => {
         selectedPokemon = pokemon;
@@ -488,8 +502,7 @@ function buildDancingLessonsRecruitOption(playerIndex: PlayerIndex): MysteryEnco
       ],
     })
     .withPreOptionPhase(async () => {
-      globalScene.setActivePlayerIndex(playerIndex);
-      updateWindowType(playerIndex + 1);
+      focusDancingLessonsPlayer(playerIndex);
       const encounter = globalScene.currentBattle.mysteryEncounter!;
       let selectedPokemon: PlayerPokemon | undefined;
       let selectedMove: PokemonMove | undefined;

@@ -183,7 +183,9 @@ const TWO_PLAYER_SESSION_SYSTEM_SAVE_KEYS = [
   "pokerogue_2p_session_system_save_1",
 ] as const;
 const TWO_PLAYER_PROFILE_HANDSHAKE_BUILD = "profile-handshake-2026-06-17c";
-const SHINY_BADGE_FORCED_TEST_WAVE: number | null = null;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = null;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = null;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = true;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.MYSTERIOUS_CHEST,
   MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
@@ -4451,7 +4453,7 @@ export class BattleScene extends SceneBase {
       return true;
     }
 
-    if (this.isShinyBadgeForcedTestWave(battleType, waveIndex)) {
+    if (this.isDebugForcedMysteryEncounterWave(battleType, waveIndex)) {
       return true;
     }
 
@@ -4495,19 +4497,20 @@ export class BattleScene extends SceneBase {
     return roll < successRate;
   }
 
-  private isShinyBadgeForcedTestWave(battleType: BattleType, waveIndex: number): boolean {
+  private isDebugForcedMysteryEncounterWave(battleType: BattleType, waveIndex: number): boolean {
     return (
-      SHINY_BADGE_FORCED_TEST_WAVE != null
-      && waveIndex === SHINY_BADGE_FORCED_TEST_WAVE
+      DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE != null
+      && DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE != null
+      && waveIndex === DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE
       && this.twoPlayerMode
       && this.gameMode.hasMysteryEncounters
       && battleType === BattleType.WILD
       && !this.gameMode.isBoss(waveIndex)
       && !this.gameMode.isFixedBattle(waveIndex)
       && !this.gameMode.isWaveFinal(waveIndex)
-      && this.isMysteryEncounterEnabled(MysteryEncounterType.SHINY_BADGE)
+      && this.isMysteryEncounterEnabled(DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE)
       && !this.mysteryEncounterSaveData.encounteredEvents.some(
-        event => event.type === MysteryEncounterType.SHINY_BADGE,
+        event => event.type === DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE,
       )
       && ([0, 1] as PlayerIndex[]).every(playerIndex => this.getPokemonAllowedInBattle(playerIndex).length > 0)
     );
@@ -4597,13 +4600,15 @@ export class BattleScene extends SceneBase {
       return encounter;
     }
 
-    const shinyBadgeEncounter = allMysteryEncounters[MysteryEncounterType.SHINY_BADGE];
+    const forcedDebugEncounter = DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE != null
+      ? allMysteryEncounters[DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE]
+      : undefined;
     if (
-      shinyBadgeEncounter
-      && this.isShinyBadgeForcedTestWave(BattleType.WILD, this.currentBattle.waveIndex)
-      && shinyBadgeEncounter.meetsRequirements()
+      forcedDebugEncounter
+      && this.isDebugForcedMysteryEncounterWave(BattleType.WILD, this.currentBattle.waveIndex)
+      && (DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS || forcedDebugEncounter.meetsRequirements())
     ) {
-      encounter = new MysteryEncounter(shinyBadgeEncounter);
+      encounter = new MysteryEncounter(forcedDebugEncounter);
       encounter.populateDialogueTokensFromRequirements();
       return encounter;
     }
