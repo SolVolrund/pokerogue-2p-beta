@@ -1,6 +1,7 @@
 import { BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT } from "#app/constants";
 import type { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import type { MysteryEncounterType } from "#enums/mystery-encounter-type";
+import type { FieldBlessing } from "#utils/field-blessings";
 
 export class SeenEncounterData {
   type: MysteryEncounterType;
@@ -25,6 +26,7 @@ export class MysteryEncounterSaveData {
   encounteredEvents: SeenEncounterData[] = [];
   encounterSpawnChance: number = BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT;
   queuedEncounters: QueuedEncounter[] = [];
+  fieldBlessing?: FieldBlessing;
 
   constructor(data?: MysteryEncounterSaveData) {
     if (data != null) {

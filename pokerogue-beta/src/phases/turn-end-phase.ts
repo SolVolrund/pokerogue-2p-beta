@@ -3,6 +3,7 @@ import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { TerrainType } from "#data/terrain";
 import { BattlerTagLapseType } from "#enums/battler-tag-lapse-type";
+import { HitResult } from "#enums/hit-result";
 import { WeatherType } from "#enums/weather-type";
 import { TurnEndEvent } from "#events/battle-scene";
 import type { Pokemon } from "#field/pokemon";
@@ -15,6 +16,12 @@ import {
   TurnStatusEffectModifier,
 } from "#modifiers/modifier";
 import { FieldPhase } from "#phases/field-phase";
+import {
+  FIELD_BLESSING_DAMAGE_RATIO,
+  getPersistentFieldBlessing,
+  isShadowyAuraDamageImmune,
+} from "#utils/field-blessings";
+import { toDmgValue } from "#utils/common";
 import i18next from "i18next";
 
 export class TurnEndPhase extends FieldPhase {
@@ -68,6 +75,7 @@ export class TurnEndPhase extends FieldPhase {
     if (!this.upcomingInterlude) {
       this.executeForAll(handlePokemon);
       this.applyShinyBadgePartyRevives();
+      this.applyShadowyAuraDamage();
 
       globalScene.arena.lapseTags();
     }
@@ -94,5 +102,21 @@ export class TurnEndPhase extends FieldPhase {
         }
       }
     }
+  }
+
+  private applyShadowyAuraDamage(): void {
+    if (getPersistentFieldBlessing() !== "shadowy_aura") {
+      return;
+    }
+
+    this.executeForAll((pokemon: Pokemon) => {
+      if (pokemon.switchOutStatus || isShadowyAuraDamageImmune(pokemon)) {
+        return;
+      }
+
+      const damage = toDmgValue(pokemon.getMaxHp() / FIELD_BLESSING_DAMAGE_RATIO);
+      globalScene.phaseManager.queueMessage(`${pokemon.getNameToRender()} was buffeted by the shadowy aura!`);
+      pokemon.damageAndUpdate(damage, { result: HitResult.INDIRECT, ignoreSegments: true });
+    });
   }
 }

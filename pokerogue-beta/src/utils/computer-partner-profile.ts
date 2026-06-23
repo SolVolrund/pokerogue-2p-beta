@@ -11,6 +11,7 @@ import { Stat, type PermanentStat } from "#enums/stat";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import type { PokemonSpecies } from "#data/pokemon-species";
 import type { Starter, StarterMoveset } from "#types/save-data";
+import { randSeedShuffle } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 
 export type ComputerPartnerKey = "alex" | "cheryl" | "riley" | "mira" | "buck" | "marley";
@@ -37,6 +38,14 @@ export interface ComputerPartnerProfile {
   personalityTypes: PokemonType[];
   usesPlayerSelectedStarters?: boolean;
   starterMoveset?: Starter["moveset"];
+  startingStarters?: ComputerPartnerStarterConfig[];
+}
+
+export interface ComputerPartnerStarterConfig {
+  speciesId: SpeciesId;
+  points: number;
+  nature?: Nature;
+  moveset?: Starter["moveset"];
 }
 
 export interface ComputerPartnerSlotScore {
@@ -71,6 +80,7 @@ interface ProjectedPartnerPokemon {
 }
 
 const DEFAULT_PARTNER_IVS = [10, 10, 10, 10, 10, 10];
+const COMPUTER_PARTNER_STARTER_POINT_LIMIT = 10;
 const MAX_STARTER_MOVE_COUNT = 4;
 const TEAM_REPLACEMENT_IMPROVEMENT_RATIO = 1.03;
 const TEAM_FILL_IMPROVEMENT_RATIO = 1.005;
@@ -121,6 +131,13 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
     trainerGender: PlayerGender.FEMALE,
     roles: ["ace", "hpBulk", "hpBulk", "physical", "special", "speed"],
     personalityTypes: [PokemonType.NORMAL, PokemonType.FAIRY, PokemonType.GRASS, PokemonType.WATER],
+    startingStarters: [
+      { speciesId: SpeciesId.HAPPINY, points: 2 },
+      { speciesId: SpeciesId.WOBBUFFET, points: 2 },
+      { speciesId: SpeciesId.DRIFLOON, points: 2 },
+      { speciesId: SpeciesId.MAKUHITA, points: 3 },
+      { speciesId: SpeciesId.WAILMER, points: 2 },
+    ],
   },
   riley: {
     key: "riley",
@@ -131,6 +148,13 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
     trainerGender: PlayerGender.MALE,
     roles: ["ace", "physical", "physical", "special", "bulk", "speed"],
     personalityTypes: [PokemonType.FIGHTING, PokemonType.STEEL, PokemonType.GROUND],
+    startingStarters: [
+      { speciesId: SpeciesId.RIOLU, points: 3 },
+      { speciesId: SpeciesId.ABSOL, points: 4 },
+      { speciesId: SpeciesId.TEDDIURSA, points: 4 },
+      { speciesId: SpeciesId.BAGON, points: 4 },
+      { speciesId: SpeciesId.BELDUM, points: 4 },
+    ],
   },
   mira: {
     key: "mira",
@@ -142,6 +166,13 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
     roles: ["ace", "special", "special", "physical", "bulk", "speed"],
     personalityTypes: [PokemonType.PSYCHIC, PokemonType.GHOST, PokemonType.ELECTRIC, PokemonType.ICE],
     starterMoveset: [MoveId.CONFUSION],
+    startingStarters: [
+      { speciesId: SpeciesId.ABRA, points: 4, moveset: [MoveId.CONFUSION] },
+      { speciesId: SpeciesId.MAGNEMITE, points: 4 },
+      { speciesId: SpeciesId.TOGEPI, points: 3 },
+      { speciesId: SpeciesId.GASTLY, points: 4 },
+      { speciesId: SpeciesId.PORYGON, points: 4 },
+    ],
   },
   buck: {
     key: "buck",
@@ -152,6 +183,13 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
     trainerGender: PlayerGender.MALE,
     roles: ["ace", "defense", "specialDefense", "physical", "special", "speed"],
     personalityTypes: [PokemonType.GROUND, PokemonType.ROCK, PokemonType.STEEL, PokemonType.FIRE],
+    startingStarters: [
+      { speciesId: SpeciesId.BALTOY, points: 2 },
+      { speciesId: SpeciesId.EEVEE, points: 3 },
+      { speciesId: SpeciesId.SHUCKLE, points: 3 },
+      { speciesId: SpeciesId.TORKOAL, points: 3 },
+      { speciesId: SpeciesId.DUSKULL, points: 3 },
+    ],
   },
   marley: {
     key: "marley",
@@ -162,6 +200,13 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
     trainerGender: PlayerGender.FEMALE,
     roles: ["ace", "speed", "speed", "physical", "special", "bulk"],
     personalityTypes: [PokemonType.FIRE, PokemonType.FLYING, PokemonType.ELECTRIC, PokemonType.DARK],
+    startingStarters: [
+      { speciesId: SpeciesId.GROWLITHE, points: 4 },
+      { speciesId: SpeciesId.SNEASEL, points: 4 },
+      { speciesId: SpeciesId.NINCADA, points: 4 },
+      { speciesId: SpeciesId.ELECTRODE, points: 2 },
+      { speciesId: SpeciesId.ZUBAT, points: 3 },
+    ],
   },
 };
 
@@ -172,24 +217,67 @@ export function getComputerPartnerProfile(key: ComputerPartnerKey): ComputerPart
 }
 
 export function createComputerPartnerStarter(profile: ComputerPartnerProfile): Starter[] {
+  const startingStarters = getComputerPartnerStartingStarters(profile);
+
+  if (!startingStarters.length) {
+    return [];
+  }
+
+  return startingStarters.map(starter => ({
+    speciesId: starter.speciesId,
+    shiny: false,
+    variant: 0,
+    formIndex: 0,
+    abilityIndex: 0,
+    passive: false,
+    nature: starter.nature ?? profile.starterNature,
+    moveset: starter.moveset ?? getDefaultComputerPartnerStarterMoveset(starter.speciesId),
+    pokerus: false,
+    ivs: [...DEFAULT_PARTNER_IVS],
+  }));
+}
+
+function getComputerPartnerStartingStarters(profile: ComputerPartnerProfile): ComputerPartnerStarterConfig[] {
+  if (profile.startingStarters?.length) {
+    return buildComputerPartnerStarterTeam(profile.startingStarters);
+  }
+
   if (!profile.starterSpeciesId) {
     return [];
   }
 
-  return [
-    {
-      speciesId: profile.starterSpeciesId,
-      shiny: false,
-      variant: 0,
-      formIndex: 0,
-      abilityIndex: 0,
-      passive: false,
-      nature: profile.starterNature,
-      moveset: profile.starterMoveset ?? getDefaultComputerPartnerStarterMoveset(profile.starterSpeciesId),
-      pokerus: false,
-      ivs: [...DEFAULT_PARTNER_IVS],
-    },
-  ];
+  const starter: ComputerPartnerStarterConfig = {
+    speciesId: profile.starterSpeciesId,
+    points: 0,
+  };
+
+  if (profile.starterMoveset) {
+    starter.moveset = profile.starterMoveset;
+  }
+
+  return [starter];
+}
+
+function buildComputerPartnerStarterTeam(starters: ComputerPartnerStarterConfig[]): ComputerPartnerStarterConfig[] {
+  const [ace, ...candidates] = starters;
+
+  if (!ace) {
+    return [];
+  }
+
+  const selectedStarters = [ace];
+  let remainingPoints = COMPUTER_PARTNER_STARTER_POINT_LIMIT - ace.points;
+
+  for (const starter of randSeedShuffle([...candidates])) {
+    if (starter.points > remainingPoints) {
+      continue;
+    }
+
+    selectedStarters.push(starter);
+    remainingPoints -= starter.points;
+  }
+
+  return selectedStarters;
 }
 
 function getDefaultComputerPartnerStarterMoveset(speciesId: SpeciesId): StarterMoveset {

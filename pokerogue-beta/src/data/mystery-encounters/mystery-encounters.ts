@@ -17,6 +17,7 @@ import { FunAndGamesEncounter } from "#mystery-encounters/fun-and-games-encounte
 import { GlobalTradeSystemEncounter } from "#mystery-encounters/global-trade-system-encounter";
 import { GtsMalfunctionEncounter } from "#mystery-encounters/gts-malfunction-encounter";
 import { ItIsDangerousToGoAloneEncounter } from "#mystery-encounters/it-is-dangerous-to-go-alone-encounter";
+import { LegendaryConflictEncounter } from "#mystery-encounters/legendary-conflict-encounter";
 import { LostAtSeaEncounter } from "#mystery-encounters/lost-at-sea-encounter";
 import { MysteriousChallengersEncounter } from "#mystery-encounters/mysterious-challengers-encounter";
 import { MysteriousChestEncounter } from "#mystery-encounters/mysterious-chest-encounter";
@@ -185,6 +186,7 @@ const anyBiomeEncounters: MysteryEncounterType[] = [
   MysteryEncounterType.UNCOMMON_BREED,
   MysteryEncounterType.GTS_MALFUNCTION,
   MysteryEncounterType.SHINY_BADGE,
+  MysteryEncounterType.LEGENDARY_CONFLICT,
 ];
 
 /**
@@ -266,6 +268,7 @@ export function initMysteryEncounters() {
   allMysteryEncounters[MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER] = TheExpertPokemonBreederEncounter;
   allMysteryEncounters[MysteryEncounterType.SHINY_BADGE] = ShinyBadgeEncounter;
   allMysteryEncounters[MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE] = ItIsDangerousToGoAloneEncounter;
+  allMysteryEncounters[MysteryEncounterType.LEGENDARY_CONFLICT] = LegendaryConflictEncounter;
 
   // Add extreme encounters to biome map
   extremeBiomeEncounters.forEach(encounter => {

@@ -131,7 +131,7 @@ import {
 } from "#modifiers/modifier";
 import { applyMoveAttrs } from "#moves/apply-attrs";
 import type { HitsTagAttr, Move } from "#moves/move";
-import { getMoveTargets } from "#moves/move-utils";
+import { getMoveTargets, isForcedDuelOpponent } from "#moves/move-utils";
 import { PokemonMove } from "#moves/pokemon-move";
 import { loadMoveAnimations } from "#sprites/pokemon-asset-loader";
 import type { Variant } from "#sprites/variant";
@@ -6794,7 +6794,7 @@ export class EnemyPokemon extends Pokemon {
             const fieldPokemon = globalScene.getField();
             const moveTargets = getMoveTargets(this, move.id)
               .targets.map(ind => fieldPokemon[ind])
-              .filter(p => this.isPlayer() !== p.isPlayer());
+              .filter(p => this.isPlayer() !== p.isPlayer() || isForcedDuelOpponent(this, p));
             // Only considers critical hits for crit-only moves or when this Pokemon is under the effect of Laser Focus
             const isCritical = move.hasAttr("CritOnlyAttr") || !!this.getTag(BattlerTagType.ALWAYS_CRIT);
 
@@ -6853,7 +6853,7 @@ export class EnemyPokemon extends Pokemon {
               let targetScore =
                 move.getUserBenefitScore(this, target, move)
                 + move.getTargetBenefitScore(this, target, move)
-                  * (mt < BattlerIndex.ENEMY === this.isPlayer() ? 1 : -1);
+                  * (mt < BattlerIndex.ENEMY === this.isPlayer() || isForcedDuelOpponent(this, target) ? 1 : -1);
               if (Number.isNaN(targetScore)) {
                 console.error(`Move ${move.name} returned score of NaN`);
                 targetScore = 0;
@@ -6878,7 +6878,7 @@ export class EnemyPokemon extends Pokemon {
                   true,
                 );
 
-                if (target.isPlayer() !== this.isPlayer()) {
+                if (target.isPlayer() !== this.isPlayer() || isForcedDuelOpponent(this, target)) {
                   targetScore *= effectiveness;
                   if (this.isOfType(move.type)) {
                     targetScore *= 1.5;
@@ -6981,7 +6981,8 @@ export class EnemyPokemon extends Pokemon {
      */
     const benefitScores = targets.map(p => [
       p.getBattlerIndex(),
-      move.getTargetBenefitScore(this, p, move) * (p.isPlayer() === this.isPlayer() ? 1 : -1),
+      move.getTargetBenefitScore(this, p, move)
+        * (p.isPlayer() !== this.isPlayer() || isForcedDuelOpponent(this, p) ? 1 : -1),
     ]);
 
     const sortedBenefitScores = benefitScores.slice(0);

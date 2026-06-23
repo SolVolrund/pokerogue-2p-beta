@@ -64,6 +64,7 @@ export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: Move
   let set: Pokemon[] = [];
   let multiple = false;
   const ally: Pokemon | undefined = user.getAlly();
+  const forcedDuelTarget = getForcedDuelTarget(user, ally);
   const duelTargets = getShinyBadgeDuelTargets(user, ally);
   switch (moveTarget) {
     case MoveTarget.USER:
@@ -90,11 +91,11 @@ export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: Move
     case MoveTarget.ALL_NEAR_ENEMIES:
     case MoveTarget.ALL_ENEMIES:
     case MoveTarget.ENEMY_SIDE:
-      set = duelTargets ?? opponents;
+      set = forcedDuelTarget ?? duelTargets ?? opponents;
       multiple = moveTarget !== MoveTarget.NEAR_ENEMY;
       break;
     case MoveTarget.RANDOM_NEAR_ENEMY:
-      set = duelTargets ?? [opponents[user.randBattleSeedInt(opponents.length)]];
+      set = forcedDuelTarget ?? duelTargets ?? [opponents[user.randBattleSeedInt(opponents.length)]];
       break;
     case MoveTarget.ATTACKER:
       // TODO: Remove MoveTarget.ATTACKER and BattlerIndex.ATTACKER
@@ -131,6 +132,29 @@ function getShinyBadgeDuelTargets(user: Pokemon, ally?: Pokemon): Pokemon[] | un
   }
 
   return [ally];
+}
+
+export function isForcedDuelOpponent(user: Pokemon, target: Pokemon): boolean {
+  const duelPokemonIds = getForcedDuelPokemonIds();
+  return !!duelPokemonIds && duelPokemonIds.includes(user.id) && duelPokemonIds.includes(target.id) && user !== target;
+}
+
+function getForcedDuelTarget(user: Pokemon, ally?: Pokemon): Pokemon[] | undefined {
+  const duelPokemonIds = getForcedDuelPokemonIds();
+  if (!duelPokemonIds || user.isPlayer() || !ally || !duelPokemonIds.includes(user.id) || !duelPokemonIds.includes(ally.id)) {
+    return;
+  }
+
+  return [ally];
+}
+
+function getForcedDuelPokemonIds(): number[] | undefined {
+  const misc = globalScene.currentBattle?.mysteryEncounter?.misc;
+  if (!misc?.legendaryConflictDuelActive || !Array.isArray(misc.legendaryConflictPokemonIds)) {
+    return;
+  }
+
+  return misc.legendaryConflictPokemonIds;
 }
 
 export const frenzyMissFunc: UserMoveConditionFunc = (user: Pokemon, move: Move) => {

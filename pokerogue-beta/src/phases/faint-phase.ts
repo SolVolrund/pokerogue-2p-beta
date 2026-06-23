@@ -58,6 +58,11 @@ export class FaintPhase extends PokemonPhase {
       faintPokemon.getTag(BattlerTagType.GRUDGE)?.lapse(faintPokemon, BattlerTagLapseType.CUSTOM, this.source);
     }
 
+    if (globalScene.currentBattle.mysteryEncounter?.onPokemonFaint?.(faintPokemon, this.source)) {
+      this.end();
+      return;
+    }
+
     faintPokemon.resetSummonData();
 
     const shinyBadgeModifier = globalScene.applyModifierForPokemon(

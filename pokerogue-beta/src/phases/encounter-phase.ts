@@ -37,6 +37,7 @@ import { achvs } from "#system/achv";
 import { randSeedInt, randSeedItem } from "#utils/common";
 import { getComputerPartnerCaptureDecisions } from "#utils/computer-partner-capture-ai";
 import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import { applyPersistentFieldBlessing } from "#utils/field-blessings";
 import i18next from "i18next";
 
 export class EncounterPhase extends BattlePhase {
@@ -296,6 +297,7 @@ export class EncounterPhase extends BattlePhase {
           // Set weather and terrain before session gets saved
           this.trySetWeatherIfNewBiome();
           this.trySetTerrainIfNewBiome();
+          applyPersistentFieldBlessing();
           // Game syncs to server on waves X1 and X6 (As of 1.2.0)
           globalScene.gameData
             .saveAll(true, battle.waveIndex % 5 === 1 || (globalScene.lastSavePlayTime ?? 0) >= 300)

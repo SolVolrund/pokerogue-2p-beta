@@ -80,6 +80,7 @@ export interface IMysteryEncounter {
   doEncounterExp?: (() => boolean) | undefined;
   doEncounterRewards?: (() => boolean) | undefined;
   doContinueEncounter?: (() => Promise<void>) | undefined;
+  onPokemonFaint?: ((pokemon: Pokemon, source?: Pokemon) => boolean) | undefined;
 
   requirements: EncounterSceneRequirement[];
   primaryPokemonRequirements: EncounterPokemonRequirement[];
@@ -196,6 +197,8 @@ export class MysteryEncounter implements IMysteryEncounter {
   doEncounterRewards?: (() => boolean) | undefined;
   /** Will execute callback during VictoryPhase of a continuousEncounter */
   doContinueEncounter?: (() => Promise<void>) | undefined;
+  /** Can intercept fainting during an encounter. Return true when the faint was fully handled. */
+  onPokemonFaint?: ((pokemon: Pokemon, source?: Pokemon) => boolean) | undefined;
   /**
    * Can perform special logic when a ME battle is lost, before GameOver/battle retry prompt.
    * Should return `true` if it is treated as "real" Game Over, `false` if not.
