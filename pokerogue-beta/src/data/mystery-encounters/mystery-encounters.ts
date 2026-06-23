@@ -16,6 +16,7 @@ import { FightOrFlightEncounter } from "#mystery-encounters/fight-or-flight-enco
 import { FunAndGamesEncounter } from "#mystery-encounters/fun-and-games-encounter";
 import { GlobalTradeSystemEncounter } from "#mystery-encounters/global-trade-system-encounter";
 import { GtsMalfunctionEncounter } from "#mystery-encounters/gts-malfunction-encounter";
+import { ItIsDangerousToGoAloneEncounter } from "#mystery-encounters/it-is-dangerous-to-go-alone-encounter";
 import { LostAtSeaEncounter } from "#mystery-encounters/lost-at-sea-encounter";
 import { MysteriousChallengersEncounter } from "#mystery-encounters/mysterious-challengers-encounter";
 import { MysteriousChestEncounter } from "#mystery-encounters/mysterious-chest-encounter";
@@ -155,6 +156,7 @@ const humanTransitableBiomeEncounters: MysteryEncounterType[] = [
   MysteryEncounterType.AN_OFFER_YOU_CANT_REFUSE,
   MysteryEncounterType.THE_WINSTRATE_CHALLENGE,
   MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
+  MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE,
 ];
 
 const civilizationBiomeEncounters: MysteryEncounterType[] = [
@@ -263,6 +265,7 @@ export function initMysteryEncounters() {
   allMysteryEncounters[MysteryEncounterType.GTS_MALFUNCTION] = GtsMalfunctionEncounter;
   allMysteryEncounters[MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER] = TheExpertPokemonBreederEncounter;
   allMysteryEncounters[MysteryEncounterType.SHINY_BADGE] = ShinyBadgeEncounter;
+  allMysteryEncounters[MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE] = ItIsDangerousToGoAloneEncounter;
 
   // Add extreme encounters to biome map
   extremeBiomeEncounters.forEach(encounter => {

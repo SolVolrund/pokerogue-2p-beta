@@ -28,6 +28,7 @@ import { GameModes } from "#enums/game-modes";
 import type { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { Nature } from "#enums/nature";
 import { PlayerGender } from "#enums/player-gender";
+import { PlayerTrainerSprite } from "#enums/player-trainer-sprite";
 import { SpeciesId } from "#enums/species-id";
 import { StatusEffect } from "#enums/status-effect";
 import { TrainerVariant } from "#enums/trainer-variant";
@@ -74,6 +75,10 @@ import type {
 } from "#types/save-data";
 import { RUN_HISTORY_LIMIT } from "#ui/run-history-ui-handler";
 import { applyChallenges } from "#utils/challenge-utils";
+import {
+  type ComputerPartnerKey,
+  getComputerPartnerProfile,
+} from "#utils/computer-partner-profile";
 import { fixedInt, NumberHolder, randInt, randSeedItem } from "#utils/common";
 import { decrypt, encrypt } from "#utils/data";
 import { getEnumKeys } from "#utils/enums";
@@ -838,6 +843,10 @@ export class GameData {
       pokeballCounts: globalScene.pokeballCounts,
       money: Math.floor(globalScene.money),
       players: playerSessionData,
+      twoPlayerMode: globalScene.twoPlayerMode,
+      twoPlayerPartySize: globalScene.twoPlayerPartySize,
+      twoPlayerComputerPartner: globalScene.twoPlayerComputerPartner,
+      computerPartnerKey: globalScene.twoPlayerComputerPartner ? globalScene.computerPartnerKey : undefined,
       score: globalScene.score,
       waveIndex: globalScene.currentBattle.waveIndex,
       battleType: globalScene.currentBattle.battleType,
@@ -957,6 +966,8 @@ export class GameData {
     if (fromSession.challenges) {
       globalScene.gameMode.challenges = fromSession.challenges.map(c => c.toChallenge());
     }
+
+    this.configureSessionPlayerMode(fromSession);
 
     globalScene.setSeed(fromSession.seed || globalScene.game.config.seed[0]);
     globalScene.resetSeed();
@@ -1148,6 +1159,76 @@ export class GameData {
     }
 
     await Promise.all(loadPokemonAssets);
+  }
+
+  private configureSessionPlayerMode(fromSession: SessionSaveData): void {
+    const hasTwoPlayerSessionData = !!fromSession.players?.length;
+    const computerPartnerKey = this.getSessionComputerPartnerKey(fromSession);
+    const isComputerPartnerSession = !!fromSession.twoPlayerComputerPartner || !!computerPartnerKey;
+    const isTwoPlayerSession = !!fromSession.twoPlayerMode || hasTwoPlayerSessionData || isComputerPartnerSession;
+
+    globalScene.configureTwoPlayerMode(isTwoPlayerSession, fromSession.twoPlayerPartySize ?? 6, isComputerPartnerSession);
+
+    if (isComputerPartnerSession) {
+      this.applySessionComputerPartner(computerPartnerKey ?? "alex");
+    }
+  }
+
+  private getSessionComputerPartnerKey(fromSession: SessionSaveData): ComputerPartnerKey | undefined {
+    if (this.isComputerPartnerKey(fromSession.computerPartnerKey)) {
+      return fromSession.computerPartnerKey;
+    }
+
+    if (!fromSession.twoPlayerComputerPartner && !fromSession.players?.[1]?.party.some(pokemon => pokemon.computerPartnerAce)) {
+      return undefined;
+    }
+
+    const ace = fromSession.players?.[1]?.party.find(pokemon => pokemon.computerPartnerAce);
+    switch (ace?.species) {
+      case SpeciesId.HAPPINY:
+      case SpeciesId.CHANSEY:
+      case SpeciesId.BLISSEY:
+        return "cheryl";
+      case SpeciesId.RIOLU:
+      case SpeciesId.LUCARIO:
+        return "riley";
+      case SpeciesId.ABRA:
+      case SpeciesId.KADABRA:
+      case SpeciesId.ALAKAZAM:
+        return "mira";
+      case SpeciesId.BALTOY:
+      case SpeciesId.CLAYDOL:
+        return "buck";
+      case SpeciesId.GROWLITHE:
+      case SpeciesId.ARCANINE:
+      case SpeciesId.HISUI_GROWLITHE:
+      case SpeciesId.HISUI_ARCANINE:
+        return "marley";
+      default:
+        return fromSession.twoPlayerComputerPartner ? "alex" : undefined;
+    }
+  }
+
+  private isComputerPartnerKey(key: unknown): key is ComputerPartnerKey {
+    return key === "alex" || key === "cheryl" || key === "riley" || key === "mira" || key === "buck" || key === "marley";
+  }
+
+  private applySessionComputerPartner(key: ComputerPartnerKey): void {
+    const profile = getComputerPartnerProfile(key);
+    globalScene.computerPartnerKey = key;
+
+    if (profile.trainerSprite !== undefined && profile.trainerGender !== undefined) {
+      globalScene.twoPlayerGuestTrainerSprite = profile.trainerSprite;
+      globalScene.twoPlayerGuestGender = profile.trainerGender;
+      return;
+    }
+
+    const playerGender = globalScene.getPlayerGameData(0).gender;
+    globalScene.twoPlayerGuestGender = playerGender === PlayerGender.FEMALE ? PlayerGender.MALE : PlayerGender.FEMALE;
+    globalScene.twoPlayerGuestTrainerSprite =
+      globalScene.twoPlayerGuestGender === PlayerGender.FEMALE
+        ? PlayerTrainerSprite.BASE_GIRL
+        : PlayerTrainerSprite.BASE_BOY;
   }
 
   /**

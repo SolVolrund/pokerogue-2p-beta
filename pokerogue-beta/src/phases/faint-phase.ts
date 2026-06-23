@@ -18,6 +18,7 @@ import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
 import { PokemonInstantReviveModifier, ShinyBadgeModifier } from "#modifiers/modifier";
 import { PokemonMove } from "#moves/pokemon-move";
 import { PokemonPhase } from "#phases/pokemon-phase";
+import { dismissComputerPartnerFromRun } from "#utils/computer-partner-run";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import i18next from "i18next";
 
@@ -167,6 +168,7 @@ export class FaintPhase extends PokemonPhase {
       }
     }
 
+    let dismissComputerPartner = false;
     if (this.player) {
       const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
       /** The total number of Pokemon in the player's party that can legally fight */
@@ -174,8 +176,16 @@ export class FaintPhase extends PokemonPhase {
       /** The total number of legal player Pokemon that aren't currently on the field */
       const legalPlayerPartyPokemon = legalPlayerPokemon.filter(p => !p.isActive(true));
       if (legalPlayerPokemon.length === 0) {
-        /** If the player doesn't have any legal Pokemon, end the game */
-        globalScene.phaseManager.unshiftNew("GameOverPhase");
+        if (
+          globalScene.twoPlayerComputerPartner
+          && playerIndex === 1
+          && globalScene.getPokemonAllowedInBattle(0).length > 0
+        ) {
+          dismissComputerPartner = true;
+        } else {
+          /** If the player doesn't have any legal Pokemon, end the game */
+          globalScene.phaseManager.unshiftNew("GameOverPhase");
+        }
       } else if (
         !globalScene.twoPlayerMode
         && globalScene.currentBattle.double
@@ -237,6 +247,14 @@ export class FaintPhase extends PokemonPhase {
             globalScene.currentBattle.addPostBattleLoot(pokemon as EnemyPokemon);
           }
           pokemon.leaveField();
+          if (dismissComputerPartner) {
+            const partnerName = dismissComputerPartnerFromRun();
+            globalScene.phaseManager.queueMessage(
+              `${partnerName} had to head back to the Pokemon Center for safety.`,
+              null,
+              true,
+            );
+          }
           this.end();
         },
       });

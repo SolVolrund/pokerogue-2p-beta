@@ -1,5 +1,7 @@
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { AbilityId } from "#enums/ability-id";
+import { allMoves } from "#data/data-lists";
+import { LearnMoveType } from "#enums/learn-move-type";
 import { ModifierTier } from "#enums/modifier-tier";
 import { PokeballType } from "#enums/pokeball";
 import { StatusEffect } from "#enums/status-effect";
@@ -15,6 +17,7 @@ import {
   type ModifierTypeOption,
 } from "#modifiers/modifier-type";
 import type { PokemonMove } from "#moves/pokemon-move";
+import { chooseComputerPartnerMoveLearningDecision } from "#utils/computer-partner-move-ai";
 
 export type ComputerPartnerRecoveryItemId =
   | "POTION"
@@ -198,6 +201,13 @@ const REWARD_PRIORITY: Partial<Record<ComputerPartnerRecoveryItemId | string, nu
   MAX_ETHER: 5,
 };
 
+const ZERO_BALL_REWARD_PRIORITY: Partial<Record<string, number>> = {
+  POKEBALL: 1,
+  GREAT_BALL: 3,
+  ULTRA_BALL: 10,
+  ROGUE_BALL: 8,
+};
+
 const IGNORED_REWARD_IDS = new Set<string>([
   "VOUCHER_PREMIUM",
   "VOUCHER_PLUS",
@@ -224,6 +234,19 @@ function getRecoveryItemProfile(type: ModifierType): RecoveryItemProfile | undef
 }
 
 function getRewardItemId(type: ModifierType): string | undefined {
+  if (type instanceof TmModifierType) {
+    switch (type.tier) {
+      case ModifierTier.COMMON:
+        return "TM_COMMON";
+      case ModifierTier.GREAT:
+        return "TM_GREAT";
+      case ModifierTier.ULTRA:
+        return "TM_ULTRA";
+      default:
+        return "TM";
+    }
+  }
+
   if (type.id) {
     return type.id;
   }
@@ -276,6 +299,20 @@ function getPokeballTypeForReward(itemId: string): PokeballType | undefined {
     default:
       return undefined;
   }
+}
+
+function getRewardPriority(itemId: string, listedPriority: number, context: ComputerPartnerRewardContext): number {
+  const pokeballType = getPokeballTypeForReward(itemId);
+  const zeroBallPriority = ZERO_BALL_REWARD_PRIORITY[itemId];
+  if (
+    pokeballType !== undefined
+    && zeroBallPriority !== undefined
+    && context.pokeballCounts?.[pokeballType] === 0
+  ) {
+    return Math.min(listedPriority, zeroBallPriority);
+  }
+
+  return listedPriority;
 }
 
 function getTargetablePartyIndexes(
@@ -341,6 +378,42 @@ function chooseTeraShardTarget(type: TerastallizeModifierType, party: PlayerPoke
   )[0];
 }
 
+function chooseTmTarget(type: TmModifierType, party: PlayerPokemon[]): { targetPokemonIndex: number } | undefined {
+  const move = allMoves[type.moveId];
+  let bestTarget: { targetPokemonIndex: number; improvementRatio: number; replaceIndex: number } | undefined;
+
+  for (const [targetPokemonIndex, pokemon] of party.entries()) {
+    if (type.selectFilter && type.selectFilter(pokemon) !== null) {
+      continue;
+    }
+
+    const decision = chooseComputerPartnerMoveLearningDecision(
+      pokemon,
+      pokemon.getMoveset().map(pokemonMove => pokemonMove.moveId),
+      move,
+      LearnMoveType.TM,
+    );
+
+    if (!decision.shouldLearn) {
+      continue;
+    }
+
+    if (
+      !bestTarget
+      || decision.improvementRatio > bestTarget.improvementRatio
+      || (decision.improvementRatio === bestTarget.improvementRatio && decision.replaceIndex < bestTarget.replaceIndex)
+    ) {
+      bestTarget = {
+        targetPokemonIndex,
+        improvementRatio: decision.improvementRatio,
+        replaceIndex: decision.replaceIndex,
+      };
+    }
+  }
+
+  return bestTarget ? { targetPokemonIndex: bestTarget.targetPokemonIndex } : undefined;
+}
+
 function hasUsefulOrbTarget(itemId: string, type: PokemonModifierType, party: PlayerPokemon[]): boolean {
   if (itemId === "FLAME_ORB") {
     return getTargetablePartyIndexes(type, party, pokemon => pokemon.hasAbility(AbilityId.GUTS, false, true)).length > 0;
@@ -374,6 +447,10 @@ function getRewardTarget(
   if (type instanceof TerastallizeModifierType) {
     const targetPokemonIndex = chooseTeraShardTarget(type, party);
     return targetPokemonIndex !== undefined ? { targetPokemonIndex } : undefined;
+  }
+
+  if (type instanceof TmModifierType) {
+    return chooseTmTarget(type, party);
   }
 
   if (type instanceof PokemonMoveModifierType) {
@@ -786,7 +863,7 @@ export function chooseComputerPartnerRewardOption(
       const effectiveTier = isEmergencyRecovery
         ? getEmergencyRecoveryTier(option.type.tier ?? ModifierTier.COMMON)
         : (option.type.tier ?? ModifierTier.COMMON);
-      const priority = isEmergencyRecovery ? 999 : listedPriority;
+      const priority = isEmergencyRecovery ? 999 : getRewardPriority(itemId, listedPriority, context);
 
       if (!recoveryChoice && listedPriority === 999) {
         return undefined;

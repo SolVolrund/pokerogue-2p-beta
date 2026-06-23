@@ -27,6 +27,7 @@ import { PartyUiMode } from "#ui/party-ui-handler";
 import { SummaryUiMode } from "#ui/summary-ui-handler";
 import { applyChallenges } from "#utils/challenge-utils";
 import { BooleanHolder } from "#utils/common";
+import { getBestComputerPartnerReplacementSlot, getComputerPartnerProfile } from "#utils/computer-partner-profile";
 import i18next from "i18next";
 
 // TODO: Refactor and split up to allow for overriding capture chance
@@ -336,6 +337,50 @@ export class AttemptCapturePhase extends PokemonPhase {
             return;
           }
           if (globalScene.getPlayerParty(this.playerIndex).length === PLAYER_PARTY_MAX_SIZE) {
+            if (globalScene.twoPlayerComputerPartner && this.playerIndex === 1) {
+              const profile = getComputerPartnerProfile(globalScene.computerPartnerKey);
+              const replacementScore = getBestComputerPartnerReplacementSlot(
+                profile,
+                globalScene.getPlayerParty(this.playerIndex),
+                pokemon,
+              );
+              const replacedPokemonIndex = replacementScore?.replacedPokemonIndex;
+              const replacedPokemon = replacedPokemonIndex === undefined
+                ? undefined
+                : globalScene.getPlayerParty(this.playerIndex)[replacedPokemonIndex];
+
+              if (replacedPokemonIndex === undefined || !replacedPokemon || replacedPokemon.computerPartnerAce) {
+                globalScene.ui.showText(
+                  `${profile.name} decided not to keep ${pokemon.getNameToRender()}.`,
+                  null,
+                  () => {
+                    removePokemon();
+                    end();
+                  },
+                  0,
+                  true,
+                );
+                return;
+              }
+
+              const replacementIndex = replacedPokemonIndex;
+              globalScene.ui.showText(
+                `${profile.name} added ${pokemon.getNameToRender()} to their team and released ${replacedPokemon.getNameToRender()}.`,
+                null,
+                () => {
+                  globalScene.removePartyMemberModifiers(replacementIndex, this.playerIndex).then(() => {
+                    const party = globalScene.getPlayerParty(this.playerIndex);
+                    const releasedPokemon = party.splice(replacementIndex, 1)[0];
+                    releasedPokemon?.destroy();
+                    addToParty(replacementIndex);
+                  });
+                },
+                0,
+                true,
+              );
+              return;
+            }
+
             const promptRelease = () => {
               if (globalScene.twoPlayerMode) {
                 globalScene.waitForPlayerInput(this.playerIndex);

@@ -48,6 +48,7 @@ export class PokemonData {
   public teraType: PokemonType;
   public isTerastallized: boolean;
   public stellarTypesBoosted: PokemonType[];
+  public computerPartnerAce: boolean;
 
   public fusionSpecies: SpeciesId;
   public fusionFormIndex: number;
@@ -125,6 +126,7 @@ export class PokemonData {
     this.teraType = source.teraType as PokemonType;
     this.isTerastallized = !!source.isTerastallized;
     this.stellarTypesBoosted = source.stellarTypesBoosted ?? [];
+    this.computerPartnerAce = !!source.computerPartnerAce;
 
     // Deprecated, but needed for session data migration
     this.natureOverride = source.natureOverride;

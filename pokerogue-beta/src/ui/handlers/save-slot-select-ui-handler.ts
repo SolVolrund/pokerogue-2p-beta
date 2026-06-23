@@ -7,6 +7,7 @@ import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 // biome-ignore lint/performance/noNamespaceImport: See `src/system/game-data.ts`
 import * as Modifier from "#modifiers/modifier";
+import type { ModifierData } from "#system/modifier-data";
 import type { PokemonData } from "#system/pokemon-data";
 import type { SessionSaveData } from "#types/save-data";
 import type { OptionSelectConfig } from "#ui/abstract-option-select-ui-handler";
@@ -19,6 +20,8 @@ import i18next from "i18next";
 
 const SESSION_SLOTS_COUNT = 5;
 const SLOTS_ON_SCREEN = 2;
+const SINGLE_PARTY_ICON_SCALE = 0.75;
+const DOUBLE_PARTY_ICON_SCALE = 0.55;
 
 export enum SaveSlotUiMode {
   LOAD,
@@ -580,35 +583,63 @@ class SessionSlot extends Phaser.GameObjects.Container {
     const playTimeLabel = addTextObject(8, 47, getPlayTimeString(data.playTime), TextStyle.WINDOW);
     this.add(playTimeLabel);
 
+    const hasTwoPartyPreview = this.addPokemonPreview(data);
+    this.addModifierPreview(data, hasTwoPartyPreview);
+  }
+
+  private addPokemonPreview(data: SessionSaveData): boolean {
+    const parties = this.getPreviewParties(data);
+
+    if (parties.length > 1) {
+      const pokemonIconsContainer = globalScene.add.container(142, 7);
+      parties.forEach((party, partyIndex) => {
+        const rowContainer = globalScene.add.container(0, partyIndex * 29);
+        const playerLabel = addTextObject(-9, 13, `P${partyIndex + 1}`, TextStyle.WINDOW, {
+          fontSize: "42px",
+          color: "#f8f8f8",
+        });
+        playerLabel.setShadow(0, 0, undefined).setStroke("#424242", 10).setOrigin(1, 0.5);
+        rowContainer.add(playerLabel);
+
+        this.addPokemonIconRow(rowContainer, party, DOUBLE_PARTY_ICON_SCALE, 22, 24, 16, 46);
+        pokemonIconsContainer.add(rowContainer);
+      });
+
+      this.add(pokemonIconsContainer);
+      return true;
+    }
+
     const pokemonIconsContainer = globalScene.add.container(144, 16);
-    data.party.forEach((p: PokemonData, i: number) => {
-      const iconContainer = globalScene.add.container(26 * i, 0);
-      iconContainer.setScale(0.75);
-
-      const pokemon = p.toPokemon();
-      const icon = globalScene.addPokemonIcon(pokemon, 0, 0, 0, 0);
-
-      const text = addTextObject(
-        32,
-        20,
-        `${i18next.t("saveSlotSelectUiHandler:lv")}${formatLargeNumber(pokemon.level, 1000)}`,
-        TextStyle.PARTY,
-        { fontSize: "54px", color: "#f8f8f8" },
-      );
-      text.setShadow(0, 0, undefined).setStroke("#424242", 14).setOrigin(1, 0);
-
-      iconContainer.add([icon, text]);
-      pokemonIconsContainer.add(iconContainer);
-
-      pokemon.destroy();
-    });
-
+    this.addPokemonIconRow(pokemonIconsContainer, parties[0] ?? [], SINGLE_PARTY_ICON_SCALE, 26, 32, 20, 54);
     this.add(pokemonIconsContainer);
+    return false;
+  }
+
+  private addModifierPreview(data: SessionSaveData, compact: boolean): void {
+    if (compact) {
+      const modifierRowsContainer = globalScene.add.container(144, 29);
+      modifierRowsContainer.setScale(0.28);
+
+      this.getPreviewModifierRows(data).forEach((modifiers, playerIndex) => {
+        const rowContainer = globalScene.add.container(0, playerIndex * 104);
+        this.addModifierIconRow(rowContainer, modifiers);
+        modifierRowsContainer.add(rowContainer);
+      });
+
+      this.add(modifierRowsContainer);
+      return;
+    }
 
     const modifierIconsContainer = globalScene.add.container(148, 38);
     modifierIconsContainer.setScale(0.5);
+    this.addModifierIconRow(modifierIconsContainer, data.modifiers ?? []);
+    this.add(modifierIconsContainer);
+  }
+
+  private addModifierIconRow(container: Phaser.GameObjects.Container, modifiers: ModifierData[]): void {
     let visibleModifierIndex = 0;
-    for (const m of data.modifiers) {
+
+    for (const m of modifiers) {
       const modifier = m.toModifier(Modifier[m.className]);
       if (modifier instanceof Modifier.PokemonHeldItemModifier) {
         continue;
@@ -616,14 +647,64 @@ class SessionSlot extends Phaser.GameObjects.Container {
       const icon = modifier?.getIcon(false);
       if (icon) {
         icon.setPosition(24 * visibleModifierIndex, 0);
-        modifierIconsContainer.add(icon);
+        container.add(icon);
       }
       if (++visibleModifierIndex === 12) {
         break;
       }
     }
+  }
 
-    this.add(modifierIconsContainer);
+  private getPreviewModifierRows(data: SessionSaveData): ModifierData[][] {
+    if (!data.players?.length) {
+      return [data.modifiers ?? []];
+    }
+
+    return data.players.slice(0, 2).map(player => player.modifiers ?? []);
+  }
+
+  private addPokemonIconRow(
+    container: Phaser.GameObjects.Container,
+    party: PokemonData[],
+    scale: number,
+    iconSpacing: number,
+    levelX: number,
+    levelY: number,
+    levelFontSize: number,
+  ): void {
+    party.forEach((p: PokemonData, i: number) => {
+      const iconContainer = globalScene.add.container(iconSpacing * i, 0);
+      iconContainer.setScale(scale);
+
+      const pokemon = p.toPokemon();
+      const icon = globalScene.addPokemonIcon(pokemon, 0, 0, 0, 0);
+
+      const text = addTextObject(
+        levelX,
+        levelY,
+        `${i18next.t("saveSlotSelectUiHandler:lv")}${formatLargeNumber(pokemon.level, 1000)}`,
+        TextStyle.PARTY,
+        { fontSize: `${levelFontSize}px`, color: "#f8f8f8" },
+      );
+      text.setShadow(0, 0, undefined).setStroke("#424242", 14).setOrigin(1, 0);
+
+      iconContainer.add([icon, text]);
+      container.add(iconContainer);
+
+      pokemon.destroy();
+    });
+  }
+
+  private getPreviewParties(data: SessionSaveData): PokemonData[][] {
+    const savedPlayerParties = data.players
+      ?.map(player => player.party?.filter(Boolean) ?? [])
+      .filter(party => party.length);
+
+    if (savedPlayerParties && savedPlayerParties.length > 1) {
+      return savedPlayerParties.slice(0, 2);
+    }
+
+    return [data.party ?? []];
   }
 
   load(): Promise<boolean> {

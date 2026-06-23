@@ -137,6 +137,9 @@ export class SelectStarterPhase extends Phase {
         starter.ivs,
         starter.nature,
       );
+      if (globalScene.twoPlayerComputerPartner && playerIndex === 1 && i === 0) {
+        starterPokemon.computerPartnerAce = true;
+      }
       if (starter.moveset) {
         starterPokemon.tryPopulateMoveset(starter.moveset);
       }

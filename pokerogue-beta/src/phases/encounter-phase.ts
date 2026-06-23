@@ -35,7 +35,7 @@ import { getGoldenBugNetSpecies } from "#mystery-encounters/encounter-pokemon-ut
 import { BattlePhase } from "#phases/battle-phase";
 import { achvs } from "#system/achv";
 import { randSeedInt, randSeedItem } from "#utils/common";
-import { getComputerPartnerCaptureDecision } from "#utils/computer-partner-capture-ai";
+import { getComputerPartnerCaptureDecisions } from "#utils/computer-partner-capture-ai";
 import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
 import i18next from "i18next";
 
@@ -413,7 +413,7 @@ export class EncounterPhase extends BattlePhase {
       return undefined;
     }
 
-    const captureDecision = getComputerPartnerCaptureDecision(
+    const captureDecisions = getComputerPartnerCaptureDecisions(
       globalScene.computerPartnerKey,
       globalScene.getPlayerParty(1),
       partnerPokemon,
@@ -421,12 +421,17 @@ export class EncounterPhase extends BattlePhase {
       globalScene.getPlayerPokeballCounts(1),
     );
 
-    if (!captureDecision) {
+    if (!captureDecisions.length) {
       return undefined;
     }
 
     const profile = getComputerPartnerProfile(globalScene.computerPartnerKey);
-    return `${profile.name} wants to capture ${captureDecision.target.getNameToRender()}.`;
+    const targetNames = captureDecisions.map(decision => decision.target.getNameToRender());
+    const targetText =
+      targetNames.length === 1
+        ? targetNames[0]
+        : `${targetNames.slice(0, -1).join(", ")} and ${targetNames[targetNames.length - 1]}`;
+    return `${profile.name} wants to capture ${targetText}.`;
   }
 
   doEncounterCommon(showEncounterMessage = true) {

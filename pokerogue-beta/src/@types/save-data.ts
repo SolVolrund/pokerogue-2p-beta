@@ -19,6 +19,7 @@ import type { PokemonData } from "#system/pokemon-data";
 import type { TrainerData } from "#system/trainer-data";
 import type { SerializedDailyRunConfig } from "./daily-run";
 import type { DexData } from "./dex-data";
+import type { ComputerPartnerKey } from "#utils/computer-partner-profile";
 
 export interface SystemSaveData {
   trainerId: number;
@@ -58,6 +59,10 @@ export interface SessionSaveData {
   pokeballCounts: PokeballCounts;
   money: number;
   players?: PlayerSessionSaveData[];
+  twoPlayerMode?: boolean;
+  twoPlayerPartySize?: 3 | 6;
+  twoPlayerComputerPartner?: boolean;
+  computerPartnerKey?: ComputerPartnerKey;
   score: number;
   waveIndex: number;
   // TODO: This enum being inside save data is basically useless, being inferrable from the presence or absence of `trainer` and `mysteryEncounterType`.

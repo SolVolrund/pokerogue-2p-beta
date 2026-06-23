@@ -14,6 +14,7 @@ import type { Move } from "#moves/move";
 import { PlayerPartyMemberPokemonPhase } from "#phases/player-party-member-pokemon-phase";
 import { EvolutionSceneUiHandler } from "#ui/evolution-scene-ui-handler";
 import { SummaryUiMode } from "#ui/summary-ui-handler";
+import { chooseComputerPartnerMoveLearningDecision } from "#utils/computer-partner-move-ai";
 import i18next from "i18next";
 
 export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
@@ -53,6 +54,11 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
     this.messageMode =
       globalScene.ui.getHandler() instanceof EvolutionSceneUiHandler ? UiMode.EVOLUTION_SCENE : UiMode.MESSAGE;
     globalScene.ui.setMode(this.messageMode);
+
+    if (this.tryComputerPartnerMoveLearning(move, pokemon, currentMoveset.map(m => m.moveId))) {
+      return;
+    }
+
     // If the Pokemon has less than 4 moves, the new move is added to the largest empty moveset index
     // If it has 4 moves, the phase then checks if the player wants to replace the move itself.
     if (currentMoveset.length < 4) {
@@ -60,6 +66,48 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
     } else {
       this.replaceMoveCheck(move, pokemon);
     }
+  }
+
+  private tryComputerPartnerMoveLearning(move: Move, pokemon: Pokemon, currentMoveIds: MoveId[]): boolean {
+    if (
+      !globalScene.twoPlayerComputerPartner
+      || this.playerIndex !== 1
+      || (this.learnMoveType !== LearnMoveType.LEARN_MOVE && this.learnMoveType !== LearnMoveType.TM)
+    ) {
+      return false;
+    }
+
+    globalScene.waitForPlayerInput(0);
+    const decision = chooseComputerPartnerMoveLearningDecision(pokemon, currentMoveIds, move, this.learnMoveType);
+    if (decision.shouldLearn) {
+      const replacedMove = pokemon.moveset[decision.replaceIndex];
+      if (replacedMove) {
+        const forgetSuccessText = i18next.t("battle:learnMoveForgetSuccess", {
+          pokemonName: getPokemonNameWithAffix(pokemon),
+          moveName: replacedMove.getName(),
+        });
+        const fullText = [i18next.t("battle:countdownPoof"), forgetSuccessText, i18next.t("battle:learnMoveAnd")].join(
+          "$",
+        );
+        this.learnMove(decision.replaceIndex, move, pokemon, fullText);
+        return true;
+      }
+
+      this.learnMove(decision.replaceIndex, move, pokemon);
+      return true;
+    }
+
+    globalScene.ui
+      .showTextPromise(
+        i18next.t("battle:learnMoveNotLearned", {
+          pokemonName: getPokemonNameWithAffix(pokemon),
+          moveName: move.name,
+        }),
+        undefined,
+        true,
+      )
+      .then(() => this.end());
+    return true;
   }
 
   /**
@@ -248,6 +296,11 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
   }
 
   private setLearnMoveInputOwner(): void {
+    if (globalScene.twoPlayerComputerPartner && this.playerIndex === 1) {
+      globalScene.waitForPlayerInput(0);
+      return;
+    }
+
     if (globalScene.twoPlayerMode) {
       globalScene.waitForPlayerInput(this.playerIndex);
     } else {

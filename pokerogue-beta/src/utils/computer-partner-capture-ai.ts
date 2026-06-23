@@ -1,5 +1,4 @@
 import type { PokeballCounts } from "#app/battle-scene";
-import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { timedEventManager } from "#app/global-event-manager";
 import type { Move } from "#data/moves/move";
 import { getCriticalCaptureChance, getPokeballCatchMultiplier } from "#data/pokeball";
@@ -44,18 +43,24 @@ export function getComputerPartnerCaptureDecision(
   enemyField: EnemyPokemon[],
   pokeballCounts: PokeballCounts,
 ): ComputerPartnerCaptureDecision | undefined {
-  if (party.length >= PLAYER_PARTY_MAX_SIZE) {
-    return undefined;
-  }
+  return getComputerPartnerCaptureDecisions(partnerKey, party, activePokemon, enemyField, pokeballCounts)[0];
+}
 
+export function getComputerPartnerCaptureDecisions(
+  partnerKey: ComputerPartnerKey,
+  party: PlayerPokemon[],
+  activePokemon: PlayerPokemon,
+  enemyField: EnemyPokemon[],
+  pokeballCounts: PokeballCounts,
+): ComputerPartnerCaptureDecision[] {
   const profile = getComputerPartnerProfile(partnerKey);
-  const wantedTargets = enemyField
+  return enemyField
     .map((target, targetIndex) => {
       if (!target.isActive(true) || target.isFainted() || target.isBoss()) {
         return undefined;
       }
 
-      const replacementScore = getBestComputerPartnerReplacementSlot(profile, party, target.species);
+      const replacementScore = getBestComputerPartnerReplacementSlot(profile, party, target);
       if (!replacementScore) {
         return undefined;
       }
@@ -94,8 +99,6 @@ export function getComputerPartnerCaptureDecision(
       }
       return b.chance - a.chance;
     });
-
-  return wantedTargets[0];
 }
 
 export function getComputerPartnerCaptureChance(pokemon: EnemyPokemon, pokeballType: PokeballType): number {

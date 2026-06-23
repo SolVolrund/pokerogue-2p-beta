@@ -5931,6 +5931,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 export class PlayerPokemon extends Pokemon {
   protected declare battleInfo: PlayerBattleInfo;
   public aiType: AiType = AiType.SMART_RANDOM;
+  public computerPartnerAce = false;
 
   constructor(
     species: PokemonSpecies,
@@ -5945,6 +5946,7 @@ export class PlayerPokemon extends Pokemon {
     dataSource?: Pokemon | PokemonData,
   ) {
     super(106, 148, species, level, abilityIndex, formIndex, gender, shiny, variant, ivs, nature, dataSource);
+    this.computerPartnerAce = !!(dataSource && "computerPartnerAce" in dataSource && dataSource.computerPartnerAce);
 
     if (activeOverrides.STATUS_OVERRIDE) {
       this.status = new Status(activeOverrides.STATUS_OVERRIDE, 0, 4);

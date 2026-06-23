@@ -1,0 +1,35 @@
+# Dependencies
+.git/
+.gitdata/
+node_modules/
+.pnpm-store/
+.corepack/
+
+# Reference/duplicate projects; ignore unless explicitly needed
+BASE_POKEROGUE_BETA/
+Pokerogue-2P/
+Pokerogue-App-main/
+pokeemerald-rogue-vanilla/
+pokeemerald-rogue-assistant-main/
+
+# Build output
+dist/
+build/
+out/
+coverage/
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Logs and caches
+*.log
+.cache/
+.vite/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
