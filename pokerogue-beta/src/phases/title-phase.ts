@@ -589,6 +589,21 @@ export class TitlePhase extends Phase {
         keepOpen: true,
       },
       {
+        label: "3P",
+        handler: () => {
+          if (gameMode === GameModes.DAILY) {
+            globalScene.ui.setMode(UiMode.MESSAGE);
+            globalScene.ui.showText(i18next.t("menu:twoPlayerDailyUnavailable"), null, () =>
+              this.showPlayerCountSelect(gameMode),
+            );
+          } else {
+            globalScene.configureTwoPlayerMode(true, 6, false, 3);
+            this.setModeAndEnd(gameMode);
+          }
+          return true;
+        },
+      },
+      {
         label: i18next.t("menu:onePlayerOneComputer"),
         handler: () => {
           if (gameMode === GameModes.DAILY) {
@@ -949,23 +964,22 @@ export class TitlePhase extends Phase {
 
     if (this.loaded) {
       if (globalScene.twoPlayerMode) {
-        const p1AvailablePartyMembers = globalScene.getPokemonAllowedInBattle(0).length;
-        const p2AvailablePartyMembers = globalScene.getPokemonAllowedInBattle(1).length;
+        const playerIndexes = globalScene.getPlayerFieldOwners();
 
         globalScene.phaseManager.pushNew("ShowTrainerPhase");
-        globalScene.phaseManager.pushNew("SummonPhase", 0, true, true);
-        globalScene.phaseManager.pushNew("SummonPhase", 1, true, true);
+        playerIndexes.forEach((_playerIndex, fieldIndex) => {
+          globalScene.phaseManager.pushNew("SummonPhase", fieldIndex, true, true);
+        });
 
         if (
           globalScene.currentBattle.battleType !== BattleType.TRAINER
           && (globalScene.currentBattle.waveIndex > 1 || !globalScene.gameMode.isDaily)
         ) {
-          if (p1AvailablePartyMembers > 1) {
-            globalScene.phaseManager.pushNew("CheckSwitchPhase", 0, true);
-          }
-          if (p2AvailablePartyMembers > 1) {
-            globalScene.phaseManager.pushNew("CheckSwitchPhase", 1, true);
-          }
+          playerIndexes.forEach((playerIndex, fieldIndex) => {
+            if (globalScene.getPokemonAllowedInBattle(playerIndex).length > 1) {
+              globalScene.phaseManager.pushNew("CheckSwitchPhase", fieldIndex, true);
+            }
+          });
         }
       } else {
         const availablePartyMembers = globalScene.getPokemonAllowedInBattle().length;

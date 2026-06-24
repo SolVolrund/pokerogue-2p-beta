@@ -291,7 +291,7 @@ export class UI extends Phaser.GameObjects.Container {
     promptDelay?: number | null,
   ): void {
     const pokename: string[] = [];
-    const repname = ["#POKEMON1", "#POKEMON2"];
+    const repname = ["#POKEMON1", "#POKEMON2", "#POKEMON3"];
     for (let p = 0; p < globalScene.getPlayerField().length; p++) {
       pokename.push(globalScene.getPlayerField()[p].getNameToRender());
       text = text.split(pokename[p]).join(repname[p]);
@@ -301,8 +301,9 @@ export class UI extends Phaser.GameObjects.Container {
       let showMessageAndCallback = () => callback?.();
       for (let p = messagePages.length - 1; p >= 0; p--) {
         const originalFunc = showMessageAndCallback;
-        messagePages[p] = messagePages[p].split(repname[0]).join(pokename[0]);
-        messagePages[p] = messagePages[p].split(repname[1]).join(pokename[1]);
+        for (let n = 0; n < pokename.length; n++) {
+          messagePages[p] = messagePages[p].split(repname[n]).join(pokename[n]);
+        }
         showMessageAndCallback = () => this.showText(messagePages[p], null, originalFunc, null, true);
       }
       showMessageAndCallback();

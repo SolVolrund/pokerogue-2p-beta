@@ -37,6 +37,7 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
   protected fieldIndex = 0;
   protected fromCommand: Command = Command.FIGHT;
   protected cursor2 = 0;
+  protected cursor3 = 0;
 
   constructor() {
     super(UiMode.FIGHT);
@@ -134,7 +135,7 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
     if (pokemon.tempSummonData.turnCount <= 1) {
       this.setCursor(0);
     } else {
-      this.setCursor(this.fieldIndex ? this.cursor2 : this.cursor);
+      this.setCursor(this.getCursor());
     }
     this.displayMoves();
     this.toggleInfo(false); // in case cancel was pressed while info toggle is active
@@ -231,7 +232,7 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
   }
 
   getCursor(): number {
-    return this.fieldIndex ? this.cursor2 : this.cursor;
+    return this.fieldIndex === 2 ? this.cursor3 : this.fieldIndex ? this.cursor2 : this.cursor;
   }
 
   /** @returns TextStyle according to percentage of PP remaining */
@@ -298,7 +299,9 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
     this.moveInfoOverlay.clear();
     const changed = this.getCursor() !== cursor;
     if (changed) {
-      if (this.fieldIndex) {
+      if (this.fieldIndex === 2) {
+        this.cursor3 = cursor;
+      } else if (this.fieldIndex) {
         this.cursor2 = cursor;
       } else {
         this.cursor = cursor;

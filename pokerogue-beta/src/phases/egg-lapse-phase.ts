@@ -85,7 +85,9 @@ export class EggLapsePhase extends Phase {
   }
 
   private getEggsToHatch(): OwnedEgg[] {
-    const playerIndexes: PlayerIndex[] = globalScene.twoPlayerMode ? [0, 1] : [globalScene.activePlayerIndex];
+    const playerIndexes: PlayerIndex[] = globalScene.twoPlayerMode
+      ? globalScene.getActivePlayerIndexes()
+      : [globalScene.activePlayerIndex];
     const eggsToHatch: OwnedEgg[] = [];
 
     for (const playerIndex of playerIndexes) {

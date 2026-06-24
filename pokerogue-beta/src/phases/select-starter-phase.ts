@@ -1,4 +1,5 @@
 import { audioManager } from "#app/global-audio-manager";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { activeOverrides } from "#app/overrides";
 import { Phase } from "#app/phase";
@@ -29,7 +30,7 @@ export class SelectStarterPhase extends Phase {
     this.selectStartersForPlayer(0);
   }
 
-  private selectStartersForPlayer(playerIndex: 0 | 1): void {
+  private selectStartersForPlayer(playerIndex: PlayerIndex): void {
     if (globalScene.twoPlayerMode) {
       globalScene.waitForPlayerInput(playerIndex);
     } else {
@@ -39,10 +40,17 @@ export class SelectStarterPhase extends Phase {
       globalScene.ui.clearText();
       if (globalScene.twoPlayerMode) {
         this.initPlayerStarters(starters, playerIndex).then(() => {
-          if (playerIndex === 0) {
+          const playerIndexes = globalScene.getActivePlayerIndexes();
+          const currentPlayerOffset = playerIndexes.indexOf(playerIndex);
+          const nextPlayerIndex = playerIndexes[currentPlayerOffset + 1];
+          if (nextPlayerIndex !== undefined) {
             this.waitForTwoPlayerProfilesBeforeAction(() => {
               const computerPartnerProfile = getComputerPartnerProfile(globalScene.computerPartnerKey);
-              if (globalScene.twoPlayerComputerPartner && !computerPartnerProfile.usesPlayerSelectedStarters) {
+              if (
+                globalScene.twoPlayerComputerPartner
+                && nextPlayerIndex === 1
+                && !computerPartnerProfile.usesPlayerSelectedStarters
+              ) {
                 this.initComputerPartnerStarters().then(() => {
                   globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("starters-selected");
                   globalScene.waitForPlayerInput(0);
@@ -52,10 +60,12 @@ export class SelectStarterPhase extends Phase {
               }
 
               globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-                const playerTwoStarterPrompt = globalScene.twoPlayerComputerPartner
+                const starterPrompt = globalScene.twoPlayerComputerPartner && nextPlayerIndex === 1
                   ? i18next.t("menu:computerPartnerStarterPrompt")
-                  : i18next.t("menu:playerTwoStarterPrompt");
-                globalScene.ui.showText(playerTwoStarterPrompt, null, () => this.selectStartersForPlayer(1));
+                  : nextPlayerIndex === 1
+                    ? i18next.t("menu:playerTwoStarterPrompt")
+                    : "Player 3, choose your starters.";
+                globalScene.ui.showText(starterPrompt, null, () => this.selectStartersForPlayer(nextPlayerIndex));
               });
             });
             return;
@@ -98,7 +108,7 @@ export class SelectStarterPhase extends Phase {
    * Initialize starters for a player before starting the first battle.
    * @param starters - Array of {@linkcode Starter}s with which to start the battle
    */
-  initPlayerStarters(starters: Starter[], playerIndex: 0 | 1): Promise<void> {
+  initPlayerStarters(starters: Starter[], playerIndex: PlayerIndex): Promise<void> {
     if (globalScene.twoPlayerMode) {
       globalScene.waitForPlayerInput(playerIndex);
     } else {

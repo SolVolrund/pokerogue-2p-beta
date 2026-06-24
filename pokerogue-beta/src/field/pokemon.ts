@@ -184,6 +184,7 @@ import { calculateBossSegmentDamage } from "#utils/damage";
 import { getEnumValues } from "#utils/enums";
 import { cachedFetch } from "#utils/fetch-utils";
 import { decodeNickname, getFusedSpeciesName, getPokemonSpecies } from "#utils/pokemon-utils";
+import { getEnemyBattlerIndex, getPlayerBattlerIndex } from "#utils/battler-index-utils";
 import { weightedPick } from "#utils/random";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import { ValueHolder } from "#utils/value-holder";
@@ -1262,6 +1263,17 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   getFieldPositionOffset(): [number, number] {
+    if (globalScene.currentBattle?.getBattlerCount() > 2) {
+      switch (this.fieldPosition) {
+        case FieldPosition.CENTER:
+          return this.isPlayer() ? [-20, -4] : [0, 0];
+        case FieldPosition.LEFT:
+          return this.isPlayer() ? [-72, -8] : [-32, -8];
+        case FieldPosition.RIGHT:
+          return this.isPlayer() ? [32, 0] : [48, -8];
+      }
+    }
+
     switch (this.fieldPosition) {
       case FieldPosition.CENTER:
         return [0, 0];
@@ -1312,6 +1324,23 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    */
   public setFieldPosition(fieldPosition: FieldPosition, duration?: number): Promise<void> {
     return new Promise(resolve => {
+      const battleInfo = this.battleInfo;
+      const isPlayerPokemon = this.isPlayer();
+      const useThreePlayerCompactInfo = isPlayerPokemon && globalScene.getPlayerFieldOwners().length > 2;
+      const useThreeEnemyCompactInfo = this.isEnemy() && globalScene.currentBattle?.getBattlerCount() > 2;
+      const useMiniBattleInfo = isPlayerPokemon && globalScene.twoPlayerMode
+        ? true
+        : fieldPosition !== FieldPosition.CENTER;
+      battleInfo.setMini(useMiniBattleInfo);
+      battleInfo.setOffset(useThreePlayerCompactInfo || useThreeEnemyCompactInfo ? false : fieldPosition === FieldPosition.RIGHT);
+      if (useThreePlayerCompactInfo) {
+        battleInfo.setThreePlayerCompactLayout(this.getFieldIndex());
+      } else if (useThreeEnemyCompactInfo) {
+        battleInfo.setThreeEnemyCompactLayout(this.getFieldIndex());
+      } else {
+        battleInfo.clearCompactLayout();
+      }
+
       if (fieldPosition === this.fieldPosition) {
         resolve();
         return;
@@ -1320,9 +1349,6 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       const initialOffset = this.getFieldPositionOffset();
 
       this.fieldPosition = fieldPosition;
-
-      this.battleInfo.setMini(fieldPosition !== FieldPosition.CENTER);
-      this.battleInfo.setOffset(fieldPosition === FieldPosition.RIGHT);
 
       const newOffset = this.getFieldPositionOffset();
 
@@ -5934,7 +5960,7 @@ export class PlayerPokemon extends Pokemon {
   }
 
   getBattlerIndex(): BattlerIndex {
-    return this.getFieldIndex();
+    return getPlayerBattlerIndex(this.getFieldIndex());
   }
 
   /**
@@ -7169,7 +7195,7 @@ export class EnemyPokemon extends Pokemon {
     if (fieldIndex === -1) {
       return BattlerIndex.ATTACKER;
     }
-    return BattlerIndex.ENEMY + this.getFieldIndex();
+    return getEnemyBattlerIndex(fieldIndex);
   }
 
   /**
@@ -7179,7 +7205,7 @@ export class EnemyPokemon extends Pokemon {
    * @param slotIndex - An optional index to place the pokemon in the party
    * @returns The pokemon that was added or null if the pokemon could not be added
    */
-  public addToParty(pokeballType: PokeballType, slotIndex = -1, playerIndex: 0 | 1 = 0) {
+  public addToParty(pokeballType: PokeballType, slotIndex = -1, playerIndex: PlayerIndex = 0) {
     const party = globalScene.getPlayerParty(playerIndex);
     let ret: PlayerPokemon | null = null;
 

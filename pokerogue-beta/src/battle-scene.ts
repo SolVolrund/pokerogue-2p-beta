@@ -45,6 +45,7 @@ import type { PokemonSpecies, PokemonSpeciesFilter } from "#data/pokemon-species
 import { getTypeRgb } from "#data/type";
 import { BattleStyle } from "#enums/battle-style";
 import { BattleType } from "#enums/battle-type";
+import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BiomeId } from "#enums/biome-id";
 import { EaseType } from "#enums/ease-type";
@@ -180,20 +181,31 @@ import { decodeNickname, getPokemonSpecies } from "#utils/pokemon-utils";
 import { capitalizeFirstLetterOnly } from "#utils/strings";
 import type { ComputerPartnerKey } from "#utils/computer-partner-profile";
 import { isClassicFinalBossPhaseTwo } from "#utils/classic-final-boss-utils";
+import {
+  getEnemyBattlerIndex,
+  getFieldIndexFromBattlerIndex,
+  getPlayerBattlerIndex,
+} from "#utils/battler-index-utils";
 import i18next from "i18next";
 import Phaser from "phaser";
 export type PokeballCounts = Record<Exclude<PokeballType, PokeballType.LUXURY_BALL>, number>;
-export type PlayerIndex = 0 | 1;
+export type TwoPlayerIndex = 0 | 1;
+export type PlayerIndex = TwoPlayerIndex | 2;
 export type InputOwner = PlayerIndex | "both" | "none";
 export type LocalInputSeat = PlayerIndex | "both";
+export type MultiplayerPlayerCount = 1 | 2 | 3;
 const TRAINER_BACK_CENTER_X = 106;
 const TRAINER_BACK_LEFT_X = 74;
 const TRAINER_BACK_RIGHT_X = 138;
+const TRAINER_BACK_THREE_LEFT_X = 58;
+const TRAINER_BACK_THREE_CENTER_X = 106;
+const TRAINER_BACK_THREE_RIGHT_X = 154;
 // Previous two-trainer positions were P1 x=90 and P2 x=122.
 const TWO_PLAYER_GUEST_SYSTEM_SAVE_KEY = "pokerogue_2p_guest_system_save";
 const TWO_PLAYER_SESSION_SYSTEM_SAVE_KEYS = [
   "pokerogue_2p_session_system_save_0",
   "pokerogue_2p_session_system_save_1",
+  "pokerogue_3p_session_system_save_2",
 ] as const;
 const TWO_PLAYER_PROFILE_HANDSHAKE_BUILD = "profile-handshake-2026-06-17c";
 const TWO_PLAYER_SYNC_SETTING_KEYS = [
@@ -296,6 +308,14 @@ function createPlayerRunState(): PlayerRunState {
     pokeballCounts: createInitialPokeballCounts(),
     modifiers: [],
   };
+}
+
+function createPlayerRunStates(): PlayerRunState[] {
+  return [createPlayerRunState(), createPlayerRunState(), createPlayerRunState()];
+}
+
+function getPlayerIndexes(count: MultiplayerPlayerCount): PlayerIndex[] {
+  return [0, 1, 2].slice(0, count) as PlayerIndex[];
 }
 
 function isTwoPlayerPrototypeEnabled(): boolean {
@@ -444,7 +464,7 @@ export class BattleScene extends SceneBase {
   public disableMenu = false;
 
   public gameData: GameData;
-  public systemSaves: [GameData, GameData] | undefined;
+  public systemSaves: GameData[] | undefined;
   private localPlayerSystemSave: GameData | undefined;
   /** The numeric slot number of the current save slot being played. */
   public sessionSlotId: number;
@@ -485,6 +505,7 @@ export class BattleScene extends SceneBase {
   public lockModifierTiers: boolean;
   public trainer: Phaser.GameObjects.Sprite;
   public trainerPartner: Phaser.GameObjects.Sprite;
+  public trainerGuest2: Phaser.GameObjects.Sprite;
   public lastEnemyTrainer: Trainer | null;
   public currentBattle: Battle;
   public aiCommandInProgress = false;
@@ -493,6 +514,8 @@ export class BattleScene extends SceneBase {
   public pokemonInfoContainer: PokemonInfoContainer;
   private party: PlayerPokemon[];
   public twoPlayerMode: boolean = isTwoPlayerPrototypeEnabled();
+  public multiplayerPlayerCount: MultiplayerPlayerCount = this.twoPlayerMode ? 2 : 1;
+  public threePlayerLocalMode = false;
   public twoPlayerPartySize: 3 | 6 = getTwoPlayerPartySize();
   public twoPlayerComputerPartner: boolean = isTwoPlayerComputerPartnerEnabled();
   public computerPartnerKey: ComputerPartnerKey = "alex";
@@ -502,10 +525,12 @@ export class BattleScene extends SceneBase {
   public playerTrainerSprite: PlayerTrainerSprite = PlayerTrainerSprite.BASE_BOY;
   public twoPlayerGuestGender: PlayerGender = PlayerGender.FEMALE;
   public twoPlayerGuestTrainerSprite: PlayerTrainerSprite = PlayerTrainerSprite.BASE_GIRL;
+  public threePlayerGuestGender: PlayerGender = PlayerGender.MALE;
+  public threePlayerGuestTrainerSprite: PlayerTrainerSprite = PlayerTrainerSprite.BASE_BOY;
   public twoPlayerMysteryDecisionPriority: PlayerIndex = 0;
-  public twoPlayerProfileSlotsReady: [boolean, boolean] = [false, false];
-  public readonly fieldSlotOwners: [PlayerIndex, PlayerIndex] = [0, 1];
-  public players: [PlayerRunState, PlayerRunState] = [createPlayerRunState(), createPlayerRunState()];
+  public twoPlayerProfileSlotsReady: boolean[] = [false, false, true];
+  public readonly fieldSlotOwners: PlayerIndex[] = [0, 1, 2];
+  public players: PlayerRunState[] = createPlayerRunStates();
   private localPlayerSystemSaveLoaded = false;
   private twoPlayerLastRewardDebugState: TwoPlayerRewardDebugState | undefined;
   private twoPlayerProfileReadyResolvers: Array<(ready: boolean) => void> = [];
@@ -844,7 +869,15 @@ export class BattleScene extends SceneBase {
       .setOrigin(0.5, 1)
       .setName("sprite-trainer-partner")
       .setVisible(false);
-    this.field.add([this.trainer, this.trainerPartner]);
+    this.trainerGuest2 = this.addFieldSprite(
+      0,
+      0,
+      this.getTrainerBackTextureKey(2),
+    )
+      .setOrigin(0.5, 1)
+      .setName("sprite-trainer-guest-2")
+      .setVisible(false);
+    this.field.add([this.trainer, this.trainerPartner, this.trainerGuest2]);
 
     this.anims.create({
       key: "prompt",
@@ -968,6 +1001,16 @@ export class BattleScene extends SceneBase {
   private initializePlayerSystemSaves(): void {
     console.info(`[PokeRogue 2P] ${TWO_PLAYER_PROFILE_HANDSHAKE_BUILD}`);
     const localSystemSave = this.getLocalPlayerSystemSave();
+    if (this.threePlayerLocalMode) {
+      this.systemSaves = [
+        localSystemSave,
+        this.loadSessionSystemSave(1) ?? this.cloneLocalSystemSaveForPlayer(1),
+        this.loadSessionSystemSave(2) ?? this.cloneLocalSystemSaveForPlayer(2),
+      ];
+      this.refreshTwoPlayerProfileSlotsReady();
+      return;
+    }
+
     const localSeat = this.getLocalSystemSaveSeat();
     this.refreshTwoPlayerProfileSlotsReady();
 
@@ -982,7 +1025,16 @@ export class BattleScene extends SceneBase {
     }
   }
 
-  private ensurePlayerSystemSaves(): [GameData, GameData] {
+  private cloneLocalSystemSaveForPlayer(playerIndex: PlayerIndex): GameData {
+    try {
+      return GameData.fromRawSystem(this.getLocalPlayerSystemSave().getSystemSaveDataString(), false, playerIndex);
+    } catch (err) {
+      console.warn(`Failed to clone local profile for player ${playerIndex}; creating a fresh profile.`, err);
+      return new GameData(true);
+    }
+  }
+
+  private ensurePlayerSystemSaves(): GameData[] {
     if (!this.systemSaves) {
       this.initializePlayerSystemSaves();
     }
@@ -990,7 +1042,12 @@ export class BattleScene extends SceneBase {
     return this.systemSaves!;
   }
 
-  public configureTwoPlayerMode(enabled: boolean, partySize: 3 | 6 = 6, computerPartner = false): void {
+  public configureTwoPlayerMode(
+    enabled: boolean,
+    partySize: 3 | 6 = 6,
+    computerPartner = false,
+    playerCount: MultiplayerPlayerCount = enabled ? 2 : 1,
+  ): void {
     if (!this.twoPlayerMode) {
       this.localPlayerSystemSave = this.gameData;
     }
@@ -1003,6 +1060,8 @@ export class BattleScene extends SceneBase {
     }
 
     this.twoPlayerMode = enabled;
+    this.multiplayerPlayerCount = enabled ? playerCount : 1;
+    this.threePlayerLocalMode = enabled && playerCount === 3;
     this.twoPlayerPartySize = enabled ? partySize : 6;
     this.twoPlayerComputerPartner = enabled && computerPartner;
     if (!this.twoPlayerComputerPartner) {
@@ -1079,6 +1138,12 @@ export class BattleScene extends SceneBase {
       return;
     }
 
+    if (this.threePlayerLocalMode) {
+      this.systemSaves[0] = this.getLocalPlayerSystemSave();
+      this.twoPlayerProfileSlotsReady = [true, true, true];
+      return;
+    }
+
     const localSeat = this.getLocalSystemSaveSeat();
     const localPlayerIndex = localSeat === "host-and-guest-local" ? 0 : localSeat;
     this.systemSaves[localPlayerIndex] = this.getLocalPlayerSystemSave();
@@ -1086,7 +1151,7 @@ export class BattleScene extends SceneBase {
   }
 
   public getLocalTwoPlayerProfileSnapshot(): TwoPlayerProfileSnapshot | undefined {
-    if (!this.twoPlayerMode || !this.gameData || !this.localPlayerSystemSaveLoaded) {
+    if (!this.twoPlayerMode || this.threePlayerLocalMode || !this.gameData || !this.localPlayerSystemSaveLoaded) {
       return undefined;
     }
 
@@ -1104,7 +1169,7 @@ export class BattleScene extends SceneBase {
   }
 
   public getTwoPlayerSettingsSnapshot(): TwoPlayerSettingsSnapshot | undefined {
-    if (!this.twoPlayerMode || this.twoPlayerLocalInputSeat !== 0) {
+    if (!this.twoPlayerMode || this.threePlayerLocalMode || this.twoPlayerLocalInputSeat !== 0) {
       return undefined;
     }
 
@@ -1118,7 +1183,7 @@ export class BattleScene extends SceneBase {
   }
 
   public applyTwoPlayerSettingsSnapshot(settingsSnapshot: TwoPlayerSettingsSnapshot): boolean {
-    if (!this.twoPlayerMode || this.twoPlayerLocalInputSeat === 0) {
+    if (!this.twoPlayerMode || this.threePlayerLocalMode || this.twoPlayerLocalInputSeat === 0) {
       return false;
     }
 
@@ -1195,7 +1260,7 @@ export class BattleScene extends SceneBase {
   }
 
   public applyTwoPlayerProfileSnapshot(profileSnapshot: TwoPlayerProfileSnapshot): boolean {
-    if (!this.twoPlayerMode || this.isLocalSystemSaveOwner(profileSnapshot.playerIndex)) {
+    if (!this.twoPlayerMode || this.threePlayerLocalMode || this.isLocalSystemSaveOwner(profileSnapshot.playerIndex)) {
       return false;
     }
 
@@ -1222,29 +1287,31 @@ export class BattleScene extends SceneBase {
 
   private refreshTwoPlayerProfileSlotsReady(): void {
     if (!this.twoPlayerMode) {
-      this.twoPlayerProfileSlotsReady = [true, true];
+      this.twoPlayerProfileSlotsReady = [true, true, true];
       this.resolveTwoPlayerProfileReadyWaiters();
       return;
     }
 
-    if (this.twoPlayerComputerPartner) {
-      this.twoPlayerProfileSlotsReady = [true, true];
+    if (this.twoPlayerComputerPartner || this.threePlayerLocalMode) {
+      this.twoPlayerProfileSlotsReady = [true, true, true];
       this.resolveTwoPlayerProfileReadyWaiters();
       return;
     }
 
     const localSeat = this.getLocalSystemSaveSeat();
-    const localReady: [boolean, boolean] =
+    const localReady: [boolean, boolean, boolean] =
       localSeat === "host-and-guest-local"
-        ? [this.localPlayerSystemSaveLoaded, true]
+        ? [this.localPlayerSystemSaveLoaded, true, true]
         : [
             localSeat === 0 && this.localPlayerSystemSaveLoaded,
             localSeat === 1 && this.localPlayerSystemSaveLoaded,
+            true,
           ];
 
     this.twoPlayerProfileSlotsReady = [
       this.twoPlayerProfileSlotsReady[0] || localReady[0],
       this.twoPlayerProfileSlotsReady[1] || localReady[1],
+      true,
     ];
     this.resolveTwoPlayerProfileReadyWaiters();
   }
@@ -1282,7 +1349,7 @@ export class BattleScene extends SceneBase {
   }
 
   public getLocalSystemSaveSeat(): PlayerIndex | "host-and-guest-local" {
-    if (!this.twoPlayerMode || this.twoPlayerLocalInputSeat === "both") {
+    if (!this.twoPlayerMode || this.threePlayerLocalMode || this.twoPlayerLocalInputSeat === "both") {
       return "host-and-guest-local";
     }
 
@@ -1290,7 +1357,7 @@ export class BattleScene extends SceneBase {
   }
 
   public isLocalSystemSaveOwner(playerIndex: PlayerIndex): boolean {
-    if (!this.twoPlayerMode) {
+    if (!this.twoPlayerMode || this.threePlayerLocalMode) {
       return true;
     }
 
@@ -1353,15 +1420,8 @@ export class BattleScene extends SceneBase {
       return undefined;
     }
 
-    if (this.systemSaves[0] === gameData) {
-      return 0;
-    }
-
-    if (this.systemSaves[1] === gameData) {
-      return 1;
-    }
-
-    return undefined;
+    const playerIndex = this.systemSaves.indexOf(gameData);
+    return playerIndex >= 0 && playerIndex < 3 ? playerIndex as PlayerIndex : undefined;
   }
 
   private syncActiveSystemSaveForActivePlayer(): void {
@@ -1388,7 +1448,7 @@ export class BattleScene extends SceneBase {
   }
 
   private resetPlayerRunStates(): void {
-    this.players = [createPlayerRunState(), createPlayerRunState()];
+    this.players = createPlayerRunStates();
     this.activePlayerIndex = 0;
     this.inputOwner = "none";
 
@@ -1407,6 +1467,26 @@ export class BattleScene extends SceneBase {
 
     this.syncSinglePlayerStateReference();
     return this.players[0];
+  }
+
+  public getActivePlayerIndexes(): PlayerIndex[] {
+    return this.twoPlayerMode ? getPlayerIndexes(this.multiplayerPlayerCount) : [0];
+  }
+
+  public getBattleFieldSlotCount(): number {
+    return this.twoPlayerMode ? this.getPlayerFieldOwners().length : this.currentBattle?.getBattlerCount() ?? 1;
+  }
+
+  public getPlayerBattlerIndex(fieldIndex: number): BattlerIndex {
+    return getPlayerBattlerIndex(fieldIndex);
+  }
+
+  public getEnemyBattlerIndex(fieldIndex: number): BattlerIndex {
+    return getEnemyBattlerIndex(fieldIndex);
+  }
+
+  public getFieldIndexForBattlerIndex(battlerIndex: BattlerIndex | number): number {
+    return getFieldIndexFromBattlerIndex(battlerIndex);
   }
 
   public setActivePlayerIndex(playerIndex: PlayerIndex): void {
@@ -1430,6 +1510,9 @@ export class BattleScene extends SceneBase {
         break;
       case 1:
         updateWindowType(2);
+        break;
+      case 2:
+        updateWindowType(3);
         break;
       case "both":
         updateWindowType(5);
@@ -1519,7 +1602,7 @@ export class BattleScene extends SceneBase {
       inputOwner: this.inputOwner,
       lastReward: this.twoPlayerLastRewardDebugState ?? null,
       fieldOwners: this.getPlayerFieldOwners(),
-      players: ([0, 1] as const).map(playerIndex => ({
+      players: this.getActivePlayerIndexes().map(playerIndex => ({
         playerIndex,
         money: this.getPlayerMoney(playerIndex),
         pokeballs: [...Object.entries(this.getPlayerPokeballCounts(playerIndex))]
@@ -1586,10 +1669,18 @@ export class BattleScene extends SceneBase {
   }
 
   public getTrainerGender(playerIndex: PlayerIndex = 0): PlayerGender {
+    if (playerIndex === 2) {
+      return this.threePlayerGuestGender;
+    }
+
     return playerIndex === 1 ? this.twoPlayerGuestGender : this.getPlayerGameData(0).gender;
   }
 
   public getTrainerSprite(playerIndex: PlayerIndex = 0): PlayerTrainerSprite {
+    if (playerIndex === 2) {
+      return this.threePlayerGuestTrainerSprite;
+    }
+
     return playerIndex === 1 ? this.twoPlayerGuestTrainerSprite : this.playerTrainerSprite;
   }
 
@@ -1606,6 +1697,17 @@ export class BattleScene extends SceneBase {
       return TRAINER_BACK_CENTER_X;
     }
 
+    if (this.getPlayerFieldOwners().length > 2) {
+      switch (playerIndex) {
+        case 0:
+          return TRAINER_BACK_THREE_LEFT_X;
+        case 1:
+          return TRAINER_BACK_THREE_RIGHT_X;
+        case 2:
+          return TRAINER_BACK_THREE_CENTER_X;
+      }
+    }
+
     return playerIndex === 0 ? TRAINER_BACK_LEFT_X : TRAINER_BACK_RIGHT_X;
   }
 
@@ -1616,6 +1718,17 @@ export class BattleScene extends SceneBase {
     baseY = 186,
   ): Phaser.GameObjects.Sprite {
     return trainerSprite.setPosition(x, this.getTrainerBackSpriteY(playerIndex, baseY));
+  }
+
+  public getPlayerTrainerBackSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
+    switch (playerIndex) {
+      case 1:
+        return this.trainerPartner;
+      case 2:
+        return this.trainerGuest2;
+      default:
+        return this.trainer;
+    }
   }
 
   // TODO: Add a `getPartyOnSide` function for getting the party of a pokemon
@@ -1707,11 +1820,11 @@ export class BattleScene extends SceneBase {
       return;
     }
 
-    const fieldOwners = [...new Set(playerIndexes)].slice(0, 2) as PlayerIndex[];
+    const fieldOwners = [...new Set(playerIndexes)].slice(0, this.multiplayerPlayerCount) as PlayerIndex[];
     this.currentBattle.playerFieldOwners = fieldOwners;
     this.setActivePlayerIndex(fieldOwners[0]);
 
-    ([0, 1] as PlayerIndex[])
+    this.getActivePlayerIndexes()
       .filter(playerIndex => !fieldOwners.includes(playerIndex))
       .map(playerIndex => this.getPlayerParty(playerIndex)[0])
       .filter((pokemon): pokemon is PlayerPokemon => !!pokemon && pokemon.isOnField())
@@ -1731,7 +1844,7 @@ export class BattleScene extends SceneBase {
 
     return (this.currentBattle?.playerFieldOwners?.length
       ? this.currentBattle.playerFieldOwners
-      : this.fieldSlotOwners) as PlayerIndex[];
+      : this.fieldSlotOwners.slice(0, this.multiplayerPlayerCount)) as PlayerIndex[];
   }
 
   public getPlayerIndexForFieldSlot(fieldSlot: number): PlayerIndex {
@@ -1808,7 +1921,7 @@ export class BattleScene extends SceneBase {
   public getEnemyField(active = false): EnemyPokemon[] {
     const party = this.getEnemyParty();
     return party
-      .slice(0, Math.min(party.length, this.currentBattle?.double ? 2 : 1))
+      .slice(0, Math.min(party.length, this.currentBattle?.getBattlerCount() ?? 1))
       .filter(p => !active || p.isActive());
   }
 
@@ -1824,11 +1937,15 @@ export class BattleScene extends SceneBase {
    * If speed order matters, use {@linkcode inSpeedOrder}.
    */
   public getField(activeOnly = false): Pokemon[] {
-    const ret: Pokemon[] = new Array(4).fill(null);
+    const ret: Pokemon[] = new Array(6).fill(null);
     const playerField = this.getPlayerField();
     const enemyField = this.getEnemyField();
-    ret.splice(0, playerField.length, ...playerField);
-    ret.splice(2, enemyField.length, ...enemyField);
+    playerField.forEach((pokemon, fieldIndex) => {
+      ret[this.getPlayerBattlerIndex(fieldIndex)] = pokemon;
+    });
+    enemyField.forEach((pokemon, fieldIndex) => {
+      ret[this.getEnemyBattlerIndex(fieldIndex)] = pokemon;
+    });
     return activeOnly ? ret.filter(p => p?.isActive()) : ret;
   }
 
@@ -2290,6 +2407,9 @@ export class BattleScene extends SceneBase {
     this.trainerPartner.setTexture(this.getTrainerBackTextureKey(1));
     this.setTrainerBackSpritePosition(this.trainerPartner, 1, 438);
     this.trainerPartner.setVisible(false);
+    this.trainerGuest2.setTexture(this.getTrainerBackTextureKey(2));
+    this.setTrainerBackSpritePosition(this.trainerGuest2, 2, 422);
+    this.trainerGuest2.setVisible(false);
 
     this.mysteryEncounterSaveData = new MysteryEncounterSaveData();
 
@@ -2544,6 +2664,7 @@ export class BattleScene extends SceneBase {
     // TODO: This means MEs can generate when the override is set to `BattleType.WILD`
     if (
       (!this.twoPlayerMode || TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST.length > 0)
+      && !this.threePlayerLocalMode
       && !activeOverrides.BATTLE_TYPE_OVERRIDE
       && this.isWaveMysteryEncounter(resolved.battleType, waveIndex)
     ) {
@@ -4540,7 +4661,7 @@ export class BattleScene extends SceneBase {
   ): void {
     if (this.twoPlayerMode && playerIndex === undefined) {
       const previousPlayerIndex = this.activePlayerIndex;
-      for (const expPlayerIndex of [0, 1] as PlayerIndex[]) {
+      for (const expPlayerIndex of this.getActivePlayerIndexes()) {
         this.setActivePlayerIndex(expPlayerIndex);
         this.applyPartyExp(expValue, pokemonDefeated, useWaveIndexMultiplier, participantIds, expPlayerIndex);
       }
@@ -4723,6 +4844,7 @@ export class BattleScene extends SceneBase {
       && DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE != null
       && waveIndex === DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE
       && this.twoPlayerMode
+      && !this.threePlayerLocalMode
       && this.gameMode.hasMysteryEncounters
       && battleType === BattleType.WILD
       && !this.gameMode.isBoss(waveIndex)
@@ -4732,7 +4854,7 @@ export class BattleScene extends SceneBase {
       && !this.mysteryEncounterSaveData.encounteredEvents.some(
         event => event.type === DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE,
       )
-      && ([0, 1] as PlayerIndex[]).every(playerIndex => this.getPokemonAllowedInBattle(playerIndex).length > 0)
+      && this.getActivePlayerIndexes().every(playerIndex => this.getPokemonAllowedInBattle(playerIndex).length > 0)
     );
   }
 

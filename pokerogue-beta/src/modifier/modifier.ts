@@ -970,7 +970,9 @@ export class GammaRayBurstModifier extends PokemonHeldItemModifier {
 }
 
 function getLivingPlayerSidePokemonCount(): number {
-  const playerIndexes = globalScene.twoPlayerMode ? ([0, 1] as const) : ([globalScene.activePlayerIndex] as const);
+  const playerIndexes = globalScene.twoPlayerMode
+    ? globalScene.getActivePlayerIndexes()
+    : [globalScene.activePlayerIndex];
 
   return playerIndexes.reduce<number>((total, playerIndex) => {
     return total + globalScene.getPlayerParty(playerIndex).filter(pokemon => !pokemon.isFainted()).length;

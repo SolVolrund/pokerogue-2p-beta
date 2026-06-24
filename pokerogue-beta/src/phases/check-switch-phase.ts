@@ -4,6 +4,7 @@ import { BattleStyle } from "#enums/battle-style";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { SwitchType } from "#enums/switch-type";
 import { UiMode } from "#enums/ui-mode";
+import type { PlayerPokemon } from "#field/pokemon";
 import { BattlePhase } from "#phases/battle-phase";
 import { getComputerPartnerImprovedSwitchIndex, isComputerPartnerFieldIndex } from "#utils/computer-partner-ai";
 import i18next from "i18next";
@@ -20,11 +21,27 @@ export class CheckSwitchPhase extends BattlePhase {
     this.useName = useName;
   }
 
+  private getPlayerPokemon(): PlayerPokemon | undefined {
+    const fieldPokemon = globalScene.getPlayerField()[this.fieldIndex];
+    if (fieldPokemon) {
+      return fieldPokemon;
+    }
+
+    const battlerPokemon = globalScene.getField()[this.fieldIndex];
+    return battlerPokemon?.isPlayer() ? (battlerPokemon as PlayerPokemon) : undefined;
+  }
+
   start() {
     super.start();
 
-    const pokemon = globalScene.getPlayerField()[this.fieldIndex];
-    const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
+    const pokemon = this.getPlayerPokemon();
+    if (pokemon) {
+      this.fieldIndex = pokemon.getFieldIndex();
+    }
+
+    const playerIndex = pokemon
+      ? globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex)
+      : globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
     const activePartySlotCount = globalScene.twoPlayerMode ? 1 : globalScene.currentBattle.getBattlerCount();
 
     // End this phase early...
@@ -36,7 +53,7 @@ export class CheckSwitchPhase extends BattlePhase {
     }
 
     // ...if the checked Pokemon is somehow not on the field
-    if (globalScene.field.getAll().indexOf(pokemon) === -1) {
+    if (!pokemon || globalScene.field.getAll().indexOf(pokemon) === -1) {
       globalScene.phaseManager.unshiftNew("SummonMissingPhase", this.fieldIndex);
       return super.end();
     }

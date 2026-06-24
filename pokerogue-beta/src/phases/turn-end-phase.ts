@@ -95,7 +95,9 @@ export class TurnEndPhase extends FieldPhase {
   }
 
   private applyShinyBadgePartyRevives(): void {
-    const playerIndexes = globalScene.twoPlayerMode ? ([0, 1] as const) : ([globalScene.activePlayerIndex] as const);
+    const playerIndexes = globalScene.twoPlayerMode
+      ? globalScene.getActivePlayerIndexes()
+      : [globalScene.activePlayerIndex];
 
     for (const playerIndex of playerIndexes) {
       for (const pokemon of globalScene.getPlayerParty(playerIndex)) {

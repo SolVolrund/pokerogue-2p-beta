@@ -6,35 +6,34 @@ export class ShowTrainerPhase extends BattlePhase {
   start() {
     super.start();
 
-    const hasPartnerTrainer = globalScene.getPlayerFieldOwners().length > 1;
-    const playerTrainerX = globalScene.getTrainerBackSpriteX(0, hasPartnerTrainer);
+    const playerIndexes = globalScene.getPlayerFieldOwners();
+    const hasPartnerTrainer = playerIndexes.length > 1;
+    let remainingTweens = playerIndexes.length;
 
-    globalScene.trainer
-      .setVisible(true)
-      .setTexture(globalScene.getTrainerBackTextureKey(0))
-      .setFrame(0);
-    globalScene.trainerPartner
-      .setVisible(hasPartnerTrainer)
-      .setTexture(globalScene.getTrainerBackTextureKey(1))
-      .setFrame(0);
-
-    globalScene.tweens.add({
-      targets: globalScene.trainer,
-      x: playerTrainerX,
-      duration: 1000,
-      onComplete: () => {
-        if (!hasPartnerTrainer) {
-          this.end();
-        }
-      },
+    globalScene.getActivePlayerIndexes().forEach(playerIndex => {
+      const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
+      trainerSprite
+        .setVisible(playerIndexes.includes(playerIndex))
+        .setTexture(globalScene.getTrainerBackTextureKey(playerIndex))
+        .setFrame(0);
     });
-    if (hasPartnerTrainer) {
+
+    playerIndexes.forEach(playerIndex => {
       globalScene.tweens.add({
-        targets: globalScene.trainerPartner,
-        x: globalScene.getTrainerBackSpriteX(1, true),
+        targets: globalScene.getPlayerTrainerBackSprite(playerIndex),
+        x: globalScene.getTrainerBackSpriteX(playerIndex, hasPartnerTrainer),
         duration: 1000,
-        onComplete: () => this.end(),
+        onComplete: () => {
+          remainingTweens--;
+          if (remainingTweens <= 0) {
+            this.end();
+          }
+        },
       });
+    });
+
+    if (remainingTweens === 0) {
+      this.end();
     }
   }
 }

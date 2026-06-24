@@ -1,5 +1,5 @@
 import { audioManager } from "#app/global-audio-manager";
-import type { PlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { modifierTypes } from "#data/data-lists";
@@ -134,8 +134,8 @@ interface WeirdDreamChoice {
 
 interface WeirdDreamData {
   choices: WeirdDreamChoice[];
-  teamTransformationsByPlayer: Record<PlayerIndex, PokemonTransformation[]>;
-  loadAssetsByPlayer: Record<PlayerIndex, Promise<void>[]>;
+  teamTransformationsByPlayer: Record<TwoPlayerIndex, PokemonTransformation[]>;
+  loadAssetsByPlayer: Record<TwoPlayerIndex, Promise<void>[]>;
   skipSelectedDialogueOnce?: boolean;
 }
 
@@ -166,7 +166,7 @@ function getWeirdDreamData(): WeirdDreamData {
     const teamTransformationsByPlayer = {
       0: getTeamTransformations(0),
       1: getTeamTransformations(1),
-    } satisfies Record<PlayerIndex, PokemonTransformation[]>;
+    } satisfies Record<TwoPlayerIndex, PokemonTransformation[]>;
 
     encounter.misc = {
       ...(encounter.misc ?? {}),
@@ -600,7 +600,7 @@ export const WeirdDreamEncounter: MysteryEncounter = MysteryEncounterBuilder.wit
     const teamTransformationsByPlayer = {
       0: getTeamTransformations(0),
       1: getTeamTransformations(1),
-    } satisfies Record<PlayerIndex, PokemonTransformation[]>;
+    } satisfies Record<TwoPlayerIndex, PokemonTransformation[]>;
 
     globalScene.currentBattle.mysteryEncounter!.misc = {
       choices: [],

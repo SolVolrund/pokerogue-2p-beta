@@ -7,6 +7,7 @@ import { PartyUiMode } from "#enums/party-ui-mode";
 import { PokemonType } from "#enums/pokemon-type";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
+import type { PlayerPokemon } from "#field/pokemon";
 import type { CommandPhase } from "#phases/command-phase";
 import { PartyUiHandler } from "#ui/party-ui-handler";
 import { addTextObject } from "#ui/text";
@@ -22,6 +23,7 @@ export class CommandUiHandler extends UiHandler {
 
   protected fieldIndex = 0;
   protected cursor2 = 0;
+  protected cursor3 = 0;
 
   constructor() {
     super(UiMode.COMMAND);
@@ -65,10 +67,28 @@ export class CommandUiHandler extends UiHandler {
     }
   }
 
+  private getActivePokemon(): PlayerPokemon | undefined {
+    const fieldPokemon = globalScene.getPlayerField()[this.fieldIndex];
+    if (fieldPokemon) {
+      return fieldPokemon;
+    }
+
+    const battlerPokemon = globalScene.getField()[this.fieldIndex];
+    if (battlerPokemon?.isPlayer()) {
+      return battlerPokemon as PlayerPokemon;
+    }
+
+    return undefined;
+  }
+
   show(args: any[]): boolean {
     super.show(args);
 
     this.fieldIndex = args.length > 0 ? (args[0] as number) : 0;
+    const activePokemon = this.getActivePokemon();
+    if (activePokemon) {
+      this.fieldIndex = activePokemon.getFieldIndex();
+    }
 
     this.commandsContainer.setVisible(true);
 
@@ -82,7 +102,7 @@ export class CommandUiHandler extends UiHandler {
 
     if (this.canTera()) {
       this.teraButton.setVisible(true);
-      this.teraButton.setFrame(PokemonType[globalScene.getField()[this.fieldIndex].getTeraType()].toLowerCase());
+      this.teraButton.setFrame(PokemonType[this.getActivePokemon()!.getTeraType()].toLowerCase());
     } else {
       this.teraButton.setVisible(false);
       if (this.getCursor() === Command.TERA) {
@@ -91,7 +111,11 @@ export class CommandUiHandler extends UiHandler {
     }
     this.toggleTeraButton();
 
-    const pokemonName = commandPhase.getPokemon().getNameToRender({ prependFormName: false });
+    const pokemonName = (
+      this.getActivePokemon()
+      ?? commandPhase.getPokemon()
+      ?? globalScene.getPlayerParty(globalScene.getPlayerIndexForFieldSlot(this.fieldIndex))[0]
+    )?.getNameToRender({ prependFormName: false }) ?? i18next.t("battle:pokemon");
     const messageHandler = this.getUi().getMessageHandler();
     messageHandler.bg.setVisible(true);
     messageHandler.commandWindow.setVisible(true);
@@ -195,9 +219,13 @@ export class CommandUiHandler extends UiHandler {
   }
 
   canTera(): boolean {
-    const activePokemon = globalScene.getField()[this.fieldIndex];
+    const activePokemon = this.getActivePokemon();
     const currentTeras = globalScene.arena.playerTerasUsed;
-    const canTera = activePokemon.isPlayer() && canTerastallize(activePokemon);
+    if (!activePokemon) {
+      return false;
+    }
+
+    const canTera = canTerastallize(activePokemon);
     const plannedTera = +(
       globalScene.currentBattle.preTurnCommands[0]?.command === Command.TERA && this.fieldIndex > 0
     );
@@ -205,22 +233,29 @@ export class CommandUiHandler extends UiHandler {
   }
 
   toggleTeraButton() {
+    const activePokemon = this.getActivePokemon();
+    if (!activePokemon) {
+      return;
+    }
+
     this.teraButton.setPipeline(globalScene.spritePipeline, {
       tone: [0.0, 0.0, 0.0, 0.0],
       ignoreTimeTint: true,
-      teraColor: getTypeRgb(globalScene.getField()[this.fieldIndex].getTeraType()),
+      teraColor: getTypeRgb(activePokemon.getTeraType()),
       isTerastallized: this.getCursor() === Command.TERA,
     });
   }
 
   getCursor(): number {
-    return this.fieldIndex ? this.cursor2 : this.cursor;
+    return this.fieldIndex === 2 ? this.cursor3 : this.fieldIndex ? this.cursor2 : this.cursor;
   }
 
   setCursor(cursor: number): boolean {
     const changed = this.getCursor() !== cursor;
     if (changed) {
-      if (this.fieldIndex) {
+      if (this.fieldIndex === 2) {
+        this.cursor3 = cursor;
+      } else if (this.fieldIndex) {
         this.cursor2 = cursor;
       } else {
         this.cursor = cursor;

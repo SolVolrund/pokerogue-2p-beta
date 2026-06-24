@@ -988,7 +988,7 @@ export class GameData {
 
     const loadPokemonAssets: Promise<void>[] = [];
 
-    const loadPlayerParty = (playerIndex: 0 | 1, partyData: PokemonData[]) => {
+    const loadPlayerParty = (playerIndex: PlayerIndex, partyData: PokemonData[]) => {
       const party = globalScene.getPlayerParty(playerIndex);
       party.splice(0, party.length);
 
@@ -1006,9 +1006,13 @@ export class GameData {
         fromSession.players?.[1]?.party
         ?? (fromSession.party?.length > 1 ? fromSession.party.slice(1, 2) : fromSession.party?.slice(0, 1))
         ?? [];
+      const p3PartyData = fromSession.players?.[2]?.party ?? [];
 
       loadPlayerParty(0, p1PartyData);
       loadPlayerParty(1, p2PartyData);
+      if (globalScene.multiplayerPlayerCount > 2) {
+        loadPlayerParty(2, p3PartyData);
+      }
 
       globalScene.players.forEach((player, playerIndex) => {
         const playerSave = fromSession.players?.[playerIndex];
@@ -1101,7 +1105,7 @@ export class GameData {
     // #endregion Arena stuff
 
     if (globalScene.twoPlayerMode) {
-      for (const playerIndex of [0, 1] as const) {
+      for (const playerIndex of globalScene.getActivePlayerIndexes()) {
         globalScene.setActivePlayerIndex(playerIndex);
         if (globalScene.modifiers.length > 0) {
           console.warn("Existing modifiers not cleared on session load, deleting...");
@@ -1147,7 +1151,7 @@ export class GameData {
   }
 
   private async reloadShinyBadgeHolderAssets(): Promise<void> {
-    const playerIndexes = globalScene.twoPlayerMode ? ([0, 1] as const) : ([0] as const);
+    const playerIndexes: PlayerIndex[] = globalScene.twoPlayerMode ? globalScene.getActivePlayerIndexes() : [0];
     const loadPokemonAssets: Promise<void>[] = [];
 
     for (const playerIndex of playerIndexes) {
@@ -1170,11 +1174,17 @@ export class GameData {
 
   private configureSessionPlayerMode(fromSession: SessionSaveData): void {
     const hasTwoPlayerSessionData = !!fromSession.players?.length;
+    const hasThreePlayerSessionData = (fromSession.players?.length ?? 0) > 2;
     const computerPartnerKey = this.getSessionComputerPartnerKey(fromSession);
     const isComputerPartnerSession = !!fromSession.twoPlayerComputerPartner || !!computerPartnerKey;
     const isTwoPlayerSession = !!fromSession.twoPlayerMode || hasTwoPlayerSessionData || isComputerPartnerSession;
 
-    globalScene.configureTwoPlayerMode(isTwoPlayerSession, fromSession.twoPlayerPartySize ?? 6, isComputerPartnerSession);
+    globalScene.configureTwoPlayerMode(
+      isTwoPlayerSession,
+      fromSession.twoPlayerPartySize ?? 6,
+      isComputerPartnerSession,
+      hasThreePlayerSessionData ? 3 : 2,
+    );
 
     if (isComputerPartnerSession) {
       this.applySessionComputerPartner(computerPartnerKey ?? "alex");
@@ -1476,7 +1486,7 @@ export class GameData {
     );
 
     if (globalScene.twoPlayerMode) {
-      ([0, 1] as const).forEach(playerIndex => globalScene.savePlayerSystemSaveLocal(playerIndex));
+      globalScene.getActivePlayerIndexes().forEach(playerIndex => globalScene.savePlayerSystemSaveLocal(playerIndex));
     }
 
     console.debug(`Session data saved to slot ${globalScene.sessionSlotId}!`);

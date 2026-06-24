@@ -12,14 +12,14 @@ export class SelectTargetPhase extends PokemonPhase {
 
   // biome-ignore lint/complexity/noUselessConstructor: This makes `fieldIndex` required
   constructor(fieldIndex: number, explicitTargets?: BattlerIndex[]) {
-    super(fieldIndex);
+    super(globalScene.getPlayerBattlerIndex(fieldIndex));
     this.explicitTargets = explicitTargets;
   }
 
   start() {
     super.start();
 
-    const turnCommand = globalScene.currentBattle.turnCommands[this.fieldIndex];
+    const turnCommand = globalScene.currentBattle.turnCommands[this.battlerIndex];
     if (!turnCommand) {
       this.end();
       return;
@@ -35,7 +35,7 @@ export class SelectTargetPhase extends PokemonPhase {
     const move = moveId ? allMoves[moveId] : undefined;
     const fieldSide = globalScene.getField();
 
-    const user = fieldSide[this.fieldIndex];
+    const user = fieldSide[this.battlerIndex];
     const ally = user.getAlly();
     const shouldDefaultToAlly =
       globalScene.currentBattle.double // formatting
@@ -67,13 +67,13 @@ export class SelectTargetPhase extends PokemonPhase {
         }
 
         if (targets.length === 0) {
-          globalScene.currentBattle.turnCommands[this.fieldIndex] = null;
+          globalScene.currentBattle.turnCommands[this.battlerIndex] = null;
           globalScene.phaseManager.unshiftNew("CommandPhase", this.fieldIndex);
         } else {
           turnCommand.targets = targets;
         }
         if (turnCommand.command === Command.BALL && this.fieldIndex && !globalScene.twoPlayerMode) {
-          globalScene.currentBattle.turnCommands[this.fieldIndex - 1]!.skip = true;
+          globalScene.currentBattle.turnCommands[globalScene.getPlayerBattlerIndex(this.fieldIndex - 1)]!.skip = true;
         }
         this.end();
       },

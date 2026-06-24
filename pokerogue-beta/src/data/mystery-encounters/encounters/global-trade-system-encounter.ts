@@ -1,5 +1,5 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
-import type { PlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
@@ -107,7 +107,7 @@ interface GlobalTradeSystemChoice {
 
 interface GlobalTradeSystemData {
   tradeOptionsMap: Map<number, EnemyPokemon[]>;
-  tradeOptionsByPlayer?: Record<PlayerIndex, Map<number, EnemyPokemon[]>>;
+  tradeOptionsByPlayer?: Record<TwoPlayerIndex, Map<number, EnemyPokemon[]>>;
   choices?: GlobalTradeSystemChoice[];
   bgmKey: string;
   skipSelectedDialogueOnce?: boolean;
@@ -574,7 +574,7 @@ export const GlobalTradeSystemEncounter: MysteryEncounter = MysteryEncounterBuil
     // Maps current party member's id to 3 EnemyPokemon objects
     // None of the trade options can be the same species
     const tradeOptionsMap: Map<number, EnemyPokemon[]> = getPokemonTradeOptions(0);
-    const tradeOptionsByPlayer: Record<PlayerIndex, Map<number, EnemyPokemon[]>> = {
+    const tradeOptionsByPlayer: Record<TwoPlayerIndex, Map<number, EnemyPokemon[]>> = {
       0: tradeOptionsMap,
       1: globalScene.twoPlayerMode ? getPokemonTradeOptions(1) : tradeOptionsMap,
     };

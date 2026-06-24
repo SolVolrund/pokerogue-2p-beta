@@ -1,6 +1,7 @@
 import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { IS_TEST, isBeta, isDev } from "#constants/app-constants";
 import { SubstituteTag } from "#data/battler-tags";
@@ -13,7 +14,6 @@ import {
   getPokeballTintColor,
 } from "#data/pokeball";
 import { getStatusEffectCatchRateMultiplier } from "#data/status-effect";
-import { BattlerIndex } from "#enums/battler-index";
 import { ChallengeType } from "#enums/challenge-type";
 import type { PokeballType } from "#enums/pokeball";
 import { StatusEffect } from "#enums/status-effect";
@@ -34,12 +34,12 @@ import i18next from "i18next";
 export class AttemptCapturePhase extends PokemonPhase {
   public readonly phaseName = "AttemptCapturePhase";
   private pokeballType: PokeballType;
-  private playerIndex: 0 | 1;
+  private playerIndex: PlayerIndex;
   private pokeball: Phaser.GameObjects.Sprite;
   private originalY: number;
 
-  constructor(targetIndex: number, pokeballType: PokeballType, playerIndex: 0 | 1 = 0) {
-    super(BattlerIndex.ENEMY + targetIndex);
+  constructor(targetIndex: number, pokeballType: PokeballType, playerIndex: PlayerIndex = 0) {
+    super(globalScene.getEnemyBattlerIndex(targetIndex));
 
     this.pokeballType = pokeballType;
     this.playerIndex = playerIndex;

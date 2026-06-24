@@ -46,6 +46,26 @@ export class CommandPhase extends FieldPhase {
     this.fieldIndex = fieldIndex;
   }
 
+  private getBattlerIndex(): number {
+    return globalScene.getPlayerBattlerIndex(this.fieldIndex);
+  }
+
+  private getPreviousFieldBattlerIndex(): number {
+    return globalScene.getPlayerBattlerIndex(this.fieldIndex - 1);
+  }
+
+  private getTurnCommand(): TurnCommand | null {
+    return globalScene.currentBattle.turnCommands[this.getBattlerIndex()];
+  }
+
+  private setTurnCommand(command: TurnCommand | null): void {
+    globalScene.currentBattle.turnCommands[this.getBattlerIndex()] = command;
+  }
+
+  private setPreTurnCommand(command: TurnCommand | null): void {
+    globalScene.currentBattle.preTurnCommands[this.getBattlerIndex()] = command;
+  }
+
   private setActiveCommandPlayer(): void {
     if (!globalScene.twoPlayerMode) {
       return;
@@ -98,12 +118,12 @@ export class CommandPhase extends FieldPhase {
     }
 
     if (captureDecision.shouldThrow) {
-      globalScene.currentBattle.turnCommands[this.fieldIndex] = {
+      this.setTurnCommand({
         command: Command.BALL,
         cursor: captureDecision.ballType,
         playerIndex: 1,
         targets: [captureDecision.target.getBattlerIndex()],
-      };
+      });
       this.end();
       return true;
     }
@@ -111,7 +131,7 @@ export class CommandPhase extends FieldPhase {
     if (captureDecision.weakeningMoveIndex !== undefined) {
       const weakeningMove = playerPokemon.getMoveset()[captureDecision.weakeningMoveIndex];
       if (weakeningMove && !weakeningMove.isOutOfPp()) {
-        globalScene.currentBattle.turnCommands[this.fieldIndex] = {
+        this.setTurnCommand({
           command: Command.FIGHT,
           cursor: captureDecision.weakeningMoveIndex,
           move: {
@@ -119,7 +139,7 @@ export class CommandPhase extends FieldPhase {
             targets: [captureDecision.target.getBattlerIndex()],
             useMode: MoveUseMode.NORMAL,
           },
-        };
+        });
         this.end();
         return true;
       }
@@ -223,11 +243,11 @@ export class CommandPhase extends FieldPhase {
     const switchIndex = this.shouldComputerPartnerSwitch();
 
     if (switchIndex !== undefined) {
-      globalScene.currentBattle.turnCommands[this.fieldIndex] = {
+      this.setTurnCommand({
         command: Command.POKEMON,
         cursor: switchIndex,
         args: [false],
-      };
+      });
       globalScene.currentBattle.computerPartnerSwitchCounter++;
       this.end();
       return true;
@@ -237,11 +257,11 @@ export class CommandPhase extends FieldPhase {
     globalScene.aiCommandInProgress = true;
     try {
       const nextMove = this.protectReservedCaptureTarget(playerPokemon, playerPokemon.getNextMove());
-      globalScene.currentBattle.turnCommands[this.fieldIndex] = {
+      this.setTurnCommand({
         command: Command.FIGHT,
         move: nextMove,
         skip: nextMove.move === MoveId.NONE,
-      };
+      });
     } finally {
       playerPokemon.aiType = previousAiType;
       globalScene.aiCommandInProgress = false;
@@ -296,12 +316,12 @@ export class CommandPhase extends FieldPhase {
       return;
     }
 
-    const allyCommand = globalScene.currentBattle.turnCommands[this.fieldIndex - 1];
+    const allyCommand = globalScene.currentBattle.turnCommands[this.getPreviousFieldBattlerIndex()];
     if (allyCommand?.command === Command.RUN || (!globalScene.twoPlayerMode && allyCommand?.command === Command.BALL)) {
-      globalScene.currentBattle.turnCommands[this.fieldIndex] = {
+      this.setTurnCommand({
         command: allyCommand?.command,
         skip: true,
-      };
+      });
     }
   }
 
@@ -315,11 +335,11 @@ export class CommandPhase extends FieldPhase {
       globalScene.currentBattle?.double
       && this.getPokemon().getAlly()?.getTag(BattlerTagType.COMMANDED)?.getSourcePokemon() === this.getPokemon()
     ) {
-      globalScene.currentBattle.turnCommands[this.fieldIndex] = {
+      this.setTurnCommand({
         command: Command.FIGHT,
         move: { move: MoveId.NONE, targets: [], useMode: MoveUseMode.NORMAL },
         skip: true,
-      };
+      });
     }
   }
 
@@ -394,7 +414,7 @@ export class CommandPhase extends FieldPhase {
 
     this.checkCommander();
 
-    if (globalScene.currentBattle.turnCommands[this.fieldIndex]?.skip) {
+    if (this.getTurnCommand()?.skip) {
       this.end();
       return;
     }
@@ -489,7 +509,7 @@ export class CommandPhase extends FieldPhase {
     };
     const preTurnCommand: TurnCommand = {
       command,
-      targets: [this.fieldIndex],
+      targets: [this.getBattlerIndex()],
       skip: command === Command.FIGHT,
     };
 
@@ -502,7 +522,7 @@ export class CommandPhase extends FieldPhase {
           };
 
     if (moveId === MoveId.NONE) {
-      turnCommand.targets = [this.fieldIndex];
+      turnCommand.targets = [this.getBattlerIndex()];
     }
 
     console.log(
@@ -530,8 +550,8 @@ export class CommandPhase extends FieldPhase {
       globalScene.phaseManager.unshiftNew("SelectTargetPhase", this.fieldIndex);
     }
 
-    globalScene.currentBattle.preTurnCommands[this.fieldIndex] = preTurnCommand;
-    globalScene.currentBattle.turnCommands[this.fieldIndex] = turnCommand;
+    this.setPreTurnCommand(preTurnCommand);
+    this.setTurnCommand(turnCommand);
 
     return true;
   }
@@ -666,17 +686,17 @@ export class CommandPhase extends FieldPhase {
         }
       }
 
-      globalScene.currentBattle.turnCommands[this.fieldIndex] = {
+      this.setTurnCommand({
         command: Command.BALL,
         cursor,
         playerIndex: globalScene.getPlayerIndexForFieldSlot(this.fieldIndex),
-      };
-      globalScene.currentBattle.turnCommands[this.fieldIndex]!.targets = targets;
+      });
+      this.getTurnCommand()!.targets = targets;
       if (targets.length > 1) {
         globalScene.phaseManager.unshiftNew("SelectTargetPhase", this.fieldIndex, targets);
       }
       if (!globalScene.twoPlayerMode && this.fieldIndex) {
-        globalScene.currentBattle.turnCommands[this.fieldIndex - 1]!.skip = true;
+        globalScene.currentBattle.turnCommands[this.getPreviousFieldBattlerIndex()]!.skip = true;
       }
       return true;
     }
@@ -745,7 +765,7 @@ export class CommandPhase extends FieldPhase {
     const currentBattle = globalScene.currentBattle;
 
     if (isBatonSwitch || !this.handleTrap()) {
-      currentBattle.turnCommands[this.fieldIndex] = this.isSwitch
+      this.setTurnCommand(this.isSwitch
         ? {
             command: Command.POKEMON,
             cursor,
@@ -753,9 +773,9 @@ export class CommandPhase extends FieldPhase {
           }
         : {
             command: Command.RUN,
-          };
+          });
       if (!this.isSwitch && this.fieldIndex) {
-        currentBattle.turnCommands[this.fieldIndex - 1]!.skip = true;
+        currentBattle.turnCommands[this.getPreviousFieldBattlerIndex()]!.skip = true;
       }
       return true;
     }
@@ -870,8 +890,9 @@ export class CommandPhase extends FieldPhase {
 
   cancel() {
     if (this.fieldIndex) {
-      globalScene.phaseManager.unshiftNew("CommandPhase", 0);
-      globalScene.phaseManager.unshiftNew("CommandPhase", 1);
+      for (let fieldIndex = 0; fieldIndex <= this.fieldIndex; fieldIndex++) {
+        globalScene.phaseManager.unshiftNew("CommandPhase", fieldIndex);
+      }
       this.end();
     }
   }

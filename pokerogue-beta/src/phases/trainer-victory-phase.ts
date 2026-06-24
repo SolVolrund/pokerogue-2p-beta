@@ -1,4 +1,5 @@
 import { audioManager } from "#app/global-audio-manager";
+import type { PlayerIndex } from "#app/battle-scene";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { modifierTypes } from "#data/data-lists";
@@ -118,15 +119,17 @@ export class TrainerVictoryPhase extends BattlePhase {
 
   private unshiftModifierReward(modifierTypeFunc: ModifierTypeFunc): void {
     if (globalScene.twoPlayerMode) {
-      this.unshiftModifierRewardForPlayer(modifierTypeFunc, 1);
-      this.unshiftModifierRewardForPlayer(modifierTypeFunc, 0);
+      globalScene.getActivePlayerIndexes()
+        .slice()
+        .reverse()
+        .forEach(playerIndex => this.unshiftModifierRewardForPlayer(modifierTypeFunc, playerIndex));
       return;
     }
 
     globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypeFunc);
   }
 
-  private unshiftModifierRewardForPlayer(modifierTypeFunc: ModifierTypeFunc, playerIndex: 0 | 1): void {
+  private unshiftModifierRewardForPlayer(modifierTypeFunc: ModifierTypeFunc, playerIndex: PlayerIndex): void {
     globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypeFunc, playerIndex);
   }
 }

@@ -67,9 +67,9 @@ export class TurnInitPhase extends FieldPhase {
         pokemon.resetTurnData();
 
         if (pokemon.isPlayer()) {
-          globalScene.phaseManager.pushNew("CommandPhase", i);
+          globalScene.phaseManager.pushNew("CommandPhase", globalScene.getFieldIndexForBattlerIndex(i));
         } else {
-          globalScene.phaseManager.pushNew("EnemyCommandPhase", i - BattlerIndex.ENEMY);
+          globalScene.phaseManager.pushNew("EnemyCommandPhase", globalScene.getFieldIndexForBattlerIndex(i));
         }
       }
     });

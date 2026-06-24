@@ -429,6 +429,52 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
     this.baseY = this.y;
   }
 
+  setThreePlayerCompactLayout(fieldIndex: number): void {
+    if (!this.player) {
+      return;
+    }
+
+    const compactLayouts = [
+      { x: globalScene.scaledCanvas.width - 78, y: -68 },
+      { x: globalScene.scaledCanvas.width - 8, y: -68 },
+      { x: globalScene.scaledCanvas.width - 43, y: -54 },
+    ];
+    const layout = compactLayouts[fieldIndex];
+    if (!layout) {
+      return;
+    }
+
+    this.setScale(0.5);
+    this.setPosition(layout.x, layout.y);
+    this.baseY = layout.y;
+  }
+
+  setThreeEnemyCompactLayout(fieldIndex: number): void {
+    if (this.player) {
+      return;
+    }
+
+    const compactLayouts = [
+      { x: 75, y: -168 },
+      { x: 145, y: -168 },
+      { x: 110, y: -146 },
+    ];
+    const layout = compactLayouts[fieldIndex];
+    if (!layout) {
+      return;
+    }
+
+    this.setScale(0.5);
+    this.setPosition(layout.x, layout.y);
+    this.baseY = layout.y;
+  }
+
+  clearCompactLayout(): void {
+    if (this.scaleX !== 1 || this.scaleY !== 1) {
+      this.setScale(1);
+    }
+  }
+
   // #region Update methods and helpers
 
   /**

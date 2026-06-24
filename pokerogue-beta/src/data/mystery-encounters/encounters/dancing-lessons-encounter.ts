@@ -1,5 +1,5 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
-import type { PlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { EncounterBattleAnim } from "#data/battle-anims";
 import { modifierTypes } from "#data/data-lists";
@@ -105,7 +105,7 @@ interface DancingLessonsChoice {
 
 interface DancingLessonsData {
   choices: DancingLessonsChoice[];
-  oricorioDataByPlayer: Record<PlayerIndex, PokemonData>;
+  oricorioDataByPlayer: Record<TwoPlayerIndex, PokemonData>;
   skipSelectedDialogueOnce?: boolean;
 }
 
@@ -598,7 +598,7 @@ export const DancingLessonsEncounter: MysteryEncounter = MysteryEncounterBuilder
     const species = getPokemonSpecies(SpeciesId.ORICORIO);
     const primaryFormIndex = getBiomeOricorioFormIndex();
     const secondaryFormIndex = getAlternateOricorioFormIndex(primaryFormIndex);
-    const oricorioDataByPlayer: Record<PlayerIndex, PokemonData> = {
+    const oricorioDataByPlayer: Record<TwoPlayerIndex, PokemonData> = {
       0: createOricorioData(primaryFormIndex),
       1: createOricorioData(secondaryFormIndex),
     };

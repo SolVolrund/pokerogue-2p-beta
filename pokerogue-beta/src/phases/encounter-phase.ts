@@ -93,7 +93,9 @@ export class EncounterPhase extends BattlePhase {
   }
 
   private getLivingPlayerSidePokemon(): Pokemon[] {
-    const playerIndexes: PlayerIndex[] = globalScene.twoPlayerMode ? [0, 1] : [globalScene.activePlayerIndex];
+    const playerIndexes: PlayerIndex[] = globalScene.twoPlayerMode
+      ? globalScene.getActivePlayerIndexes()
+      : [globalScene.activePlayerIndex];
 
     return playerIndexes
       .flatMap(playerIndex => globalScene.getPlayerParty(playerIndex))
@@ -199,17 +201,18 @@ export class EncounterPhase extends BattlePhase {
           if (globalScene.currentBattle.isClassicFinalBoss) {
             battle.enemyParty[e].ivs.fill(31);
           }
-          globalScene
-            .getPlayerParty()
-            .slice(0, battle.double ? 2 : 1)
-            .reverse()
-            .forEach(playerPokemon => {
+          const playerPokemonForEncounterSync = globalScene.twoPlayerMode
+            ? globalScene.getPlayerFieldOwners().map(playerIndex => globalScene.getPlayerParty(playerIndex)[0])
+            : globalScene.getPlayerParty().slice(0, battle.getBattlerCount());
+          playerPokemonForEncounterSync.reverse().forEach(playerPokemon => {
+            if (playerPokemon) {
               applyAbAttrs("SyncEncounterNatureAbAttr", { pokemon: playerPokemon, target: battle.enemyParty[e] });
-            });
+            }
+          });
         }
       }
       const enemyPokemon = globalScene.getEnemyParty()[e];
-      if (e < (battle.double ? 2 : 1)) {
+      if (e < battle.getBattlerCount()) {
         enemyPokemon.setX(-66 + enemyPokemon.getFieldPositionOffset()[0]);
         enemyPokemon.fieldSetup(true);
       }
@@ -335,7 +338,7 @@ export class EncounterPhase extends BattlePhase {
         if (battle.isBattleMysteryEncounter()) {
           return false;
         }
-        if (e < (battle.double ? 2 : 1)) {
+        if (e < battle.getBattlerCount()) {
           if (battle.battleType === BattleType.WILD) {
             for (const pokemon of globalScene.getField()) {
               applyAbAttrs("PreSummonAbAttr", { pokemon });
@@ -352,7 +355,7 @@ export class EncounterPhase extends BattlePhase {
             globalScene.currentBattle.trainer?.tint(0, 0.5);
           }
           if (battle.double) {
-            enemyPokemon.setFieldPosition(e ? FieldPosition.RIGHT : FieldPosition.LEFT);
+            enemyPokemon.setFieldPosition(e === 2 ? FieldPosition.CENTER : e ? FieldPosition.RIGHT : FieldPosition.LEFT);
           }
         }
         return true;
@@ -427,18 +430,17 @@ export class EncounterPhase extends BattlePhase {
     }
 
     const enemyField = globalScene.getEnemyField();
-    const hasPartnerTrainer = globalScene.getPlayerFieldOwners().length > 1;
+    const playerIndexes = globalScene.getPlayerFieldOwners();
+    const hasPartnerTrainer = playerIndexes.length > 1;
+    const playerTrainerSprites = playerIndexes.map(playerIndex => globalScene.getPlayerTrainerBackSprite(playerIndex));
     if (hasPartnerTrainer) {
-      globalScene.trainer
-        .setVisible(true)
-        .setTexture(globalScene.getTrainerBackTextureKey(0))
-        .setFrame(0)
-        .setX(globalScene.getTrainerBackSpriteX(0, true) + 300);
-      globalScene.trainerPartner
-        .setVisible(true)
-        .setTexture(globalScene.getTrainerBackTextureKey(1))
-        .setFrame(0)
-        .setX(globalScene.getTrainerBackSpriteX(1, true) + 300);
+      playerIndexes.forEach(playerIndex => {
+        globalScene.getPlayerTrainerBackSprite(playerIndex)
+          .setVisible(true)
+          .setTexture(globalScene.getTrainerBackTextureKey(playerIndex))
+          .setFrame(0)
+          .setX(globalScene.getTrainerBackSpriteX(playerIndex, true) + 300);
+      });
     }
     globalScene.tweens.add({
       targets: [
@@ -446,8 +448,7 @@ export class EncounterPhase extends BattlePhase {
         globalScene.currentBattle.trainer,
         enemyField,
         globalScene.arenaPlayer,
-        globalScene.trainer,
-        hasPartnerTrainer ? globalScene.trainerPartner : null,
+        playerTrainerSprites,
       ].flat().filter(target => target !== null),
       x: (_target, _key, value, fieldIndex: number) => (fieldIndex < 2 + enemyField.length ? value + 300 : value - 300),
       duration: 2000,
@@ -634,9 +635,9 @@ export class EncounterPhase extends BattlePhase {
         const doTrainerSummon = () => {
           this.hideEnemyTrainer();
           const availablePartyMembers = globalScene.getEnemyParty().filter(p => !p.isFainted()).length;
-          globalScene.phaseManager.unshiftNew("SummonPhase", 0, false);
-          if (globalScene.currentBattle.double && availablePartyMembers > 1) {
-            globalScene.phaseManager.unshiftNew("SummonPhase", 1, false);
+          const summonCount = Math.min(availablePartyMembers, globalScene.currentBattle.getBattlerCount());
+          for (let fieldIndex = summonCount - 1; fieldIndex >= 0; fieldIndex--) {
+            globalScene.phaseManager.unshiftNew("SummonPhase", fieldIndex, false);
           }
           this.end();
         };
@@ -738,7 +739,7 @@ export class EncounterPhase extends BattlePhase {
 
     enemyField.forEach((enemyPokemon, e) => {
       if (enemyPokemon.isShiny(true)) {
-        globalScene.phaseManager.unshiftNew("ShinySparklePhase", BattlerIndex.ENEMY + e);
+        globalScene.phaseManager.unshiftNew("ShinySparklePhase", globalScene.getEnemyBattlerIndex(e));
       }
       /** This sets Eternatus' held item to be untransferrable, preventing it from being stolen */
       if (
@@ -771,26 +772,26 @@ export class EncounterPhase extends BattlePhase {
 
     if (!this.loaded) {
       if (globalScene.twoPlayerMode) {
-        const p1AvailablePartyMembers = globalScene.getPokemonAllowedInBattle(0);
-        const p2AvailablePartyMembers = globalScene.getPokemonAllowedInBattle(1);
+        const playerIndexes = globalScene.getPlayerFieldOwners();
+        const availablePartyMembersByField = playerIndexes.map(playerIndex =>
+          globalScene.getPokemonAllowedInBattle(playerIndex),
+        );
 
-        if (p1AvailablePartyMembers[0] && !p1AvailablePartyMembers[0].isOnField()) {
-          globalScene.phaseManager.pushNew("SummonPhase", 0);
-        }
-        if (p2AvailablePartyMembers[0] && !p2AvailablePartyMembers[0].isOnField()) {
-          globalScene.phaseManager.pushNew("SummonPhase", 1);
-        }
+        availablePartyMembersByField.forEach((availablePartyMembers, fieldIndex) => {
+          if (availablePartyMembers[0] && !availablePartyMembers[0].isOnField()) {
+            globalScene.phaseManager.pushNew("SummonPhase", fieldIndex);
+          }
+        });
 
         if (
           globalScene.currentBattle.battleType !== BattleType.TRAINER
           && (globalScene.currentBattle.waveIndex > 1 || !globalScene.gameMode.isDaily)
         ) {
-          if (p1AvailablePartyMembers.length > 1) {
-            globalScene.phaseManager.pushNew("CheckSwitchPhase", 0, true);
-          }
-          if (p2AvailablePartyMembers.length > 1) {
-            globalScene.phaseManager.pushNew("CheckSwitchPhase", 1, true);
-          }
+          availablePartyMembersByField.forEach((availablePartyMembers, fieldIndex) => {
+            if (availablePartyMembers.length > 1) {
+              globalScene.phaseManager.pushNew("CheckSwitchPhase", fieldIndex, true);
+            }
+          });
         }
       } else {
         const availablePartyMembers = globalScene.getPokemonAllowedInBattle();

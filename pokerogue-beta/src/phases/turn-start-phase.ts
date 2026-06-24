@@ -135,7 +135,7 @@ export class TurnStartPhase extends FieldPhase {
       case Command.BALL:
         globalScene.phaseManager.unshiftNew(
           "AttemptCapturePhase",
-          turnCommand.targets![0] % 2,
+          globalScene.getFieldIndexForBattlerIndex(turnCommand.targets![0]),
           turnCommand.cursor!,
           turnCommand.playerIndex,
         ); //TODO: is the bang correct here?

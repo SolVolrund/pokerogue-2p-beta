@@ -1,5 +1,5 @@
 import { audioManager } from "#app/global-audio-manager";
-import type { PlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { modifierTypes } from "#data/data-lists";
@@ -72,7 +72,7 @@ interface ExpertBreederPartyBackup {
 }
 
 interface ExpertBreederData {
-  candidatesByPlayer: Record<PlayerIndex, ExpertBreederCandidate[]>;
+  candidatesByPlayer: Record<TwoPlayerIndex, ExpertBreederCandidate[]>;
   choices: ExpertBreederChoice[];
   partyBackupsByPlayer?: Partial<Record<PlayerIndex, ExpertBreederPartyBackup>>;
   chosenPokemon?: PlayerPokemon;

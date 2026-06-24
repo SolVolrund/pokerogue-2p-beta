@@ -1,6 +1,6 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
-import type { PlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { modifierTypes } from "#data/data-lists";
@@ -54,7 +54,7 @@ interface BerriesAboundChoice {
 
 interface BerriesAboundData {
   choices: BerriesAboundChoice[];
-  fastestPokemonByPlayer: Record<PlayerIndex, PlayerPokemon>;
+  fastestPokemonByPlayer: Record<TwoPlayerIndex, PlayerPokemon>;
   enemySpeed: number;
   numBerries: number;
   skipSelectedDialogueOnce?: boolean;
@@ -85,7 +85,7 @@ function getFastestPokemonForPlayer(playerIndex: PlayerIndex): PlayerPokemon {
   );
 }
 
-function buildFastestPokemonByPlayer(): Record<PlayerIndex, PlayerPokemon> {
+function buildFastestPokemonByPlayer(): Record<TwoPlayerIndex, PlayerPokemon> {
   return {
     0: getFastestPokemonForPlayer(0),
     1: getFastestPokemonForPlayer(1),

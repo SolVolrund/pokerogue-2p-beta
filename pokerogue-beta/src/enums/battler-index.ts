@@ -8,4 +8,6 @@ export enum BattlerIndex {
   PLAYER_2,
   ENEMY,
   ENEMY_2,
+  PLAYER_3,
+  ENEMY_3,
 }

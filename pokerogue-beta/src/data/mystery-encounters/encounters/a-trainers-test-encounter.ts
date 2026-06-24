@@ -1,5 +1,5 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
-import type { PlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { modifierTypes } from "#data/data-lists";
 import type { IEggOptions } from "#data/egg";
@@ -48,7 +48,7 @@ interface ATrainersTestChoice {
 
 interface ATrainersTestData {
   choices: ATrainersTestChoice[];
-  trainerInfos: Record<PlayerIndex, StatTrainerInfo>;
+  trainerInfos: Record<TwoPlayerIndex, StatTrainerInfo>;
   skipSelectedDialogueOnce?: boolean;
 }
 
@@ -85,7 +85,7 @@ function rollStatTrainer(excludedTrainerTypes: TrainerType[] = []): StatTrainerI
   return candidates[randSeedInt(candidates.length)];
 }
 
-function rollTrainerInfos(): Record<PlayerIndex, StatTrainerInfo> {
+function rollTrainerInfos(): Record<TwoPlayerIndex, StatTrainerInfo> {
   const firstTrainer = rollStatTrainer();
   const secondTrainer = rollStatTrainer([firstTrainer.trainerType]);
   return {
@@ -157,7 +157,7 @@ function setSinglePlayerTrainerDialogue(info: StatTrainerInfo): void {
   };
 }
 
-function setTwoPlayerTrainerDialogue(trainerInfos: Record<PlayerIndex, StatTrainerInfo>): void {
+function setTwoPlayerTrainerDialogue(trainerInfos: Record<TwoPlayerIndex, StatTrainerInfo>): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   encounter.dialogue.intro = ([0, 1] as PlayerIndex[]).map(playerIndex => {
     const info = trainerInfos[playerIndex];

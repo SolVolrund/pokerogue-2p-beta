@@ -31,7 +31,7 @@ export class MessagePhase extends Phase {
 
     if (this.text.indexOf("$") > -1) {
       const pokename: string[] = [];
-      const repname = ["#POKEMON1", "#POKEMON2"];
+      const repname = ["#POKEMON1", "#POKEMON2", "#POKEMON3"];
       for (let p = 0; p < globalScene.getPlayerField().length; p++) {
         pokename.push(globalScene.getPlayerField()[p].getNameToRender());
         this.text = this.text.split(pokename[p]).join(repname[p]);

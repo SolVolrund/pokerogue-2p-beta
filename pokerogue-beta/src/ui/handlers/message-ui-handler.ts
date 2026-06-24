@@ -78,7 +78,7 @@ export abstract class MessageUiHandler extends AwaitableUiHandler {
     const actionPattern = /@(c|d|s|f)\{(.*?)\}/;
     let actionMatch: RegExpExecArray | null;
     const pokename: string[] = [];
-    const repname = ["#POKEMON1", "#POKEMON2"];
+    const repname = ["#POKEMON1", "#POKEMON2", "#POKEMON3"];
     for (let p = 0; p < globalScene.getPlayerField().length; p++) {
       pokename.push(globalScene.getPlayerField()[p].getNameToRender());
       text = text.split(pokename[p]).join(repname[p]);

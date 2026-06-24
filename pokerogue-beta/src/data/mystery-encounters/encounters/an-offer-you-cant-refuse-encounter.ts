@@ -1,5 +1,5 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
-import type { PlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { allAbilities, modifierTypes } from "#data/data-lists";
@@ -53,7 +53,7 @@ interface OfferPlayerData {
 }
 
 interface OfferData {
-  players: Record<PlayerIndex, OfferPlayerData>;
+  players: Record<TwoPlayerIndex, OfferPlayerData>;
   choices: OfferChoice[];
   skipSelectedDialogueOnce?: boolean;
 }

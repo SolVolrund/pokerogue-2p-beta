@@ -1,5 +1,5 @@
 import { audioManager } from "#app/global-audio-manager";
-import type { PlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { modifierTypes } from "#data/data-lists";
 import { Gender } from "#data/gender";
@@ -57,7 +57,7 @@ interface AbsoluteAvariceChoice {
 
 interface AbsoluteAvariceData {
   choices: AbsoluteAvariceChoice[];
-  berryItemsByPlayer: Record<PlayerIndex, Map<number, BerryModifier[]>>;
+  berryItemsByPlayer: Record<TwoPlayerIndex, Map<number, BerryModifier[]>>;
   berryItemsMap: Map<number, BerryModifier[]>;
   skipSelectedDialogueOnce?: boolean;
 }
@@ -110,7 +110,7 @@ function buildBerryItemsMap(playerIndex: PlayerIndex): Map<number, BerryModifier
   return berryItemsMap;
 }
 
-function buildBerryItemsByPlayer(): Record<PlayerIndex, Map<number, BerryModifier[]>> {
+function buildBerryItemsByPlayer(): Record<TwoPlayerIndex, Map<number, BerryModifier[]>> {
   return {
     0: buildBerryItemsMap(0),
     1: buildBerryItemsMap(1),

@@ -1,6 +1,5 @@
 import { globalScene } from "#app/global-scene";
 import { AbilityId } from "#enums/ability-id";
-import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { Command } from "#enums/command";
 import type { EnemyPokemon } from "#field/pokemon";
@@ -72,7 +71,7 @@ export class EnemyCommandPhase extends FieldPhase {
           if (sortedPartyMemberScores[0][1] * switchMultiplier >= matchupScore * (trainer.config.isBoss ? 2 : 3)) {
             const index = trainer.getNextSummonIndex(enemyPokemon.trainerSlot, partyMemberScores);
 
-            battle.turnCommands[this.fieldIndex + BattlerIndex.ENEMY] = {
+            battle.turnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = {
               command: Command.POKEMON,
               cursor: index,
               args: [false],
@@ -91,10 +90,10 @@ export class EnemyCommandPhase extends FieldPhase {
     const nextMove = enemyPokemon.getNextMove();
 
     if (this.shouldTera(enemyPokemon)) {
-      globalScene.currentBattle.preTurnCommands[this.fieldIndex + BattlerIndex.ENEMY] = { command: Command.TERA };
+      globalScene.currentBattle.preTurnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = { command: Command.TERA };
     }
 
-    globalScene.currentBattle.turnCommands[this.fieldIndex + BattlerIndex.ENEMY] = {
+    globalScene.currentBattle.turnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = {
       command: Command.FIGHT,
       move: nextMove,
       skip: this.skipTurn,

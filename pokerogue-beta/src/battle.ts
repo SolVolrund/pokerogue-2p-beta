@@ -42,7 +42,7 @@ export interface TurnCommand {
   cursor?: number | undefined;
   move?: TurnMove;
   targets?: BattlerIndex[];
-  playerIndex?: 0 | 1;
+  playerIndex?: PlayerIndex;
   skip?: boolean;
   args?: any[];
 }
@@ -101,7 +101,7 @@ export class Battle {
   public mysteryEncounterType?: MysteryEncounterType | undefined;
   /** If the current battle is a Mystery Encounter, this will always be defined */
   public mysteryEncounter?: MysteryEncounter | undefined;
-  public playerFieldOwners: Array<0 | 1> | undefined;
+  public playerFieldOwners: PlayerIndex[] | undefined;
   public computerPartnerReservedCaptureTargetId: number | undefined;
 
   /**
@@ -125,7 +125,7 @@ export class Battle {
       battleType === BattleType.TRAINER
         ? trainer?.getPartyLevels(this.waveIndex)
         : // TODO: Remove array.fill.map
-          new Array(double ? 2 : 1).fill(null).map(() => this.getLevelForWave());
+          new Array(double ? globalScene.getBattleFieldSlotCount() : 1).fill(null).map(() => this.getLevelForWave());
   }
 
   public get isClassicFinalBoss(): boolean {
@@ -166,7 +166,7 @@ export class Battle {
   }
 
   getBattlerCount(): number {
-    return this.double ? 2 : 1;
+    return this.double ? globalScene.getBattleFieldSlotCount() : 1;
   }
 
   incrementTurn(): void {

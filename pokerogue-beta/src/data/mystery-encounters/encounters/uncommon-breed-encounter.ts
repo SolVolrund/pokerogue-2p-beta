@@ -1,5 +1,5 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
-import type { PlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { BattlerIndex } from "#enums/battler-index";
@@ -57,7 +57,7 @@ interface UncommonBreedChoice {
 
 interface UncommonBreedData {
   choices: UncommonBreedChoice[];
-  pokemonDataByPlayer: Record<PlayerIndex, PokemonData>;
+  pokemonDataByPlayer: Record<TwoPlayerIndex, PokemonData>;
   eggMoveByPlayer: Partial<Record<PlayerIndex, MoveId>>;
   skipSelectedDialogueOnce?: boolean;
 }
@@ -476,7 +476,7 @@ export const UncommonBreedEncounter: MysteryEncounter = MysteryEncounterBuilder.
     const encounter = globalScene.currentBattle.mysteryEncounter!;
     const primary = createUncommonBreedPokemon(0);
     const secondary = globalScene.twoPlayerMode ? createUncommonBreedPokemon(1) : primary;
-    const pokemonDataByPlayer: Record<PlayerIndex, PokemonData> = {
+    const pokemonDataByPlayer: Record<TwoPlayerIndex, PokemonData> = {
       0: new PokemonData(primary.pokemon),
       1: new PokemonData(secondary.pokemon),
     };

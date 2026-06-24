@@ -99,8 +99,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
         globalScene.pbTray.hide();
       }
       const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
-      const trainerSprite =
-        globalScene.twoPlayerMode && playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+      const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
       const trainerStartX = globalScene.getTrainerBackSpriteX(playerIndex, globalScene.getPlayerFieldOwners().length > 1);
       trainerSprite
         .setVisible(true)
@@ -147,8 +146,13 @@ export class SummonPhase extends PartyMemberPokemonPhase {
     const pokemon = this.getPokemon();
     const playerIndex = this.player ? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex) : 0;
     const playerFieldSlotCount = this.player && globalScene.twoPlayerMode ? globalScene.getPlayerFieldOwners().length : 2;
+    const fieldSlotCount = this.player ? playerFieldSlotCount : globalScene.currentBattle.getBattlerCount();
     const twoTrainerThrowOffset =
-      this.player && playerFieldSlotCount > 1 ? (playerIndex === 0 ? -16 : 16) : 0;
+      this.player && playerFieldSlotCount > 2
+        ? (playerIndex === 0 ? -24 : playerIndex === 1 ? 24 : 0)
+        : this.player && playerFieldSlotCount > 1
+          ? (playerIndex === 0 ? -16 : 16)
+          : 0;
 
     const pokeball = globalScene.addFieldSprite(
       this.player ? 36 + twoTrainerThrowOffset : 248,
@@ -160,7 +164,9 @@ export class SummonPhase extends PartyMemberPokemonPhase {
     pokeball.setOrigin(0.5, 0.625);
     globalScene.field.add(pokeball);
 
-    if (this.fieldIndex === 1) {
+    if (fieldSlotCount > 2 && this.fieldIndex === 2) {
+      pokemon.setFieldPosition(FieldPosition.CENTER, 0);
+    } else if (this.fieldIndex === 1) {
       pokemon.setFieldPosition(FieldPosition.RIGHT, 0);
     } else {
       const availablePartyMembers = this.getParty().filter(p => p.isAllowedInBattle()).length;
@@ -248,12 +254,15 @@ export class SummonPhase extends PartyMemberPokemonPhase {
    */
   summonWild(): void {
     const pokemon = this.getPokemon();
+    const playerFieldSlotCount = this.player && globalScene.twoPlayerMode ? globalScene.getPlayerFieldOwners().length : 2;
+    const fieldSlotCount = this.player ? playerFieldSlotCount : globalScene.currentBattle.getBattlerCount();
 
-    if (this.fieldIndex === 1) {
+    if (fieldSlotCount > 2 && this.fieldIndex === 2) {
+      pokemon.setFieldPosition(FieldPosition.CENTER, 0);
+    } else if (this.fieldIndex === 1) {
       pokemon.setFieldPosition(FieldPosition.RIGHT, 0);
     } else {
       const availablePartyMembers = this.getParty().filter(p => !p.isFainted()).length;
-      const playerFieldSlotCount = this.player && globalScene.twoPlayerMode ? globalScene.getPlayerFieldOwners().length : 2;
       const forceLeftFieldPosition = this.player && playerFieldSlotCount > 1;
       pokemon.setFieldPosition(
         !globalScene.currentBattle.double

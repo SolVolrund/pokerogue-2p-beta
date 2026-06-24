@@ -9,6 +9,7 @@ import type { ModifierBar } from "#modifiers/modifier";
 import { getMoveTargets } from "#moves/move-utils";
 import { UiHandler } from "#ui/ui-handler";
 import { fixedInt } from "#utils/common";
+import { isEnemyBattlerIndex, isPlayerBattlerIndex } from "#utils/battler-index-utils";
 
 export type TargetSelectCallback = (targets: BattlerIndex[]) => void;
 
@@ -18,6 +19,7 @@ export class TargetSelectUiHandler extends UiHandler {
   private targetSelectCallback: TargetSelectCallback;
   private cursor0: number; // associated with BattlerIndex.PLAYER
   private cursor1: number; // associated with BattlerIndex.PLAYER_2
+  private cursor2: number; // associated with BattlerIndex.PLAYER_3
 
   private isMultipleTargets = false;
   private targets: BattlerIndex[];
@@ -76,10 +78,12 @@ export class TargetSelectUiHandler extends UiHandler {
       return true;
     }
 
-    if (this.fieldIndex === BattlerIndex.PLAYER) {
+    if (this.fieldIndex === 0) {
       this.resetCursor(this.cursor0, user);
-    } else if (this.fieldIndex === BattlerIndex.PLAYER_2) {
+    } else if (this.fieldIndex === 1) {
       this.resetCursor(this.cursor1, user);
+    } else if (this.fieldIndex === 2) {
+      this.resetCursor(this.cursor2, user);
     }
     return true;
   }
@@ -92,7 +96,7 @@ export class TargetSelectUiHandler extends UiHandler {
   resetCursor(cursorN: number, user: Pokemon): void {
     if (
       cursorN != null
-      && ([BattlerIndex.PLAYER, BattlerIndex.PLAYER_2].includes(cursorN) || user.tempSummonData.waveTurnCount === 1)
+      && (isPlayerBattlerIndex(cursorN) || user.tempSummonData.waveTurnCount === 1)
     ) {
       // Reset cursor on the first turn of a fight or if an ally was targeted last turn
       cursorN = -1;
@@ -109,25 +113,29 @@ export class TargetSelectUiHandler extends UiHandler {
       const targetIndexes: BattlerIndex[] = this.isMultipleTargets ? this.targets : [this.cursor];
       this.targetSelectCallback(button === Button.ACTION ? targetIndexes : []);
       success = true;
-      if (this.fieldIndex === BattlerIndex.PLAYER) {
+      if (this.fieldIndex === 0) {
         if (this.cursor0 == null || this.cursor0 !== this.cursor) {
           this.cursor0 = this.cursor;
         }
-      } else if (this.fieldIndex === BattlerIndex.PLAYER_2 && (this.cursor1 == null || this.cursor1 !== this.cursor)) {
+      } else if (this.fieldIndex === 1 && (this.cursor1 == null || this.cursor1 !== this.cursor)) {
         this.cursor1 = this.cursor;
+      } else if (this.fieldIndex === 2 && (this.cursor2 == null || this.cursor2 !== this.cursor)) {
+        this.cursor2 = this.cursor;
       }
     } else if (this.isMultipleTargets) {
       success = false;
+    } else if ((globalScene.currentBattle?.getBattlerCount() ?? 1) > 2) {
+      success = this.processTripleTargetInput(button);
     } else {
       switch (button) {
         case Button.UP:
-          if (this.cursor < BattlerIndex.ENEMY && this.targets.findIndex(t => t >= BattlerIndex.ENEMY) > -1) {
-            success = this.setCursor(this.targets.find(t => t >= BattlerIndex.ENEMY)!); // TODO: is the bang correct here?
+          if (isPlayerBattlerIndex(this.cursor) && this.targets.findIndex(t => isEnemyBattlerIndex(t)) > -1) {
+            success = this.setCursor(this.targets.find(t => isEnemyBattlerIndex(t))!); // TODO: is the bang correct here?
           }
           break;
         case Button.DOWN:
-          if (this.cursor >= BattlerIndex.ENEMY && this.targets.findIndex(t => t < BattlerIndex.ENEMY) > -1) {
-            success = this.setCursor(this.targets.find(t => t < BattlerIndex.ENEMY)!); // TODO: is the bang correct here?
+          if (isEnemyBattlerIndex(this.cursor) && this.targets.findIndex(t => isPlayerBattlerIndex(t)) > -1) {
+            success = this.setCursor(this.targets.find(t => isPlayerBattlerIndex(t))!); // TODO: is the bang correct here?
           }
           break;
         case Button.LEFT:
@@ -148,6 +156,56 @@ export class TargetSelectUiHandler extends UiHandler {
     }
 
     return success;
+  }
+
+  private processTripleTargetInput(button: Button): boolean {
+    const nextCursor = this.getNextTripleTargetCursor(button);
+    return nextCursor !== undefined ? this.setCursor(nextCursor) : false;
+  }
+
+  private getNextTripleTargetCursor(button: Button): BattlerIndex | undefined {
+    const cursorPosition = getTripleTargetPosition(this.cursor);
+    if (!cursorPosition) {
+      return;
+    }
+
+    let candidates = this.targets
+      .filter(target => target !== this.cursor)
+      .map(target => ({ target, position: getTripleTargetPosition(target) }))
+      .filter((candidate): candidate is { target: BattlerIndex; position: TripleTargetPosition } => !!candidate.position);
+
+    switch (button) {
+      case Button.UP:
+        candidates = candidates.filter(candidate => candidate.position.row < cursorPosition.row);
+        break;
+      case Button.DOWN:
+        candidates = candidates.filter(candidate => candidate.position.row > cursorPosition.row);
+        break;
+      case Button.LEFT:
+        candidates = candidates.filter(
+          candidate => candidate.position.row === cursorPosition.row && candidate.position.column < cursorPosition.column,
+        );
+        break;
+      case Button.RIGHT:
+        candidates = candidates.filter(
+          candidate => candidate.position.row === cursorPosition.row && candidate.position.column > cursorPosition.column,
+        );
+        break;
+      default:
+        return;
+    }
+
+    candidates.sort((a, b) => {
+      const aDistance = getTripleTargetDistance(cursorPosition, a.position);
+      const bDistance = getTripleTargetDistance(cursorPosition, b.position);
+      if (aDistance !== bDistance) {
+        return aDistance - bDistance;
+      }
+
+      return Math.abs(a.position.column - cursorPosition.column) - Math.abs(b.position.column - cursorPosition.column);
+    });
+
+    return candidates[0]?.target;
   }
 
   setCursor(cursor: number): boolean {
@@ -237,4 +295,30 @@ export class TargetSelectUiHandler extends UiHandler {
     super.clear();
     this.eraseCursor();
   }
+}
+
+interface TripleTargetPosition {
+  row: number;
+  column: number;
+}
+
+function getTripleTargetPosition(target: number): TripleTargetPosition | undefined {
+  switch (target) {
+    case BattlerIndex.ENEMY:
+      return { row: 0, column: 0 };
+    case BattlerIndex.ENEMY_3:
+      return { row: 0, column: 1 };
+    case BattlerIndex.ENEMY_2:
+      return { row: 0, column: 2 };
+    case BattlerIndex.PLAYER:
+      return { row: 1, column: 0 };
+    case BattlerIndex.PLAYER_3:
+      return { row: 1, column: 1 };
+    case BattlerIndex.PLAYER_2:
+      return { row: 1, column: 2 };
+  }
+}
+
+function getTripleTargetDistance(from: TripleTargetPosition, to: TripleTargetPosition): number {
+  return Math.abs(from.row - to.row) * 10 + Math.abs(from.column - to.column);
 }

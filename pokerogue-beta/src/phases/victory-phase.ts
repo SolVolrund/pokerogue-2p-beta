@@ -73,22 +73,16 @@ export class VictoryPhase extends PokemonPhase {
         }
         if (currentWaveIndex % 10) {
           if (globalScene.twoPlayerMode) {
-            globalScene.phaseManager.pushNew(
-              "SelectModifierPhase",
-              undefined,
-              undefined,
-              gameMode.getFixedBattle(currentWaveIndex)?.customModifierRewardSettings,
-              false,
-              0,
-            );
-            globalScene.phaseManager.pushNew(
-              "SelectModifierPhase",
-              undefined,
-              undefined,
-              gameMode.getFixedBattle(currentWaveIndex)?.customModifierRewardSettings,
-              false,
-              1,
-            );
+            globalScene.getActivePlayerIndexes().forEach(playerIndex => {
+              globalScene.phaseManager.pushNew(
+                "SelectModifierPhase",
+                undefined,
+                undefined,
+                gameMode.getFixedBattle(currentWaveIndex)?.customModifierRewardSettings,
+                false,
+                playerIndex,
+              );
+            });
           } else {
             globalScene.phaseManager.pushNew(
               "SelectModifierPhase",
@@ -146,8 +140,9 @@ export class VictoryPhase extends PokemonPhase {
 
   private pushModifierReward(modifierTypeFunc: ModifierTypeFunc): void {
     if (globalScene.twoPlayerMode) {
-      globalScene.phaseManager.pushNew("ModifierRewardPhase", modifierTypeFunc, 0);
-      globalScene.phaseManager.pushNew("ModifierRewardPhase", modifierTypeFunc, 1);
+      globalScene.getActivePlayerIndexes().forEach(playerIndex => {
+        globalScene.phaseManager.pushNew("ModifierRewardPhase", modifierTypeFunc, playerIndex);
+      });
       return;
     }
 
