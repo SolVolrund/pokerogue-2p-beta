@@ -161,18 +161,21 @@ export class CommandPhase extends FieldPhase {
   }
 
   private getReservedCaptureSafeMove(playerPokemon: PlayerPokemon, reservedTarget: EnemyPokemon): TurnMove | undefined {
+    const enemyBattlerIndexes = new Set(globalScene.getEnemyField().map(pokemon => pokemon.getBattlerIndex()));
+
     for (const pokemonMove of playerPokemon.getMoveset()) {
       if (pokemonMove.isOutOfPp()) {
         continue;
       }
 
       const targets = playerPokemon.getNextTargets(pokemonMove.moveId);
+      const targetsOnlyEnemies = targets.length > 0 && targets.every(target => enemyBattlerIndexes.has(target));
       const turnMove: TurnMove = {
         move: pokemonMove.moveId,
         targets,
         useMode: MoveUseMode.NORMAL,
       };
-      if (!this.isUnsafeForReservedCaptureTarget(playerPokemon, turnMove, reservedTarget)) {
+      if (targetsOnlyEnemies && !this.isUnsafeForReservedCaptureTarget(playerPokemon, turnMove, reservedTarget)) {
         return turnMove;
       }
 
@@ -181,7 +184,6 @@ export class CommandPhase extends FieldPhase {
         continue;
       }
 
-      const enemyBattlerIndexes = new Set(globalScene.getEnemyField().map(pokemon => pokemon.getBattlerIndex()));
       const fallbackTarget = targetSet.targets.find(
         target => target !== reservedTarget.getBattlerIndex() && enemyBattlerIndexes.has(target),
       );

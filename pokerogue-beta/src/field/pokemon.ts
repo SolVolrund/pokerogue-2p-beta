@@ -6826,13 +6826,13 @@ export class EnemyPokemon extends Pokemon {
 
               const target = globalScene.getField()[mt];
               /**
-               * The "target score" of a move is given by the move's user benefit score + the move's target benefit score.
-               * If the target is an ally, the target benefit score is multiplied by -1.
+               * Target benefit scores are from the target's perspective, so harmful moves are negative.
+               * Invert that score for opponents so harming them is valuable, but keep ally scores as-is.
                */
+              const targetIsOpponent = target.isPlayer() !== this.isPlayer() || isForcedDuelOpponent(this, target);
               let targetScore =
                 move.getUserBenefitScore(this, target, move)
-                + move.getTargetBenefitScore(this, target, move)
-                  * (mt < BattlerIndex.ENEMY === this.isPlayer() || isForcedDuelOpponent(this, target) ? 1 : -1);
+                + move.getTargetBenefitScore(this, target, move) * (targetIsOpponent ? -1 : 1);
               if (Number.isNaN(targetScore)) {
                 console.error(`Move ${move.name} returned score of NaN`);
                 targetScore = 0;
@@ -6864,7 +6864,7 @@ export class EnemyPokemon extends Pokemon {
                   true,
                 );
 
-                if (target.isPlayer() !== this.isPlayer() || isForcedDuelOpponent(this, target)) {
+                if (targetIsOpponent) {
                   targetScore *= effectiveness;
                   if (this.isOfType(move.type)) {
                     targetScore *= 1.5;
@@ -6962,13 +6962,13 @@ export class EnemyPokemon extends Pokemon {
     const move = allMoves[moveId];
 
     /**
-     * Get the move's target benefit score against each potential target.
-     * For allies, this score is multiplied by -1.
+     * Target benefit scores are from the target's perspective, so harmful moves are negative.
+     * Invert that score for opponents so harming them is valuable, but keep ally scores as-is.
      */
     const benefitScores = targets.map(p => [
       p.getBattlerIndex(),
       move.getTargetBenefitScore(this, p, move)
-        * (p.isPlayer() !== this.isPlayer() || isForcedDuelOpponent(this, p) ? 1 : -1),
+        * (p.isPlayer() !== this.isPlayer() || isForcedDuelOpponent(this, p) ? -1 : 1),
     ]);
 
     const sortedBenefitScores = benefitScores.slice(0);

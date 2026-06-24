@@ -531,18 +531,34 @@ export class EncounterPhase extends BattlePhase {
     onComplete: () => void,
   ): void {
     const enemyField = globalScene.getEnemyField();
+    const setReservedCaptureTarget = (targetId: number) => {
+      globalScene.currentBattle.computerPartnerReservedCaptureTargetId = targetId;
+      onComplete();
+      return true;
+    };
     const options: OptionSelectItem[] = announcement.decisions.map(decision => {
       const targetName = decision.target.getNameToRender();
       const sideLabel = enemyField.length > 1 ? `${decision.targetIndex === 0 ? "left" : "right"} ` : "";
       return {
         label: `Can I take ${sideLabel}${targetName}?`,
-        handler: () => {
-          globalScene.currentBattle.computerPartnerReservedCaptureTargetId = decision.target.id;
-          onComplete();
-          return true;
-        },
+        handler: () => setReservedCaptureTarget(decision.target.id),
       };
     });
+    const partnerTargetIds = new Set(announcement.decisions.map(decision => decision.target.id));
+    if (enemyField.length > 1) {
+      enemyField.forEach((pokemon, targetIndex) => {
+        if (!pokemon.isActive(true) || pokemon.isFainted() || partnerTargetIds.has(pokemon.id)) {
+          return;
+        }
+
+        const targetName = pokemon.getNameToRender();
+        const sideLabel = targetIndex === 0 ? "left" : "right";
+        options.push({
+          label: `Okay, I'll take ${sideLabel} ${targetName}.`,
+          handler: () => setReservedCaptureTarget(pokemon.id),
+        });
+      });
+    }
     options.push({
       label: "Go for it",
       handler: () => {
