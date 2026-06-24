@@ -15,7 +15,7 @@ import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { PokeballType } from "#enums/pokeball";
 import { SpeciesId } from "#enums/species-id";
-import { Stat } from "#enums/stat";
+import { Stat, type BattleStat } from "#enums/stat";
 import { TrainerSlot } from "#enums/trainer-slot";
 import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
@@ -290,13 +290,11 @@ function getDancingLessonsOricorioConfig(playerIndex: PlayerIndex): EnemyPokemon
     tags: [BattlerTagType.MYSTERY_ENCOUNTER_POST_SUMMON],
     mysteryEncounterBattleEffects: (pokemon: Pokemon) => {
       queueEncounterMessage(`${namespace}:option.1.bossEnraged`);
-      globalScene.phaseManager.unshiftNew(
-        "StatStageChangePhase",
-        pokemon.getBattlerIndex(),
-        true,
-        [Stat.ATK, Stat.DEF, Stat.SPATK, Stat.SPDEF],
-        1,
-      );
+      globalScene.phaseManager.unshiftNew("StatStageChangePhase", {
+        battlerIndex: pokemon.getBattlerIndex(),
+        changes: ([Stat.ATK, Stat.DEF, Stat.SPATK, Stat.SPDEF] as BattleStat[]).map(stat => ({ stat, stages: 1 })),
+        sourcePokemon: pokemon,
+      });
     },
   };
 }

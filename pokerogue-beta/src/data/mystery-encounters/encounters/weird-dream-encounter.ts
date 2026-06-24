@@ -14,7 +14,7 @@ import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { Nature } from "#enums/nature";
 import { PartyMemberStrength } from "#enums/party-member-strength";
 import { PlayerGender } from "#enums/player-gender";
-import { MAX_POKEMON_TYPE, PokemonType } from "#enums/pokemon-type";
+import { MAX_POKEMON_TYPE } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { StatusEffect } from "#enums/status-effect";
 import { TrainerType } from "#enums/trainer-type";
@@ -48,7 +48,7 @@ import { TrainerPartyTemplate } from "#trainers/trainer-party-template";
 import type { HeldModifierConfig } from "#types/held-modifier-config";
 import { updateWindowType } from "#ui/ui-theme";
 import { NumberHolder, randSeedInt, randSeedShuffle } from "#utils/common";
-import { getPokemonSpecies } from "#utils/pokemon-utils";
+import { getPokemonSpecies, getRandomRegularPokemonType } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
 /** i18n namespace for encounter */
@@ -873,13 +873,7 @@ async function postProcessTransformedPokemon(
 
   // Randomize the second type of the pokemon
   // If the pokemon does not normally have a second type, it will gain 1
-  const newTypes = [PokemonType.UNKNOWN];
-  let newType = randSeedInt(18) as PokemonType;
-  while (newType === newTypes[0]) {
-    newType = randSeedInt(18) as PokemonType;
-  }
-  newTypes.push(newType);
-  newPokemon.customPokemonData.types = newTypes;
+  newPokemon.customPokemonData.types = [null, getRandomRegularPokemonType()];
 
   // Enable passive if previous had it
   newPokemon.passive = previousPokemon.passive;

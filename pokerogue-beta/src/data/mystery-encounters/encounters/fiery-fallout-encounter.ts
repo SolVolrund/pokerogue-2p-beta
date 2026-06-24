@@ -15,7 +15,7 @@ import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
-import { Stat } from "#enums/stat";
+import { Stat, type BattleStat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
 import { UiMode } from "#enums/ui-mode";
 import { WeatherType } from "#enums/weather-type";
@@ -364,13 +364,11 @@ function createVolcaronaPokemonConfig(gender: Gender): EnemyPokemonConfig {
     gender,
     tags: [BattlerTagType.MYSTERY_ENCOUNTER_POST_SUMMON],
     mysteryEncounterBattleEffects: (pokemon: Pokemon) => {
-      globalScene.phaseManager.unshiftNew(
-        "StatStageChangePhase",
-        pokemon.getBattlerIndex(),
-        true,
-        [Stat.SPDEF, Stat.SPD],
-        1,
-      );
+      globalScene.phaseManager.unshiftNew("StatStageChangePhase", {
+        battlerIndex: pokemon.getBattlerIndex(),
+        changes: ([Stat.SPDEF, Stat.SPD] as BattleStat[]).map(stat => ({ stat, stages: 1 })),
+        sourcePokemon: pokemon,
+      });
     },
   };
 }

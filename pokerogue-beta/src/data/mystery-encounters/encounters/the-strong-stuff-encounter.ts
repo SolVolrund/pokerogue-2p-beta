@@ -13,7 +13,7 @@ import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { Nature } from "#enums/nature";
 import { SpeciesId } from "#enums/species-id";
-import { Stat } from "#enums/stat";
+import { Stat, type BattleStat } from "#enums/stat";
 import { UiMode } from "#enums/ui-mode";
 import type { Pokemon } from "#field/pokemon";
 import type { PokemonHeldItemModifierType } from "#modifiers/modifier-type";
@@ -152,13 +152,11 @@ function getShucklePokemonConfig(): EnemyPokemonConfig {
     tags: [BattlerTagType.MYSTERY_ENCOUNTER_POST_SUMMON],
     mysteryEncounterBattleEffects: (pokemon: Pokemon) => {
       queueEncounterMessage(`${namespace}:option.2.statBoost`);
-      globalScene.phaseManager.unshiftNew(
-        "StatStageChangePhase",
-        pokemon.getBattlerIndex(),
-        true,
-        [Stat.DEF, Stat.SPDEF],
-        1,
-      );
+      globalScene.phaseManager.unshiftNew("StatStageChangePhase", {
+        battlerIndex: pokemon.getBattlerIndex(),
+        changes: ([Stat.DEF, Stat.SPDEF] as BattleStat[]).map(stat => ({ stat, stages: 1 })),
+        sourcePokemon: pokemon,
+      });
     },
   };
 }

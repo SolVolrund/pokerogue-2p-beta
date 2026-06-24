@@ -244,13 +244,11 @@ function configureEnragedBoss(): EnemyPartyConfig {
   config.pokemonConfigs![0].tags = [BattlerTagType.MYSTERY_ENCOUNTER_POST_SUMMON];
   config.pokemonConfigs![0].mysteryEncounterBattleEffects = (pokemon: Pokemon) => {
     queueEncounterMessage(`${namespace}:option.2.bossEnraged`);
-    globalScene.phaseManager.unshiftNew(
-      "StatStageChangePhase",
-      pokemon.getBattlerIndex(),
-      true,
-      statChangesForBattle,
-      1,
-    );
+    globalScene.phaseManager.unshiftNew("StatStageChangePhase", {
+      battlerIndex: pokemon.getBattlerIndex(),
+      changes: statChangesForBattle.map(stat => ({ stat, stages: 1 })),
+      sourcePokemon: pokemon,
+    });
   };
 
   return config;

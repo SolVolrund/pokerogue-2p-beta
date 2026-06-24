@@ -327,15 +327,12 @@ function startPhaseTwo(pokemon: Pokemon, member: LegendaryConflictMember): void 
   globalScene.phaseManager.queueMessage(`${pokemon.getNameToRender()}'s power surged!`);
 
   if (!formChange) {
-    globalScene.phaseManager.unshiftNew(
-      "StatStageChangePhase",
-      pokemon.getBattlerIndex(),
-      true,
-      BATTLE_STATS,
-      1,
-      true,
-      true,
-    );
+    globalScene.phaseManager.unshiftNew("StatStageChangePhase", {
+      battlerIndex: pokemon.getBattlerIndex(),
+      changes: BATTLE_STATS.map(stat => ({ stat, stages: 1 })),
+      sourcePokemon: pokemon,
+      ignoreAbilities: true,
+    });
   }
 
   globalScene.phaseManager.unshiftNew(

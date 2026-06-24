@@ -67,6 +67,7 @@ import type {
   SeenDialogues,
   SessionSaveData,
   StarterData,
+  StarterDataEntry,
   SystemSaveData,
   TutorialFlags,
   Unlocks,
@@ -347,9 +348,13 @@ export class GameData {
 
       const starterIds = Object.keys(this.starterData).map(s => Number.parseInt(s) as SpeciesId);
       for (const s of starterIds) {
-        this.starterData[s].candyCount += systemData.dexData[s].caughtCount;
-        this.starterData[s].candyCount += systemData.dexData[s].hatchedCount * 2;
-        if (systemData.dexData[s].caughtAttr & DexAttr.SHINY) {
+        const dexEntry = systemData.dexData[s];
+        if (!dexEntry) {
+          continue;
+        }
+        this.starterData[s].candyCount += dexEntry.caughtCount;
+        this.starterData[s].candyCount += dexEntry.hatchedCount * 2;
+        if (dexEntry.caughtAttr & DexAttr.SHINY) {
           this.starterData[s].candyCount += 4;
         }
       }
@@ -397,6 +402,7 @@ export class GameData {
 
     this.dexData = Object.assign(this.dexData, systemData.dexData);
     this.consolidateDexData(this.dexData);
+    this.ensureRegisteredSpeciesSaveData();
     this.defaultDexData = null;
   }
 
@@ -1395,11 +1401,11 @@ export class GameData {
         default:
           return v;
       }
-    }) as SessionSaveData;
+    });
 
     applySessionVersionMigration(sessionData);
 
-    return sessionData;
+    return sessionData as SessionSaveData;
   }
 
   /**
@@ -1779,19 +1785,42 @@ export class GameData {
 
     const starterSpeciesIds = speciesDataRegistry.getAllStarters();
     for (const speciesId of starterSpeciesIds) {
-      starterData[speciesId] = {
-        moveset: null,
-        eggMoves: 0,
-        candyCount: 0,
-        friendship: 0,
-        abilityAttr: defaultStarterSpecies.includes(speciesId) ? AbilityAttr.ABILITY_1 : 0,
-        passiveAttr: 0,
-        valueReduction: 0,
-        classicWinCount: 0,
-      };
+      starterData[speciesId] = this.createStarterDataEntry(speciesId);
     }
 
     this.starterData = starterData;
+  }
+
+  private createStarterDataEntry(speciesId: SpeciesId): StarterDataEntry {
+    return {
+      moveset: null,
+      eggMoves: 0,
+      candyCount: 0,
+      friendship: 0,
+      abilityAttr: defaultStarterSpecies.includes(speciesId) ? AbilityAttr.ABILITY_1 : 0,
+      passiveAttr: 0,
+      valueReduction: 0,
+      classicWinCount: 0,
+    };
+  }
+
+  private ensureRegisteredSpeciesSaveData(): void {
+    for (const species of speciesDataRegistry.getAllSpecies()) {
+      this.dexData[species.speciesId] ??= {
+        seenAttr: 0n,
+        caughtAttr: 0n,
+        natureAttr: 0,
+        seenCount: 0,
+        caughtCount: 0,
+        hatchedCount: 0,
+        ivs: [0, 0, 0, 0, 0, 0],
+        ribbons: new RibbonData(0),
+      };
+    }
+
+    for (const speciesId of speciesDataRegistry.getAllStarters()) {
+      this.starterData[speciesId] ??= this.createStarterDataEntry(speciesId);
+    }
   }
 
   setPokemonSeen(pokemon: Pokemon, incrementCount = true, trainer = false): void {

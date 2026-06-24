@@ -173,13 +173,11 @@ function getUncommonBreedPokemonConfig(playerIndex: PlayerIndex): EnemyPokemonCo
     tags: [BattlerTagType.MYSTERY_ENCOUNTER_POST_SUMMON],
     mysteryEncounterBattleEffects: (battlePokemon: Pokemon) => {
       queueEncounterMessage(`${namespace}:option.1.statBoost`);
-      globalScene.phaseManager.unshiftNew(
-        "StatStageChangePhase",
-        battlePokemon.getBattlerIndex(),
-        true,
-        statChangesForBattle,
-        1,
-      );
+      globalScene.phaseManager.unshiftNew("StatStageChangePhase", {
+        battlerIndex: battlePokemon.getBattlerIndex(),
+        changes: statChangesForBattle.map(stat => ({ stat, stages: 1 })),
+        sourcePokemon: battlePokemon,
+      });
     },
   };
 }

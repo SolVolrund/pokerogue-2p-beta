@@ -621,7 +621,7 @@ export class BattleScene extends SceneBase {
    */
   public create(): void {
     this.scene.remove(LoadingScene.KEY);
-    initGameSpeed.apply(this);
+    initGameSpeed(this);
     this.inputController = new InputsController();
     this.uiInputs = new UiInputs(this.inputController);
 
