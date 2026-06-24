@@ -39,9 +39,13 @@ import { getGoldenBugNetSpecies } from "#mystery-encounters/encounter-pokemon-ut
 import { BattlePhase } from "#phases/battle-phase";
 import { achvs } from "#system/achv";
 import { randSeedInt, randSeedItem } from "#utils/common";
-import { getComputerPartnerCaptureDecisions } from "#utils/computer-partner-capture-ai";
+import {
+  getComputerPartnerCaptureDecisions,
+  type ComputerPartnerCaptureDecision,
+} from "#utils/computer-partner-capture-ai";
 import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
 import { applyPersistentFieldBlessing } from "#utils/field-blessings";
+import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import i18next from "i18next";
 
 export class EncounterPhase extends BattlePhase {
@@ -486,7 +490,7 @@ export class EncounterPhase extends BattlePhase {
         });
   }
 
-  getComputerPartnerCaptureAnnouncement(): string | undefined {
+  getComputerPartnerCaptureAnnouncement(): { message: string; decisions: ComputerPartnerCaptureDecision[] } | undefined {
     if (!globalScene.twoPlayerComputerPartner || globalScene.currentBattle.battleType !== BattleType.WILD) {
       return undefined;
     }
@@ -516,7 +520,47 @@ export class EncounterPhase extends BattlePhase {
       targetNames.length === 1
         ? targetNames[0]
         : `${targetNames.slice(0, -1).join(", ")} and ${targetNames[targetNames.length - 1]}`;
-    return `${profile.name} wants to capture ${targetText}.`;
+    return {
+      message: `${profile.name} wants to capture ${targetText}.`,
+      decisions: captureDecisions,
+    };
+  }
+
+  showComputerPartnerCapturePrompt(
+    announcement: { message: string; decisions: ComputerPartnerCaptureDecision[] },
+    onComplete: () => void,
+  ): void {
+    const enemyField = globalScene.getEnemyField();
+    const options: OptionSelectItem[] = announcement.decisions.map(decision => {
+      const targetName = decision.target.getNameToRender();
+      const sideLabel = enemyField.length > 1 ? `${decision.targetIndex === 0 ? "left" : "right"} ` : "";
+      return {
+        label: `Can I take ${sideLabel}${targetName}?`,
+        handler: () => {
+          globalScene.currentBattle.computerPartnerReservedCaptureTargetId = decision.target.id;
+          onComplete();
+          return true;
+        },
+      };
+    });
+    options.push({
+      label: "Go for it",
+      handler: () => {
+        globalScene.currentBattle.computerPartnerReservedCaptureTargetId = undefined;
+        onComplete();
+        return true;
+      },
+    });
+
+    const config: OptionSelectConfig = {
+      options,
+      noCancel: true,
+    };
+
+    globalScene.waitForPlayerInput(0);
+    globalScene.ui.showText(announcement.message, null, () => {
+      globalScene.ui.setMode(UiMode.OPTION_SELECT, config);
+    }, 0, true);
   }
 
   doEncounterCommon(showEncounterMessage = true) {
@@ -535,9 +579,9 @@ export class EncounterPhase extends BattlePhase {
       }
       globalScene.updateFieldScale();
       const showPartnerCaptureAnnouncement = () => {
-        const partnerCaptureMessage = this.getComputerPartnerCaptureAnnouncement();
-        if (partnerCaptureMessage) {
-          globalScene.ui.showText(partnerCaptureMessage, null, () => this.end(), 0, true);
+        const partnerCaptureAnnouncement = this.getComputerPartnerCaptureAnnouncement();
+        if (partnerCaptureAnnouncement) {
+          this.showComputerPartnerCapturePrompt(partnerCaptureAnnouncement, () => this.end());
         } else {
           this.end();
         }

@@ -389,6 +389,8 @@ function removeHelpedLegendaryFromBattle(data: LegendaryConflictData, defeatedPo
 async function awardLegendaryConflictBlessing(): Promise<void> {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const data = getLegendaryConflictData();
+  data.legendaryConflictDuelActive = false;
+  delete data.legendaryConflictPokemonIds;
 
   if (data.declined) {
     encounter.dialogue.outro = [];

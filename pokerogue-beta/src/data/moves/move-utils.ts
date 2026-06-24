@@ -5,6 +5,7 @@ import { BattlerTagType } from "#enums/battler-tag-type";
 import { MoveCategory, type MoveDamageCategory } from "#enums/move-category";
 import type { MoveId } from "#enums/move-id";
 import { MoveTarget } from "#enums/move-target";
+import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { PokemonType } from "#enums/pokemon-type";
 import type { WeatherType } from "#enums/weather-type";
 import type { Pokemon } from "#field/pokemon";
@@ -149,12 +150,21 @@ function getForcedDuelTarget(user: Pokemon, ally?: Pokemon): Pokemon[] | undefin
 }
 
 function getForcedDuelPokemonIds(): number[] | undefined {
-  const misc = globalScene.currentBattle?.mysteryEncounter?.misc;
+  const battle = globalScene.currentBattle;
+  if (
+    !battle?.isBattleMysteryEncounter()
+    || battle.mysteryEncounter?.encounterType !== MysteryEncounterType.LEGENDARY_CONFLICT
+  ) {
+    return;
+  }
+
+  const misc = battle.mysteryEncounter.misc;
   if (!misc?.legendaryConflictDuelActive || !Array.isArray(misc.legendaryConflictPokemonIds)) {
     return;
   }
 
-  return misc.legendaryConflictPokemonIds;
+  const activeEnemyIds = globalScene.getEnemyField().map(pokemon => pokemon.id);
+  return misc.legendaryConflictPokemonIds.filter(id => activeEnemyIds.includes(id));
 }
 
 export const frenzyMissFunc: UserMoveConditionFunc = (user: Pokemon, move: Move) => {

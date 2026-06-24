@@ -42,8 +42,9 @@ export function getComputerPartnerCaptureDecision(
   activePokemon: PlayerPokemon,
   enemyField: EnemyPokemon[],
   pokeballCounts: PokeballCounts,
+  reservedTargetId?: number,
 ): ComputerPartnerCaptureDecision | undefined {
-  return getComputerPartnerCaptureDecisions(partnerKey, party, activePokemon, enemyField, pokeballCounts)[0];
+  return getComputerPartnerCaptureDecisions(partnerKey, party, activePokemon, enemyField, pokeballCounts, reservedTargetId)[0];
 }
 
 export function getComputerPartnerCaptureDecisions(
@@ -52,11 +53,12 @@ export function getComputerPartnerCaptureDecisions(
   activePokemon: PlayerPokemon,
   enemyField: EnemyPokemon[],
   pokeballCounts: PokeballCounts,
+  reservedTargetId?: number,
 ): ComputerPartnerCaptureDecision[] {
   const profile = getComputerPartnerProfile(partnerKey);
   return enemyField
     .map((target, targetIndex) => {
-      if (!target.isActive(true) || target.isFainted() || target.isBoss()) {
+      if (!target.isActive(true) || target.isFainted() || target.isBoss() || target.id === reservedTargetId) {
         return undefined;
       }
 
@@ -170,11 +172,25 @@ function getSafestComputerPartnerWeakeningMoveIndex(
       damageRatio: estimateComputerPartnerMoveDamageRatio(attacker, target, pokemonMove.getMove()),
       isUsable: !pokemonMove.isOutOfPp(),
     }))
-    .filter(moveScore => moveScore.isUsable && moveScore.damageRatio > 0 && moveScore.damageRatio < MAX_SAFE_WEAKENING_DAMAGE_RATIO)
+    .filter(
+      moveScore =>
+        moveScore.isUsable
+        && moveScore.damageRatio > 0
+        && moveScore.damageRatio < MAX_SAFE_WEAKENING_DAMAGE_RATIO,
+    )
     .sort((a, b) => b.damageRatio - a.damageRatio)[0]?.moveIndex;
 }
 
-function estimateComputerPartnerMoveDamageRatio(
+export function isComputerPartnerMoveSafeForCaptureTarget(
+  attacker: PlayerPokemon,
+  target: EnemyPokemon,
+  move: Move,
+): boolean {
+  const damageRatio = estimateComputerPartnerMoveDamageRatio(attacker, target, move);
+  return damageRatio <= 0 || damageRatio < MAX_SAFE_WEAKENING_DAMAGE_RATIO;
+}
+
+export function estimateComputerPartnerMoveDamageRatio(
   attacker: PlayerPokemon,
   target: EnemyPokemon,
   move: Move,

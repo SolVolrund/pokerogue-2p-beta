@@ -19,13 +19,16 @@ import { isIgnorePP, isVirtual, MoveUseMode } from "#enums/move-use-mode";
 import { MysteryEncounterMode } from "#enums/mystery-encounter-mode";
 import { PokeballType } from "#enums/pokeball";
 import { UiMode } from "#enums/ui-mode";
-import type { PlayerPokemon } from "#field/pokemon";
+import type { EnemyPokemon, PlayerPokemon } from "#field/pokemon";
 import { getMoveTargets } from "#moves/move-utils";
 import { FieldPhase } from "#phases/field-phase";
 import type { MoveTargetSet } from "#types/move-target-set";
 import type { TurnMove } from "#types/turn-move";
 import { getComputerPartnerImprovedSwitchIndex, isComputerPartnerFieldIndex } from "#utils/computer-partner-ai";
-import { getComputerPartnerCaptureDecision } from "#utils/computer-partner-capture-ai";
+import {
+  getComputerPartnerCaptureDecision,
+  isComputerPartnerMoveSafeForCaptureTarget,
+} from "#utils/computer-partner-capture-ai";
 import i18next from "i18next";
 
 export class CommandPhase extends FieldPhase {
@@ -87,6 +90,7 @@ export class CommandPhase extends FieldPhase {
       playerPokemon,
       globalScene.getEnemyField(),
       globalScene.getPlayerPokeballCounts(1),
+      globalScene.currentBattle.computerPartnerReservedCaptureTargetId,
     );
 
     if (!captureDecision) {
@@ -124,6 +128,88 @@ export class CommandPhase extends FieldPhase {
     return false;
   }
 
+  private getComputerPartnerReservedCaptureTarget(): EnemyPokemon | undefined {
+    const reservedTargetId = globalScene.currentBattle.computerPartnerReservedCaptureTargetId;
+    if (reservedTargetId === undefined) {
+      return undefined;
+    }
+
+    const reservedTarget = globalScene.getEnemyField().find(pokemon => pokemon.id === reservedTargetId);
+    if (!reservedTarget?.isActive(true) || reservedTarget.isFainted()) {
+      globalScene.currentBattle.computerPartnerReservedCaptureTargetId = undefined;
+      return undefined;
+    }
+
+    return reservedTarget;
+  }
+
+  private isUnsafeForReservedCaptureTarget(
+    playerPokemon: PlayerPokemon,
+    turnMove: TurnMove,
+    reservedTarget: EnemyPokemon,
+  ): boolean {
+    if (!turnMove.targets.includes(reservedTarget.getBattlerIndex())) {
+      return false;
+    }
+
+    const pokemonMove = playerPokemon.getMoveset().find(move => move.moveId === turnMove.move);
+    if (!pokemonMove) {
+      return false;
+    }
+
+    return !isComputerPartnerMoveSafeForCaptureTarget(playerPokemon, reservedTarget, pokemonMove.getMove());
+  }
+
+  private getReservedCaptureSafeMove(playerPokemon: PlayerPokemon, reservedTarget: EnemyPokemon): TurnMove | undefined {
+    for (const pokemonMove of playerPokemon.getMoveset()) {
+      if (pokemonMove.isOutOfPp()) {
+        continue;
+      }
+
+      const targets = playerPokemon.getNextTargets(pokemonMove.moveId);
+      const turnMove: TurnMove = {
+        move: pokemonMove.moveId,
+        targets,
+        useMode: MoveUseMode.NORMAL,
+      };
+      if (!this.isUnsafeForReservedCaptureTarget(playerPokemon, turnMove, reservedTarget)) {
+        return turnMove;
+      }
+
+      const targetSet = getMoveTargets(playerPokemon, pokemonMove.moveId);
+      if (targetSet.multiple) {
+        continue;
+      }
+
+      const enemyBattlerIndexes = new Set(globalScene.getEnemyField().map(pokemon => pokemon.getBattlerIndex()));
+      const fallbackTarget = targetSet.targets.find(
+        target => target !== reservedTarget.getBattlerIndex() && enemyBattlerIndexes.has(target),
+      );
+      if (fallbackTarget !== undefined) {
+        return {
+          move: pokemonMove.moveId,
+          targets: [fallbackTarget],
+          useMode: MoveUseMode.NORMAL,
+        };
+      }
+    }
+
+    return undefined;
+  }
+
+  private protectReservedCaptureTarget(playerPokemon: PlayerPokemon, turnMove: TurnMove): TurnMove {
+    const reservedTarget = this.getComputerPartnerReservedCaptureTarget();
+    if (!reservedTarget || !this.isUnsafeForReservedCaptureTarget(playerPokemon, turnMove, reservedTarget)) {
+      return turnMove;
+    }
+
+    return this.getReservedCaptureSafeMove(playerPokemon, reservedTarget) ?? {
+      move: MoveId.NONE,
+      targets: [],
+      useMode: MoveUseMode.NORMAL,
+    };
+  }
+
   private handleComputerPartnerCommand(): boolean {
     const playerPokemon = this.getPokemon();
     const previousAiType = playerPokemon.aiType;
@@ -148,10 +234,11 @@ export class CommandPhase extends FieldPhase {
     playerPokemon.aiType = AiType.SMART;
     globalScene.aiCommandInProgress = true;
     try {
-      const nextMove = playerPokemon.getNextMove();
+      const nextMove = this.protectReservedCaptureTarget(playerPokemon, playerPokemon.getNextMove());
       globalScene.currentBattle.turnCommands[this.fieldIndex] = {
         command: Command.FIGHT,
         move: nextMove,
+        skip: nextMove.move === MoveId.NONE,
       };
     } finally {
       playerPokemon.aiType = previousAiType;
