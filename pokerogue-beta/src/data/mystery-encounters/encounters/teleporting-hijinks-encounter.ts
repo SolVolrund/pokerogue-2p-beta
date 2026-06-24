@@ -480,13 +480,11 @@ function createBossBattleConfig(enraged: boolean, bossCount: number): EnemyParty
             tags: [BattlerTagType.MYSTERY_ENCOUNTER_POST_SUMMON],
             mysteryEncounterBattleEffects: (pokemon: Pokemon) => {
               queueEncounterMessage(`${namespace}:bossEnraged`);
-              globalScene.phaseManager.unshiftNew(
-                "StatStageChangePhase",
-                pokemon.getBattlerIndex(),
-                true,
-                statChangesForBattle,
-                1,
-              );
+              globalScene.phaseManager.unshiftNew("StatStageChangePhase", {
+                battlerIndex: pokemon.getBattlerIndex(),
+                changes: statChangesForBattle.map(stat => ({ stat, stages: 1 })),
+                sourcePokemon: pokemon,
+              });
             },
           }
         : {}),

@@ -170,13 +170,11 @@ function getGreedentPokemonConfig(playerIndex: PlayerIndex, gender: Gender): Ene
     tags: [BattlerTagType.MYSTERY_ENCOUNTER_POST_SUMMON],
     mysteryEncounterBattleEffects: (pokemon: Pokemon) => {
       queueEncounterMessage(`${namespace}:option.1.bossEnraged`);
-      globalScene.phaseManager.unshiftNew(
-        "StatStageChangePhase",
-        pokemon.getBattlerIndex(),
-        true,
-        statChangesForBattle,
-        1,
-      );
+      globalScene.phaseManager.unshiftNew("StatStageChangePhase", {
+        battlerIndex: pokemon.getBattlerIndex(),
+        changes: statChangesForBattle.map(stat => ({ stat, stages: 1 })),
+        sourcePokemon: pokemon,
+      });
     },
   };
 }

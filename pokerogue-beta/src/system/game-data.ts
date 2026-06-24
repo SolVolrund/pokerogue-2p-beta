@@ -1395,11 +1395,11 @@ export class GameData {
         default:
           return v;
       }
-    }) as SessionSaveData;
+    });
 
     applySessionVersionMigration(sessionData);
 
-    return sessionData;
+    return sessionData as SessionSaveData;
   }
 
   /**
