@@ -9,13 +9,17 @@ import { handleTutorial, Tutorial } from "#app/tutorial";
 import { initEncounterAnims, loadEncounterAnimAssets } from "#data/battle-anims";
 import { getCharVariantFromDialogue, getClassicFinalBossDialogue } from "#data/dialogue";
 import { getNatureName } from "#data/nature";
+import { getTypeDamageMultiplier } from "#data/type";
 import { BattleType } from "#enums/battle-type";
 import { BattlerIndex } from "#enums/battler-index";
 import { BiomeId } from "#enums/biome-id";
 import { FieldPosition } from "#enums/field-position";
+import { MoveCategory } from "#enums/move-category";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import { MysteryEncounterMode } from "#enums/mystery-encounter-mode";
 import { PlayerGender } from "#enums/player-gender";
+import { getPlayerTrainerSpriteName } from "#enums/player-trainer-sprite";
+import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { TrainerSlot } from "#enums/trainer-slot";
 import { UiMode } from "#enums/ui-mode";
@@ -50,6 +54,66 @@ export class EncounterPhase extends BattlePhase {
     super();
 
     this.loaded = loaded;
+  }
+
+  private getClassicFinalBossArceusFormIndex(enemyPokemon: Pokemon): number {
+    const playerParty = this.getLivingPlayerSidePokemon();
+    const candidates = enemyPokemon.species.forms
+      .map((form, formIndex) => ({ form, formIndex }))
+      .filter(({ form }) => form.formKey !== "legend");
+
+    if (!playerParty.length || !candidates.length) {
+      return enemyPokemon.species.forms.findIndex(form => form.formKey === "normal");
+    }
+
+    const scoredCandidates = candidates.map(candidate => {
+      const arceusType = candidate.form.type1;
+      const weaknessCount = playerParty.filter(pokemon =>
+        this.canPokemonHitSingleTypeSuperEffectively(pokemon, arceusType),
+      ).length;
+      const superEffectiveCount = playerParty.filter(pokemon =>
+        this.canSingleTypeHitPokemonSuperEffectively(arceusType, pokemon),
+      ).length;
+
+      return { ...candidate, weaknessCount, superEffectiveCount };
+    });
+
+    const fewestWeaknesses = Math.min(...scoredCandidates.map(candidate => candidate.weaknessCount));
+    const leastWeakCandidates = scoredCandidates.filter(candidate => candidate.weaknessCount === fewestWeaknesses);
+    const mostSuperEffective = Math.max(...leastWeakCandidates.map(candidate => candidate.superEffectiveCount));
+    const bestCandidates = leastWeakCandidates.filter(
+      candidate => candidate.superEffectiveCount === mostSuperEffective,
+    );
+
+    return bestCandidates[randSeedInt(bestCandidates.length)].formIndex;
+  }
+
+  private getLivingPlayerSidePokemon(): Pokemon[] {
+    const playerIndexes: PlayerIndex[] = globalScene.twoPlayerMode ? [0, 1] : [globalScene.activePlayerIndex];
+
+    return playerIndexes
+      .flatMap(playerIndex => globalScene.getPlayerParty(playerIndex))
+      .filter(pokemon => !pokemon.isFainted());
+  }
+
+  private canPokemonHitSingleTypeSuperEffectively(pokemon: Pokemon, targetType: PokemonType): boolean {
+    return pokemon.getMoveset().some(pokemonMove => {
+      const move = pokemonMove.getMove();
+      if (move.category === MoveCategory.STATUS) {
+        return false;
+      }
+
+      const moveType = pokemon.getMoveType(move, true);
+      return getTypeDamageMultiplier(moveType, targetType) > 1;
+    });
+  }
+
+  private canSingleTypeHitPokemonSuperEffectively(attackType: PokemonType, pokemon: Pokemon): boolean {
+    const multiplier = pokemon
+      .getTypes({ includeTeraType: false, returnOriginalTypesIfStellar: true, ignoreThirdType: true })
+      .reduce((total, type) => total * getTypeDamageMultiplier(attackType, type), 1);
+
+    return multiplier > 1;
   }
 
   start() {
@@ -166,6 +230,15 @@ export class EncounterPhase extends BattlePhase {
       if (enemyPokemon.species.speciesId === SpeciesId.NECROZMA && battle.isClassicFinalBoss) {
         const phaseOneFormKey = randSeedInt(2) ? "dawn-wings" : "dusk-mane";
         const phaseOneFormIndex = enemyPokemon.species.forms.findIndex(form => form.formKey === phaseOneFormKey);
+        if (phaseOneFormIndex > -1) {
+          enemyPokemon.formIndex = phaseOneFormIndex;
+          enemyPokemon.updateScale();
+          enemyPokemon.generateAndPopulateMoveset(false, phaseOneFormIndex);
+        }
+        enemyPokemon.setBoss();
+      }
+      if (enemyPokemon.species.speciesId === SpeciesId.ARCEUS && battle.isClassicFinalBoss) {
+        const phaseOneFormIndex = this.getClassicFinalBossArceusFormIndex(enemyPokemon);
         if (phaseOneFormIndex > -1) {
           enemyPokemon.formIndex = phaseOneFormIndex;
           enemyPokemon.updateScale();
@@ -717,6 +790,7 @@ export class EncounterPhase extends BattlePhase {
             context: genderStr,
             cycleCount,
             cycleCountNoOrdinal,
+            playerName: getPlayerTrainerSpriteName(globalScene.getTrainerSprite(0)),
           });
           if (!gameData.getSeenDialogues()[localizationKey]) {
             gameData.saveSeenDialogue(localizationKey);

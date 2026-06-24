@@ -6,14 +6,21 @@ import { getPokemonNameWithAffix } from "#app/messages";
 import { getSpeciesFormChangeMessage } from "#data/form-change-triggers";
 import type { SpeciesFormChange } from "#data/pokemon-forms";
 import { getTypeRgb } from "#data/type";
+import { ArenaTagSide } from "#enums/arena-tag-side";
+import { ArenaTagType } from "#enums/arena-tag-type";
 import { BattlerTagType } from "#enums/battler-tag-type";
+import { FormChangeItem } from "#enums/form-change-item";
+import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";
+import { Stat } from "#enums/stat";
 import type { Pokemon } from "#field/pokemon";
-import { GammaRayBurstModifier } from "#modifiers/modifier";
+import { GammaRayBurstModifier, PokemonFormChangeItemModifier } from "#modifiers/modifier";
+import { FormChangeItemModifierType } from "#modifiers/modifier-type";
 import { BattlePhase } from "#phases/battle-phase";
 import { playTween } from "#utils/anim-utils";
 import { CLASSIC_FINAL_BOSS_SEGMENTS, isClassicFinalBossPhaseTwo } from "#utils/classic-final-boss-utils";
 import { getModifierType } from "#utils/modifier-utils";
+import { groupStatChange } from "#utils/stat-change";
 
 /**
  * Phase handling mid-battle form changes that do not occur in the Party modal
@@ -251,6 +258,38 @@ export class QuietFormChangePhase extends BattlePhase {
           this.pokemon,
         ) as GammaRayBurstModifier;
         globalScene.addEnemyModifier(gammaRayBurst, false, true);
+      }
+
+      if (this.pokemon.species.speciesId === SpeciesId.ARCEUS && isClassicFinalBossPhaseTwo(this.pokemon)) {
+        if (
+          !globalScene.findModifier(
+            m =>
+              m instanceof PokemonFormChangeItemModifier
+              && m.pokemonId === this.pokemon.id
+              && m.formChangeItem === FormChangeItem.LEGEND_PLATE,
+            false,
+          )
+        ) {
+          const legendPlate = new FormChangeItemModifierType(FormChangeItem.LEGEND_PLATE).newModifier(
+            this.pokemon,
+          ) as PokemonFormChangeItemModifier;
+          globalScene.addEnemyModifier(legendPlate, false, true);
+        }
+
+        this.pokemon.addTag(BattlerTagType.AQUA_RING, 1, MoveId.AQUA_RING, this.pokemon.id);
+        this.pokemon.addTag(BattlerTagType.INGRAIN, 1, MoveId.INGRAIN, this.pokemon.id);
+        globalScene.arena.addTag(
+          ArenaTagType.STEALTH_ROCK,
+          0,
+          MoveId.STEALTH_ROCK,
+          this.pokemon.id,
+          ArenaTagSide.PLAYER,
+        );
+        globalScene.phaseManager.unshiftNew("StatStageChangePhase", {
+          battlerIndex: this.pokemon.getBattlerIndex(),
+          changes: groupStatChange([Stat.ATK, Stat.DEF, Stat.SPATK, Stat.SPDEF, Stat.SPD], 1),
+          sourcePokemon: this.pokemon,
+        });
       }
     }
 

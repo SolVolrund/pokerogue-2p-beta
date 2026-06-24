@@ -9,6 +9,8 @@ export function isClassicFinalBossPhaseTwo(pokemon: Pokemon): boolean {
       return pokemon.formIndex > 0;
     case SpeciesId.NECROZMA:
       return pokemon.hasSpecies(SpeciesId.NECROZMA, "ultra");
+    case SpeciesId.ARCEUS:
+      return pokemon.hasSpecies(SpeciesId.ARCEUS, "legend");
     default:
       return false;
   }
@@ -21,8 +23,9 @@ export function isClassicFinalBossPhaseOne(pokemon: Pokemon): boolean {
     case SpeciesId.NECROZMA:
       return pokemon.hasSpecies(SpeciesId.NECROZMA, "dusk-mane")
         || pokemon.hasSpecies(SpeciesId.NECROZMA, "dawn-wings");
+    case SpeciesId.ARCEUS:
+      return pokemon.hasSpecies(SpeciesId.ARCEUS) && !pokemon.hasSpecies(SpeciesId.ARCEUS, "legend");
     default:
       return false;
   }
 }
-

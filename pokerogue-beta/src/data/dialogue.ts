@@ -1933,8 +1933,21 @@ export const necrozmaFinalBossDialogue = {
   secondStageWin: "battleSpecDialogue:necrozmaSecondStageWin",
 };
 
+export const arceusFinalBossDialogue = {
+  encounter: "battleSpecDialogue:arceusEncounter",
+  firstStageWin: "battleSpecDialogue:arceusFirstStageWin",
+  secondStageWin: "battleSpecDialogue:arceusSecondStageWin",
+};
+
 export function getClassicFinalBossDialogue(speciesId?: SpeciesId) {
-  return speciesId === SpeciesId.NECROZMA ? necrozmaFinalBossDialogue : classicFinalBossDialogue;
+  switch (speciesId) {
+    case SpeciesId.NECROZMA:
+      return necrozmaFinalBossDialogue;
+    case SpeciesId.ARCEUS:
+      return arceusFinalBossDialogue;
+    default:
+      return classicFinalBossDialogue;
+  }
 }
 
 export const miscDialogue = {

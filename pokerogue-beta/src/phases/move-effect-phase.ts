@@ -663,7 +663,7 @@ export class MoveEffectPhase extends PokemonPhase {
 
     // TODO: Verify if flash fire/charge are consumed if damage is prevented
     const typeBoost = user.findTag(
-      (t): t is TypeBoostTag => t instanceof TypeBoostTag && t.boostedType === user.getMoveType(this.move),
+      (t): t is TypeBoostTag => t instanceof TypeBoostTag && t.boostedType === user.getMoveType(this.move, true, target),
     );
     if (typeBoost?.oneUse) {
       user.removeTag(typeBoost.tagType);

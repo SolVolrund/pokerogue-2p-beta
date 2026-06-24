@@ -132,6 +132,14 @@ export function getPlayerTrainerSpriteOption(sprite: PlayerTrainerSprite): Playe
   return PLAYER_TRAINER_SPRITE_OPTIONS[sprite] ?? PLAYER_TRAINER_SPRITE_OPTIONS[PlayerTrainerSprite.BASE_BOY];
 }
 
+export function getPlayerTrainerSpriteName(sprite: PlayerTrainerSprite): string {
+  if (isBasePlayerTrainerSprite(sprite)) {
+    return "Alex";
+  }
+
+  return getPlayerTrainerSpriteOption(sprite).label.replace(/\s+\(.+\)$/, "");
+}
+
 export function getPlayerTrainerSpriteBackTextureKey(sprite: PlayerTrainerSprite, pokeball = false): string {
   const atlasKey = getPlayerTrainerSpriteOption(sprite).atlasKey;
   return `${atlasKey}${pokeball ? "_pb" : ""}`;

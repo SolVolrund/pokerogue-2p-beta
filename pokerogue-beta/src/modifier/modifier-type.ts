@@ -13,6 +13,7 @@ import { SpeciesFormChangeItemTrigger } from "#data/form-change-triggers";
 import { getNatureName, getNatureStatMultiplier } from "#data/nature";
 import { getPokeballCatchMultiplier, getPokeballName } from "#data/pokeball";
 import { SpeciesFormChangeCondition } from "#data/pokemon-forms";
+import { AbilityId } from "#enums/ability-id";
 import { getStatusEffectDescriptor } from "#data/status-effect";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BerryType } from "#enums/berry-type";
@@ -132,6 +133,41 @@ import i18next from "i18next";
 
 const outputModifierData = false;
 const useMaxWeightForOutput = false;
+
+const ARCEUS_LEGEND_PLATE_REQUIRED_ITEMS = [
+  FormChangeItem.FIST_PLATE,
+  FormChangeItem.SKY_PLATE,
+  FormChangeItem.TOXIC_PLATE,
+  FormChangeItem.EARTH_PLATE,
+  FormChangeItem.STONE_PLATE,
+  FormChangeItem.INSECT_PLATE,
+  FormChangeItem.SPOOKY_PLATE,
+  FormChangeItem.IRON_PLATE,
+  FormChangeItem.FLAME_PLATE,
+  FormChangeItem.SPLASH_PLATE,
+  FormChangeItem.MEADOW_PLATE,
+  FormChangeItem.ZAP_PLATE,
+  FormChangeItem.MIND_PLATE,
+  FormChangeItem.ICICLE_PLATE,
+  FormChangeItem.DRACO_PLATE,
+  FormChangeItem.DREAD_PLATE,
+  FormChangeItem.PIXIE_PLATE,
+] as const;
+
+function hasAllArceusLegendPlateRequirements(pokemon: Pokemon): boolean {
+  if (!pokemon.hasSpecies(SpeciesId.ARCEUS)) {
+    return false;
+  }
+
+  const heldFormChangeItems = new Set(
+    pokemon
+      .getHeldItems()
+      .filter(modifier => modifier instanceof PokemonFormChangeItemModifier)
+      .map(modifier => (modifier as PokemonFormChangeItemModifier).formChangeItem),
+  );
+
+  return ARCEUS_LEGEND_PLATE_REQUIRED_ITEMS.every(item => heldFormChangeItems.has(item));
+}
 
 type NewModifierFunc = (type: ModifierType, args: any[]) => Modifier;
 
@@ -1227,6 +1263,12 @@ export class FormChangeItemModifierType extends PokemonModifierType implements G
       FormChangeItem[formChangeItem].toLowerCase(),
       (_type, args) => new PokemonFormChangeItemModifier(this, (args[0] as PlayerPokemon).id, formChangeItem, true),
       (pokemon: PlayerPokemon) => {
+        if (this.formChangeItem === FormChangeItem.LEGEND_PLATE) {
+          return pokemon.hasSpecies(SpeciesId.ARCEUS) && pokemon.hasAbility(AbilityId.MULTITYPE)
+            ? null
+            : PartyUiHandler.NoEffectMessage;
+        }
+
         // Make sure the Pokemon has alternate forms
         if (
           speciesDataRegistry.hasFormChanges(pokemon.species.speciesId) // Get all form changes for this species with an item trigger, including any compound triggers
@@ -1640,6 +1682,25 @@ export class FormChangeItemModifierTypeGenerator extends ModifierTypeGenerator {
                   );
                 } else {
                   console.log("DID NOT FIND ");
+                }
+              }
+              if (p.hasSpecies(SpeciesId.ARCEUS)) {
+                const hasLegendPlateRequirements = hasAllArceusLegendPlateRequirements(p);
+                formChangeItemTriggers = formChangeItemTriggers.filter(
+                  fc => fc.item !== FormChangeItem.LEGEND_PLATE || hasLegendPlateRequirements,
+                );
+
+                if (
+                  hasLegendPlateRequirements
+                  && !formChangeItemTriggers.some(fc => fc.item === FormChangeItem.LEGEND_PLATE)
+                  && !globalScene.findModifier(
+                    m =>
+                      m instanceof PokemonFormChangeItemModifier
+                      && m.pokemonId === p.id
+                      && m.formChangeItem === FormChangeItem.LEGEND_PLATE,
+                  )
+                ) {
+                  formChangeItemTriggers.push(new SpeciesFormChangeItemTrigger(FormChangeItem.LEGEND_PLATE));
                 }
               }
               return formChangeItemTriggers;

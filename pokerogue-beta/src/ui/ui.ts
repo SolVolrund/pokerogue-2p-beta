@@ -3,6 +3,7 @@ import { globalScene } from "#app/global-scene";
 import type { Button } from "#enums/buttons";
 import { Device } from "#enums/devices";
 import { PlayerGender } from "#enums/player-gender";
+import { getPlayerTrainerSpriteName } from "#enums/player-trainer-sprite";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import { AchvBar } from "#ui/achv-bar";
@@ -336,7 +337,10 @@ export class UI extends Phaser.GameObjects.Container {
       const i18nKey = keyOrText;
       hasi18n = true;
 
-      text = i18next.t(i18nKey, { context: genderStr }); // override text with translation
+      text = i18next.t(i18nKey, {
+        context: genderStr,
+        playerName: getPlayerTrainerSpriteName(globalScene.getTrainerSprite(0)),
+      }); // override text with translation
 
       // Skip dialogue if the player has enabled the option and the dialogue has been already seen
       if (this.shouldSkipDialogue(i18nKey)) {

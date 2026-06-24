@@ -80,6 +80,7 @@ import { Challenges } from "#enums/challenges";
 import { DexAttr } from "#enums/dex-attr";
 import { ExpGainsSpeed } from "#enums/exp-gains-speed";
 import { FieldPosition } from "#enums/field-position";
+import { FormChangeItem } from "#enums/form-change-item";
 import { HitResult } from "#enums/hit-result";
 import { LearnMoveSituation } from "#enums/learn-move-situation";
 import { LearnableMoveSource } from "#enums/learnable-move-source";
@@ -121,6 +122,7 @@ import {
   PokemonBaseStatFlatModifier,
   PokemonBaseStatTotalModifier,
   PokemonFriendshipBoosterModifier,
+  PokemonFormChangeItemModifier,
   PokemonHeldItemModifier,
   PokemonIncrementingStatModifier,
   PokemonMultiHitModifier,
@@ -2456,10 +2458,10 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * @param simulated - If `true`, prevents showing abilities applied in this calculation.
    * @returns The {@linkcode PokemonType} of the move after attributes are applied
    */
-  public getMoveType(move: Move, simulated = true): PokemonType {
+  public getMoveType(move: Move, simulated = true, target: Pokemon | null = null): PokemonType {
     const moveTypeHolder = new NumberHolder(move.type);
 
-    applyMoveAttrs("VariableMoveTypeAttr", this, null, move, moveTypeHolder);
+    applyMoveAttrs("VariableMoveTypeAttr", this, target, move, moveTypeHolder);
 
     // Avoid applying type-changing abilities (e.g. Aerilate) for move-calling moves
     if (!move.hasAttr("CallMoveAttr")) {
@@ -2490,6 +2492,23 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     return moveTypeHolder.value as PokemonType;
   }
 
+  public isLegendPlateJudgmentType(move: Move, moveType: PokemonType): boolean {
+    return (
+      move.id === MoveId.JUDGMENT
+      && this.hasSpecies(SpeciesId.ARCEUS)
+      && moveType >= PokemonType.NORMAL
+      && moveType <= PokemonType.FAIRY
+      && this
+        .getHeldItems()
+        .some(
+          modifier =>
+            modifier instanceof PokemonFormChangeItemModifier
+            && modifier.formChangeItem === FormChangeItem.LEGEND_PLATE
+            && modifier.active,
+        )
+    );
+  }
+
   /**
    * Calculate the effectiveness of the move against this Pokémon, including
    * modifiers from move and ability attributes
@@ -2517,7 +2536,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     if (move.hasAttr("TypelessAttr")) {
       return 1;
     }
-    const moveType = source.getMoveType(move);
+    const moveType = source.getMoveType(move, simulated, this);
 
     const typeMultiplier = new NumberHolder(
       move.category !== MoveCategory.STATUS || move.hasAttr("RespectAttackTypeImmunityAttr")
@@ -3553,8 +3572,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
     const sourceTypes = source.getTypes({ includeTeraType: false });
     const sourceTeraType = source.getTeraType();
-    const moveType = source.getMoveType(move);
-    const matchesSourceType = sourceTypes.includes(source.getMoveType(move));
+    const moveType = source.getMoveType(move, simulated, this);
+    const matchesSourceType = sourceTypes.includes(moveType) || source.isLegendPlateJudgmentType(move, moveType);
 
     const stabMultiplier = new NumberHolder(1);
 
@@ -6651,6 +6670,25 @@ export class EnemyPokemon extends Pokemon {
             super.generateAndPopulateMoveset(useRivalSignatures);
             break;
         }
+        break;
+      }
+      case this.species.speciesId === SpeciesId.ARCEUS: {
+        const resolvedFormIndex = formIndex === undefined ? this.formIndex : formIndex;
+        const formKey = this.species.forms[resolvedFormIndex]?.formKey;
+        this.moveset =
+          formKey === "legend"
+            ? [
+                new PokemonMove(MoveId.JUDGMENT),
+                new PokemonMove(MoveId.REFRESH),
+                new PokemonMove(MoveId.RECOVER),
+                new PokemonMove(MoveId.PERISH_SONG),
+              ]
+            : [
+                new PokemonMove(MoveId.JUDGMENT),
+                new PokemonMove(MoveId.EXTREME_SPEED),
+                new PokemonMove(MoveId.REFRESH),
+                new PokemonMove(MoveId.RECOVER),
+              ];
         break;
       }
       default:

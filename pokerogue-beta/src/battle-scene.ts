@@ -4469,6 +4469,29 @@ export class BattleScene extends SceneBase {
           );
           break;
         }
+        case SpeciesId.ARCEUS: {
+          const currentFormKey = pokemon.species.forms[pokemon.formIndex]?.formKey ?? "";
+          const legendFormIndex = pokemon.species.forms.findIndex(form => form.formKey === "legend");
+          if (legendFormIndex < 0) {
+            this.phaseManager.shiftPhase();
+            return;
+          }
+          pokemon.getStatStages().fill(0);
+          pokemon.generateAndPopulateMoveset(false, legendFormIndex);
+          this.setFieldScale(0.75);
+          this.phaseManager.unshiftNew(
+            "QuietFormChangePhase",
+            pokemon,
+            new SpeciesFormChange({
+              speciesId: SpeciesId.ARCEUS,
+              preFormKey: currentFormKey,
+              evoFormKey: "legend",
+              trigger: new SpeciesFormChangeManualTrigger(),
+              quiet: true,
+            }),
+          );
+          break;
+        }
         default:
           this.phaseManager.shiftPhase();
           return;

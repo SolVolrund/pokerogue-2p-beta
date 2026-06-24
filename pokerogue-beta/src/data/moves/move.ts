@@ -46,6 +46,7 @@ import { BiomeId } from "#enums/biome-id";
 import { ChallengeType } from "#enums/challenge-type";
 import { Command } from "#enums/command";
 import { FieldPosition } from "#enums/field-position";
+import { FormChangeItem } from "#enums/form-change-item";
 import { HitResult } from "#enums/hit-result";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import { ChargeAnim } from "#enums/move-anims-common";
@@ -71,6 +72,7 @@ import type { EnemyPokemon, Pokemon } from "#field/pokemon";
 import {
   AttackTypeBoosterModifier,
   BerryModifier,
+  PokemonFormChangeItemModifier,
   PokemonHeldItemModifier,
   PokemonMoveAccuracyBoosterModifier,
   PokemonMultiHitModifier,
@@ -5769,11 +5771,42 @@ export class VariableMoveTypeAttr extends MoveAttr {
   }
 }
 
+const LEGEND_PLATE_TYPES = [
+  PokemonType.NORMAL,
+  PokemonType.FIGHTING,
+  PokemonType.FLYING,
+  PokemonType.POISON,
+  PokemonType.GROUND,
+  PokemonType.ROCK,
+  PokemonType.BUG,
+  PokemonType.GHOST,
+  PokemonType.STEEL,
+  PokemonType.FIRE,
+  PokemonType.WATER,
+  PokemonType.GRASS,
+  PokemonType.ELECTRIC,
+  PokemonType.PSYCHIC,
+  PokemonType.ICE,
+  PokemonType.DRAGON,
+  PokemonType.DARK,
+  PokemonType.FAIRY,
+] as const;
+
+const legendPlateTypeCache = new Map<string, PokemonType>();
+
 export class FormChangeItemTypeAttr extends VariableMoveTypeAttr {
-  apply(user: Pokemon, _target: Pokemon, move: Move, args: any[]): boolean {
+  apply(user: Pokemon, target: Pokemon | null, move: Move, args: any[]): boolean {
     const moveType = args[0];
     if (!(moveType instanceof NumberHolder)) {
       return false;
+    }
+
+    if (this.isLegendPlateJudgment(user, move)) {
+      if (target) {
+        moveType.value = this.getLegendPlateJudgmentType(user, target, move);
+        return true;
+      }
+      return true;
     }
 
     // TODO: this needs to be cleaned up
@@ -5800,7 +5833,70 @@ export class FormChangeItemTypeAttr extends VariableMoveTypeAttr {
     return true;
   }
 
+  private isLegendPlateJudgment(user: Pokemon, move: Move): boolean {
+    return (
+      move.id === MoveId.JUDGMENT
+      && user.hasSpecies(SpeciesId.ARCEUS)
+      && user
+        .getHeldItems()
+        .some(
+          modifier =>
+            modifier instanceof PokemonFormChangeItemModifier
+            && modifier.formChangeItem === FormChangeItem.LEGEND_PLATE
+            && modifier.active,
+        )
+    );
+  }
+
+  private getLegendPlateJudgmentType(user: Pokemon, target: Pokemon, move: Move): PokemonType {
+    const battle = globalScene.currentBattle;
+    const cacheKey = [
+      battle?.waveIndex ?? 0,
+      battle?.turn ?? 0,
+      user.id,
+      target.id,
+      move.id,
+    ].join(":");
+    const cachedType = legendPlateTypeCache.get(cacheKey);
+    if (cachedType !== undefined) {
+      return cachedType;
+    }
+
+    const targetTypes = target.getTypes({ returnOriginalTypesIfStellar: true, useIllusion: true });
+    const rankedTypes = LEGEND_PLATE_TYPES.map(type => {
+      const offensiveScore = target.getAttackTypeEffectiveness(type, {
+        source: user,
+        simulated: true,
+        move,
+        useIllusion: true,
+      });
+      const primaryDefenseScore = getTypeDamageMultiplier(targetTypes[0], type);
+      const secondaryDefenseScore = targetTypes[1] === undefined || targetTypes[1] === PokemonType.UNKNOWN
+        ? 1
+        : getTypeDamageMultiplier(targetTypes[1], type);
+
+      return { type, offensiveScore, primaryDefenseScore, secondaryDefenseScore };
+    });
+
+    const bestOffensiveScore = Math.max(...rankedTypes.map(entry => entry.offensiveScore));
+    let candidates = rankedTypes.filter(entry => entry.offensiveScore === bestOffensiveScore);
+
+    const bestPrimaryDefenseScore = Math.min(...candidates.map(entry => entry.primaryDefenseScore));
+    candidates = candidates.filter(entry => entry.primaryDefenseScore === bestPrimaryDefenseScore);
+
+    const bestSecondaryDefenseScore = Math.min(...candidates.map(entry => entry.secondaryDefenseScore));
+    candidates = candidates.filter(entry => entry.secondaryDefenseScore === bestSecondaryDefenseScore);
+
+    const selectedType = candidates[user.randBattleSeedInt(candidates.length)].type;
+    legendPlateTypeCache.set(cacheKey, selectedType);
+    return selectedType;
+  }
+
   override getTypesForItemSpawn(user: Pokemon, move: Move): PokemonType[] {
+    if (this.isLegendPlateJudgment(user, move)) {
+      return [...LEGEND_PLATE_TYPES];
+    }
+
     // Get the type
     const typeHolder = new NumberHolder(move.type);
     // Passing user in for target is fine; the parameter is unused anyway

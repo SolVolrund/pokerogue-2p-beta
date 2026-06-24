@@ -9,13 +9,14 @@ import { FRIENDSHIP_GAIN_FROM_RARE_CANDY } from "#balance/starters";
 import { getBerryEffectFunc, getBerryPredicate } from "#data/berry";
 import { allMoves, modifierTypes } from "#data/data-lists";
 import { getLevelTotalExp } from "#data/exp";
-import { SpeciesFormChangeItemTrigger } from "#data/form-change-triggers";
+import { SpeciesFormChangeItemTrigger, SpeciesFormChangeManualTrigger } from "#data/form-change-triggers";
 import { MAX_PER_TYPE_POKEBALLS } from "#data/pokeball";
+import { SpeciesFormChange } from "#data/pokemon-forms";
 import { getStatusEffectHealText } from "#data/status-effect";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BerryType } from "#enums/berry-type";
 import { Color, ShadowColor } from "#enums/color";
-import type { FormChangeItem } from "#enums/form-change-item";
+import { FormChangeItem } from "#enums/form-change-item";
 import { LearnMoveType } from "#enums/learn-move-type";
 import type { MoveId } from "#enums/move-id";
 import type { Nature } from "#enums/nature";
@@ -3113,7 +3114,28 @@ export class PokemonFormChangeItemModifier extends PokemonHeldItemModifier {
       this.active = false;
     }
 
-    const ret = globalScene.triggerPokemonFormChange(pokemon, SpeciesFormChangeItemTrigger);
+    let ret = globalScene.triggerPokemonFormChange(pokemon, SpeciesFormChangeItemTrigger);
+    if (
+      !ret
+      && active
+      && this.formChangeItem === FormChangeItem.LEGEND_PLATE
+      && pokemon.hasSpecies(SpeciesId.ARCEUS)
+      && !pokemon.hasSpecies(SpeciesId.ARCEUS, "legend")
+    ) {
+      const currentFormKey = pokemon.species.forms[pokemon.formIndex]?.formKey ?? "";
+      globalScene.phaseManager.unshiftNew(
+        "QuietFormChangePhase",
+        pokemon,
+        new SpeciesFormChange({
+          speciesId: SpeciesId.ARCEUS,
+          preFormKey: currentFormKey,
+          evoFormKey: "legend",
+          trigger: new SpeciesFormChangeManualTrigger(),
+          quiet: true,
+        }),
+      );
+      ret = true;
+    }
 
     if (switchActive) {
       this.active = true;

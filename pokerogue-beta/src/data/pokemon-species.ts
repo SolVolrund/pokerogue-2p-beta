@@ -501,6 +501,9 @@ export abstract class PokemonSpeciesForm {
         replacement.formIndex,
       );
     }
+    if (this.speciesId === SpeciesId.ARCEUS && formSpriteKey === "legend") {
+      formSpriteKey = "unknown";
+    }
     if (formSpriteKey) {
       switch (this.speciesId) {
         case SpeciesId.DUDUNSPARCE:

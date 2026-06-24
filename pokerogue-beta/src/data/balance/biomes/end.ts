@@ -67,7 +67,7 @@ const pokemonPool: BiomePokemonPools = {
     [TimeOfDay.DAY]: [],
     [TimeOfDay.DUSK]: [],
     [TimeOfDay.NIGHT]: [],
-    [TimeOfDay.ALL]: [SpeciesId.ETERNATUS, SpeciesId.NECROZMA],
+    [TimeOfDay.ALL]: [SpeciesId.ETERNATUS, SpeciesId.NECROZMA, SpeciesId.ARCEUS],
   },
   [BiomePoolTier.BOSS_RARE]: {
     [TimeOfDay.DAWN]: [],
