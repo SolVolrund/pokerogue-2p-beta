@@ -6,14 +6,15 @@ export class ShowTrainerPhase extends BattlePhase {
   start() {
     super.start();
 
-    const playerTrainerX = globalScene.twoPlayerMode ? 90 : 106;
+    const hasPartnerTrainer = globalScene.getPlayerFieldOwners().length > 1;
+    const playerTrainerX = globalScene.getTrainerBackSpriteX(0, hasPartnerTrainer);
 
     globalScene.trainer
       .setVisible(true)
       .setTexture(globalScene.getTrainerBackTextureKey(0))
       .setFrame(0);
     globalScene.trainerPartner
-      .setVisible(globalScene.twoPlayerMode)
+      .setVisible(hasPartnerTrainer)
       .setTexture(globalScene.getTrainerBackTextureKey(1))
       .setFrame(0);
 
@@ -22,15 +23,15 @@ export class ShowTrainerPhase extends BattlePhase {
       x: playerTrainerX,
       duration: 1000,
       onComplete: () => {
-        if (!globalScene.twoPlayerMode) {
+        if (!hasPartnerTrainer) {
           this.end();
         }
       },
     });
-    if (globalScene.twoPlayerMode) {
+    if (hasPartnerTrainer) {
       globalScene.tweens.add({
         targets: globalScene.trainerPartner,
-        x: 122,
+        x: globalScene.getTrainerBackSpriteX(1, true),
         duration: 1000,
         onComplete: () => this.end(),
       });

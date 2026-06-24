@@ -86,12 +86,12 @@ export class MysteryEncounterPhase extends Phase {
       .setVisible(true)
       .setTexture(globalScene.getTrainerBackTextureKey(0))
       .setFrame(0)
-      .setPosition(90, globalScene.getTrainerBackSpriteY(0));
+      .setPosition(globalScene.getTrainerBackSpriteX(0, true), globalScene.getTrainerBackSpriteY(0));
     globalScene.trainerPartner
       .setVisible(true)
       .setTexture(globalScene.getTrainerBackTextureKey(1))
       .setFrame(0)
-      .setPosition(122, globalScene.getTrainerBackSpriteY(1));
+      .setPosition(globalScene.getTrainerBackSpriteX(1, true), globalScene.getTrainerBackSpriteY(1));
   }
 
   /**

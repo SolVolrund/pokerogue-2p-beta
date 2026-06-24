@@ -427,6 +427,19 @@ export class EncounterPhase extends BattlePhase {
     }
 
     const enemyField = globalScene.getEnemyField();
+    const hasPartnerTrainer = globalScene.getPlayerFieldOwners().length > 1;
+    if (hasPartnerTrainer) {
+      globalScene.trainer
+        .setVisible(true)
+        .setTexture(globalScene.getTrainerBackTextureKey(0))
+        .setFrame(0)
+        .setX(globalScene.getTrainerBackSpriteX(0, true) + 300);
+      globalScene.trainerPartner
+        .setVisible(true)
+        .setTexture(globalScene.getTrainerBackTextureKey(1))
+        .setFrame(0)
+        .setX(globalScene.getTrainerBackSpriteX(1, true) + 300);
+    }
     globalScene.tweens.add({
       targets: [
         globalScene.arenaEnemy,
@@ -434,7 +447,8 @@ export class EncounterPhase extends BattlePhase {
         enemyField,
         globalScene.arenaPlayer,
         globalScene.trainer,
-      ].flat(),
+        hasPartnerTrainer ? globalScene.trainerPartner : null,
+      ].flat().filter(target => target !== null),
       x: (_target, _key, value, fieldIndex: number) => (fieldIndex < 2 + enemyField.length ? value + 300 : value - 300),
       duration: 2000,
       onComplete: () => {

@@ -186,6 +186,10 @@ export type PokeballCounts = Record<Exclude<PokeballType, PokeballType.LUXURY_BA
 export type PlayerIndex = 0 | 1;
 export type InputOwner = PlayerIndex | "both" | "none";
 export type LocalInputSeat = PlayerIndex | "both";
+const TRAINER_BACK_CENTER_X = 106;
+const TRAINER_BACK_LEFT_X = 74;
+const TRAINER_BACK_RIGHT_X = 138;
+// Previous two-trainer positions were P1 x=90 and P2 x=122.
 const TWO_PLAYER_GUEST_SYSTEM_SAVE_KEY = "pokerogue_2p_guest_system_save";
 const TWO_PLAYER_SESSION_SYSTEM_SAVE_KEYS = [
   "pokerogue_2p_session_system_save_0",
@@ -1595,6 +1599,14 @@ export class BattleScene extends SceneBase {
 
   public getTrainerBackSpriteY(playerIndex: PlayerIndex = 0, baseY = 186): number {
     return baseY + getPlayerTrainerSpriteYOffset(this.getTrainerSprite(playerIndex));
+  }
+
+  public getTrainerBackSpriteX(playerIndex: PlayerIndex = 0, hasPartnerTrainer = false): number {
+    if (!hasPartnerTrainer) {
+      return TRAINER_BACK_CENTER_X;
+    }
+
+    return playerIndex === 0 ? TRAINER_BACK_LEFT_X : TRAINER_BACK_RIGHT_X;
   }
 
   public setTrainerBackSpritePosition(
