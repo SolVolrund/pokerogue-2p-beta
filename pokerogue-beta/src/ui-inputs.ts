@@ -12,6 +12,8 @@ import {
   type TwoPlayerInputDebugEvent,
   type TwoPlayerProfileSnapshot,
   type TwoPlayerRunBootstrap,
+  type TwoPlayerSettingsSnapshot,
+  type TwoPlayerStateCheckpoint,
   type TwoPlayerTitleStart,
   type TwoPlayerInputTransportStatus,
 } from "#app/two-player-input-transport";
@@ -41,6 +43,7 @@ declare global {
       sendRunBootstrap(seed?: string): boolean;
       sendTitleStart(titleStart: TwoPlayerTitleStart): boolean;
       sendProfileSnapshot(): boolean;
+      sendSettingsSnapshot(): boolean;
       sendCheckpoint(reason?: string): boolean;
       profileReady(): boolean;
       profileSlotsReady(): [boolean, boolean];
@@ -72,6 +75,8 @@ export class UiInputs {
       (playerIndex, button, pressed) => this.processRemoteInput(playerIndex, button, pressed),
       runBootstrap => this.applyRunBootstrap(runBootstrap),
       titleStart => this.applyTitleStart(titleStart),
+      settingsSnapshot => this.applySettingsSnapshot(settingsSnapshot),
+      () => globalScene.getTwoPlayerSettingsSnapshot(),
       event => this.recordInputDebugEvent(event),
       () => globalScene.getTwoPlayerDebugStateCheckpoint(),
       profileSnapshot => this.applyProfileSnapshot(profileSnapshot),
@@ -191,6 +196,10 @@ export class UiInputs {
     return this.twoPlayerInputTransport?.sendProfileSnapshot(globalScene.getLocalTwoPlayerProfileSnapshot()) ?? false;
   }
 
+  public broadcastTwoPlayerSettingsSnapshot(): boolean {
+    return this.twoPlayerInputTransport?.sendSettingsSnapshot(globalScene.getTwoPlayerSettingsSnapshot()) ?? false;
+  }
+
   public broadcastTwoPlayerCheckpoint(reason?: string): boolean {
     return this.twoPlayerInputTransport?.sendCheckpoint(reason) ?? false;
   }
@@ -201,6 +210,10 @@ export class UiInputs {
 
   private applyTitleStart(titleStart: TwoPlayerTitleStart): void {
     globalScene.applyTwoPlayerTitleStart(titleStart);
+  }
+
+  private applySettingsSnapshot(settingsSnapshot: TwoPlayerSettingsSnapshot): boolean {
+    return globalScene.applyTwoPlayerSettingsSnapshot(settingsSnapshot);
   }
 
   private applyProfileSnapshot(profileSnapshot: TwoPlayerProfileSnapshot): boolean {
@@ -218,8 +231,30 @@ export class UiInputs {
   }
 
   private processLocalButtonInput(button: Button, pressed: boolean): boolean {
+    const inputCheckpoint = this.getInputCheckpoint();
+    const inputReadinessBlockReason = this.twoPlayerInputTransport?.getInputReadinessBlockReason(inputCheckpoint);
+    if (inputReadinessBlockReason) {
+      this.recordInputDebugEvent({
+        action: "rejected",
+        source: "local",
+        reason: inputReadinessBlockReason,
+        localSeat: globalScene.twoPlayerLocalInputSeat,
+        inputOwner: globalScene.inputOwner,
+        button,
+        buttonName: Button[button] as keyof typeof Button,
+        pressed,
+        ...(inputCheckpoint
+          ? {
+              checkpointFingerprint: inputCheckpoint.fingerprint,
+              checkpointSummary: inputCheckpoint.summary,
+            }
+          : {}),
+      });
+      return false;
+    }
+
     if (this.twoPlayerInputTransport?.shouldRequestHostAuthority()) {
-      const requested = this.twoPlayerInputTransport.requestInput(button, pressed);
+      const requested = this.twoPlayerInputTransport.requestInput(button, pressed, inputCheckpoint);
       this.recordInputDebugEvent({
         action: requested ? "sent" : "rejected",
         source: "local",
@@ -246,10 +281,14 @@ export class UiInputs {
     });
 
     if (processed) {
-      this.twoPlayerInputTransport?.send(button, pressed);
+      this.twoPlayerInputTransport?.send(button, pressed, inputCheckpoint);
     }
 
     return processed;
+  }
+
+  private getInputCheckpoint(): TwoPlayerStateCheckpoint | undefined {
+    return globalScene.getTwoPlayerDebugStateCheckpoint();
   }
 
   private recordInputDebugEvent(event: Omit<TwoPlayerInputDebugEvent, "at">): void {
@@ -299,6 +338,7 @@ export class UiInputs {
       sendRunBootstrap: seed => this.broadcastTwoPlayerRunBootstrap(seed ?? globalScene.seed),
       sendTitleStart: titleStart => this.broadcastTwoPlayerTitleStart(titleStart),
       sendProfileSnapshot: () => this.broadcastTwoPlayerProfileSnapshot(),
+      sendSettingsSnapshot: () => this.broadcastTwoPlayerSettingsSnapshot(),
       sendCheckpoint: reason => this.broadcastTwoPlayerCheckpoint(reason),
       profileReady: () => globalScene.isTwoPlayerProfileExchangeComplete(),
       profileSlotsReady: () => [...globalScene.twoPlayerProfileSlotsReady] as [boolean, boolean],

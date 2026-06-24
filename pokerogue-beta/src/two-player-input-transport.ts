@@ -10,6 +10,7 @@ type TwoPlayerInputMessageKind =
   | "input-accepted"
   | "run-bootstrap"
   | "title-start"
+  | "settings-sync"
   | "state-checkpoint"
   | "profile-snapshot";
 
@@ -37,6 +38,10 @@ export interface TwoPlayerProfileSnapshot {
   systemSave: string;
 }
 
+export interface TwoPlayerSettingsSnapshot {
+  settings: Record<string, number>;
+}
+
 interface TwoPlayerInputMessage {
   protocol: typeof LOCAL_INPUT_PROTOCOL;
   version: typeof LOCAL_INPUT_PROTOCOL_VERSION;
@@ -51,6 +56,7 @@ interface TwoPlayerInputMessage {
   pressed: boolean;
   runBootstrap?: TwoPlayerRunBootstrap;
   titleStart?: TwoPlayerTitleStart;
+  settingsSnapshot?: TwoPlayerSettingsSnapshot;
   checkpoint?: TwoPlayerStateCheckpoint;
   profileSnapshot?: TwoPlayerProfileSnapshot;
 }
@@ -72,6 +78,8 @@ export interface TwoPlayerInputTransportStatus {
 export type RemoteInputHandler = (playerIndex: PlayerIndex, button: Button, pressed: boolean) => boolean;
 export type TwoPlayerRunBootstrapHandler = (bootstrap: TwoPlayerRunBootstrap) => void;
 export type TwoPlayerTitleStartHandler = (titleStart: TwoPlayerTitleStart) => void;
+export type TwoPlayerSettingsSnapshotHandler = (settingsSnapshot: TwoPlayerSettingsSnapshot) => boolean;
+export type TwoPlayerSettingsSnapshotProvider = () => TwoPlayerSettingsSnapshot | undefined;
 export type TwoPlayerProfileSnapshotHandler = (profileSnapshot: TwoPlayerProfileSnapshot) => boolean;
 export type TwoPlayerProfileSnapshotProvider = () => TwoPlayerProfileSnapshot | undefined;
 export type TwoPlayerStateCheckpointProvider = () => TwoPlayerStateCheckpoint | undefined;
@@ -111,6 +119,7 @@ export interface TwoPlayerInputDebugEvent {
   remoteFingerprint?: string;
   checkpointSummary?: Record<string, unknown>;
   profilePlayerIndex?: PlayerIndex;
+  settingsKeys?: string[];
 }
 
 export type TwoPlayerInputDebugLogger = (event: Omit<TwoPlayerInputDebugEvent, "at">) => void;
@@ -186,6 +195,7 @@ function isValidMessageKind(kind: unknown): kind is TwoPlayerInputMessageKind {
     || kind === "input-accepted"
     || kind === "run-bootstrap"
     || kind === "title-start"
+    || kind === "settings-sync"
     || kind === "state-checkpoint"
     || kind === "profile-snapshot";
 }
@@ -230,6 +240,17 @@ function isValidProfileSnapshot(profileSnapshot: unknown): profileSnapshot is Tw
     && (profileSnapshot as Partial<TwoPlayerProfileSnapshot>).systemSave!.length > 0;
 }
 
+function isValidSettingsSnapshot(settingsSnapshot: unknown): settingsSnapshot is TwoPlayerSettingsSnapshot {
+  if (!settingsSnapshot || typeof settingsSnapshot !== "object") {
+    return false;
+  }
+
+  const settings = (settingsSnapshot as Partial<TwoPlayerSettingsSnapshot>).settings;
+  return !!settings
+    && typeof settings === "object"
+    && Object.values(settings).every(value => Number.isInteger(value));
+}
+
 function parseTwoPlayerInputMessage(value: unknown): TwoPlayerInputMessage | undefined {
   if (!value || typeof value !== "object") {
     return undefined;
@@ -251,7 +272,8 @@ function parseTwoPlayerInputMessage(value: unknown): TwoPlayerInputMessage | und
     || typeof message.pressed !== "boolean"
     || (kind === "run-bootstrap" && !isValidRunBootstrap(message.runBootstrap))
     || (kind === "title-start" && !isValidTitleStart(message.titleStart))
-    || (kind === "state-checkpoint" && !isValidCheckpoint(message.checkpoint))
+    || (kind === "settings-sync" && !isValidSettingsSnapshot(message.settingsSnapshot))
+    || (message.checkpoint !== undefined && !isValidCheckpoint(message.checkpoint))
     || (kind === "profile-snapshot" && !isValidProfileSnapshot(message.profileSnapshot))
   ) {
     return undefined;
@@ -271,7 +293,8 @@ function parseTwoPlayerInputMessage(value: unknown): TwoPlayerInputMessage | und
     pressed: message.pressed,
     ...(kind === "run-bootstrap" ? { runBootstrap: message.runBootstrap } : {}),
     ...(kind === "title-start" ? { titleStart: message.titleStart } : {}),
-    ...(kind === "state-checkpoint" ? { checkpoint: message.checkpoint } : {}),
+    ...(kind === "settings-sync" ? { settingsSnapshot: message.settingsSnapshot } : {}),
+    ...(message.checkpoint === undefined ? {} : { checkpoint: message.checkpoint }),
     ...(kind === "profile-snapshot" ? { profileSnapshot: message.profileSnapshot } : {}),
   };
 }
@@ -287,8 +310,10 @@ export class TwoPlayerInputTransport {
   private webSocket: WebSocket | undefined;
   private sequence = 0;
   private authoritySequence = 0;
+  private latestRemoteCheckpoint: TwoPlayerStateCheckpoint | undefined;
   private pendingRunBootstrap: TwoPlayerRunBootstrap | undefined;
   private pendingTitleStart: TwoPlayerTitleStart | undefined;
+  private pendingSettingsSnapshot: TwoPlayerSettingsSnapshot | undefined;
   private pendingProfileSnapshot: TwoPlayerProfileSnapshot | undefined;
   private profileSnapshotResponseSent = false;
 
@@ -298,6 +323,8 @@ export class TwoPlayerInputTransport {
     private readonly onRemoteInput: RemoteInputHandler,
     private readonly onRunBootstrap?: TwoPlayerRunBootstrapHandler,
     private readonly onTitleStart?: TwoPlayerTitleStartHandler,
+    private readonly onSettingsSnapshot?: TwoPlayerSettingsSnapshotHandler,
+    private readonly getSettingsSnapshot?: TwoPlayerSettingsSnapshotProvider,
     private readonly logDebug?: TwoPlayerInputDebugLogger,
     private readonly getCheckpoint?: TwoPlayerStateCheckpointProvider,
     private readonly onProfileSnapshot?: TwoPlayerProfileSnapshotHandler,
@@ -311,6 +338,8 @@ export class TwoPlayerInputTransport {
     onRemoteInput: RemoteInputHandler,
     onRunBootstrap?: TwoPlayerRunBootstrapHandler,
     onTitleStart?: TwoPlayerTitleStartHandler,
+    onSettingsSnapshot?: TwoPlayerSettingsSnapshotHandler,
+    getSettingsSnapshot?: TwoPlayerSettingsSnapshotProvider,
     logDebug?: TwoPlayerInputDebugLogger,
     getCheckpoint?: TwoPlayerStateCheckpointProvider,
     onProfileSnapshot?: TwoPlayerProfileSnapshotHandler,
@@ -332,6 +361,8 @@ export class TwoPlayerInputTransport {
         onRemoteInput,
         onRunBootstrap,
         onTitleStart,
+        onSettingsSnapshot,
+        getSettingsSnapshot,
         logDebug,
         getCheckpoint,
         onProfileSnapshot,
@@ -352,6 +383,8 @@ export class TwoPlayerInputTransport {
         onRemoteInput,
         onRunBootstrap,
         onTitleStart,
+        onSettingsSnapshot,
+        getSettingsSnapshot,
         logDebug,
         getCheckpoint,
         onProfileSnapshot,
@@ -368,8 +401,28 @@ export class TwoPlayerInputTransport {
     return this.networkRole === "guest";
   }
 
-  public requestInput(button: Button, pressed: boolean): boolean {
-    const message = this.createMessage("input-request", this.localSeat, button, pressed);
+  public getInputReadinessBlockReason(checkpoint = this.getInputCheckpoint()): string | undefined {
+    if (!checkpoint) {
+      return "local-checkpoint-unavailable";
+    }
+
+    if (!this.latestRemoteCheckpoint) {
+      return "remote-checkpoint-unavailable";
+    }
+
+    if (checkpoint.summary.phase !== this.latestRemoteCheckpoint.summary.phase) {
+      return "remote-checkpoint-phase-mismatch";
+    }
+
+    if (checkpoint.summary.uiMode !== this.latestRemoteCheckpoint.summary.uiMode) {
+      return "remote-checkpoint-ui-mode-mismatch";
+    }
+
+    return undefined;
+  }
+
+  public requestInput(button: Button, pressed: boolean, checkpoint = this.getInputCheckpoint()): boolean {
+    const message = this.createMessage("input-request", this.localSeat, button, pressed, checkpoint);
     const sent = this.sendMessage(message);
     this.logMessageSend(sent, message, sent ? undefined : "transport-not-open");
     return sent;
@@ -391,6 +444,15 @@ export class TwoPlayerInputTransport {
 
     this.pendingTitleStart = titleStart;
     return this.flushPendingTitleStart();
+  }
+
+  public sendSettingsSnapshot(settingsSnapshot = this.getSettingsSnapshot?.()): boolean {
+    if (this.networkRole !== "host" || !settingsSnapshot) {
+      return false;
+    }
+
+    this.pendingSettingsSnapshot = settingsSnapshot;
+    return this.flushPendingSettingsSnapshot();
   }
 
   public sendProfileSnapshot(profileSnapshot = this.getProfileSnapshot?.()): boolean {
@@ -438,6 +500,24 @@ export class TwoPlayerInputTransport {
     return sent;
   }
 
+  private flushPendingSettingsSnapshot(): boolean {
+    if (!this.pendingSettingsSnapshot) {
+      return false;
+    }
+
+    const message = {
+      ...this.createMessage("settings-sync", this.localSeat, Button.ACTION, true),
+      settingsSnapshot: this.pendingSettingsSnapshot,
+    };
+    const sent = this.sendMessage(message);
+    this.logMessageSend(sent, message, sent ? "settings-sync" : "transport-not-open");
+    if (sent) {
+      this.pendingSettingsSnapshot = undefined;
+    }
+
+    return sent;
+  }
+
   private flushPendingProfileSnapshot(): boolean {
     if (!this.pendingProfileSnapshot) {
       return false;
@@ -456,12 +536,13 @@ export class TwoPlayerInputTransport {
     return sent;
   }
 
-  public send(button: Button, pressed: boolean): void {
+  public send(button: Button, pressed: boolean, checkpoint = this.getInputCheckpoint()): void {
     const message = this.createMessage(
       this.networkRole === "host" ? "input-accepted" : "input",
       this.localSeat,
       button,
       pressed,
+      checkpoint,
     );
 
     const sent = this.sendMessage(message);
@@ -476,6 +557,7 @@ export class TwoPlayerInputTransport {
     playerIndex: PlayerIndex,
     button: Button,
     pressed: boolean,
+    checkpoint?: TwoPlayerStateCheckpoint,
   ): TwoPlayerInputMessage {
     return {
       protocol: LOCAL_INPUT_PROTOCOL,
@@ -489,7 +571,12 @@ export class TwoPlayerInputTransport {
       playerIndex,
       button,
       pressed,
+      ...(checkpoint ? { checkpoint } : {}),
     };
+  }
+
+  private getInputCheckpoint(): TwoPlayerStateCheckpoint | undefined {
+    return this.getCheckpoint?.();
   }
 
   private logMessageSend(sent: boolean, message: TwoPlayerInputMessage, reason?: string): void {
@@ -517,6 +604,7 @@ export class TwoPlayerInputTransport {
           }
         : {}),
       ...(message.profileSnapshot ? { profilePlayerIndex: message.profileSnapshot.playerIndex } : {}),
+      ...(message.settingsSnapshot ? { settingsKeys: [...Object.keys(message.settingsSnapshot.settings)] } : {}),
     });
   }
 
@@ -601,8 +689,10 @@ export class TwoPlayerInputTransport {
     this.channel = new BroadcastChannel(this.channelName);
     this.channel.addEventListener("message", this.onMessage);
     this.sendProfileSnapshot();
+    this.sendSettingsSnapshot();
     this.flushPendingRunBootstrap();
     this.flushPendingTitleStart();
+    setTimeout(() => this.sendCheckpoint("transport-connected"), 0);
   }
 
   private startWebSocket(): void {
@@ -616,13 +706,16 @@ export class TwoPlayerInputTransport {
         localSeat: this.localSeat,
       });
       this.sendProfileSnapshot();
+      this.sendSettingsSnapshot();
       this.flushPendingRunBootstrap();
       this.flushPendingTitleStart();
+      setTimeout(() => this.sendCheckpoint("transport-connected"), 0);
     });
     this.webSocket.addEventListener("message", event => {
       this.onMessageData(event.data);
     });
     this.webSocket.addEventListener("close", () => {
+      this.latestRemoteCheckpoint = undefined;
       this.logDebug?.({
         action: "disconnected",
         source: "transport",
@@ -632,6 +725,7 @@ export class TwoPlayerInputTransport {
       });
     });
     this.webSocket.addEventListener("error", () => {
+      this.latestRemoteCheckpoint = undefined;
       this.logDebug?.({
         action: "error",
         source: "transport",
@@ -684,6 +778,10 @@ export class TwoPlayerInputTransport {
       return;
     }
 
+    if (message.checkpoint) {
+      this.latestRemoteCheckpoint = message.checkpoint;
+    }
+
     if (message.kind === "input-request") {
       this.handleInputRequest(message);
       return;
@@ -696,6 +794,11 @@ export class TwoPlayerInputTransport {
 
     if (message.kind === "title-start") {
       this.handleTitleStart(message);
+      return;
+    }
+
+    if (message.kind === "settings-sync") {
+      this.handleSettingsSnapshot(message);
       return;
     }
 
@@ -716,6 +819,12 @@ export class TwoPlayerInputTransport {
 
     if (message.kind === "input" && this.networkRole !== "peer") {
       this.logIgnoredMessage(message, "direct-input-in-authority-mode");
+      return;
+    }
+
+    const checkpointMismatchReason = this.getInputCheckpointMismatchReason(message);
+    if (checkpointMismatchReason) {
+      this.logIgnoredMessage(message, checkpointMismatchReason);
       return;
     }
 
@@ -763,6 +872,13 @@ export class TwoPlayerInputTransport {
       return;
     }
 
+    const acceptedCheckpoint = this.getInputCheckpoint();
+    const checkpointMismatchReason = this.getInputCheckpointMismatchReason(message, acceptedCheckpoint);
+    if (checkpointMismatchReason) {
+      this.logIgnoredMessage(message, checkpointMismatchReason);
+      return;
+    }
+
     this.logDebug?.({
       action: "received",
       source: "transport",
@@ -798,7 +914,13 @@ export class TwoPlayerInputTransport {
     });
 
     if (accepted) {
-      const acceptedMessage = this.createMessage("input-accepted", message.playerIndex, message.button, message.pressed);
+      const acceptedMessage = this.createMessage(
+        "input-accepted",
+        message.playerIndex,
+        message.button,
+        message.pressed,
+        acceptedCheckpoint,
+      );
       const sent = this.sendMessage(acceptedMessage);
       this.logMessageSend(sent, acceptedMessage, sent ? undefined : "transport-not-open");
       if (sent) {
@@ -812,6 +934,37 @@ export class TwoPlayerInputTransport {
       && this.networkRole === "host"
       && message.senderRole === "host"
       && message.playerIndex === this.localSeat;
+  }
+
+  private getInputCheckpointMismatchReason(
+    message: TwoPlayerInputMessage,
+    localCheckpoint = this.getInputCheckpoint(),
+  ): string | undefined {
+    if (message.kind !== "input" && message.kind !== "input-request" && message.kind !== "input-accepted") {
+      return undefined;
+    }
+
+    if (!message.checkpoint) {
+      return undefined;
+    }
+
+    if (!localCheckpoint) {
+      return "local-checkpoint-unavailable";
+    }
+
+    const remotePhase = message.checkpoint.summary.phase;
+    const localPhase = localCheckpoint.summary.phase;
+    if (remotePhase !== localPhase) {
+      return "checkpoint-phase-mismatch";
+    }
+
+    const remoteUiMode = message.checkpoint.summary.uiMode;
+    const localUiMode = localCheckpoint.summary.uiMode;
+    if (remoteUiMode !== localUiMode) {
+      return "checkpoint-ui-mode-mismatch";
+    }
+
+    return undefined;
   }
 
   private handleRunBootstrap(message: TwoPlayerInputMessage): void {
@@ -871,6 +1024,38 @@ export class TwoPlayerInputTransport {
       button: message.button,
       buttonName: Button[message.button] as keyof typeof Button,
       pressed: message.pressed,
+    });
+  }
+
+  private handleSettingsSnapshot(message: TwoPlayerInputMessage): void {
+    const settingsSnapshot = message.settingsSnapshot;
+    if (!settingsSnapshot) {
+      this.logIgnoredMessage(message, "missing-settings-snapshot");
+      return;
+    }
+
+    if (this.networkRole === "host") {
+      this.logIgnoredMessage(message, "settings-sync-received-by-host");
+      return;
+    }
+
+    const accepted = this.onSettingsSnapshot?.(settingsSnapshot) ?? false;
+    this.logDebug?.({
+      action: accepted ? "accepted" : "rejected",
+      source: "transport",
+      reason: accepted ? "settings-sync" : "settings-sync-rejected",
+      sessionId: message.sessionId,
+      channelName: this.channelName,
+      ...(this.mode === "websocket" ? { webSocketUrl: this.webSocketUrl } : {}),
+      senderId: message.senderId,
+      sequence: message.sequence,
+      messageKind: message.kind,
+      localSeat: this.localSeat,
+      playerIndex: message.playerIndex,
+      button: message.button,
+      buttonName: Button[message.button] as keyof typeof Button,
+      pressed: message.pressed,
+      settingsKeys: [...Object.keys(settingsSnapshot.settings)],
     });
   }
 
@@ -936,6 +1121,7 @@ export class TwoPlayerInputTransport {
   }
 
   private logIgnoredMessage(message: TwoPlayerInputMessage, reason: string): void {
+    const localCheckpoint = this.getCheckpoint?.();
     this.logDebug?.({
       action: "ignored",
       source: "transport",
@@ -952,6 +1138,14 @@ export class TwoPlayerInputTransport {
       button: message.button,
       buttonName: Button[message.button] as keyof typeof Button,
       pressed: message.pressed,
+      ...(message.checkpoint
+        ? {
+            checkpointFingerprint: message.checkpoint.fingerprint,
+            remoteFingerprint: message.checkpoint.fingerprint,
+            checkpointSummary: message.checkpoint.summary,
+          }
+        : {}),
+      ...(localCheckpoint ? { localFingerprint: localCheckpoint.fingerprint } : {}),
     });
   }
 

@@ -14,6 +14,10 @@ export class SelectGenderPhase extends Phase {
   start(): void {
     super.start();
 
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForPlayerInput(0);
+    }
+
     globalScene.ui.showText("Choose your trainer.", null, () => {
       globalScene.ui.setMode(UiMode.OPTION_SELECT, {
         options: PLAYER_TRAINER_SPRITE_OPTIONS.map(option => ({

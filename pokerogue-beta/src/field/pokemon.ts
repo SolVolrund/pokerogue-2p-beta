@@ -149,6 +149,7 @@ import type {
 } from "#types/damage-params";
 import type { DamageCalculationResult, DamageResult } from "#types/damage-result";
 import type { LevelMoves } from "#types/pokemon-species";
+import { isClassicFinalBossPhaseOne } from "#utils/classic-final-boss-utils";
 import type { StarterDataEntry, StarterMoveset } from "#types/save-data";
 import type { TurnMove } from "#types/turn-move";
 import type { AbstractConstructor, Mutable } from "#types/type-helpers";
@@ -6713,6 +6714,40 @@ export class EnemyPokemon extends Pokemon {
           this.moveset[2] = new PokemonMove(MoveId.EARTH_POWER);
         }
         break;
+      case this.species.speciesId === SpeciesId.NECROZMA: {
+        const resolvedFormIndex = formIndex === undefined ? this.formIndex : formIndex;
+        const formKey = this.species.forms[resolvedFormIndex]?.formKey;
+        switch (formKey) {
+          case "dawn-wings":
+            this.moveset = [
+              new PokemonMove(MoveId.HEAT_WAVE),
+              new PokemonMove(MoveId.MOONGEIST_BEAM),
+              new PokemonMove(MoveId.PHOTON_GEYSER),
+              new PokemonMove(MoveId.METEOR_BEAM),
+            ];
+            break;
+          case "dusk-mane":
+            this.moveset = [
+              new PokemonMove(MoveId.SUNSTEEL_STRIKE),
+              new PokemonMove(MoveId.POWER_UP_PUNCH),
+              new PokemonMove(MoveId.STONE_EDGE),
+              new PokemonMove(MoveId.EARTHQUAKE),
+            ];
+            break;
+          case "ultra":
+            this.moveset = [
+              new PokemonMove(MoveId.SUNSTEEL_STRIKE),
+              new PokemonMove(MoveId.PHOTON_GEYSER),
+              new PokemonMove(MoveId.MOONGEIST_BEAM),
+              new PokemonMove(MoveId.BRICK_BREAK),
+            ];
+            break;
+          default:
+            super.generateAndPopulateMoveset(useRivalSignatures);
+            break;
+        }
+        break;
+      }
       default:
         super.generateAndPopulateMoveset(useRivalSignatures);
         break;
@@ -7095,7 +7130,7 @@ export class EnemyPokemon extends Pokemon {
       );
     }
 
-    if (globalScene.currentBattle.isClassicFinalBoss && this.formIndex === 0 && this.bossSegmentIndex < 1) {
+    if (globalScene.currentBattle.isClassicFinalBoss && isClassicFinalBossPhaseOne(this) && this.bossSegmentIndex < 1) {
       damage = Math.min(damage, this.hp - 1);
     }
 
@@ -7115,7 +7150,7 @@ export class EnemyPokemon extends Pokemon {
   }
 
   private getMinimumSegmentIndex(): number {
-    if (globalScene.currentBattle.isClassicFinalBoss && !this.formIndex) {
+    if (globalScene.currentBattle.isClassicFinalBoss && isClassicFinalBossPhaseOne(this)) {
       return 1;
     }
 

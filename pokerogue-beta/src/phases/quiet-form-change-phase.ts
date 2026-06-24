@@ -1,4 +1,5 @@
 import { applyOnLoseAbAttrs, applyPostFormChangeAbAttrs } from "#abilities/apply-ab-attrs";
+import { modifierTypes } from "#data/data-lists";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
@@ -6,9 +7,13 @@ import { getSpeciesFormChangeMessage } from "#data/form-change-triggers";
 import type { SpeciesFormChange } from "#data/pokemon-forms";
 import { getTypeRgb } from "#data/type";
 import { BattlerTagType } from "#enums/battler-tag-type";
+import { SpeciesId } from "#enums/species-id";
 import type { Pokemon } from "#field/pokemon";
+import { GammaRayBurstModifier } from "#modifiers/modifier";
 import { BattlePhase } from "#phases/battle-phase";
 import { playTween } from "#utils/anim-utils";
+import { CLASSIC_FINAL_BOSS_SEGMENTS, isClassicFinalBossPhaseTwo } from "#utils/classic-final-boss-utils";
+import { getModifierType } from "#utils/modifier-utils";
 
 /**
  * Phase handling mid-battle form changes that do not occur in the Party modal
@@ -209,7 +214,7 @@ export class QuietFormChangePhase extends BattlePhase {
     // Autotomize's weight reduction is reset when form changing
     this.pokemon.removeTag(BattlerTagType.AUTOTOMIZED);
 
-    // TODO: This eternatus boss fight code should almost certainly go in its own superclass phase
+    // TODO: This final boss fight code should almost certainly go in its own superclass phase
     if (globalScene.currentBattle.isClassicFinalBoss && this.pokemon.isEnemy()) {
       audioManager.playBgm();
       globalScene.phaseManager.unshiftNew(
@@ -224,12 +229,29 @@ export class QuietFormChangePhase extends BattlePhase {
       );
       // TODO: Use or create a helper function to remove all tags on a Pokemon
       this.pokemon.findAndRemoveTags(() => true);
-      this.pokemon.bossSegments = 5;
-      this.pokemon.bossSegmentIndex = 4;
+      if (this.pokemon.species.speciesId === SpeciesId.NECROZMA) {
+        this.pokemon.getStatStages().fill(0);
+      }
+      this.pokemon.bossSegments = CLASSIC_FINAL_BOSS_SEGMENTS;
+      this.pokemon.bossSegmentIndex = CLASSIC_FINAL_BOSS_SEGMENTS - 1;
       this.pokemon.initBattleInfo();
       this.pokemon.cry();
 
       globalScene.phaseManager.cancelMove(p => p.pokemon === this.pokemon);
+
+      if (
+        this.pokemon.species.speciesId === SpeciesId.NECROZMA
+        && isClassicFinalBossPhaseTwo(this.pokemon)
+        && !globalScene.findModifier(
+          m => m instanceof GammaRayBurstModifier && m.pokemonId === this.pokemon.id,
+          false,
+        )
+      ) {
+        const gammaRayBurst = getModifierType(modifierTypes.GAMMA_RAY_BURST).newModifier(
+          this.pokemon,
+        ) as GammaRayBurstModifier;
+        globalScene.addEnemyModifier(gammaRayBurst, false, true);
+      }
     }
 
     super.end();

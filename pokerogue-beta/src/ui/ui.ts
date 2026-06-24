@@ -553,6 +553,7 @@ export class UI extends Phaser.GameObjects.Container {
             touchControls.dataset.uiMode = UiMode[mode];
           }
           this.getHandler().show(args);
+          this.broadcastTwoPlayerUiModeCheckpoint("ui-mode");
         }
         resolve();
       };
@@ -595,6 +596,14 @@ export class UI extends Phaser.GameObjects.Container {
     return this.setModeInternal(mode, false, false, true, args);
   }
 
+  private broadcastTwoPlayerUiModeCheckpoint(reason: string): void {
+    if (!globalScene.twoPlayerMode) {
+      return;
+    }
+
+    setTimeout(() => globalScene.uiInputs?.broadcastTwoPlayerCheckpoint(reason), 0);
+  }
+
   resetModeChain(): void {
     this.modeChain = [];
     globalScene.updateGameInfo();
@@ -616,6 +625,7 @@ export class UI extends Phaser.GameObjects.Container {
         if (touchControls) {
           touchControls.dataset.uiMode = UiMode[this.mode];
         }
+        this.broadcastTwoPlayerUiModeCheckpoint("ui-mode-revert");
         resolve(true);
       };
 

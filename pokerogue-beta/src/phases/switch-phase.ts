@@ -95,6 +95,10 @@ export class SwitchPhase extends BattlePhase {
       return;
     }
 
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForPlayerInput(playerIndex);
+    }
+
     globalScene.ui.setMode(
       UiMode.PARTY,
       this.isModal ? PartyUiMode.FAINT_SWITCH : PartyUiMode.POST_BATTLE_SWITCH,

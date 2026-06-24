@@ -7,7 +7,7 @@ import { getPokemonNameWithAffix } from "#app/messages";
 import { activeOverrides } from "#app/overrides";
 import { handleTutorial, Tutorial } from "#app/tutorial";
 import { initEncounterAnims, loadEncounterAnimAssets } from "#data/battle-anims";
-import { getCharVariantFromDialogue } from "#data/dialogue";
+import { getCharVariantFromDialogue, getClassicFinalBossDialogue } from "#data/dialogue";
 import { getNatureName } from "#data/nature";
 import { BattleType } from "#enums/battle-type";
 import { BattlerIndex } from "#enums/battler-index";
@@ -162,6 +162,16 @@ export class EncounterPhase extends BattlePhase {
           enemyPokemon.formIndex = 1;
           enemyPokemon.updateScale();
         }
+      }
+      if (enemyPokemon.species.speciesId === SpeciesId.NECROZMA && battle.isClassicFinalBoss) {
+        const phaseOneFormKey = randSeedInt(2) ? "dawn-wings" : "dusk-mane";
+        const phaseOneFormIndex = enemyPokemon.species.forms.findIndex(form => form.formKey === phaseOneFormKey);
+        if (phaseOneFormIndex > -1) {
+          enemyPokemon.formIndex = phaseOneFormIndex;
+          enemyPokemon.updateScale();
+          enemyPokemon.generateAndPopulateMoveset(false, phaseOneFormIndex);
+        }
+        enemyPokemon.setBoss();
       }
 
       totalBst += enemyPokemon.getSpeciesForm().baseTotal;
@@ -684,7 +694,7 @@ export class EncounterPhase extends BattlePhase {
       this.getEncounterMessage(),
       null,
       () => {
-        const localizationKey = "battleSpecDialogue:encounter";
+        const localizationKey = getClassicFinalBossDialogue(enemy?.species.speciesId).encounter;
         if (ui.shouldSkipDialogue(localizationKey)) {
           // Logging mirrors logging found in dialogue-ui-handler
           console.log(`Dialogue ${localizationKey} skipped`);

@@ -52,6 +52,15 @@ import i18next from "i18next";
 export type ModifierPredicate = (modifier: Modifier) => boolean;
 
 const iconOverflowIndex = 24;
+const GAMMA_RAY_BURST_ROLL_SIDES = 8;
+const GAMMA_RAY_BURST_VITAMIN_STATS = [
+  Stat.HP,
+  Stat.ATK,
+  Stat.DEF,
+  Stat.SPATK,
+  Stat.SPDEF,
+  Stat.SPD,
+] as const;
 
 export const modifierSortFunc = (a: Modifier, b: Modifier): number => {
   const itemNameMatch = a.type.name.localeCompare(b.type.name);
@@ -882,6 +891,89 @@ export class BaseStatModifier extends PokemonHeldItemModifier {
   getMaxHeldItemCount(pokemon: Pokemon): number {
     return pokemon.ivs[this.stat];
   }
+}
+
+export class GammaRayBurstModifier extends PokemonHeldItemModifier {
+  public isTransferable = false;
+
+  matchType(modifier: Modifier): boolean {
+    return modifier instanceof GammaRayBurstModifier;
+  }
+
+  clone(): PersistentModifier {
+    return new GammaRayBurstModifier(this.type, this.pokemonId, this.stackCount);
+  }
+
+  getMaxHeldItemCount(_pokemon: Pokemon): number {
+    return 1;
+  }
+
+  shouldApply(pokemon?: Pokemon, ...args: unknown[]): boolean {
+    return super.shouldApply(pokemon, ...args) && this.canEmpower(pokemon);
+  }
+
+  applyInitialBurst(pokemon: Pokemon): boolean {
+    if (!this.canEmpower(pokemon)) {
+      return false;
+    }
+
+    GAMMA_RAY_BURST_VITAMIN_STATS.forEach(stat => this.addVitaminStack(pokemon, stat));
+    globalScene.updateModifiers(false, true);
+    return true;
+  }
+
+  override apply(pokemon: Pokemon): boolean {
+    if (!this.canEmpower(pokemon)) {
+      return false;
+    }
+
+    let applied = false;
+    const livingPlayerPokemonCount = getLivingPlayerSidePokemonCount();
+
+    for (let i = 0; i < livingPlayerPokemonCount; i++) {
+      const roll = pokemon.randBattleSeedInt(GAMMA_RAY_BURST_ROLL_SIDES);
+      const stat = GAMMA_RAY_BURST_VITAMIN_STATS[roll];
+
+      if (stat === undefined) {
+        continue;
+      }
+
+      applied = this.addVitaminStack(pokemon, stat) || applied;
+    }
+
+    if (applied) {
+      globalScene.updateModifiers(false, true);
+    }
+
+    return applied;
+  }
+
+  private canEmpower(pokemon?: Pokemon): pokemon is Pokemon {
+    return !!pokemon && !pokemon.isPlayer() && pokemon.hasSpecies(SpeciesId.NECROZMA, "ultra") && !pokemon.isFainted();
+  }
+
+  private addVitaminStack(pokemon: Pokemon, stat: PermanentStat): boolean {
+    const vitaminTypeGenerator = getModifierType(modifierTypes.BASE_STAT_BOOSTER) as ModifierType & {
+      generateType?: (party: readonly Pokemon[], pregenArgs?: any[]) => ModifierType | null;
+    };
+    const vitaminType = vitaminTypeGenerator.generateType?.(globalScene.getEnemyParty(), [stat]);
+    const vitamin = vitaminType?.newModifier(pokemon) as PokemonHeldItemModifier | null;
+
+    if (!vitamin) {
+      return false;
+    }
+
+    void globalScene.addEnemyModifier(vitamin, true, true);
+    return true;
+  }
+}
+
+function getLivingPlayerSidePokemonCount(): number {
+  const playerIndexes = globalScene.twoPlayerMode ? ([0, 1] as const) : ([globalScene.activePlayerIndex] as const);
+
+  return playerIndexes.reduce<number>((total, playerIndex) => {
+    return total + globalScene.getPlayerParty(playerIndex).filter(pokemon => !pokemon.isFainted()).length;
+  }, 0);
 }
 
 export class EvoTrackerModifier extends PokemonHeldItemModifier {
@@ -4021,6 +4113,7 @@ const ModifierClassMap = Object.freeze({
   PokemonHeldItemModifier,
   LapsingPokemonHeldItemModifier,
   BaseStatModifier,
+  GammaRayBurstModifier,
   EvoTrackerModifier,
   PokemonBaseStatTotalModifier,
   PokemonBaseStatFlatModifier,

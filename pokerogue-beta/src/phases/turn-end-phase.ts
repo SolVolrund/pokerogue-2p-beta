@@ -10,6 +10,7 @@ import type { Pokemon } from "#field/pokemon";
 import {
   EnemyStatusEffectHealChanceModifier,
   EnemyTurnHealModifier,
+  GammaRayBurstModifier,
   ShinyBadgeModifier,
   TurnHealModifier,
   TurnHeldItemTransferModifier,
@@ -67,6 +68,7 @@ export class TurnEndPhase extends FieldPhase {
 
       globalScene.applyModifiersForPokemon(TurnStatusEffectModifier, pokemon, pokemon);
       globalScene.applyModifiersForPokemon(TurnHeldItemTransferModifier, pokemon, pokemon);
+      globalScene.applyModifiersForPokemon(GammaRayBurstModifier, pokemon, pokemon);
 
       pokemon.tempSummonData.turnCount++;
       pokemon.tempSummonData.waveTurnCount++;

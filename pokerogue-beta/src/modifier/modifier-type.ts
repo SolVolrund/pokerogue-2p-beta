@@ -61,6 +61,7 @@ import {
   FieldEffectModifier,
   FlinchChanceModifier,
   FusePokemonModifier,
+  GammaRayBurstModifier,
   GigantamaxAccessModifier,
   HealingBoosterModifier,
   HealShopCostModifier,
@@ -2212,6 +2213,13 @@ const modifierTypeInitObj = Object.freeze({
 
   MINI_BLACK_HOLE: () =>
     new TurnHeldItemTransferModifierType("modifierType:ModifierType.MINI_BLACK_HOLE", "mini_black_hole"),
+
+  GAMMA_RAY_BURST: () =>
+    new PokemonHeldItemModifierType(
+      "modifierType:ModifierType.GAMMA_RAY_BURST",
+      "gamma_ray_burst",
+      (type, args) => new GammaRayBurstModifier(type, (args[0] as Pokemon).id),
+    ),
 
   VOUCHER: () => new AddVoucherModifierType(VoucherType.REGULAR, 1),
   VOUCHER_PLUS: () => new AddVoucherModifierType(VoucherType.PLUS, 1),

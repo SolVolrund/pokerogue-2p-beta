@@ -46,6 +46,11 @@ export class ScanIvsPhase extends PokemonPhase {
       return;
     }
 
+    if (globalScene.twoPlayerMode) {
+      const playerIndex = this.player ? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex) : 0;
+      globalScene.waitForPlayerInput(playerIndex);
+    }
+
     globalScene.ui.showText(
       i18next.t("battle:ivScannerUseQuestion", {
         pokemonName: getPokemonNameWithAffix(pokemon),

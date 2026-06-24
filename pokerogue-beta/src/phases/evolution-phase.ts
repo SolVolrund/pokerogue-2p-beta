@@ -198,7 +198,11 @@ export class EvolutionPhase extends Phase {
 
   async start() {
     super.start();
-    globalScene.setActivePlayerIndex(this.playerIndex);
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForPlayerInput(this.playerIndex);
+    } else {
+      globalScene.setActivePlayerIndex(this.playerIndex);
+    }
     await this.setMode();
 
     if (!this.validate()) {

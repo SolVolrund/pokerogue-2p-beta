@@ -44,6 +44,10 @@ export class SelectTargetPhase extends PokemonPhase {
       && !ally.isFainted();
     const defaultTargets = shouldDefaultToAlly ? [ally.getBattlerIndex()] : undefined;
 
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForPlayerInput(globalScene.getPlayerIndexForFieldSlot(this.fieldIndex));
+    }
+
     globalScene.ui.setMode(
       UiMode.TARGET_SELECT,
       this.fieldIndex,

@@ -370,6 +370,9 @@ export class PhaseManager {
   private startCurrentPhase(): void {
     console.log(`%cStart Phase ${this.currentPhase.phaseName}`, `color:${PHASE_START_COLOR};`);
     this.currentPhase.start();
+    if (globalScene.twoPlayerMode) {
+      setTimeout(() => globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("phase-start"), 0);
+    }
   }
 
   /**

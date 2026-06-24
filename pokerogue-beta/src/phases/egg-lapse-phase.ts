@@ -34,6 +34,10 @@ export class EggLapsePhase extends Phase {
 
     if (eggsToHatchCount > 0) {
       if (eggsToHatchCount >= this.minEggsToSkip && globalScene.eggSkipPreference === 1) {
+        if (globalScene.twoPlayerMode) {
+          globalScene.waitForPlayerInput(0);
+        }
+
         globalScene.ui.showText(
           i18next.t("battle:eggHatching"),
           0,

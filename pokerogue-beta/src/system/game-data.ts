@@ -601,6 +601,7 @@ export class GameData {
     settings["gameVersion"] = globalScene.game.config.gameVersion;
 
     localStorage.setItem("settings", JSON.stringify(settings));
+    globalScene.uiInputs?.broadcastTwoPlayerSettingsSnapshot();
 
     return true;
   }

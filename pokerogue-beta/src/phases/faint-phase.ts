@@ -4,7 +4,7 @@ import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { FRIENDSHIP_LOSS_FROM_FAINT } from "#balance/starters";
 import { allMoves } from "#data/data-lists";
-import { classicFinalBossDialogue } from "#data/dialogue";
+import { getClassicFinalBossDialogue } from "#data/dialogue";
 import { SpeciesFormChangeActiveTrigger } from "#data/form-change-triggers";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import { BattleType } from "#enums/battle-type";
@@ -18,6 +18,7 @@ import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
 import { PokemonInstantReviveModifier, ShinyBadgeModifier } from "#modifiers/modifier";
 import { PokemonMove } from "#moves/pokemon-move";
 import { PokemonPhase } from "#phases/pokemon-phase";
+import { isClassicFinalBossPhaseTwo } from "#utils/classic-final-boss-utils";
 import { dismissComputerPartnerFromRun } from "#utils/computer-partner-run";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import i18next from "i18next";
@@ -270,8 +271,13 @@ export class FaintPhase extends PokemonPhase {
     const { phaseManager, ui } = globalScene;
     const enemy = this.getPokemon();
 
-    if (enemy.formIndex > 0) {
-      ui.showDialogue(classicFinalBossDialogue.secondStageWin, enemy.species.name, null, () => this.doFaint());
+    if (isClassicFinalBossPhaseTwo(enemy)) {
+      ui.showDialogue(
+        getClassicFinalBossDialogue(enemy.species.speciesId).secondStageWin,
+        enemy.species.name,
+        null,
+        () => this.doFaint(),
+      );
       return;
     }
 

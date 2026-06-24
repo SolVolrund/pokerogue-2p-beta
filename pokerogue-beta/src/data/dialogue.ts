@@ -1,3 +1,4 @@
+import { SpeciesId } from "#enums/species-id";
 import { TrainerType } from "#enums/trainer-type";
 import { trainerConfigs } from "#trainers/trainer-config";
 import { capitalizeFirstLetter } from "#utils/strings";
@@ -1925,6 +1926,16 @@ export const classicFinalBossDialogue = {
   firstStageWin: "battleSpecDialogue:firstStageWin",
   secondStageWin: "battleSpecDialogue:secondStageWin",
 };
+
+export const necrozmaFinalBossDialogue = {
+  encounter: "battleSpecDialogue:necrozmaEncounter",
+  firstStageWin: "battleSpecDialogue:necrozmaFirstStageWin",
+  secondStageWin: "battleSpecDialogue:necrozmaSecondStageWin",
+};
+
+export function getClassicFinalBossDialogue(speciesId?: SpeciesId) {
+  return speciesId === SpeciesId.NECROZMA ? necrozmaFinalBossDialogue : classicFinalBossDialogue;
+}
 
 export const miscDialogue = {
   ending: ["miscDialogue:ending", "miscDialogue:ending_female"],

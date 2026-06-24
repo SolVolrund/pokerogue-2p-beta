@@ -19,6 +19,10 @@ export class RevivalBlessingPhase extends BattlePhase {
   }
 
   public override start(): void {
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForPlayerInput(globalScene.getPlayerIndexForFieldSlot(this.user.getFieldIndex()));
+    }
+
     globalScene.ui.setMode(
       UiMode.PARTY,
       PartyUiMode.REVIVAL_BLESSING,

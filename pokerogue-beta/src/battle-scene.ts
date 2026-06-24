@@ -27,6 +27,7 @@ import { TurnCommandManager } from "#app/turn-command-manager";
 import type {
   TwoPlayerProfileSnapshot,
   TwoPlayerRunBootstrap,
+  TwoPlayerSettingsSnapshot,
   TwoPlayerTitleStart,
 } from "#app/two-player-input-transport";
 import { UiInputs } from "#app/ui-inputs";
@@ -35,11 +36,11 @@ import { FRIENDSHIP_GAIN_FROM_BATTLE } from "#balance/starters";
 import { initCommonAnims, initMoveAnim, loadCommonAnimAssets, loadMoveAnimAssets } from "#data/battle-anims";
 import { getDailyMysteryEncounter } from "#data/daily-seed/daily-run";
 import { allMoves, biomeDepths, modifierTypes } from "#data/data-lists";
-import { classicFinalBossDialogue } from "#data/dialogue";
+import { getClassicFinalBossDialogue } from "#data/dialogue";
 import type { SpeciesFormChangeTrigger } from "#data/form-change-triggers";
 import { SpeciesFormChangeManualTrigger, SpeciesFormChangeTimeOfDayTrigger } from "#data/form-change-triggers";
 import { Gender } from "#data/gender";
-import type { SpeciesFormChange } from "#data/pokemon-forms";
+import { SpeciesFormChange } from "#data/pokemon-forms";
 import type { PokemonSpecies, PokemonSpeciesFilter } from "#data/pokemon-species";
 import { getTypeRgb } from "#data/type";
 import { BattleStyle } from "#enums/battle-style";
@@ -76,6 +77,7 @@ import { TimeOfDay } from "#enums/time-of-day";
 import type { TrainerSlot } from "#enums/trainer-slot";
 import { TrainerType } from "#enums/trainer-type";
 import { TrainerVariant } from "#enums/trainer-variant";
+import { UiMode } from "#enums/ui-mode";
 import { UiTheme } from "#enums/ui-theme";
 import { NewArenaEvent } from "#events/battle-scene";
 import { Arena, getBiomeHasProps, getBiomeKey } from "#field/arena";
@@ -85,7 +87,7 @@ import type { Pokemon } from "#field/pokemon";
 import { EnemyPokemon, PlayerPokemon } from "#field/pokemon";
 import { PokemonSpriteSparkleHandler } from "#field/pokemon-sprite-sparkle-handler";
 import { Trainer } from "#field/trainer";
-import type { Modifier, ModifierPredicate, TurnHeldItemTransferModifier } from "#modifiers/modifier";
+import type { Modifier, ModifierPredicate } from "#modifiers/modifier";
 import {
   ConsumableModifier,
   ConsumablePokemonModifier,
@@ -93,6 +95,7 @@ import {
   ExpBalanceModifier,
   ExpShareModifier,
   FusePokemonModifier,
+  GammaRayBurstModifier,
   HealingBoosterModifier,
   ModifierBar,
   MultipleParticipantExpBonusModifier,
@@ -104,6 +107,7 @@ import {
   PokemonIncrementingStatModifier,
   RememberMoveModifier,
   ShinyBadgeModifier,
+  TurnHeldItemTransferModifier,
 } from "#modifiers/modifier";
 import {
   getDefaultModifierTypeForTier,
@@ -126,8 +130,11 @@ import { achvs, ModifierAchv, MoneyAchv } from "#system/achv";
 import { GameData } from "#system/game-data";
 import { initGameSpeed } from "#system/game-speed";
 import type { PokemonData } from "#system/pokemon-data";
-import { isMysteryEncounterEnabledBySettings } from "#system/settings-events";
-import { MusicPreference } from "#system/settings";
+import { MusicPreference, Setting, SettingKeys, setSetting } from "#system/settings";
+import {
+  getMysteryEncounterEventSettings,
+  isMysteryEncounterEnabledBySettings,
+} from "#system/settings-events";
 import type { Voucher } from "#system/voucher";
 import { vouchers } from "#system/voucher";
 import { trainerConfigs } from "#trainers/trainer-config";
@@ -172,6 +179,7 @@ import { getModifierPoolForType, getModifierType } from "#utils/modifier-utils";
 import { decodeNickname, getPokemonSpecies } from "#utils/pokemon-utils";
 import { capitalizeFirstLetterOnly } from "#utils/strings";
 import type { ComputerPartnerKey } from "#utils/computer-partner-profile";
+import { isClassicFinalBossPhaseTwo } from "#utils/classic-final-boss-utils";
 import i18next from "i18next";
 import Phaser from "phaser";
 export type PokeballCounts = Record<Exclude<PokeballType, PokeballType.LUXURY_BALL>, number>;
@@ -184,6 +192,20 @@ const TWO_PLAYER_SESSION_SYSTEM_SAVE_KEYS = [
   "pokerogue_2p_session_system_save_1",
 ] as const;
 const TWO_PLAYER_PROFILE_HANDSHAKE_BUILD = "profile-handshake-2026-06-17c";
+const TWO_PLAYER_SYNC_SETTING_KEYS = [
+  SettingKeys.Game_Speed,
+  SettingKeys.HP_Bar_Speed,
+  SettingKeys.EXP_Gains_Speed,
+  SettingKeys.EXP_Party_Display,
+  SettingKeys.Skip_Seen_Dialogues,
+  SettingKeys.Egg_Skip,
+  SettingKeys.Battle_Style,
+  SettingKeys.Hide_Move_Skip_Confirm,
+  SettingKeys.Move_Animations,
+  SettingKeys.Show_Stats_on_Level_Up,
+  SettingKeys.Shop_Cursor_Target,
+  SettingKeys.Command_Cursor_Memory,
+] as const;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = null;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = null;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = true;
@@ -994,6 +1016,7 @@ export class BattleScene extends SceneBase {
       this.syncLegacyStateForActivePlayer();
       if (!this.twoPlayerComputerPartner) {
         this.uiInputs?.broadcastTwoPlayerProfileSnapshot();
+        this.uiInputs?.broadcastTwoPlayerSettingsSnapshot();
       }
     } else {
       this.gameData = localSystemSave;
@@ -1074,6 +1097,97 @@ export class BattleScene extends SceneBase {
       playerIndex: localSeat,
       systemSave: this.getLocalPlayerSystemSave().getSystemSaveDataString(),
     };
+  }
+
+  public getTwoPlayerSettingsSnapshot(): TwoPlayerSettingsSnapshot | undefined {
+    if (!this.twoPlayerMode || this.twoPlayerLocalInputSeat !== 0) {
+      return undefined;
+    }
+
+    const savedSettings = this.getSavedSettings();
+    const settings: Record<string, number> = {};
+    for (const key of this.getTwoPlayerSyncedSettingKeys()) {
+      settings[key] = this.getSavedSettingValue(key, savedSettings);
+    }
+
+    return { settings };
+  }
+
+  public applyTwoPlayerSettingsSnapshot(settingsSnapshot: TwoPlayerSettingsSnapshot): boolean {
+    if (!this.twoPlayerMode || this.twoPlayerLocalInputSeat === 0) {
+      return false;
+    }
+
+    const syncedSettingKeys = new Set<string>(this.getTwoPlayerSyncedSettingKeys());
+    const savedSettings = this.getSavedSettings();
+    let applied = false;
+    for (const [key, value] of Object.entries(settingsSnapshot.settings)) {
+      if (!syncedSettingKeys.has(key) || !Number.isInteger(value)) {
+        continue;
+      }
+
+      const normalizedValue = this.normalizeSettingValue(key, value);
+      setSetting(key, normalizedValue);
+      savedSettings[key] = normalizedValue;
+      applied = true;
+    }
+
+    if (applied) {
+      savedSettings.gameVersion = this.game.config.gameVersion;
+      localStorage.setItem("settings", JSON.stringify(savedSettings));
+    }
+
+    return applied;
+  }
+
+  private getTwoPlayerSyncedSettingKeys(): string[] {
+    return [
+      ...TWO_PLAYER_SYNC_SETTING_KEYS,
+      ...getMysteryEncounterEventSettings().map(setting => setting.key),
+    ];
+  }
+
+  private getSavedSettings(): Record<string, unknown> {
+    const savedSettings = localStorage.getItem("settings");
+    if (!savedSettings) {
+      return {};
+    }
+
+    try {
+      const parsedSettings = JSON.parse(savedSettings);
+      return parsedSettings && typeof parsedSettings === "object" ? parsedSettings : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private getSavedSettingValue(key: string, savedSettings: Record<string, unknown>): number {
+    const savedValue = savedSettings[key];
+    if (Number.isInteger(savedValue)) {
+      return savedValue as number;
+    }
+
+    return this.getSettingDefaultValue(key);
+  }
+
+  private normalizeSettingValue(key: string, value: number): number {
+    const baseSetting = Setting.find(setting => setting.key === key);
+    if (baseSetting) {
+      return baseSetting.options[value] ? value : baseSetting.default;
+    }
+
+    const eventSetting = getMysteryEncounterEventSettings().find(setting => setting.key === key);
+    if (eventSetting) {
+      return eventSetting.options[value] ? value : eventSetting.default;
+    }
+
+    return value;
+  }
+
+  private getSettingDefaultValue(key: string): number {
+    return Setting.find(setting => setting.key === key)?.default
+      ?? getMysteryEncounterEventSettings().find(setting => setting.key === key)?.default
+      ?? 0;
   }
 
   public applyTwoPlayerProfileSnapshot(profileSnapshot: TwoPlayerProfileSnapshot): boolean {
@@ -1326,10 +1440,20 @@ export class BattleScene extends SceneBase {
   public waitForPlayerInput(playerIndex: PlayerIndex): void {
     this.setActivePlayerIndex(playerIndex);
     this.setInputOwner(playerIndex);
+    this.broadcastTwoPlayerInputReadyCheckpoint();
   }
 
   public waitForSharedInput(): void {
     this.setInputOwner("both");
+    this.broadcastTwoPlayerInputReadyCheckpoint();
+  }
+
+  private broadcastTwoPlayerInputReadyCheckpoint(): void {
+    if (!this.twoPlayerMode) {
+      return;
+    }
+
+    setTimeout(() => this.uiInputs?.broadcastTwoPlayerCheckpoint("input-ready"), 0);
   }
 
   public recordTwoPlayerRewardDebugState(
@@ -1376,6 +1500,7 @@ export class BattleScene extends SceneBase {
       return undefined;
     }
 
+    const uiMode = this.ui?.getMode() ?? null;
     const summary = {
       waveIndex: this.currentBattle?.waveIndex ?? null,
       battleType: this.currentBattle?.battleType ?? null,
@@ -1384,6 +1509,8 @@ export class BattleScene extends SceneBase {
       waveSeed: this.waveSeed ?? null,
       biome: this.arena?.biomeId ?? null,
       phase: this.phaseManager.getCurrentPhase()?.phaseName ?? null,
+      uiMode,
+      uiModeName: uiMode === null ? null : UiMode[uiMode],
       activePlayerIndex: this.activePlayerIndex,
       inputOwner: this.inputOwner,
       lastReward: this.twoPlayerLastRewardDebugState ?? null,
@@ -2031,11 +2158,11 @@ export class BattleScene extends SceneBase {
       return;
     }
 
-    if (!this.twoPlayerTitleStartHandler && !this.phaseManager.getCurrentPhase().is("TitlePhase")) {
+    this.pendingTwoPlayerTitleStart = titleStart;
+    if (!this.twoPlayerTitleStartHandler && !this.phaseManager.getCurrentPhase()?.is("TitlePhase")) {
       return;
     }
 
-    this.pendingTwoPlayerTitleStart = titleStart;
     this.twoPlayerTitleStartHandler?.(titleStart);
   }
 
@@ -3484,6 +3611,12 @@ export class BattleScene extends SceneBase {
             modifier.apply(pokemon, true);
           }
         }
+        if (modifier instanceof GammaRayBurstModifier && !ignoreUpdate) {
+          const pokemon = this.getPokemonById(modifier.pokemonId);
+          if (pokemon) {
+            modifier.applyInitialBurst(pokemon);
+          }
+        }
         for (const rm of modifiersToRemove) {
           this.removeModifier(rm, true);
         }
@@ -4294,21 +4427,53 @@ export class BattleScene extends SceneBase {
    * @param pokemon The (enemy) pokemon
    */
   initFinalBossPhaseTwo(pokemon: Pokemon): void {
-    if (!pokemon.isEnemy() || !pokemon.isBoss() || pokemon.formIndex > 0 || pokemon.bossSegmentIndex >= 1) {
+    if (!pokemon.isEnemy() || !pokemon.isBoss() || isClassicFinalBossPhaseTwo(pokemon) || pokemon.bossSegmentIndex >= 1) {
       this.phaseManager.shiftPhase();
       return;
     }
 
     audioManager.fadeOutBgm(2000, true);
-    this.ui.showDialogue(classicFinalBossDialogue.firstStageWin, pokemon.species.name, undefined, () => {
-      const finalBossMBH = getModifierType(modifierTypes.MINI_BLACK_HOLE).newModifier(
-        pokemon,
-      ) as TurnHeldItemTransferModifier;
-      finalBossMBH.setTransferrableFalse();
-      this.addEnemyModifier(finalBossMBH, false, true);
-      pokemon.generateAndPopulateMoveset(false, 1);
-      this.setFieldScale(0.75);
-      this.triggerPokemonFormChange(pokemon, SpeciesFormChangeManualTrigger, false);
+    this.ui.showDialogue(getClassicFinalBossDialogue(pokemon.species.speciesId).firstStageWin, pokemon.species.name, undefined, () => {
+      switch (pokemon.species.speciesId) {
+        case SpeciesId.ETERNATUS: {
+          const finalBossMBH = getModifierType(modifierTypes.MINI_BLACK_HOLE).newModifier(
+            pokemon,
+          ) as TurnHeldItemTransferModifier;
+          finalBossMBH.setTransferrableFalse();
+          this.addEnemyModifier(finalBossMBH, false, true);
+          pokemon.generateAndPopulateMoveset(false, 1);
+          this.setFieldScale(0.75);
+          this.triggerPokemonFormChange(pokemon, SpeciesFormChangeManualTrigger, false);
+          break;
+        }
+        case SpeciesId.NECROZMA: {
+          const currentFormKey = pokemon.species.forms[pokemon.formIndex]?.formKey ?? "";
+          const ultraFormIndex = pokemon.species.forms.findIndex(form => form.formKey === "ultra");
+          if (ultraFormIndex < 0) {
+            this.phaseManager.shiftPhase();
+            return;
+          }
+          pokemon.getStatStages().fill(0);
+          pokemon.generateAndPopulateMoveset(false, ultraFormIndex);
+          this.setFieldScale(0.75);
+          this.phaseManager.unshiftNew(
+            "QuietFormChangePhase",
+            pokemon,
+            new SpeciesFormChange({
+              speciesId: SpeciesId.NECROZMA,
+              preFormKey: currentFormKey,
+              evoFormKey: "ultra",
+              trigger: new SpeciesFormChangeManualTrigger(),
+              quiet: true,
+            }),
+          );
+          break;
+        }
+        default:
+          this.phaseManager.shiftPhase();
+          return;
+      }
+
       this.currentBattle.double = true;
       const availablePartyMembers = this.getPlayerParty().filter(p => p.isAllowedInBattle());
       if (availablePartyMembers.length > 1) {
