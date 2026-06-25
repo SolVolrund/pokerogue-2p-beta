@@ -180,7 +180,11 @@ import { cachedFetch } from "#utils/fetch-utils";
 import { getModifierPoolForType, getModifierType } from "#utils/modifier-utils";
 import { decodeNickname, getPokemonSpecies } from "#utils/pokemon-utils";
 import { capitalizeFirstLetterOnly } from "#utils/strings";
-import { getComputerPartnerProfile, type ComputerPartnerKey } from "#utils/computer-partner-profile";
+import {
+  getComputerPartnerProfile,
+  type ComputerPartnerKey,
+  type ComputerPartnerRolePreferences,
+} from "#utils/computer-partner-profile";
 import { isClassicFinalBossPhaseTwo } from "#utils/classic-final-boss-utils";
 import {
   getEnemyBattlerIndex,
@@ -534,6 +538,7 @@ export class BattleScene extends SceneBase {
   public twoPlayerComputerPartner: boolean = isTwoPlayerComputerPartnerEnabled();
   public computerPartnerKey: ComputerPartnerKey = "alex";
   public computerPartnerKeys: ComputerPartnerKey[] = ["alex", "alex", "alex"];
+  public computerPartnerRolePreferences: Partial<Record<PlayerIndex, ComputerPartnerRolePreferences>> = {};
   public activePlayerIndex: PlayerIndex = 0;
   public inputOwner: InputOwner = "none";
   public twoPlayerLocalInputSeat: LocalInputSeat = getTwoPlayerLocalInputSeat();
@@ -1093,6 +1098,7 @@ export class BattleScene extends SceneBase {
     if (!this.twoPlayerComputerPartner) {
       this.computerPartnerKey = "alex";
       this.computerPartnerKeys = ["alex", "alex", "alex"];
+      this.computerPartnerRolePreferences = {};
     }
     this.activePlayerIndex = 0;
     this.inputOwner = "none";
@@ -1789,6 +1795,9 @@ export class BattleScene extends SceneBase {
     if (playerIndex === 1) {
       this.computerPartnerKey = key;
     }
+    if (key !== "alex") {
+      delete this.computerPartnerRolePreferences[playerIndex];
+    }
 
     const profile = getComputerPartnerProfile(key);
     const fallbackGender = this.getPlayerGameData(0).gender === PlayerGender.FEMALE ? PlayerGender.MALE : PlayerGender.FEMALE;
@@ -1802,6 +1811,21 @@ export class BattleScene extends SceneBase {
     } else if (playerIndex === 2) {
       this.threePlayerGuestGender = profile.trainerGender ?? fallbackGender;
       this.threePlayerGuestTrainerSprite = profile.trainerSprite ?? fallbackSprite;
+    }
+  }
+
+  public getComputerPartnerRolePreferences(playerIndex: PlayerIndex): ComputerPartnerRolePreferences | undefined {
+    return this.computerPartnerRolePreferences[playerIndex];
+  }
+
+  public setComputerPartnerRolePreferences(
+    playerIndex: PlayerIndex,
+    rolePreferences?: ComputerPartnerRolePreferences,
+  ): void {
+    if (rolePreferences?.length) {
+      this.computerPartnerRolePreferences[playerIndex] = [...rolePreferences];
+    } else {
+      delete this.computerPartnerRolePreferences[playerIndex];
     }
   }
 

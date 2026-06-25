@@ -28,6 +28,8 @@ import {
   COMPUTER_PARTNER_KEYS,
   getComputerPartnerProfile,
   type ComputerPartnerKey,
+  type ComputerPartnerRole,
+  type ComputerPartnerRolePreferences,
 } from "#utils/computer-partner-profile";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
@@ -703,6 +705,7 @@ export class TitlePhase extends Phase {
     gameMode: GameModes,
     playerCount: 2 | 3,
     firstPartnerKey?: ComputerPartnerKey,
+    firstPartnerRolePreferences?: ComputerPartnerRolePreferences,
   ): void {
     const selectablePartnerKeys = firstPartnerKey
       ? COMPUTER_PARTNER_KEYS.filter(key => key !== firstPartnerKey)
@@ -713,12 +716,17 @@ export class TitlePhase extends Phase {
       return {
         label: profile.name,
         handler: () => {
+          if (key === "alex") {
+            this.showAlexPreferenceSelect(gameMode, playerCount, key, firstPartnerKey, firstPartnerRolePreferences);
+            return true;
+          }
+
           if (playerCount === 3 && !firstPartnerKey) {
             this.showComputerPartnerSelect(gameMode, playerCount, key);
             return true;
           }
 
-          this.setComputerPartner(1, firstPartnerKey ?? key);
+          this.setComputerPartner(1, firstPartnerKey ?? key, firstPartnerRolePreferences);
           if (playerCount === 3) {
             this.setComputerPartner(2, key);
           }
@@ -745,8 +753,92 @@ export class TitlePhase extends Phase {
     this.showOptionSelectWithText(`${i18next.t("menu:selectComputerPartner")} (${playerLabel})`, options);
   }
 
-  private setComputerPartner(playerIndex: 1 | 2, key: ComputerPartnerKey): void {
+  private showAlexPreferenceSelect(
+    gameMode: GameModes,
+    playerCount: 2 | 3,
+    key: ComputerPartnerKey,
+    firstPartnerKey?: ComputerPartnerKey,
+    firstPartnerRolePreferences?: ComputerPartnerRolePreferences,
+    partySlot = 2,
+    rolePreferences: ComputerPartnerRolePreferences = [],
+  ): void {
+    const continueWithPreference = (rolePreference: ComputerPartnerRole) => {
+      const nextRolePreferences = [...rolePreferences, rolePreference];
+      if (partySlot < 6) {
+        this.showAlexPreferenceSelect(
+          gameMode,
+          playerCount,
+          key,
+          firstPartnerKey,
+          firstPartnerRolePreferences,
+          partySlot + 1,
+          nextRolePreferences,
+        );
+        return;
+      }
+
+      if (playerCount === 3 && !firstPartnerKey) {
+        this.showComputerPartnerSelect(gameMode, playerCount, key, nextRolePreferences);
+        return;
+      }
+
+      this.setComputerPartner(1, firstPartnerKey ?? key, firstPartnerRolePreferences ?? nextRolePreferences);
+      if (playerCount === 3) {
+        this.setComputerPartner(2, key, nextRolePreferences);
+      }
+      globalScene.configureTwoPlayerMode(true, 6, true, playerCount);
+      this.setModeAndEnd(gameMode);
+    };
+
+    const options: OptionSelectItem[] = [
+      {
+        label: "Bulk (HP+Def+SpDef)",
+        handler: () => {
+          continueWithPreference("bulk");
+          return true;
+        },
+      },
+      {
+        label: "Attack",
+        handler: () => {
+          continueWithPreference("physical");
+          return true;
+        },
+      },
+      {
+        label: "Spec Attack",
+        handler: () => {
+          continueWithPreference("special");
+          return true;
+        },
+      },
+      {
+        label: "Speed",
+        handler: () => {
+          continueWithPreference("speed");
+          return true;
+        },
+      },
+      {
+        label: i18next.t("menu:cancel"),
+        handler: () => {
+          this.showComputerPartnerSelect(gameMode, playerCount, firstPartnerKey, firstPartnerRolePreferences);
+          return true;
+        },
+        keepOpen: true,
+      },
+    ];
+
+    this.showOptionSelectWithText(`Choose Alex's Slot ${partySlot} Preference`, options);
+  }
+
+  private setComputerPartner(
+    playerIndex: 1 | 2,
+    key: ComputerPartnerKey,
+    rolePreferences?: ComputerPartnerRolePreferences,
+  ): void {
     globalScene.setComputerPartnerKey(playerIndex, key);
+    globalScene.setComputerPartnerRolePreferences(playerIndex, key === "alex" ? rolePreferences : undefined);
   }
 
   private showTwoPlayerModeSelect(gameMode: GameModes): void {

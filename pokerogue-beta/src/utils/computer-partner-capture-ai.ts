@@ -10,8 +10,9 @@ import { Stat } from "#enums/stat";
 import type { EnemyPokemon, PlayerPokemon } from "#field/pokemon";
 import {
   getBestComputerPartnerReplacementSlot,
-  getComputerPartnerProfile,
+  getComputerPartnerProfileWithRolePreferences,
   type ComputerPartnerKey,
+  type ComputerPartnerRolePreferences,
   type ComputerPartnerSlotScore,
 } from "#utils/computer-partner-profile";
 
@@ -43,8 +44,17 @@ export function getComputerPartnerCaptureDecision(
   enemyField: EnemyPokemon[],
   pokeballCounts: PokeballCounts,
   reservedTargetIds?: number | readonly number[],
+  rolePreferences?: ComputerPartnerRolePreferences,
 ): ComputerPartnerCaptureDecision | undefined {
-  return getComputerPartnerCaptureDecisions(partnerKey, party, activePokemon, enemyField, pokeballCounts, reservedTargetIds)[0];
+  return getComputerPartnerCaptureDecisions(
+    partnerKey,
+    party,
+    activePokemon,
+    enemyField,
+    pokeballCounts,
+    reservedTargetIds,
+    rolePreferences,
+  )[0];
 }
 
 export function getComputerPartnerCaptureDecisions(
@@ -54,8 +64,9 @@ export function getComputerPartnerCaptureDecisions(
   enemyField: EnemyPokemon[],
   pokeballCounts: PokeballCounts,
   reservedTargetIds?: number | readonly number[],
+  rolePreferences?: ComputerPartnerRolePreferences,
 ): ComputerPartnerCaptureDecision[] {
-  const profile = getComputerPartnerProfile(partnerKey);
+  const profile = getComputerPartnerProfileWithRolePreferences(partnerKey, rolePreferences);
   const reservedTargetIdSet = new Set(
     Array.isArray(reservedTargetIds)
       ? reservedTargetIds

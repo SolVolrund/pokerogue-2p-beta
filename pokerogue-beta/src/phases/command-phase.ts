@@ -122,6 +122,7 @@ export class CommandPhase extends FieldPhase {
       globalScene.getEnemyField(),
       globalScene.getPlayerPokeballCounts(playerIndex),
       blockedTargetIds,
+      globalScene.getComputerPartnerRolePreferences(playerIndex),
     );
 
     if (!captureDecision) {

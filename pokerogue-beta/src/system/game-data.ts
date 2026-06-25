@@ -35,6 +35,7 @@ import { UiMode } from "#enums/ui-mode";
 import { Unlockables } from "#enums/unlockables";
 import { ArenaTagAddedEvent, TerrainChangedEvent, WeatherChangedEvent } from "#events/arena";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
+import type { ComputerPartnerRole, ComputerPartnerRolePreferences } from "#utils/computer-partner-profile";
 // biome-ignore lint/performance/noNamespaceImport: Something weird is going on here and I don't want to touch it
 import * as Modifier from "#modifiers/modifier";
 import { MysteryEncounterSaveData } from "#mystery-encounters/mystery-encounter-save-data";
@@ -865,6 +866,15 @@ export class GameData {
               .map(playerIndex => [playerIndex, globalScene.getComputerPartnerKey(playerIndex)]),
           )
         : undefined,
+      computerPartnerRolePreferences: globalScene.twoPlayerComputerPartner
+        ? Object.fromEntries(
+            globalScene
+              .getActivePlayerIndexes()
+              .filter(playerIndex => globalScene.isComputerPartnerPlayer(playerIndex))
+              .map(playerIndex => [playerIndex, globalScene.getComputerPartnerRolePreferences(playerIndex)])
+              .filter((entry): entry is [PlayerIndex, ComputerPartnerRolePreferences] => entry[1] !== undefined),
+          )
+        : undefined,
       score: globalScene.score,
       waveIndex: globalScene.currentBattle.waveIndex,
       battleType: globalScene.currentBattle.battleType,
@@ -1210,6 +1220,10 @@ export class GameData {
         .forEach(playerIndex => {
           const key = computerPartnerKeys[playerIndex] ?? (playerIndex === 1 ? computerPartnerKey : undefined) ?? "alex";
           this.applySessionComputerPartner(playerIndex, key);
+          globalScene.setComputerPartnerRolePreferences(
+            playerIndex,
+            this.getSessionComputerPartnerRolePreferences(fromSession, playerIndex),
+          );
         });
     }
   }
@@ -1263,6 +1277,28 @@ export class GameData {
 
   private isComputerPartnerKey(key: unknown): key is ComputerPartnerKey {
     return key === "alex" || key === "cheryl" || key === "riley" || key === "mira" || key === "buck" || key === "marley";
+  }
+
+  private getSessionComputerPartnerRolePreferences(
+    fromSession: SessionSaveData,
+    playerIndex: PlayerIndex,
+  ): ComputerPartnerRolePreferences | undefined {
+    const rolePreferences = fromSession.computerPartnerRolePreferences?.[playerIndex];
+    if (!Array.isArray(rolePreferences)) {
+      return undefined;
+    }
+
+    const validPreferences = rolePreferences.filter(rolePreference =>
+      this.isComputerPartnerRolePreference(rolePreference),
+    );
+    return validPreferences.length > 0 ? validPreferences : undefined;
+  }
+
+  private isComputerPartnerRolePreference(rolePreference: unknown): rolePreference is ComputerPartnerRole {
+    return rolePreference === "bulk"
+      || rolePreference === "physical"
+      || rolePreference === "special"
+      || rolePreference === "speed";
   }
 
   private applySessionComputerPartner(playerIndex: PlayerIndex, key: ComputerPartnerKey): void {

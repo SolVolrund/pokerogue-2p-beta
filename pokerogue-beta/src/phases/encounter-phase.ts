@@ -549,6 +549,8 @@ export class EncounterPhase extends BattlePhase {
         partnerPokemon,
         globalScene.getEnemyField(),
         globalScene.getPlayerPokeballCounts(playerIndex),
+        undefined,
+        globalScene.getComputerPartnerRolePreferences(playerIndex),
       );
 
       if (!captureDecisions.length) {

@@ -27,6 +27,8 @@ export type ComputerPartnerRole =
   | "specialDefense"
   | "speed";
 
+export type ComputerPartnerRolePreferences = ComputerPartnerRole[];
+
 export interface ComputerPartnerProfile {
   key: ComputerPartnerKey;
   name: string;
@@ -214,6 +216,22 @@ export const COMPUTER_PARTNER_KEYS = Object.keys(COMPUTER_PARTNER_PROFILES) as C
 
 export function getComputerPartnerProfile(key: ComputerPartnerKey): ComputerPartnerProfile {
   return COMPUTER_PARTNER_PROFILES[key] ?? COMPUTER_PARTNER_PROFILES.alex;
+}
+
+export function getComputerPartnerProfileWithRolePreferences(
+  key: ComputerPartnerKey,
+  rolePreferences?: ComputerPartnerRolePreferences,
+): ComputerPartnerProfile {
+  const profile = getComputerPartnerProfile(key);
+  if (key !== "alex" || !rolePreferences?.length) {
+    return profile;
+  }
+
+  const defaultRoles = profile.roles.slice(1);
+  return {
+    ...profile,
+    roles: ["ace", ...rolePreferences, ...defaultRoles.slice(rolePreferences.length)],
+  };
 }
 
 export function createComputerPartnerStarter(profile: ComputerPartnerProfile): Starter[] {
