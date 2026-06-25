@@ -1,16 +1,22 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import type { TurnCommand } from "#app/battle";
+import { allMoves } from "#data/data-lists";
 import { globalScene } from "#app/global-scene";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import type { BattlerIndex } from "#enums/battler-index";
 import { Command } from "#enums/command";
+import { FieldPosition } from "#enums/field-position";
+import { MoveTarget } from "#enums/move-target";
 import { SwitchType } from "#enums/switch-type";
 import type { Pokemon } from "#field/pokemon";
 import { BypassSpeedChanceModifier } from "#modifiers/modifier";
 import { PokemonMove } from "#moves/pokemon-move";
 import { FieldPhase } from "#phases/field-phase";
 import { randSeedInt } from "#utils/common";
+import { areBattlerIndexesAllies, isEnemyBattlerIndex, isPlayerBattlerIndex } from "#utils/battler-index-utils";
 import { inSpeedOrder } from "#utils/speed-order-generator";
+
+type FieldPositionSnapshot = Map<BattlerIndex, FieldPosition>;
 
 export class TurnStartPhase extends FieldPhase {
   public readonly phaseName = "TurnStartPhase";
@@ -69,6 +75,9 @@ export class TurnStartPhase extends FieldPhase {
 
     const field = globalScene.getField();
     const moveOrder = this.getCommandOrder();
+    const initialPositions = this.getFieldPositionSnapshot(field);
+    const finalPositions = this.getPlannedFieldPositions(moveOrder, field, initialPositions);
+    this.remapTurnTargetsToFinalPositions(initialPositions, finalPositions);
 
     for (const pokemon of inSpeedOrder(ArenaTagSide.BOTH)) {
       const preTurnCommand = globalScene.currentBattle.preTurnCommands[pokemon.getBattlerIndex()];
@@ -150,6 +159,13 @@ export class TurnStartPhase extends FieldPhase {
           pokemon.isPlayer(),
         );
         break;
+      case Command.REPOSITION:
+        globalScene.phaseManager.unshiftNew(
+          "RepositionPhase",
+          pokemon.getBattlerIndex(),
+          turnCommand.cursor as FieldPosition,
+        );
+        break;
       case Command.RUN:
         globalScene.phaseManager.unshiftNew("AttemptRunPhase");
         break;
@@ -177,6 +193,176 @@ export class TurnStartPhase extends FieldPhase {
       turnCommand.targets ?? queuedMove.targets,
       move,
       queuedMove.useMode,
+    );
+  }
+
+  private getFieldPositionSnapshot(field: Pokemon[]): FieldPositionSnapshot {
+    const snapshot: FieldPositionSnapshot = new Map();
+    field.forEach((pokemon, battlerIndex) => {
+      if (pokemon?.isActive(true)) {
+        snapshot.set(battlerIndex as BattlerIndex, pokemon.fieldPosition);
+      }
+    });
+    return snapshot;
+  }
+
+  private getPlannedFieldPositions(
+    moveOrder: BattlerIndex[],
+    field: Pokemon[],
+    initialPositions: FieldPositionSnapshot,
+  ): FieldPositionSnapshot {
+    const plannedPositions: FieldPositionSnapshot = new Map(initialPositions);
+
+    for (const battlerIndex of moveOrder) {
+      const turnCommand = globalScene.currentBattle.turnCommands[battlerIndex];
+      const pokemon = field[battlerIndex];
+      if (!pokemon?.isActive(true) || turnCommand?.command !== Command.REPOSITION) {
+        continue;
+      }
+
+      const targetPosition = turnCommand.cursor as FieldPosition;
+      const previousPosition = plannedPositions.get(battlerIndex);
+      if (previousPosition === undefined || previousPosition === targetPosition) {
+        continue;
+      }
+
+      const swapBattler = this.findBattlerAtPlannedPosition(plannedPositions, targetPosition, battlerIndex);
+      plannedPositions.set(battlerIndex, targetPosition);
+      if (swapBattler !== undefined) {
+        plannedPositions.set(swapBattler, previousPosition);
+      }
+    }
+
+    return plannedPositions;
+  }
+
+  private findBattlerAtPlannedPosition(
+    plannedPositions: FieldPositionSnapshot,
+    position: FieldPosition,
+    sourceBattler: BattlerIndex,
+  ): BattlerIndex | undefined {
+    for (const [battlerIndex, battlerPosition] of plannedPositions) {
+      if (
+        battlerIndex !== sourceBattler
+        && battlerPosition === position
+        && areBattlerIndexesAllies(battlerIndex, sourceBattler)
+      ) {
+        return battlerIndex;
+      }
+    }
+  }
+
+  private remapTurnTargetsToFinalPositions(
+    initialPositions: FieldPositionSnapshot,
+    finalPositions: FieldPositionSnapshot,
+  ): void {
+    for (const [battlerIndex, turnCommand] of Object.entries(globalScene.currentBattle.turnCommands)) {
+      if (!turnCommand || turnCommand.command === Command.REPOSITION) {
+        continue;
+      }
+
+      const userIndex = Number(battlerIndex) as BattlerIndex;
+      if (turnCommand.command === Command.FIGHT && turnCommand.move) {
+        const move = allMoves[turnCommand.move.move];
+        if (move) {
+          turnCommand.move.targets = this.remapTargetsToFinalPositions(
+            turnCommand.move.targets,
+            userIndex,
+            move.moveTarget,
+            initialPositions,
+            finalPositions,
+          );
+          if (turnCommand.targets) {
+            turnCommand.targets = this.remapTargetsToFinalPositions(
+              turnCommand.targets,
+              userIndex,
+              move.moveTarget,
+              initialPositions,
+              finalPositions,
+            );
+          }
+        }
+      } else if (turnCommand.targets) {
+        turnCommand.targets = this.remapTargetsToFinalPositions(
+          turnCommand.targets,
+          userIndex,
+          undefined,
+          initialPositions,
+          finalPositions,
+        );
+      }
+    }
+  }
+
+  private remapTargetsToFinalPositions(
+    targets: BattlerIndex[],
+    userIndex: BattlerIndex,
+    moveTarget: MoveTarget | undefined,
+    initialPositions: FieldPositionSnapshot,
+    finalPositions: FieldPositionSnapshot,
+  ): BattlerIndex[] {
+    const remappedTargets = targets.map(target =>
+      this.remapTargetToFinalPosition(target, userIndex, moveTarget, initialPositions, finalPositions),
+    );
+    return [...new Set(remappedTargets)];
+  }
+
+  private remapTargetToFinalPosition(
+    target: BattlerIndex,
+    userIndex: BattlerIndex,
+    moveTarget: MoveTarget | undefined,
+    initialPositions: FieldPositionSnapshot,
+    finalPositions: FieldPositionSnapshot,
+  ): BattlerIndex {
+    if (
+      target === userIndex
+      || target < 0
+      || !initialPositions.has(target)
+      || !this.shouldRemapTargetByPosition(moveTarget)
+    ) {
+      return target;
+    }
+
+    return this.findBattlerAtInitialTargetPosition(target, initialPositions, finalPositions) ?? target;
+  }
+
+  private shouldRemapTargetByPosition(moveTarget: MoveTarget | undefined): boolean {
+    switch (moveTarget) {
+      case MoveTarget.USER:
+      case MoveTarget.PARTY:
+      case MoveTarget.USER_SIDE:
+      case MoveTarget.ENEMY_SIDE:
+      case MoveTarget.BOTH_SIDES:
+        return false;
+      default:
+        return true;
+    }
+  }
+
+  private findBattlerAtInitialTargetPosition(
+    target: BattlerIndex,
+    initialPositions: FieldPositionSnapshot,
+    finalPositions: FieldPositionSnapshot,
+  ): BattlerIndex | undefined {
+    const targetPosition = initialPositions.get(target);
+    if (targetPosition === undefined) {
+      return;
+    }
+
+    for (const [battlerIndex, finalPosition] of finalPositions) {
+      if (
+        finalPosition === targetPosition
+        && this.areBattlerIndexesOnSameSide(battlerIndex, target)
+      ) {
+        return battlerIndex;
+      }
+    }
+  }
+
+  private areBattlerIndexesOnSameSide(a: BattlerIndex, b: BattlerIndex): boolean {
+    return (
+      (isPlayerBattlerIndex(a) && isPlayerBattlerIndex(b))
+      || (isEnemyBattlerIndex(a) && isEnemyBattlerIndex(b))
     );
   }
 }

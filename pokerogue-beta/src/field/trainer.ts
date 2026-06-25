@@ -9,7 +9,7 @@ import { PartyMemberStrength } from "#enums/party-member-strength";
 import { SpeciesId } from "#enums/species-id";
 import { TeraAIMode } from "#enums/tera-ai-mode";
 import { TrainerPoolTier } from "#enums/trainer-pool-tier";
-import { TrainerSlot } from "#enums/trainer-slot";
+import { getTrainerSlotForFieldIndex, TrainerSlot } from "#enums/trainer-slot";
 import { TrainerType } from "#enums/trainer-type";
 import { TrainerVariant } from "#enums/trainer-variant";
 import type { EnemyPokemon } from "#field/pokemon";
@@ -17,7 +17,7 @@ import type { PersistentModifier } from "#modifiers/modifier";
 import type { TrainerConfig } from "#trainers/trainer-config";
 import { trainerConfigs } from "#trainers/trainer-config";
 import { TrainerPartyCompoundTemplate, type TrainerPartyTemplate } from "#trainers/trainer-party-template";
-import { getRandomTwoPlayerTrainerPartner } from "#trainers/two-player-trainer-partners";
+import { getRandomTwoPlayerTrainerPartners } from "#trainers/two-player-trainer-partners";
 import { randSeedInt, randSeedItem } from "#utils/common";
 import { getRandomLocaleEntry } from "#utils/i18n";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
@@ -58,6 +58,7 @@ const TATE_LIZA_STRONG_PAIRS: TateLizaPair[] = [
 
 // `shiftCharCodes` uses `String.fromCharCode`, so offsets that differ by 2^16 produce identical seeds.
 const TRAINER_PARTNER_SEED_OFFSET = 0x7fff;
+const TRAINER_PARTNER_2_SEED_OFFSET = 0x3fff;
 
 function isTateLizaTrainerType(trainerType?: TrainerType): boolean {
   return trainerType === TrainerType.TATE || trainerType === TrainerType.LIZA;
@@ -125,17 +126,33 @@ function getTateLizaPairForPartyIndex(
   return randSeedItem(filteredPool.length > 0 ? filteredPool : pool);
 }
 
+function getTrainerSlotSeedOffset(trainerSlot: TrainerSlot): number {
+  switch (trainerSlot) {
+    case TrainerSlot.TRAINER_PARTNER:
+      return TRAINER_PARTNER_SEED_OFFSET;
+    case TrainerSlot.TRAINER_PARTNER_2:
+      return TRAINER_PARTNER_2_SEED_OFFSET;
+    default:
+      return 0;
+  }
+}
+
 export class Trainer extends Phaser.GameObjects.Container {
   public config: TrainerConfig;
   public variant: TrainerVariant;
   private trainerVariant: TrainerVariant;
   public partnerTrainerType: TrainerType | undefined;
+  public partnerTrainerType2: TrainerType | undefined;
   public partnerVariant: TrainerVariant;
+  public partnerVariant2: TrainerVariant;
   public partyTemplateIndex: number;
   public partnerName: string | undefined;
+  public partnerName2: string | undefined;
   public nameKey: string;
   public partnerNameKey: string | undefined;
+  public partnerNameKey2: string | undefined;
   private partnerConfig: TrainerConfig | undefined;
+  private partnerConfig2: TrainerConfig | undefined;
   public originalIndexes: { [key: number]: number } = {};
 
   /**
@@ -151,6 +168,10 @@ export class Trainer extends Phaser.GameObjects.Container {
    * @param partnerTrainerType - If provided, will use this TrainerType as the second trainer in a double battle
    * @param partnerVariant - If provided, will use this variant for the second trainer
    * @param partnerTrainerConfigOverride - If provided, will override the partner trainer config for the given trainer type
+   * @param partnerTrainerType2 - If provided, will use this TrainerType as the third trainer in a triple battle
+   * @param partnerVariant2 - If provided, will use this variant for the third trainer
+   * @param partnerTrainerConfigOverride2 - If provided, will override the third trainer config for the given trainer type
+   * @param partnerNameKey2 - If provided, will override the third trainer's name key
    * @todo Review how many of these parameters we actually need
    */
   constructor(
@@ -163,6 +184,10 @@ export class Trainer extends Phaser.GameObjects.Container {
     partnerTrainerType?: TrainerType,
     partnerVariant?: TrainerVariant,
     partnerTrainerConfigOverride?: TrainerConfig,
+    partnerTrainerType2?: TrainerType,
+    partnerVariant2?: TrainerVariant,
+    partnerTrainerConfigOverride2?: TrainerConfig,
+    partnerNameKey2?: string,
   ) {
     super(globalScene, -72, 80);
     const requestedVariant = variant;
@@ -172,25 +197,35 @@ export class Trainer extends Phaser.GameObjects.Container {
         ? trainerConfigs[trainerType]
         : trainerConfigs[TrainerType.ACE_TRAINER]);
 
-    const lookupPartnerTrainerType =
+    const lookupPartnerTrainerTypes =
       !trainerConfigOverride
       && globalScene.twoPlayerMode
       && globalScene.twoPlayerPartySize === 6
       && !this.config.doubleOnly
-        ? getRandomTwoPlayerTrainerPartner(trainerType)
-        : undefined;
+        ? getRandomTwoPlayerTrainerPartners(trainerType, globalScene.multiplayerPlayerCount > 2 ? 2 : 1)
+        : [];
     this.partnerTrainerType =
       partnerTrainerType
       ?? partnerTrainerConfigOverride?.trainerType
-      ?? lookupPartnerTrainerType
+      ?? lookupPartnerTrainerTypes[0]
       ?? (variant === TrainerVariant.DOUBLE && this.config.trainerTypeDouble
         ? this.config.trainerTypeDouble
+        : undefined);
+    this.partnerTrainerType2 =
+      partnerTrainerType2
+      ?? partnerTrainerConfigOverride2?.trainerType
+      ?? lookupPartnerTrainerTypes[1]
+      ?? (globalScene.twoPlayerMode && globalScene.multiplayerPlayerCount > 2
+        ? lookupPartnerTrainerTypes[0]
         : undefined);
     this.partnerConfig =
       partnerTrainerConfigOverride
       ?? (this.partnerTrainerType == null ? undefined : trainerConfigs[this.partnerTrainerType]);
+    this.partnerConfig2 =
+      partnerTrainerConfigOverride2
+      ?? (this.partnerTrainerType2 == null ? undefined : trainerConfigs[this.partnerTrainerType2]);
 
-    if (this.partnerConfig && !this.config.doubleOnly) {
+    if ((this.partnerConfig || this.partnerConfig2) && !this.config.doubleOnly) {
       variant = TrainerVariant.DOUBLE;
     }
 
@@ -201,7 +236,7 @@ export class Trainer extends Phaser.GameObjects.Container {
         }
         break;
       case TrainerVariant.DOUBLE:
-        if (!this.config.hasDouble && !this.partnerConfig) {
+        if (!this.config.hasDouble && !this.partnerConfig && !this.partnerConfig2) {
           variant = TrainerVariant.DEFAULT;
         }
         break;
@@ -224,6 +259,13 @@ export class Trainer extends Phaser.GameObjects.Container {
           : randSeedInt(2)
             ? TrainerVariant.FEMALE
             : TrainerVariant.DEFAULT
+        : TrainerVariant.DEFAULT);
+    this.partnerVariant2 =
+      partnerVariant2
+      ?? (this.partnerConfig2?.hasGenders
+        ? randSeedInt(2)
+          ? TrainerVariant.FEMALE
+          : TrainerVariant.DEFAULT
         : TrainerVariant.DEFAULT);
     this.partyTemplateIndex = Math.min(
       partyTemplateIndex === undefined ? randSeedItem(this.config.partyTemplates.map((_, i) => i)) : partyTemplateIndex,
@@ -280,6 +322,34 @@ export class Trainer extends Phaser.GameObjects.Container {
           [this.partnerNameKey, this.partnerName] = getRandomLocaleEntry(`${classKey}${partnerGenderKey}`);
         }
       }
+
+      if (this.variant === TrainerVariant.DOUBLE && this.partnerConfig2 && !this.config.doubleOnly) {
+        if (partnerNameKey2) {
+          this.partnerNameKey2 = partnerNameKey2;
+          this.partnerName2 = i18next.t(this.partnerNameKey2);
+        } else if (this.partnerConfig2 === this.config) {
+          const partnerGenderKey = i18next.exists(`${classKey}.male`)
+            ? this.partnerVariant2 === TrainerVariant.FEMALE
+              ? ".female"
+              : ".male"
+            : i18next.exists(`${classKey}.female`)
+              ? ".female"
+              : "";
+          [this.partnerNameKey2, this.partnerName2] = getRandomLocaleEntry(`${classKey}${partnerGenderKey}`);
+        } else {
+          const partnerClassKey = `trainersCommon:${toCamelCase(TrainerType[this.partnerConfig2.trainerType])}`;
+          if (i18next.exists(partnerClassKey, { returnObjects: true })) {
+            const partnerGenderKey = i18next.exists(`${partnerClassKey}.male`)
+              ? this.partnerVariant2 === TrainerVariant.FEMALE
+                ? ".female"
+                : ".male"
+              : "";
+            [this.partnerNameKey2, this.partnerName2] = getRandomLocaleEntry(`${partnerClassKey}${partnerGenderKey}`);
+          } else {
+            this.partnerName2 = this.partnerConfig2.getTitle(TrainerSlot.TRAINER, TrainerVariant.DEFAULT);
+          }
+        }
+      }
     }
 
     const getSprite = (config: TrainerConfig, variant: TrainerVariant, hasShadow?: boolean) => {
@@ -315,16 +385,28 @@ export class Trainer extends Phaser.GameObjects.Container {
       const spriteConfig = this.partnerConfig ?? this.config;
       const partnerSprite = getSprite(spriteConfig, this.partnerVariant, true);
       const partnerTintSprite = getSprite(spriteConfig, this.partnerVariant);
+      const partner2Sprite = this.partnerConfig2
+        ? getSprite(this.partnerConfig2, this.partnerVariant2, true)
+        : undefined;
+      const partner2TintSprite = this.partnerConfig2 ? getSprite(this.partnerConfig2, this.partnerVariant2) : undefined;
 
       partnerTintSprite.setVisible(false);
+      partner2TintSprite?.setVisible(false);
 
-      sprite.x = -4;
-      tintSprite.x = -4;
-      partnerSprite.x = 28;
-      partnerTintSprite.x = 28;
+      const hasSecondPartner = !!partner2Sprite && !!partner2TintSprite;
+      sprite.x = hasSecondPartner ? -28 : -4;
+      tintSprite.x = sprite.x;
+      partnerSprite.x = hasSecondPartner ? 0 : 28;
+      partnerTintSprite.x = partnerSprite.x;
 
       this.add(partnerSprite);
       this.add(partnerTintSprite);
+      if (partner2Sprite && partner2TintSprite) {
+        partner2Sprite.x = 28;
+        partner2TintSprite.x = 28;
+        this.add(partner2Sprite);
+        this.add(partner2TintSprite);
+      }
     }
   }
 
@@ -338,6 +420,62 @@ export class Trainer extends Phaser.GameObjects.Container {
     return this.config.getSpriteKey(this.trainerVariant === TrainerVariant.FEMALE || forceFemale, this.isDouble());
   }
 
+  private getConfigForTrainerSlot(trainerSlot: TrainerSlot): TrainerConfig {
+    switch (trainerSlot) {
+      case TrainerSlot.TRAINER_PARTNER:
+        return this.partnerConfig ?? this.config;
+      case TrainerSlot.TRAINER_PARTNER_2:
+        return this.partnerConfig2 ?? this.partnerConfig ?? this.config;
+      default:
+        return this.config;
+    }
+  }
+
+  private getVariantForTrainerSlot(trainerSlot: TrainerSlot): TrainerVariant {
+    switch (trainerSlot) {
+      case TrainerSlot.TRAINER_PARTNER:
+        return this.partnerVariant;
+      case TrainerSlot.TRAINER_PARTNER_2:
+        return this.partnerVariant2;
+      default:
+        return this.trainerVariant === TrainerVariant.FEMALE ? TrainerVariant.FEMALE : TrainerVariant.DEFAULT;
+    }
+  }
+
+  private getNameOverrideForTrainerSlot(trainerSlot: TrainerSlot): string | undefined {
+    switch (trainerSlot) {
+      case TrainerSlot.TRAINER_PARTNER:
+        return this.partnerName;
+      case TrainerSlot.TRAINER_PARTNER_2:
+        return this.partnerName2;
+      default:
+        return this.name;
+    }
+  }
+
+  private getTrainerPartyConfigs(): { config: TrainerConfig; trainerSlot: TrainerSlot }[] {
+    const ret = [{ config: this.config, trainerSlot: TrainerSlot.TRAINER }];
+    if (this.partnerConfig) {
+      ret.push({ config: this.partnerConfig, trainerSlot: TrainerSlot.TRAINER_PARTNER });
+    }
+    if (globalScene.getBattleFieldSlotCount() > 2 && this.partnerConfig2) {
+      ret.push({ config: this.partnerConfig2, trainerSlot: TrainerSlot.TRAINER_PARTNER_2 });
+    }
+    return ret;
+  }
+
+  private getSpriteKeyForIndex(spriteIndex: number): string {
+    const trainerSlot =
+      spriteIndex === 1
+        ? TrainerSlot.TRAINER_PARTNER
+        : spriteIndex === 2
+          ? TrainerSlot.TRAINER_PARTNER_2
+          : TrainerSlot.TRAINER;
+    const config = this.getConfigForTrainerSlot(trainerSlot);
+    const variant = this.getVariantForTrainerSlot(trainerSlot);
+    return config.getSpriteKey(variant === TrainerVariant.FEMALE, this.isDouble());
+  }
+
   /**
    * Returns the name of the trainer based on the provided trainer slot and the option to include a title.
    * @param trainerSlot - The slot to determine which name to use; default `TrainerSlot.NONE`
@@ -345,7 +483,11 @@ export class Trainer extends Phaser.GameObjects.Container {
    * @returns - The formatted name of the trainer
    */
   getName(trainerSlot: TrainerSlot = TrainerSlot.NONE, includeTitle = false): string {
-    if (this.partnerConfig && this.partnerConfig !== this.config && this.variant === TrainerVariant.DOUBLE) {
+    if (
+      this.variant === TrainerVariant.DOUBLE
+      && ((this.partnerConfig && this.partnerConfig !== this.config)
+        || (this.partnerConfig2 && this.partnerConfig2 !== this.config))
+    ) {
       const getConfigName = (config: TrainerConfig, nameOverride: string | undefined, slot: TrainerSlot) => {
         const name = nameOverride || config.getTitle(slot, TrainerVariant.DEFAULT);
         let title = includeTitle && config.title ? config.title : null;
@@ -361,14 +503,24 @@ export class Trainer extends Phaser.GameObjects.Container {
         return getConfigName(this.config, this.name, TrainerSlot.TRAINER);
       }
       if (trainerSlot === TrainerSlot.TRAINER_PARTNER) {
-        return getConfigName(this.partnerConfig, this.partnerName, TrainerSlot.TRAINER);
+        return getConfigName(this.partnerConfig ?? this.config, this.partnerName, TrainerSlot.TRAINER);
+      }
+      if (trainerSlot === TrainerSlot.TRAINER_PARTNER_2) {
+        return getConfigName(
+          this.partnerConfig2 ?? this.partnerConfig ?? this.config,
+          this.partnerName2 ?? this.partnerName,
+          TrainerSlot.TRAINER,
+        );
       }
 
-      return `${getConfigName(this.config, this.name, TrainerSlot.TRAINER)} & ${getConfigName(
-        this.partnerConfig,
-        this.partnerName,
-        TrainerSlot.TRAINER,
-      )}`;
+      const names = [getConfigName(this.config, this.name, TrainerSlot.TRAINER)];
+      if (this.partnerConfig) {
+        names.push(getConfigName(this.partnerConfig, this.partnerName, TrainerSlot.TRAINER));
+      }
+      if (this.partnerConfig2) {
+        names.push(getConfigName(this.partnerConfig2, this.partnerName2, TrainerSlot.TRAINER));
+      }
+      return names.join(" & ");
     }
     if (
       this.partnerConfig === this.config
@@ -406,15 +558,17 @@ export class Trainer extends Phaser.GameObjects.Container {
       // If no specific trainer slot is set.
       if (trainerSlot) {
         // Assign the name based on the trainer slot:
-        // Use 'this.name' if 'trainerSlot' is TRAINER.
-        // Otherwise, use 'this.partnerName' if it exists, or 'this.name' if it doesn't.
-        name = trainerSlot === TrainerSlot.TRAINER ? this.name : this.partnerName || this.name;
+        // Use the matching partner name if the slot has one.
+        name = this.getNameOverrideForTrainerSlot(trainerSlot) || this.name;
       } else {
         // Use the trainer's name.
         name = this.name;
         // If there is a partner name, concatenate it with the trainer's name using "&".
         if (this.partnerName) {
           name = `${name} & ${this.partnerName}`;
+        }
+        if (this.partnerName2) {
+          name = `${name} & ${this.partnerName2}`;
         }
       }
     }
@@ -489,7 +643,7 @@ export class Trainer extends Phaser.GameObjects.Container {
     return !!(
       globalScene.twoPlayerMode
       && globalScene.twoPlayerPartySize === 6
-      && this.partnerConfig
+      && this.getTrainerPartyConfigs().length > 1
       && this.isDouble()
       && !this.config.doubleOnly
     );
@@ -505,7 +659,12 @@ export class Trainer extends Phaser.GameObjects.Container {
   }
 
   private shouldUseTateLizaPairParty(): boolean {
-    return !!(this.isDouble() && !this.config.doubleOnly && isTateLizaDoubleConfig(this.config));
+    return !!(
+      globalScene.getBattleFieldSlotCount() < 3
+      && this.isDouble()
+      && !this.config.doubleOnly
+      && isTateLizaDoubleConfig(this.config)
+    );
   }
 
   private getTwoPlayerDoubleOnlyPartyMemberFuncIndex(index: number): number | undefined {
@@ -513,7 +672,7 @@ export class Trainer extends Phaser.GameObjects.Container {
       return;
     }
 
-    const sideIndex = index % 2;
+    const sideIndex = index % globalScene.getBattleFieldSlotCount();
     return Object.hasOwn(this.config.partyMemberFuncs, sideIndex) ? sideIndex : undefined;
   }
 
@@ -522,18 +681,20 @@ export class Trainer extends Phaser.GameObjects.Container {
       return index;
     }
 
-    return this.shouldUseTwoPlayerDoubleOnlyScaledParty() ? Math.floor(index / 2) : 0;
+    return this.shouldUseTwoPlayerDoubleOnlyScaledParty()
+      ? Math.floor(index / globalScene.getBattleFieldSlotCount())
+      : 0;
   }
 
-  private getPartyLevelsForConfig(config: TrainerConfig, waveIndex: number, enforceDoubleMinimum = false): number[] {
+  private getPartyLevelsForConfig(config: TrainerConfig, waveIndex: number, minimumPartySize = 0): number[] {
     const ret: number[] = [];
     const partyTemplate = this.getPartyTemplate(config);
 
     const difficultyWaveIndex = globalScene.gameMode.getWaveForDifficulty(waveIndex);
     const baseLevel = 1 + difficultyWaveIndex / 2 + Math.pow(difficultyWaveIndex / 25, 2);
 
-    if (enforceDoubleMinimum && partyTemplate.size < 2) {
-      partyTemplate.size = 2;
+    if (minimumPartySize > 0 && partyTemplate.size < minimumPartySize) {
+      partyTemplate.size = minimumPartySize;
     }
 
     for (let i = 0; i < partyTemplate.size; i++) {
@@ -575,32 +736,35 @@ export class Trainer extends Phaser.GameObjects.Container {
 
   getPartyLevels(waveIndex: number): number[] {
     if (this.shouldUseTateLizaPairParty()) {
-      const levels = this.getPartyLevelsForConfig(this.config, waveIndex, true);
+      const levels = this.getPartyLevelsForConfig(this.config, waveIndex, 2);
       const targetSize = getTateLizaPairCountForWave(waveIndex) * 2;
 
       return Array.from({ length: targetSize }, (_, i) => levels[Math.min(i, levels.length - 1)] ?? 1);
     }
 
     if (this.shouldUseTwoPlayerNamedPartnerParty()) {
-      const partnerConfig = this.partnerConfig!;
-      const mainLevels = this.getPartyLevelsForConfig(this.config, waveIndex);
-      const partnerLevels = this.getPartyLevelsForConfig(partnerConfig, waveIndex);
+      const levelSets = this.getTrainerPartyConfigs().map(({ config }) =>
+        this.getPartyLevelsForConfig(config, waveIndex),
+      );
       const ret: number[] = [];
-      const totalSize = Math.max(mainLevels.length, partnerLevels.length);
+      const totalSize = Math.max(...levelSets.map(levels => levels.length));
 
       for (let i = 0; i < totalSize; i++) {
-        if (i < mainLevels.length) {
-          ret.push(mainLevels[i]);
-        }
-        if (i < partnerLevels.length) {
-          ret.push(partnerLevels[i]);
+        for (const levels of levelSets) {
+          if (i < levels.length) {
+            ret.push(levels[i]);
+          }
         }
       }
 
       return ret;
     }
 
-    return this.getPartyLevelsForConfig(this.config, waveIndex, this.isDouble());
+    return this.getPartyLevelsForConfig(
+      this.config,
+      waveIndex,
+      this.isDouble() ? globalScene.getBattleFieldSlotCount() : 0,
+    );
   }
 
   private getTwoPlayerNamedPartnerPartySlot(index: number): {
@@ -608,24 +772,19 @@ export class Trainer extends Phaser.GameObjects.Container {
     partyIndex: number;
     trainerSlot: TrainerSlot;
   } {
-    const partnerConfig = this.partnerConfig!;
-    const mainSize = this.getPartyTemplate(this.config).size;
-    const partnerSize = this.getPartyTemplate(partnerConfig).size;
-    const totalSize = Math.max(mainSize, partnerSize);
+    const trainerConfigs = this.getTrainerPartyConfigs();
+    const partySizes = trainerConfigs.map(({ config }) => this.getPartyTemplate(config).size);
+    const totalSize = Math.max(...partySizes);
     let battleIndex = 0;
 
     for (let partyIndex = 0; partyIndex < totalSize; partyIndex++) {
-      if (partyIndex < mainSize) {
-        if (battleIndex === index) {
-          return { config: this.config, partyIndex, trainerSlot: TrainerSlot.TRAINER };
+      for (let trainerIndex = 0; trainerIndex < trainerConfigs.length; trainerIndex++) {
+        if (partyIndex < partySizes[trainerIndex]) {
+          if (battleIndex === index) {
+            return { ...trainerConfigs[trainerIndex], partyIndex };
+          }
+          battleIndex++;
         }
-        battleIndex++;
-      }
-      if (partyIndex < partnerSize) {
-        if (battleIndex === index) {
-          return { config: partnerConfig, partyIndex, trainerSlot: TrainerSlot.TRAINER_PARTNER };
-        }
-        battleIndex++;
       }
     }
 
@@ -762,7 +921,9 @@ export class Trainer extends Phaser.GameObjects.Container {
         ret = globalScene.addEnemyPokemon(
           species,
           level,
-          !this.isDouble() || !(index % 2) ? TrainerSlot.TRAINER : TrainerSlot.TRAINER_PARTNER,
+          this.isDouble()
+            ? getTrainerSlotForFieldIndex(index % globalScene.currentBattle.getBattlerCount())
+            : TrainerSlot.TRAINER,
         );
       },
       this.config.hasStaticParty
@@ -832,13 +993,11 @@ export class Trainer extends Phaser.GameObjects.Container {
         ret = globalScene.addEnemyPokemon(species, level, trainerSlot);
       },
       config.hasStaticParty
-        ? config.getDerivedType()
-            + ((index + 1) << 8)
-            + (trainerSlot === TrainerSlot.TRAINER_PARTNER ? TRAINER_PARTNER_SEED_OFFSET : 0)
+        ? config.getDerivedType() + ((index + 1) << 8) + getTrainerSlotSeedOffset(trainerSlot)
         : globalScene.currentBattle.waveIndex
             + (config.getDerivedType() << 10)
             + (((config.useSameSeedForAllMembers ? 0 : index) + 1) << 8)
-            + (trainerSlot === TrainerSlot.TRAINER_PARTNER ? TRAINER_PARTNER_SEED_OFFSET : 0),
+            + getTrainerSlotSeedOffset(trainerSlot),
     );
 
     return ret!;
@@ -1050,15 +1209,12 @@ export class Trainer extends Phaser.GameObjects.Container {
   genModifiers(party: readonly EnemyPokemon[]): PersistentModifier[] {
     if (this.shouldUseTwoPlayerNamedPartnerParty()) {
       const ret: PersistentModifier[] = [];
-      const mainParty = party.filter(p => p.trainerSlot === TrainerSlot.TRAINER);
-      const partnerParty = party.filter(p => p.trainerSlot === TrainerSlot.TRAINER_PARTNER);
-      const partnerConfig = this.partnerConfig!;
 
-      if (this.config.genModifiersFunc) {
-        ret.push(...this.config.genModifiersFunc(mainParty));
-      }
-      if (partnerConfig.genModifiersFunc) {
-        ret.push(...partnerConfig.genModifiersFunc(partnerParty));
+      for (const { config, trainerSlot } of this.getTrainerPartyConfigs()) {
+        const trainerParty = party.filter(p => p.trainerSlot === trainerSlot);
+        if (config.genModifiersFunc) {
+          ret.push(...config.genModifiersFunc(trainerParty));
+        }
       }
 
       return ret;
@@ -1072,12 +1228,10 @@ export class Trainer extends Phaser.GameObjects.Container {
 
   genAI(party: readonly EnemyPokemon[]) {
     if (this.shouldUseTwoPlayerNamedPartnerParty()) {
-      const mainParty = party.filter(p => p.trainerSlot === TrainerSlot.TRAINER);
-      const partnerParty = party.filter(p => p.trainerSlot === TrainerSlot.TRAINER_PARTNER);
-      const partnerConfig = this.partnerConfig!;
-
-      this.config.genAIFuncs?.forEach(f => f(mainParty));
-      partnerConfig.genAIFuncs?.forEach(f => f(partnerParty));
+      for (const { config, trainerSlot } of this.getTrainerPartyConfigs()) {
+        const trainerParty = party.filter(p => p.trainerSlot === trainerSlot);
+        config.genAIFuncs?.forEach(f => f(trainerParty));
+      }
       console.log("Generated AI funcs");
       return;
     }
@@ -1089,29 +1243,27 @@ export class Trainer extends Phaser.GameObjects.Container {
   }
 
   loadAssets(): Promise<void> {
-    if (this.partnerConfig && this.partnerConfig !== this.config && this.variant === TrainerVariant.DOUBLE) {
-      return new Promise(resolve => {
-        const trainerKey = this.getKey();
-        const partnerTrainerKey = this.getKey(true);
-        globalScene.loadAtlas(trainerKey, "trainer");
-        globalScene.loadAtlas(partnerTrainerKey, "trainer");
-        globalScene.load.once(Phaser.Loader.Events.COMPLETE, () => {
-          const originalWarn = console.warn;
-          console.warn = () => {};
-          const frameNames = globalScene.anims.generateFrameNames(trainerKey, {
-            zeroPad: 4,
-            suffix: ".png",
-            start: 1,
-            end: 128,
-          });
-          const partnerFrameNames = globalScene.anims.generateFrameNames(partnerTrainerKey, {
-            zeroPad: 4,
-            suffix: ".png",
-            start: 1,
-            end: 128,
-          });
-          console.warn = originalWarn;
+    const trainerKeys = Array.from(new Set(this.getSprites().map((_, i) => this.getSpriteKeyForIndex(i))));
 
+    return new Promise(resolve => {
+      for (const trainerKey of trainerKeys) {
+        globalScene.loadAtlas(trainerKey, "trainer");
+      }
+      globalScene.load.once(Phaser.Loader.Events.COMPLETE, () => {
+        const originalWarn = console.warn;
+        console.warn = () => {};
+        const frameEntries = trainerKeys.map(trainerKey => ({
+          trainerKey,
+          frameNames: globalScene.anims.generateFrameNames(trainerKey, {
+            zeroPad: 4,
+            suffix: ".png",
+            start: 1,
+            end: 128,
+          }),
+        }));
+        console.warn = originalWarn;
+
+        for (const { trainerKey, frameNames } of frameEntries) {
           if (!globalScene.anims.exists(trainerKey)) {
             globalScene.anims.create({
               key: trainerKey,
@@ -1120,28 +1272,18 @@ export class Trainer extends Phaser.GameObjects.Container {
               repeat: -1,
             });
           }
-          if (!globalScene.anims.exists(partnerTrainerKey)) {
-            globalScene.anims.create({
-              key: partnerTrainerKey,
-              frames: partnerFrameNames,
-              frameRate: 24,
-              repeat: -1,
-            });
-          }
-          resolve();
-        });
-        if (!globalScene.load.isLoading()) {
-          globalScene.load.start();
         }
+        resolve();
       });
-    }
-
-    return this.config.loadAssets(this.variant);
+      if (!globalScene.load.isLoading()) {
+        globalScene.load.start();
+      }
+    });
   }
 
   initSprite(): void {
-    this.getSprites().map((sprite, i) => sprite.setTexture(this.getKey(!!i)).setFrame(0));
-    this.getTintSprites().map((tintSprite, i) => tintSprite.setTexture(this.getKey(!!i)).setFrame(0));
+    this.getSprites().map((sprite, i) => sprite.setTexture(this.getSpriteKeyForIndex(i)).setFrame(0));
+    this.getTintSprites().map((tintSprite, i) => tintSprite.setTexture(this.getSpriteKeyForIndex(i)).setFrame(0));
   }
 
   /**
@@ -1177,32 +1319,27 @@ export class Trainer extends Phaser.GameObjects.Container {
   }
 
   playAnim(): void {
-    const trainerAnimConfig = {
-      key: this.getKey(),
-      repeat: 0,
-      startFrame: 0,
-    };
     const sprites = this.getSprites();
     const tintSprites = this.getTintSprites();
 
-    this.tryPlaySprite(sprites[0], tintSprites[0], trainerAnimConfig);
-
-    // Queue an animation for the second trainer if this is a double battle against two separate trainers
-    if (this.variant === TrainerVariant.DOUBLE && !this.config.doubleOnly) {
-      const partnerTrainerAnimConfig = {
-        key: this.getKey(true),
+    sprites.forEach((sprite, i) => {
+      const trainerAnimConfig = {
+        key: this.getSpriteKeyForIndex(i),
         repeat: 0,
         startFrame: 0,
       };
 
-      this.tryPlaySprite(sprites[1], tintSprites[1], partnerTrainerAnimConfig);
-    }
+      this.tryPlaySprite(sprite, tintSprites[i], trainerAnimConfig);
+    });
   }
 
   getSprites(): Phaser.GameObjects.Sprite[] {
     const ret: Phaser.GameObjects.Sprite[] = [this.getAt(0)];
     if (this.variant === TrainerVariant.DOUBLE && !this.config.doubleOnly) {
       ret.push(this.getAt(2));
+      if (this.partnerConfig2) {
+        ret.push(this.getAt(4));
+      }
     }
     return ret;
   }
@@ -1211,6 +1348,9 @@ export class Trainer extends Phaser.GameObjects.Container {
     const ret: Phaser.GameObjects.Sprite[] = [this.getAt(1)];
     if (this.variant === TrainerVariant.DOUBLE && !this.config.doubleOnly) {
       ret.push(this.getAt(3));
+      if (this.partnerConfig2) {
+        ret.push(this.getAt(5));
+      }
     }
     return ret;
   }

@@ -51,6 +51,7 @@ import { BiomeId } from "#enums/biome-id";
 import { EaseType } from "#enums/ease-type";
 import { ExpGainsSpeed } from "#enums/exp-gains-speed";
 import { ExpNotification } from "#enums/exp-notification";
+import { FieldPosition } from "#enums/field-position";
 import { FormChangeItem } from "#enums/form-change-item";
 import { GameModes } from "#enums/game-modes";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
@@ -3033,6 +3034,33 @@ export class BattleScene extends SceneBase {
         ) / 40;
       this.setFieldScale(fieldScale).then(() => resolve());
     });
+  }
+
+  updateFieldDepthOrder(): void {
+    const positionOrder = (pokemon: Pokemon): number => {
+      switch (pokemon.fieldPosition) {
+        case FieldPosition.CENTER:
+          return 2;
+        case FieldPosition.RIGHT:
+          return 1;
+        case FieldPosition.LEFT:
+        default:
+          return 0;
+      }
+    };
+    const sortByPosition = (a: Pokemon, b: Pokemon): number => positionOrder(a) - positionOrder(b);
+    const bringToTopIfPresent = (pokemon: Pokemon): void => {
+      if (this.field.getIndex(pokemon) > -1) {
+        this.field.bringToTop(pokemon);
+      }
+    };
+
+    for (const pokemon of [...this.getEnemyField(true)].sort(sortByPosition)) {
+      bringToTopIfPresent(pokemon);
+    }
+    for (const pokemon of [...this.getPlayerField(true)].sort(sortByPosition)) {
+      bringToTopIfPresent(pokemon);
+    }
   }
 
   setFieldScale(scale: number, instant = false): Promise<void> {

@@ -1,5 +1,6 @@
 import { TrainerType } from "#enums/trainer-type";
 import { randSeedItem } from "#utils/common";
+import { randSeedUniqueItem } from "#utils/random";
 import partnerLookupText from "./two-player-trainer-partners.md?raw";
 
 const TRAINER_ID_PATTERN = /^[A-Z][A-Z0-9_]+$/;
@@ -96,4 +97,14 @@ export function getTwoPlayerTrainerPartners(trainerType: TrainerType): readonly 
 export function getRandomTwoPlayerTrainerPartner(trainerType: TrainerType): TrainerType | undefined {
   const partners = getTwoPlayerTrainerPartners(trainerType);
   return partners.length > 0 ? randSeedItem(partners) : undefined;
+}
+
+export function getRandomTwoPlayerTrainerPartners(trainerType: TrainerType, count: number): TrainerType[] {
+  const partners = getTwoPlayerTrainerPartners(trainerType);
+
+  if (partners.length === 0 || count <= 0) {
+    return [];
+  }
+
+  return Array.from({ length: count }, (_, i) => randSeedUniqueItem(partners, i));
 }

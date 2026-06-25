@@ -3,12 +3,14 @@ import { globalScene } from "#app/global-scene";
 import { getTypeRgb } from "#data/type";
 import { Button } from "#enums/buttons";
 import { Command } from "#enums/command";
+import { FieldPosition } from "#enums/field-position";
 import { PartyUiMode } from "#enums/party-ui-mode";
 import { PokemonType } from "#enums/pokemon-type";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon } from "#field/pokemon";
 import type { CommandPhase } from "#phases/command-phase";
+import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { PartyUiHandler } from "#ui/party-ui-handler";
 import { addTextObject } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
@@ -154,13 +156,7 @@ export class CommandUiHandler extends UiHandler {
             break;
           // Pokemon
           case Command.POKEMON:
-            ui.setMode(
-              UiMode.PARTY,
-              PartyUiMode.SWITCH,
-              (globalScene.phaseManager.getCurrentPhase() as CommandPhase).getPokemon().getFieldIndex(),
-              null,
-              PartyUiHandler.FilterNonFainted,
-            );
+            this.openPokemonCommandMenu(globalScene.phaseManager.getCurrentPhase() as CommandPhase);
             success = true;
             break;
           // Run
@@ -216,6 +212,91 @@ export class CommandUiHandler extends UiHandler {
     }
 
     return success;
+  }
+
+  private openPokemonCommandMenu(commandPhase: CommandPhase): void {
+    if (!this.shouldShowTriplePokemonMenu()) {
+      this.openPartySwitch(commandPhase);
+      return;
+    }
+
+    const options: OptionSelectItem[] = [
+      {
+        label: "Pokemon",
+        handler: () => {
+          this.openPartySwitch(commandPhase);
+          return true;
+        },
+      },
+      {
+        label: "Switch",
+        keepOpen: true,
+        handler: () => {
+          this.openRepositionMenu(commandPhase);
+          return true;
+        },
+      },
+      {
+        label: i18next.t("menu:cancel"),
+        handler: () => {
+          globalScene.ui.setMode(UiMode.COMMAND, commandPhase.getFieldIndex());
+          return true;
+        },
+      },
+    ];
+
+    this.showCommandOptionSelect({ options, noCancel: true });
+  }
+
+  private openPartySwitch(commandPhase: CommandPhase): void {
+    globalScene.ui.setMode(
+      UiMode.PARTY,
+      PartyUiMode.SWITCH,
+      commandPhase.getPokemon().getFieldIndex(),
+      null,
+      PartyUiHandler.FilterNonFainted,
+    );
+  }
+
+  private openRepositionMenu(commandPhase: CommandPhase): void {
+    const pokemon = commandPhase.getPokemon();
+    const positionOptions: Array<{ label: string; position: FieldPosition }> = [
+      { label: "Switch to Left", position: FieldPosition.LEFT },
+      { label: "Switch to Center", position: FieldPosition.CENTER },
+      { label: "Switch to Right", position: FieldPosition.RIGHT },
+    ];
+    const options: OptionSelectItem[] = positionOptions.map(option => ({
+      label: option.label,
+      handler: () => commandPhase.handleCommand(Command.REPOSITION, option.position),
+      disabled: pokemon.fieldPosition === option.position,
+    }));
+    options.push({
+      label: i18next.t("menu:cancel"),
+      keepOpen: true,
+      handler: () => {
+        this.openPokemonCommandMenu(commandPhase);
+        return true;
+      },
+    });
+
+    this.showCommandOptionSelect({ options, noCancel: true });
+  }
+
+  private shouldShowTriplePokemonMenu(): boolean {
+    return (
+      globalScene.twoPlayerMode
+      && globalScene.getPlayerFieldOwners().length > 2
+      && (globalScene.currentBattle?.getBattlerCount() ?? 1) > 2
+    );
+  }
+
+  private showCommandOptionSelect(config: OptionSelectConfig): void {
+    if (globalScene.ui.getMode() === UiMode.OPTION_SELECT) {
+      globalScene.ui.handlers[UiMode.OPTION_SELECT].show([config]);
+      return;
+    }
+
+    globalScene.ui.setModeWithoutClear(UiMode.OPTION_SELECT, config, null, true);
   }
 
   canTera(): boolean {

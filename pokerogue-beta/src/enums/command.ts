@@ -4,4 +4,5 @@ export enum Command {
   POKEMON,
   RUN,
   TERA,
+  REPOSITION,
 }

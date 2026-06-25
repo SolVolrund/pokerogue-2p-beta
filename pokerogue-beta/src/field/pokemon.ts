@@ -1369,7 +1369,10 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
           y: (_target, _key, value: number) => value + relY,
           duration,
           ease: "Sine.easeOut",
-          onComplete: () => resolve(),
+          onComplete: () => {
+            globalScene.updateFieldDepthOrder();
+            resolve();
+          },
         });
       } else {
         this.x += relX;
@@ -1378,6 +1381,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
           subTag.sprite.x += relX;
           subTag.sprite.y += relY;
         }
+        globalScene.updateFieldDepthOrder();
+        resolve();
       }
     });
   }

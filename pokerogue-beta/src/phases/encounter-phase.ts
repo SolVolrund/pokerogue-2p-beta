@@ -363,6 +363,7 @@ export class EncounterPhase extends BattlePhase {
             if (playerPokemon?.isOnField()) {
               globalScene.field.moveBelow(enemyPokemon as Pokemon, playerPokemon);
             }
+            globalScene.updateFieldDepthOrder();
             enemyPokemon.tint(0, 0.5);
           } else if (battle.battleType === BattleType.TRAINER) {
             enemyPokemon.setVisible(false);

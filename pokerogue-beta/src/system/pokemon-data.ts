@@ -9,7 +9,7 @@ import { Nature } from "#enums/nature";
 import { PokeballType } from "#enums/pokeball";
 import type { PokemonType } from "#enums/pokemon-type";
 import type { SpeciesId } from "#enums/species-id";
-import { TrainerSlot } from "#enums/trainer-slot";
+import { getTrainerSlotForFieldIndex, TrainerSlot } from "#enums/trainer-slot";
 import { EnemyPokemon, Pokemon } from "#field/pokemon";
 import { PokemonMove } from "#moves/pokemon-move";
 import type { Variant } from "#sprites/variant";
@@ -61,6 +61,7 @@ export class PokemonData {
 
   public boss: boolean;
   public bossSegments: number;
+  public trainerSlot: TrainerSlot;
 
   // Effects that need to be preserved between waves
   public summonData: PokemonSummonData;
@@ -134,6 +135,8 @@ export class PokemonData {
 
     this.boss = (source instanceof EnemyPokemon && !!source.bossSegments) || (!this.player && !!source.boss);
     this.bossSegments = source.bossSegments ?? 0;
+    this.trainerSlot =
+      source instanceof EnemyPokemon ? source.trainerSlot : (source.trainerSlot ?? TrainerSlot.NONE);
 
     this.summonData = new PokemonSummonData(source.summonData);
     this.battleData = new PokemonBattleData(source.battleData);
@@ -168,9 +171,10 @@ export class PokemonData {
           species,
           this.level,
           battleType === BattleType.TRAINER
-            ? !double || !(partyMemberIndex % 2)
-              ? TrainerSlot.TRAINER
-              : TrainerSlot.TRAINER_PARTNER
+            ? this.trainerSlot
+              || (double
+                ? getTrainerSlotForFieldIndex(partyMemberIndex % globalScene.getBattleFieldSlotCount())
+                : TrainerSlot.TRAINER)
             : TrainerSlot.NONE,
           this.boss,
           false,

@@ -7,7 +7,7 @@ import { getPokeballAtlasKey, getPokeballTintColor } from "#data/pokeball";
 import { BattleType } from "#enums/battle-type";
 import { FieldPosition } from "#enums/field-position";
 import { MysteryEncounterMode } from "#enums/mystery-encounter-mode";
-import { TrainerSlot } from "#enums/trainer-slot";
+import { getTrainerSlotForFieldIndex } from "#enums/trainer-slot";
 import type { Pokemon } from "#field/pokemon";
 import { PartyMemberPokemonPhase } from "#phases/party-member-pokemon-phase";
 import i18next from "i18next";
@@ -16,6 +16,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
   // The union type is needed to keep typescript happy as these phases extend from SummonPhase
   public readonly phaseName: "SummonPhase" | "SummonMissingPhase" | "SwitchSummonPhase" | "ReturnPhase" = "SummonPhase";
   private readonly loaded: boolean;
+  protected inheritedFieldPosition?: FieldPosition;
 
   constructor(fieldIndex: number, player = true, loaded = false) {
     super(player && globalScene.twoPlayerMode ? 0 : fieldIndex, player);
@@ -100,7 +101,10 @@ export class SummonPhase extends PartyMemberPokemonPhase {
       }
       const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
       const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
-      const trainerStartX = globalScene.getTrainerBackSpriteX(playerIndex, globalScene.getPlayerFieldOwners().length > 1);
+      const trainerStartX = globalScene.getTrainerBackSpriteX(
+        playerIndex,
+        globalScene.getPlayerFieldOwners().length > 1,
+      );
       trainerSprite
         .setVisible(true)
         .setTexture(globalScene.getTrainerBackTextureKey(playerIndex, true))
@@ -122,9 +126,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
       globalScene.currentBattle.battleType === BattleType.TRAINER
       || globalScene.currentBattle.mysteryEncounter?.encounterMode === MysteryEncounterMode.TRAINER_BATTLE
     ) {
-      const trainerName = globalScene.currentBattle.trainer?.getName(
-        this.fieldIndex % 2 ? TrainerSlot.TRAINER_PARTNER : TrainerSlot.TRAINER,
-      );
+      const trainerName = globalScene.currentBattle.trainer?.getName(getTrainerSlotForFieldIndex(this.fieldIndex));
       const pokemonName = this.getPokemon().getNameToRender();
       const message = i18next.t("battle:trainerSendOut", {
         trainerName,
@@ -145,13 +147,20 @@ export class SummonPhase extends PartyMemberPokemonPhase {
   summon(): void {
     const pokemon = this.getPokemon();
     const playerIndex = this.player ? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex) : 0;
-    const playerFieldSlotCount = this.player && globalScene.twoPlayerMode ? globalScene.getPlayerFieldOwners().length : 2;
+    const playerFieldSlotCount =
+      this.player && globalScene.twoPlayerMode ? globalScene.getPlayerFieldOwners().length : 2;
     const fieldSlotCount = this.player ? playerFieldSlotCount : globalScene.currentBattle.getBattlerCount();
     const twoTrainerThrowOffset =
       this.player && playerFieldSlotCount > 2
-        ? (playerIndex === 0 ? -24 : playerIndex === 1 ? 24 : 0)
+        ? playerIndex === 0
+          ? -24
+          : playerIndex === 1
+            ? 24
+            : 0
         : this.player && playerFieldSlotCount > 1
-          ? (playerIndex === 0 ? -16 : 16)
+          ? playerIndex === 0
+            ? -16
+            : 16
           : 0;
 
     const pokeball = globalScene.addFieldSprite(
@@ -164,7 +173,9 @@ export class SummonPhase extends PartyMemberPokemonPhase {
     pokeball.setOrigin(0.5, 0.625);
     globalScene.field.add(pokeball);
 
-    if (fieldSlotCount > 2 && this.fieldIndex === 2) {
+    if (this.inheritedFieldPosition !== undefined) {
+      pokemon.setFieldPosition(this.inheritedFieldPosition, 0);
+    } else if (fieldSlotCount > 2 && this.fieldIndex === 2) {
       pokemon.setFieldPosition(FieldPosition.CENTER, 0);
     } else if (this.fieldIndex === 1) {
       pokemon.setFieldPosition(FieldPosition.RIGHT, 0);
@@ -214,6 +225,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
               }
               globalScene.currentBattle.seenEnemyPartyMemberIds.add(pokemon.id);
             }
+            globalScene.updateFieldDepthOrder();
             globalScene.animations.addPokeballOpenParticles(pokemon.x, pokemon.y - 16, pokemon.getPokeball(true));
             globalScene.updateModifiers(this.player);
             globalScene.updateFieldScale();
@@ -254,7 +266,8 @@ export class SummonPhase extends PartyMemberPokemonPhase {
    */
   summonWild(): void {
     const pokemon = this.getPokemon();
-    const playerFieldSlotCount = this.player && globalScene.twoPlayerMode ? globalScene.getPlayerFieldOwners().length : 2;
+    const playerFieldSlotCount =
+      this.player && globalScene.twoPlayerMode ? globalScene.getPlayerFieldOwners().length : 2;
     const fieldSlotCount = this.player ? playerFieldSlotCount : globalScene.currentBattle.getBattlerCount();
 
     if (fieldSlotCount > 2 && this.fieldIndex === 2) {
@@ -282,6 +295,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
       }
       globalScene.currentBattle.seenEnemyPartyMemberIds.add(pokemon.id);
     }
+    globalScene.updateFieldDepthOrder();
     globalScene.updateModifiers(this.player);
     globalScene.updateFieldScale();
     pokemon.showInfo();

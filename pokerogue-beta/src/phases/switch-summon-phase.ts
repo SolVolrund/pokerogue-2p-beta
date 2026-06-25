@@ -9,7 +9,7 @@ import { getPokeballTintColor } from "#data/pokeball";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import { Command } from "#enums/command";
 import { SwitchType } from "#enums/switch-type";
-import { TrainerSlot } from "#enums/trainer-slot";
+import { getTrainerSlotForFieldIndex } from "#enums/trainer-slot";
 import type { Pokemon } from "#field/pokemon";
 import { SwitchEffectTransferModifier } from "#modifiers/modifier";
 import { SummonPhase } from "#phases/summon-phase";
@@ -65,11 +65,11 @@ export class SwitchSummonPhase extends SummonPhase {
       if (this.slotIndex === -1) {
         //@ts-expect-error
         this.slotIndex = globalScene.currentBattle.trainer?.getNextSummonIndex(
-          this.fieldIndex ? TrainerSlot.TRAINER_PARTNER : TrainerSlot.TRAINER,
+          getTrainerSlotForFieldIndex(this.fieldIndex),
         ); // TODO: what would be the default trainer-slot fallback?
       }
       if (this.slotIndex > -1) {
-        this.showEnemyTrainer(this.fieldIndex % 2 ? TrainerSlot.TRAINER_PARTNER : TrainerSlot.TRAINER);
+        this.showEnemyTrainer(getTrainerSlotForFieldIndex(this.fieldIndex));
         globalScene.pbTrayEnemy.showPbTray(globalScene.getEnemyParty());
       }
     }
@@ -111,9 +111,7 @@ export class SwitchSummonPhase extends SummonPhase {
             pokemonName: getPokemonNameWithAffix(pokemon),
           })
         : i18next.t("battle:trainerComeBack", {
-            trainerName: globalScene.currentBattle.trainer?.getName(
-              this.fieldIndex % 2 ? TrainerSlot.TRAINER_PARTNER : TrainerSlot.TRAINER,
-            ),
+            trainerName: globalScene.currentBattle.trainer?.getName(getTrainerSlotForFieldIndex(this.fieldIndex)),
             pokemonName: pokemon.getNameToRender(),
           }),
     );
@@ -136,6 +134,7 @@ export class SwitchSummonPhase extends SummonPhase {
     const party = this.player ? this.getParty() : globalScene.getEnemyParty();
     const switchedInPokemon: Pokemon | undefined = party[this.slotIndex];
     this.lastPokemon = this.getPokemon();
+    this.inheritedFieldPosition = this.lastPokemon.fieldPosition;
 
     // Defensive programming: Overcome the bug where the summon data has somehow not been reset
     // prior to switching in a new Pokemon.
@@ -304,9 +303,7 @@ export class SwitchSummonPhase extends SummonPhase {
 
     // "Trainer sent out XYZ!"
     return i18next.t("battle:trainerGo", {
-      trainerName: globalScene.currentBattle.trainer?.getName(
-        this.fieldIndex % 2 ? TrainerSlot.TRAINER_PARTNER : TrainerSlot.TRAINER,
-      ),
+      trainerName: globalScene.currentBattle.trainer?.getName(getTrainerSlotForFieldIndex(this.fieldIndex)),
       pokemonName: this.getPokemon().getNameToRender(),
     });
   }

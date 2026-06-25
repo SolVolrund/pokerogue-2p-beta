@@ -2,6 +2,7 @@ import { globalScene } from "#app/global-scene";
 import { allMoves } from "#data/data-lists";
 import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
+import { FieldPosition } from "#enums/field-position";
 import { MoveCategory, type MoveDamageCategory } from "#enums/move-category";
 import type { MoveId } from "#enums/move-id";
 import { MoveTarget } from "#enums/move-target";
@@ -12,7 +13,7 @@ import type { Pokemon } from "#field/pokemon";
 import { applyMoveAttrs } from "#moves/apply-attrs";
 import type { Move, UserMoveConditionFunc } from "#moves/move";
 import type { MoveTargetSet } from "#types/move-target-set";
-import { areBattlerIndexesAllies, getFieldIndexFromBattlerIndex } from "#utils/battler-index-utils";
+import { areBattlerIndexesAllies } from "#utils/battler-index-utils";
 import { areAllies } from "#utils/pokemon-utils";
 import { ValueHolder } from "#utils/value-holder";
 
@@ -167,29 +168,29 @@ function getNearTargets(user: Pokemon, targets: Pokemon[]): Pokemon[] {
     return targets;
   }
 
-  const userBattlerIndex = user.getBattlerIndex();
-  return targets.filter(target => areTripleBattlersAdjacent(userBattlerIndex, target.getBattlerIndex()));
+  return targets.filter(target => areTriplePokemonAdjacent(user, target));
 }
 
 function usesTripleAdjacency(): boolean {
   return (globalScene.currentBattle?.getBattlerCount() ?? 1) > 2;
 }
 
-function areTripleBattlersAdjacent(userIndex: BattlerIndex, targetIndex: BattlerIndex): boolean {
+function areTriplePokemonAdjacent(user: Pokemon, target: Pokemon): boolean {
+  const userIndex = user.getBattlerIndex();
+  const targetIndex = target.getBattlerIndex();
+
   if (userIndex === targetIndex || userIndex === BattlerIndex.ATTACKER || targetIndex === BattlerIndex.ATTACKER) {
     return false;
   }
 
-  const userFieldIndex = getFieldIndexFromBattlerIndex(userIndex);
-  const targetFieldIndex = getFieldIndexFromBattlerIndex(targetIndex);
-  const userCenter = userFieldIndex === 2;
-  const targetCenter = targetFieldIndex === 2;
+  const userCenter = user.fieldPosition === FieldPosition.CENTER;
+  const targetCenter = target.fieldPosition === FieldPosition.CENTER;
 
   if (areBattlerIndexesAllies(userIndex, targetIndex)) {
     return userCenter || targetCenter;
   }
 
-  return userCenter || targetCenter || userFieldIndex === targetFieldIndex;
+  return userCenter || targetCenter || user.fieldPosition === target.fieldPosition;
 }
 
 function getShinyBadgeDuelTargets(user: Pokemon, ally?: Pokemon): Pokemon[] | undefined {

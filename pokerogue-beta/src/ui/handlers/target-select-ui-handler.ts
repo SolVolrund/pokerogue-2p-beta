@@ -2,6 +2,7 @@ import { globalScene } from "#app/global-scene";
 import { SubstituteTag } from "#data/battler-tags";
 import { BattlerIndex } from "#enums/battler-index";
 import { Button } from "#enums/buttons";
+import { FieldPosition } from "#enums/field-position";
 import type { MoveId } from "#enums/move-id";
 import { UiMode } from "#enums/ui-mode";
 import type { Pokemon } from "#field/pokemon";
@@ -303,6 +304,19 @@ interface TripleTargetPosition {
 }
 
 function getTripleTargetPosition(target: number): TripleTargetPosition | undefined {
+  const pokemon = globalScene.getField()[target];
+  if (pokemon && (globalScene.currentBattle?.getBattlerCount() ?? 1) > 2) {
+    const row = pokemon.isEnemy() ? 0 : 1;
+    switch (pokemon.fieldPosition) {
+      case FieldPosition.LEFT:
+        return { row, column: 0 };
+      case FieldPosition.CENTER:
+        return { row, column: 1 };
+      case FieldPosition.RIGHT:
+        return { row, column: 2 };
+    }
+  }
+
   switch (target) {
     case BattlerIndex.ENEMY:
       return { row: 0, column: 0 };
