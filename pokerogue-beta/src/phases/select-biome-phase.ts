@@ -84,7 +84,7 @@ export class SelectBiomePhase extends BattlePhase {
   }
 
   private getMapPlayerIndexes(): PlayerIndex[] {
-    return ([0, 1] as PlayerIndex[]).filter(playerIndex =>
+    return globalScene.getActivePlayerIndexes().filter(playerIndex =>
       globalScene.findModifierForPlayer(modifier => modifier instanceof MapModifier, playerIndex),
     );
   }
@@ -109,35 +109,52 @@ export class SelectBiomePhase extends BattlePhase {
   }
 
   private showTwoPlayerMapVote(biomes: BiomeId[]): void {
-    let firstPlayerBiome: BiomeId;
+    const mapPlayerIndexes = this.getMapPlayerIndexes();
+    const votes: BiomeId[] = [];
 
-    this.showMapSelectForPlayer(0, biomes, biome => {
-      firstPlayerBiome = biome;
-      globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-        this.showMapSelectForPlayer(
-          1,
-          biomes,
-          secondPlayerBiome => {
-            globalScene.ui
-              .setMode(UiMode.MESSAGE)
-              .then(() =>
-                this.setNextBiomeAndEndForTwoPlayer(this.resolveTwoPlayerMapVote(firstPlayerBiome, secondPlayerBiome)),
-              );
-          },
-          biomes.indexOf(firstPlayerBiome),
-        );
-      });
-    });
+    const showNextVote = (voteIndex: number, startingCursorIndex = 0) => {
+      const playerIndex = mapPlayerIndexes[voteIndex];
+      if (playerIndex === undefined) {
+        globalScene.ui
+          .setMode(UiMode.MESSAGE)
+          .then(() => this.setNextBiomeAndEndForTwoPlayer(this.resolveTwoPlayerMapVote(votes)));
+        return;
+      }
+
+      this.showMapSelectForPlayer(
+        playerIndex,
+        biomes,
+        biome => {
+          votes.push(biome);
+          globalScene.ui.setMode(UiMode.MESSAGE).then(() => showNextVote(voteIndex + 1, biomes.indexOf(biome)));
+        },
+        startingCursorIndex,
+      );
+    };
+
+    showNextVote(0);
   }
 
-  private resolveTwoPlayerMapVote(firstPlayerBiome: BiomeId, secondPlayerBiome: BiomeId): BiomeId {
-    if (firstPlayerBiome === secondPlayerBiome) {
-      return firstPlayerBiome;
+  private resolveTwoPlayerMapVote(votes: BiomeId[]): BiomeId {
+    const voteCounts = new Map<BiomeId, number>();
+    for (const vote of votes) {
+      voteCounts.set(vote, (voteCounts.get(vote) ?? 0) + 1);
     }
 
-    const winningPlayerIndex = globalScene.twoPlayerMysteryDecisionPriority;
-    globalScene.twoPlayerMysteryDecisionPriority = winningPlayerIndex === 0 ? 1 : 0;
-    return winningPlayerIndex === 0 ? firstPlayerBiome : secondPlayerBiome;
+    const highestVoteCount = Math.max(...voteCounts.values());
+    const tiedVotes = [...voteCounts.entries()]
+      .filter(([, count]) => count === highestVoteCount)
+      .map(([biome]) => biome);
+    if (tiedVotes.length === 1) {
+      return tiedVotes[0];
+    }
+
+    const tiedPlayerIndexes = votes
+      .map((vote, playerIndex) => ({ vote, playerIndex: playerIndex as PlayerIndex }))
+      .filter(({ vote }) => tiedVotes.includes(vote))
+      .map(({ playerIndex }) => playerIndex);
+    const winningPlayerIndex = globalScene.resolvePlayerTieBreak(tiedPlayerIndexes);
+    return tiedVotes.includes(votes[winningPlayerIndex]) ? votes[winningPlayerIndex] : tiedVotes[0];
   }
 
   private showMapSelectForPlayer(
@@ -185,7 +202,7 @@ export class SelectBiomePhase extends BattlePhase {
 
     if (nextWaveIndex % 10 === 1) {
       if (globalScene.twoPlayerMode) {
-        ([0, 1] as PlayerIndex[]).forEach(playerIndex => {
+        globalScene.getActivePlayerIndexes().forEach(playerIndex => {
           globalScene.applyModifierForPlayer(MoneyInterestModifier, playerIndex, playerIndex);
         });
       } else {

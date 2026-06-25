@@ -1,14 +1,12 @@
 import { globalScene } from "#app/global-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import { Gender } from "#data/gender";
-import { PlayerGender } from "#enums/player-gender";
-import { PlayerTrainerSprite } from "#enums/player-trainer-sprite";
 import type { PlayerPokemon } from "#field/pokemon";
 import type { Starter } from "#types/save-data";
 import {
   createComputerPartnerStarter,
   getComputerPartnerProfile,
   type ComputerPartnerKey,
-  type ComputerPartnerProfile,
 } from "#utils/computer-partner-profile";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 
@@ -21,7 +19,7 @@ export async function inviteComputerPartnerToRun(key: ComputerPartnerKey): Promi
   }
 
   globalScene.configureTwoPlayerMode(true, 6, true);
-  applyComputerPartnerIdentity(profile);
+  applyComputerPartnerIdentity(profile, 1);
 
   const party = globalScene.getPlayerParty(1);
   party.splice(0, party.length);
@@ -36,31 +34,33 @@ export async function inviteComputerPartnerToRun(key: ComputerPartnerKey): Promi
   globalScene.setActivePlayerIndex(0);
 }
 
-export function dismissComputerPartnerFromRun(): string {
-  const profile = getComputerPartnerProfile(globalScene.computerPartnerKey);
+export function dismissComputerPartnerFromRun(playerIndex: PlayerIndex = 1): string {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
 
   if (!globalScene.twoPlayerComputerPartner) {
     return profile.name;
   }
 
   globalScene.clearMysteryEncounterBattlePlayerFieldOwners();
-  globalScene.getPlayerParty(1).forEach(pokemon => {
-    if (pokemon.isOnField()) {
-      pokemon.leaveField(true, true, false);
-    }
-  });
-  globalScene.players[1].party.splice(0, globalScene.players[1].party.length);
-  globalScene.players[1].modifiers.splice(0, globalScene.players[1].modifiers.length);
+  globalScene.getActivePlayerIndexes()
+    .filter(partnerIndex => globalScene.isComputerPartnerPlayer(partnerIndex))
+    .forEach(partnerIndex => {
+      globalScene.getPlayerParty(partnerIndex).forEach(pokemon => {
+        if (pokemon.isOnField()) {
+          pokemon.leaveField(true, true, false);
+        }
+      });
+      globalScene.players[partnerIndex].party.splice(0, globalScene.players[partnerIndex].party.length);
+      globalScene.players[partnerIndex].modifiers.splice(0, globalScene.players[partnerIndex].modifiers.length);
+    });
   globalScene.setActivePlayerIndex(0);
   globalScene.configureTwoPlayerMode(false);
 
   return profile.name;
 }
 
-function applyComputerPartnerIdentity(profile: ComputerPartnerProfile): void {
-  globalScene.computerPartnerKey = profile.key;
-  globalScene.twoPlayerGuestTrainerSprite = profile.trainerSprite ?? PlayerTrainerSprite.BASE_GIRL;
-  globalScene.twoPlayerGuestGender = profile.trainerGender ?? PlayerGender.FEMALE;
+function applyComputerPartnerIdentity(profile: ReturnType<typeof getComputerPartnerProfile>, playerIndex: PlayerIndex): void {
+  globalScene.setComputerPartnerKey(playerIndex, profile.key);
 }
 
 function createPartnerPokemon(starter: Starter, isAce: boolean): PlayerPokemon {

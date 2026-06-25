@@ -361,9 +361,8 @@ async function runTwoPlayerTeleportingHijinksChoices(): Promise<boolean> {
   let useTeleportRoute = teleportChoices.length > 0 && inspectChoices.length === 0;
 
   if (teleportChoices.length > 0 && inspectChoices.length > 0) {
-    const winningPlayerIndex = globalScene.twoPlayerMysteryDecisionPriority;
+    const winningPlayerIndex = globalScene.resolvePlayerTieBreak(choices.map(choice => choice.playerIndex));
     useTeleportRoute = teleportChoices.some(choice => choice.playerIndex === winningPlayerIndex);
-    globalScene.twoPlayerMysteryDecisionPriority = winningPlayerIndex === 0 ? 1 : 0;
     await showEncounterText(`Player ${winningPlayerIndex + 1}'s choice wins this time.`);
   }
 

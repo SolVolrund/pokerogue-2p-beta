@@ -183,8 +183,7 @@ export class FaintPhase extends PokemonPhase {
       const legalPlayerPartyPokemon = legalPlayerPokemon.filter(p => !p.isActive(true));
       if (legalPlayerPokemon.length === 0) {
         if (
-          globalScene.twoPlayerComputerPartner
-          && playerIndex === 1
+          globalScene.isComputerPartnerPlayer(playerIndex)
           && globalScene.getPokemonAllowedInBattle(0).length > 0
         ) {
           dismissComputerPartner = true;
@@ -254,7 +253,9 @@ export class FaintPhase extends PokemonPhase {
           }
           pokemon.leaveField();
           if (dismissComputerPartner) {
-            const partnerName = dismissComputerPartnerFromRun();
+            const partnerName = dismissComputerPartnerFromRun(
+              globalScene.getPlayerIndexForPokemon(pokemon as PlayerPokemon) ?? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex),
+            );
             globalScene.phaseManager.queueMessage(
               `${partnerName} had to head back to the Pokemon Center for safety.`,
               null,

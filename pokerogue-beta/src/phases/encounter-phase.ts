@@ -48,6 +48,20 @@ import { applyPersistentFieldBlessing } from "#utils/field-blessings";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import i18next from "i18next";
 
+interface ComputerPartnerCaptureCallout {
+  playerIndex: PlayerIndex;
+  partnerName: string;
+  decisions: ComputerPartnerCaptureDecision[];
+}
+
+interface ComputerPartnerCaptureAnnouncement {
+  message: string;
+  callouts: ComputerPartnerCaptureCallout[];
+  decisions: ComputerPartnerCaptureDecision[];
+}
+
+const CAPTURE_CLAIM_TIE_MARGIN = 0.5;
+
 export class EncounterPhase extends BattlePhase {
   // Union type is necessary as this is subclassed, and typescript will otherwise complain
   public readonly phaseName: "EncounterPhase" | "NextEncounterPhase" | "NewBiomeEncounterPhase" = "EncounterPhase";
@@ -505,81 +519,113 @@ export class EncounterPhase extends BattlePhase {
         });
   }
 
-  getComputerPartnerCaptureAnnouncement(): { message: string; decisions: ComputerPartnerCaptureDecision[] } | undefined {
+  getComputerPartnerCaptureAnnouncement(): ComputerPartnerCaptureAnnouncement | undefined {
     if (!globalScene.twoPlayerComputerPartner || globalScene.currentBattle.battleType !== BattleType.WILD) {
       return undefined;
     }
 
-    const partnerPokemon = globalScene
-      .getPlayerField(true)
-      .find(pokemon => globalScene.getPlayerIndexForPokemon(pokemon) === 1);
-    if (!partnerPokemon) {
-      return undefined;
-    }
-
-    const captureDecisions = getComputerPartnerCaptureDecisions(
-      globalScene.computerPartnerKey,
-      globalScene.getPlayerParty(1),
-      partnerPokemon,
-      globalScene.getEnemyField(),
-      globalScene.getPlayerPokeballCounts(1),
+    const capturableTargets = globalScene.getEnemyField().filter(pokemon =>
+      pokemon.isActive(true) && !pokemon.isFainted() && !pokemon.isBoss(),
     );
-
-    if (!captureDecisions.length) {
+    if (!capturableTargets.length) {
       return undefined;
     }
 
-    const profile = getComputerPartnerProfile(globalScene.computerPartnerKey);
-    const targetNames = captureDecisions.map(decision => decision.target.getNameToRender());
-    const targetText =
-      targetNames.length === 1
-        ? targetNames[0]
-        : `${targetNames.slice(0, -1).join(", ")} and ${targetNames[targetNames.length - 1]}`;
+    const callouts: ComputerPartnerCaptureCallout[] = [];
+    for (const playerIndex of globalScene.getActivePlayerIndexes().filter(playerIndex =>
+      globalScene.isComputerPartnerPlayer(playerIndex),
+    )) {
+      const partnerPokemon = globalScene
+        .getPlayerField(true)
+        .find(pokemon => globalScene.getPlayerIndexForPokemon(pokemon) === playerIndex);
+      if (!partnerPokemon) {
+        continue;
+      }
+
+      const captureDecisions = getComputerPartnerCaptureDecisions(
+        globalScene.getComputerPartnerKey(playerIndex),
+        globalScene.getPlayerParty(playerIndex),
+        partnerPokemon,
+        globalScene.getEnemyField(),
+        globalScene.getPlayerPokeballCounts(playerIndex),
+      );
+
+      if (!captureDecisions.length) {
+        continue;
+      }
+
+      const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+      callouts.push({
+        playerIndex,
+        partnerName: profile.name,
+        decisions: captureDecisions,
+      });
+    }
+
+    if (!callouts.length) {
+      return {
+        message: capturableTargets.length === 1
+          ? `Do you want to capture ${capturableTargets[0].getNameToRender()}?`
+          : "Do you want to capture any of these Pokemon?",
+        callouts,
+        decisions: [],
+      };
+    }
+
     return {
-      message: `${profile.name} wants to capture ${targetText}.`,
-      decisions: captureDecisions,
+      message: callouts
+        .map(callout => `${callout.partnerName} wants to capture ${this.getCaptureTargetText(callout.decisions)}.`)
+        .join("\n"),
+      callouts,
+      decisions: this.getUniqueCaptureDecisions(callouts.flatMap(callout => callout.decisions)),
     };
   }
 
   showComputerPartnerCapturePrompt(
-    announcement: { message: string; decisions: ComputerPartnerCaptureDecision[] },
+    announcement: ComputerPartnerCaptureAnnouncement,
     onComplete: () => void,
   ): void {
     const enemyField = globalScene.getEnemyField();
-    const setReservedCaptureTarget = (targetId: number) => {
+    const setCaptureClaims = (targetId?: number) => {
+      const playerClaims = targetId === undefined ? [] : [{ playerIndex: 0 as PlayerIndex, targetId }];
+      const partnerClaims = this.resolveComputerPartnerCaptureClaims(announcement.callouts, targetId);
+      globalScene.currentBattle.computerPartnerCaptureClaims = [
+        ...playerClaims,
+        ...partnerClaims,
+      ];
       globalScene.currentBattle.computerPartnerReservedCaptureTargetId = targetId;
+      globalScene.currentBattle.computerPartnerReservedCaptureTargetIds = targetId === undefined ? [] : [targetId];
       onComplete();
       return true;
     };
     const options: OptionSelectItem[] = announcement.decisions.map(decision => {
       const targetName = decision.target.getNameToRender();
-      const sideLabel = enemyField.length > 1 ? `${decision.targetIndex === 0 ? "left" : "right"} ` : "";
+      const sideLabel = this.getEnemyCapturePositionLabel(decision.targetIndex, enemyField);
       return {
         label: `Can I take ${sideLabel}${targetName}?`,
-        handler: () => setReservedCaptureTarget(decision.target.id),
+        handler: () => setCaptureClaims(decision.target.id),
       };
     });
     const partnerTargetIds = new Set(announcement.decisions.map(decision => decision.target.id));
-    if (enemyField.length > 1) {
-      enemyField.forEach((pokemon, targetIndex) => {
-        if (!pokemon.isActive(true) || pokemon.isFainted() || partnerTargetIds.has(pokemon.id)) {
+    enemyField
+      .map((pokemon, targetIndex) => ({ pokemon, targetIndex }))
+      .sort((a, b) => this.getCaptureTargetSortValue(a.targetIndex) - this.getCaptureTargetSortValue(b.targetIndex))
+      .forEach(({ pokemon, targetIndex }) => {
+        if (!pokemon.isActive(true) || pokemon.isFainted() || pokemon.isBoss() || partnerTargetIds.has(pokemon.id)) {
           return;
         }
 
         const targetName = pokemon.getNameToRender();
-        const sideLabel = targetIndex === 0 ? "left" : "right";
+        const sideLabel = this.getEnemyCapturePositionLabel(targetIndex, enemyField);
         options.push({
-          label: `Okay, I'll take ${sideLabel} ${targetName}.`,
-          handler: () => setReservedCaptureTarget(pokemon.id),
+          label: `Okay, I'll take ${sideLabel}${targetName}.`,
+          handler: () => setCaptureClaims(pokemon.id),
         });
       });
-    }
     options.push({
       label: "Go for it",
       handler: () => {
-        globalScene.currentBattle.computerPartnerReservedCaptureTargetId = undefined;
-        onComplete();
-        return true;
+        return setCaptureClaims();
       },
     });
 
@@ -592,6 +638,96 @@ export class EncounterPhase extends BattlePhase {
     globalScene.ui.showText(announcement.message, null, () => {
       globalScene.ui.setMode(UiMode.OPTION_SELECT, config);
     }, 0, true);
+  }
+
+  private getCaptureTargetText(decisions: ComputerPartnerCaptureDecision[]): string {
+    const targetNames = this.getUniqueCaptureDecisions(decisions).map(decision => decision.target.getNameToRender());
+    if (targetNames.length === 1) {
+      return targetNames[0];
+    }
+
+    return `${targetNames.slice(0, -1).join(", ")} and ${targetNames[targetNames.length - 1]}`;
+  }
+
+  private getUniqueCaptureDecisions(decisions: ComputerPartnerCaptureDecision[]): ComputerPartnerCaptureDecision[] {
+    const uniqueDecisions = new Map<number, ComputerPartnerCaptureDecision>();
+    for (const decision of decisions) {
+      uniqueDecisions.set(decision.target.id, decision);
+    }
+
+    return [...uniqueDecisions.values()].sort((a, b) =>
+      this.getCaptureTargetSortValue(a.targetIndex) - this.getCaptureTargetSortValue(b.targetIndex),
+    );
+  }
+
+  private getEnemyCapturePositionLabel(targetIndex: number, enemyField = globalScene.getEnemyField()): string {
+    if (enemyField.length <= 1) {
+      return "";
+    }
+
+    if (enemyField.length > 2) {
+      switch (targetIndex) {
+        case 0:
+          return "left ";
+        case 2:
+          return "center ";
+        case 1:
+          return "right ";
+      }
+    }
+
+    return targetIndex === 0 ? "left " : "right ";
+  }
+
+  private getCaptureTargetSortValue(targetIndex: number): number {
+    switch (targetIndex) {
+      case 0:
+        return 0;
+      case 2:
+        return 1;
+      case 1:
+        return 2;
+      default:
+        return targetIndex;
+    }
+  }
+
+  private resolveComputerPartnerCaptureClaims(
+    callouts: ComputerPartnerCaptureCallout[],
+    excludedTargetId?: number,
+  ): Array<{ playerIndex: PlayerIndex; targetId: number }> {
+    const claimsByTarget = new Map<number, Array<{ playerIndex: PlayerIndex; decision: ComputerPartnerCaptureDecision }>>();
+    for (const callout of callouts) {
+      for (const decision of callout.decisions) {
+        if (decision.target.id === excludedTargetId) {
+          continue;
+        }
+
+        const claims = claimsByTarget.get(decision.target.id) ?? [];
+        claims.push({ playerIndex: callout.playerIndex, decision });
+        claimsByTarget.set(decision.target.id, claims);
+      }
+    }
+
+    return [...claimsByTarget.entries()].map(([targetId, claims]) => {
+      if (claims.length === 1) {
+        return { playerIndex: claims[0].playerIndex, targetId };
+      }
+
+      const bestImprovement = Math.max(...claims.map(claim => this.getCaptureDecisionImprovement(claim.decision)));
+      const contenders = claims.filter(claim =>
+        bestImprovement - this.getCaptureDecisionImprovement(claim.decision) <= CAPTURE_CLAIM_TIE_MARGIN,
+      );
+      const playerIndex =
+        contenders.length === 1
+          ? contenders[0].playerIndex
+          : globalScene.resolvePlayerTieBreak(contenders.map(contender => contender.playerIndex));
+      return { playerIndex, targetId };
+    });
+  }
+
+  private getCaptureDecisionImprovement(decision: ComputerPartnerCaptureDecision): number {
+    return decision.replacementScore.candidateTeamScore - decision.replacementScore.currentTeamScore;
   }
 
   doEncounterCommon(showEncounterMessage = true) {

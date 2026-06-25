@@ -45,22 +45,18 @@ export class SelectStarterPhase extends Phase {
           const nextPlayerIndex = playerIndexes[currentPlayerOffset + 1];
           if (nextPlayerIndex !== undefined) {
             this.waitForTwoPlayerProfilesBeforeAction(() => {
-              const computerPartnerProfile = getComputerPartnerProfile(globalScene.computerPartnerKey);
+              const computerPartnerProfile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(nextPlayerIndex));
               if (
-                globalScene.twoPlayerComputerPartner
-                && nextPlayerIndex === 1
+                globalScene.isComputerPartnerPlayer(nextPlayerIndex)
                 && !computerPartnerProfile.usesPlayerSelectedStarters
               ) {
-                this.initComputerPartnerStarters().then(() => {
-                  globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("starters-selected");
-                  globalScene.waitForPlayerInput(0);
-                  this.selectSaveSlot(() => this.beginBattle());
-                });
+                this.initComputerPartnerStarters(nextPlayerIndex)
+                  .then(() => this.advanceAfterStarterSelection(nextPlayerIndex));
                 return;
               }
 
               globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-                const starterPrompt = globalScene.twoPlayerComputerPartner && nextPlayerIndex === 1
+                const starterPrompt = globalScene.isComputerPartnerPlayer(nextPlayerIndex)
                   ? i18next.t("menu:computerPartnerStarterPrompt")
                   : nextPlayerIndex === 1
                     ? i18next.t("menu:playerTwoStarterPrompt")
@@ -80,6 +76,40 @@ export class SelectStarterPhase extends Phase {
 
       this.selectSaveSlot(() => this.initPlayerStarters(starters, 0).then(() => this.beginBattle()));
     });
+  }
+
+  private advanceAfterStarterSelection(playerIndex: PlayerIndex): void {
+    const playerIndexes = globalScene.getActivePlayerIndexes();
+    const currentPlayerOffset = playerIndexes.indexOf(playerIndex);
+    const nextPlayerIndex = playerIndexes[currentPlayerOffset + 1];
+    if (nextPlayerIndex !== undefined) {
+      this.waitForTwoPlayerProfilesBeforeAction(() => {
+        const computerPartnerProfile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(nextPlayerIndex));
+        if (
+          globalScene.isComputerPartnerPlayer(nextPlayerIndex)
+          && !computerPartnerProfile.usesPlayerSelectedStarters
+        ) {
+          this.initComputerPartnerStarters(nextPlayerIndex).then(() =>
+            this.advanceAfterStarterSelection(nextPlayerIndex),
+          );
+          return;
+        }
+
+        globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+          const starterPrompt = globalScene.isComputerPartnerPlayer(nextPlayerIndex)
+            ? i18next.t("menu:computerPartnerStarterPrompt")
+            : nextPlayerIndex === 1
+              ? i18next.t("menu:playerTwoStarterPrompt")
+              : "Player 3, choose your starters.";
+          globalScene.ui.showText(starterPrompt, null, () => this.selectStartersForPlayer(nextPlayerIndex));
+        });
+      });
+      return;
+    }
+
+    globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("starters-selected");
+    globalScene.waitForSharedInput();
+    this.selectSaveSlot(() => this.beginBattle());
   }
 
   private selectSaveSlot(onSlotSelected: () => void): void {
@@ -147,7 +177,7 @@ export class SelectStarterPhase extends Phase {
         starter.ivs,
         starter.nature,
       );
-      if (globalScene.twoPlayerComputerPartner && playerIndex === 1 && i === 0) {
+      if (globalScene.isComputerPartnerPlayer(playerIndex) && i === 0) {
         starterPokemon.computerPartnerAce = true;
       }
       if (starter.moveset) {
@@ -190,10 +220,10 @@ export class SelectStarterPhase extends Phase {
     return Promise.all(loadPokemonAssets).then(() => undefined);
   }
 
-  private initComputerPartnerStarters(): Promise<void> {
-    const profile = getComputerPartnerProfile(globalScene.computerPartnerKey);
+  private initComputerPartnerStarters(playerIndex: PlayerIndex): Promise<void> {
+    const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
     const starters = createComputerPartnerStarter(profile);
-    return this.initPlayerStarters(starters, 1);
+    return this.initPlayerStarters(starters, playerIndex);
   }
 
   private waitForTwoPlayerProfilesBeforeAction(onReady: () => void): void {
@@ -204,7 +234,9 @@ export class SelectStarterPhase extends Phase {
 
     globalScene.waitForSharedInput();
     globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-      globalScene.ui.showText("Waiting for both player profiles...", null, null, null, false);
+      const waitingMessage =
+        globalScene.multiplayerPlayerCount > 2 ? "Waiting for all player profiles..." : "Waiting for both player profiles...";
+      globalScene.ui.showText(waitingMessage, null, null, null, false);
       globalScene.waitForTwoPlayerProfileExchange().then(ready => {
         if (ready) {
           globalScene.ui.clearText();
@@ -212,7 +244,11 @@ export class SelectStarterPhase extends Phase {
           return;
         }
 
-        globalScene.ui.showText("Still waiting for the other player profile.", null, () =>
+        const retryMessage =
+          globalScene.multiplayerPlayerCount > 2
+            ? "Still waiting for the other player profiles."
+            : "Still waiting for the other player profile.";
+        globalScene.ui.showText(retryMessage, null, () =>
           this.waitForTwoPlayerProfilesBeforeAction(onReady),
         );
       });

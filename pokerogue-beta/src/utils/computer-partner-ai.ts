@@ -1,17 +1,14 @@
 import { globalScene } from "#app/global-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import { EntryHazardTag } from "#data/arena-tag";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 
 export function isComputerPartnerFieldIndex(fieldIndex: number): boolean {
-  return (
-    globalScene.twoPlayerComputerPartner
-    && globalScene.twoPlayerMode
-    && globalScene.getPlayerIndexForFieldSlot(fieldIndex) === 1
-  );
+  return globalScene.isComputerPartnerPlayer(globalScene.getPlayerIndexForFieldSlot(fieldIndex));
 }
 
-export function getComputerPartnerPartyMemberMatchupScores(): [number, number][] {
-  const party = globalScene.getPlayerParty(1);
+export function getComputerPartnerPartyMemberMatchupScores(playerIndex: PlayerIndex): [number, number][] {
+  const party = globalScene.getPlayerParty(playerIndex);
   const enemyField = globalScene.getEnemyField().filter(p => p.isAllowedInBattle());
 
   return party
@@ -38,7 +35,7 @@ export function getComputerPartnerPartyMemberMatchupScores(): [number, number][]
 }
 
 export function getSortedComputerPartnerPartyMemberMatchupScores(
-  partyMemberScores = getComputerPartnerPartyMemberMatchupScores(),
+  partyMemberScores: [number, number][],
 ): [number, number][] {
   return partyMemberScores.slice(0).sort((a, b) => {
     const scoreA = a[1];
@@ -64,8 +61,8 @@ export function getComputerPartnerNextSummonIndex(partyMemberScores: [number, nu
   return maxScorePartyMemberIndexes[0];
 }
 
-export function getComputerPartnerBestSwitchIndex(): number | undefined {
-  return getComputerPartnerNextSummonIndex(getComputerPartnerPartyMemberMatchupScores());
+export function getComputerPartnerBestSwitchIndex(playerIndex: PlayerIndex): number | undefined {
+  return getComputerPartnerNextSummonIndex(getComputerPartnerPartyMemberMatchupScores(playerIndex));
 }
 
 export function getComputerPartnerImprovedSwitchIndex(
@@ -73,12 +70,13 @@ export function getComputerPartnerImprovedSwitchIndex(
   switchMultiplier = 1,
   scoreMultiplier = 3,
 ): number | undefined {
+  const playerIndex = globalScene.getPlayerIndexForFieldSlot(fieldIndex);
   const playerPokemon = globalScene.getPlayerField()[fieldIndex];
   if (!playerPokemon) {
     return undefined;
   }
 
-  const partyMemberScores = getComputerPartnerPartyMemberMatchupScores();
+  const partyMemberScores = getComputerPartnerPartyMemberMatchupScores(playerIndex);
   if (partyMemberScores.length === 0) {
     return undefined;
   }

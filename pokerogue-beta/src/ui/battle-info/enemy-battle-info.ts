@@ -18,6 +18,7 @@ export class EnemyBattleInfo extends BattleInfo {
   protected championRibbon: Phaser.GameObjects.Sprite;
   protected ownedIcon: Phaser.GameObjects.Sprite;
   protected guestOwnedIcon: Phaser.GameObjects.Sprite;
+  protected guest2OwnedIcon: Phaser.GameObjects.Sprite;
   protected flyoutMenu: BattleFlyout;
   protected pokemon: EnemyPokemon | undefined;
 
@@ -78,6 +79,13 @@ export class EnemyBattleInfo extends BattleInfo {
       .setOrigin(0, 0)
       .setPositionRelative(this.nameText, 8, 11.75);
 
+    this.guest2OwnedIcon = globalScene.add
+      .sprite(0, 0, "icon_owned")
+      .setName("icon_owned_guest_2")
+      .setVisible(false)
+      .setOrigin(0, 0)
+      .setPositionRelative(this.nameText, 16, 11.75);
+
     this.championRibbon = globalScene.add
       .sprite(0, 0, "champion_ribbon")
       .setName("icon_champion_ribbon")
@@ -85,7 +93,10 @@ export class EnemyBattleInfo extends BattleInfo {
       .setOrigin(0, 0)
       .setPositionRelative(this.nameText, 8, 11.75);
     // Ensure these two icons are positioned below the stats container
-    this.addAt([this.ownedIcon, this.guestOwnedIcon, this.championRibbon], this.getIndex(this.statsContainer));
+    this.addAt(
+      [this.ownedIcon, this.guestOwnedIcon, this.guest2OwnedIcon, this.championRibbon],
+      this.getIndex(this.statsContainer),
+    );
 
     this.flyoutMenu = new BattleFlyout(this.player);
     this.add(this.flyoutMenu);
@@ -140,14 +151,32 @@ export class EnemyBattleInfo extends BattleInfo {
     const p2Visible = globalScene.twoPlayerMode
       ? this.refreshOwnedIconForPlayer(this.guestOwnedIcon, enemyPokemon, 1)
       : false;
+    const p3Visible = globalScene.getActivePlayerIndexes().includes(2)
+      ? this.refreshOwnedIconForPlayer(this.guest2OwnedIcon, enemyPokemon, 2)
+      : false;
 
     if (!globalScene.twoPlayerMode) {
       this.guestOwnedIcon.setVisible(false);
     }
+    if (!globalScene.getActivePlayerIndexes().includes(2)) {
+      this.guest2OwnedIcon.setVisible(false);
+    }
 
-    const occupiedOwnedIconSlots = globalScene.twoPlayerMode ? (p1Visible || p2Visible ? 2 : 0) : p1Visible ? 1 : 0;
+    const occupiedOwnedIconSlots = this.getOccupiedOwnedIconSlots(p1Visible, p2Visible, p3Visible);
     this.refreshChampionRibbon(enemyPokemon, occupiedOwnedIconSlots);
     this.updateStatusIcon(enemyPokemon, occupiedOwnedIconSlots * 8 + (this.championRibbon.visible ? 8 : 0));
+  }
+
+  private getOccupiedOwnedIconSlots(p1Visible = this.ownedIcon.visible, p2Visible = this.guestOwnedIcon.visible, p3Visible = this.guest2OwnedIcon.visible): number {
+    if (p3Visible) {
+      return 3;
+    }
+
+    if (p2Visible) {
+      return 2;
+    }
+
+    return p1Visible ? 1 : 0;
   }
 
   private refreshOwnedIconForPlayer(
@@ -182,7 +211,7 @@ export class EnemyBattleInfo extends BattleInfo {
       return;
     }
 
-    const playerIndexes = globalScene.twoPlayerMode ? ([0, 1] as const) : ([0] as const);
+    const playerIndexes = globalScene.twoPlayerMode ? globalScene.getActivePlayerIndexes() : ([0] as PlayerIndex[]);
     const hasClassicWin = playerIndexes.some(playerIndex => {
       const gameData = globalScene.twoPlayerMode ? globalScene.getPlayerGameData(playerIndex) : globalScene.gameData;
       const rootSpeciesId = enemyPokemon.species.getRootSpeciesId();
@@ -288,13 +317,7 @@ export class EnemyBattleInfo extends BattleInfo {
   }
 
   override updateStatusIcon(pokemon: EnemyPokemon, xOffset?: number): void {
-    const occupiedOwnedIconSlots = globalScene.twoPlayerMode
-      ? this.ownedIcon.visible || this.guestOwnedIcon.visible
-        ? 2
-        : 0
-      : this.ownedIcon.visible
-        ? 1
-        : 0;
+    const occupiedOwnedIconSlots = this.getOccupiedOwnedIconSlots();
     super.updateStatusIcon(
       pokemon,
       xOffset ?? occupiedOwnedIconSlots * 8 + (this.championRibbon.visible ? 8 : 0),

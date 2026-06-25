@@ -124,10 +124,9 @@ export class MysteryEncounterPhase extends Phase {
       this.firstTwoPlayerDecisionIndex = undefined;
 
       if (firstIndex !== index) {
-        const winningPlayerIndex = globalScene.twoPlayerMysteryDecisionPriority;
+        const winningPlayerIndex = globalScene.resolvePlayerTieBreak([0, 1]);
         index = winningPlayerIndex === 0 ? firstIndex : index;
         option = encounter.options[index];
-        globalScene.twoPlayerMysteryDecisionPriority = winningPlayerIndex === 0 ? 1 : 0;
         this.twoPlayerDecisionMessage = `Player ${winningPlayerIndex + 1}'s choice wins this time.`;
       }
     }

@@ -1,4 +1,4 @@
-import type { PokeballCounts } from "#app/battle-scene";
+import type { MultiplayerPlayerCount, PlayerIndex, PokeballCounts } from "#app/battle-scene";
 import type { Tutorial } from "#app/tutorial";
 import type { BattleType } from "#enums/battle-type";
 import type { GameModes } from "#enums/game-modes";
@@ -60,9 +60,11 @@ export interface SessionSaveData {
   money: number;
   players?: PlayerSessionSaveData[];
   twoPlayerMode?: boolean;
+  multiplayerPlayerCount?: MultiplayerPlayerCount;
   twoPlayerPartySize?: 3 | 6;
   twoPlayerComputerPartner?: boolean;
   computerPartnerKey?: ComputerPartnerKey;
+  computerPartnerKeys?: Partial<Record<PlayerIndex, ComputerPartnerKey>>;
   score: number;
   waveIndex: number;
   // TODO: This enum being inside save data is basically useless, being inferrable from the presence or absence of `trainer` and `mysteryEncounterType`.

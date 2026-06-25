@@ -337,8 +337,8 @@ export class AttemptCapturePhase extends PokemonPhase {
             return;
           }
           if (globalScene.getPlayerParty(this.playerIndex).length === PLAYER_PARTY_MAX_SIZE) {
-            if (globalScene.twoPlayerComputerPartner && this.playerIndex === 1) {
-              const profile = getComputerPartnerProfile(globalScene.computerPartnerKey);
+            if (globalScene.isComputerPartnerPlayer(this.playerIndex)) {
+              const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(this.playerIndex));
               const replacementScore = getBestComputerPartnerReplacementSlot(
                 profile,
                 globalScene.getPlayerParty(this.playerIndex),

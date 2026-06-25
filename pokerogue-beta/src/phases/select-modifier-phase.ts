@@ -30,6 +30,7 @@ import {
   TmModifierType,
 } from "#modifiers/modifier-type";
 import { BattlePhase } from "#phases/battle-phase";
+import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import type { ModifierSelectUiHandler } from "#ui/modifier-select-ui-handler";
 import { SHOP_OPTIONS_ROW_LIMIT } from "#ui/modifier-select-ui-handler";
 import { PartyOption, PartyUiHandler, PartyUiMode, type PokemonSelectFilter } from "#ui/party-ui-handler";
@@ -39,6 +40,7 @@ import {
   type ComputerPartnerRecoveryChoice,
   type ComputerPartnerRewardChoice,
 } from "#utils/computer-partner-reward-ai";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
 import { NumberHolder } from "#utils/common";
 import i18next from "i18next";
 
@@ -132,10 +134,7 @@ export class SelectModifierPhase extends BattlePhase {
               return this.openTradeScreen(modifierSelectCallback);
             // Check the party, pass a callback to restore the modifier select screen.
             case 3:
-              globalScene.ui.setModeWithoutClear(UiMode.PARTY, PartyUiMode.CHECK, -1, () => {
-                this.resetModifierSelect(modifierSelectCallback);
-              });
-              return true;
+              return this.openCheckTeamScreen(modifierSelectCallback);
             case 4:
               return this.toggleRerollLock();
             default:
@@ -155,7 +154,7 @@ export class SelectModifierPhase extends BattlePhase {
   }
 
   private isComputerPartnerRewardPlayer(): boolean {
-    return globalScene.twoPlayerComputerPartner && globalScene.twoPlayerMode && this.playerIndex === 1;
+    return globalScene.isComputerPartnerPlayer(this.playerIndex);
   }
 
   private getComputerPartnerShopOptions(): ModifierTypeOption[] {
@@ -268,17 +267,18 @@ export class SelectModifierPhase extends BattlePhase {
     const itemName = choice.option.type.name;
     const action = isPurchase ? "Purchased" : "Selected";
     const targetName = this.getComputerPartnerTargetPokemonName(choice);
+    const partnerName = getComputerPartnerProfile(globalScene.getComputerPartnerKey(this.playerIndex)).name;
 
     if (this.isComputerPartnerTeamWideChoice(choice)) {
-      return `[Partner]: ${action} ${itemName} and used it on their team.`;
+      return `${partnerName}: ${action} ${itemName} and used it on their team.`;
     }
 
     if (targetName) {
       const targetAction = !isPurchase && modifier instanceof PokemonHeldItemModifier ? "gave it to" : "used it on";
-      return `[Partner]: ${action} ${itemName} and ${targetAction} ${targetName}.`;
+      return `${partnerName}: ${action} ${itemName} and ${targetAction} ${targetName}.`;
     }
 
-    return `[Partner]: ${action} ${itemName}.`;
+    return `${partnerName}: ${action} ${itemName}.`;
   }
 
   private getComputerPartnerTargetPokemonName(
@@ -437,15 +437,94 @@ export class SelectModifierPhase extends BattlePhase {
     return true;
   }
 
+  private openCheckTeamScreen(modifierSelectCallback: ModifierSelectCallback): boolean {
+    const restoreRewardScreen = () => this.resetModifierSelect(modifierSelectCallback);
+    const partnerPlayerIndexes = globalScene
+      .getActivePlayerIndexes()
+      .filter(playerIndex => playerIndex !== this.playerIndex && globalScene.isComputerPartnerPlayer(playerIndex));
+
+    if (!globalScene.twoPlayerComputerPartner || partnerPlayerIndexes.length === 0) {
+      this.openCheckTeamParty(this.playerIndex, restoreRewardScreen);
+      return true;
+    }
+
+    const options: OptionSelectItem[] = [
+      {
+        label: "Check your Team",
+        handler: () => {
+          this.openCheckTeamParty(this.playerIndex, restoreRewardScreen);
+          return true;
+        },
+      },
+      ...partnerPlayerIndexes.map(partnerPlayerIndex => ({
+        label: `Check ${this.getPlayerDisplayName(partnerPlayerIndex)}'s team`,
+        handler: () => {
+          this.openCheckTeamParty(partnerPlayerIndex, restoreRewardScreen, this.playerIndex);
+          return true;
+        },
+      }) satisfies OptionSelectItem),
+      {
+        label: i18next.t("menu:cancel"),
+        handler: () => {
+          restoreRewardScreen();
+          return true;
+        },
+      },
+    ];
+
+    this.showRewardOptionSelect({ options, noCancel: true });
+    return true;
+  }
+
+  private openCheckTeamParty(
+    playerIndex: PlayerIndex,
+    onComplete: () => void,
+    inputPlayerIndex = playerIndex,
+  ): void {
+    globalScene.ui
+      .setModeWithoutClear(UiMode.PARTY, PartyUiMode.CHECK, this.getFieldSlotForPlayer(playerIndex), () => {
+        onComplete();
+      })
+      .then(() => {
+        if (globalScene.twoPlayerMode) {
+          globalScene.waitForPlayerInput(inputPlayerIndex);
+        }
+      });
+  }
+
   private openTradeScreen(modifierSelectCallback: ModifierSelectCallback): boolean {
-    if (!globalScene.twoPlayerMode || !this.hasLinkingCordGold(this.playerIndex)) {
+    if (!globalScene.twoPlayerMode || !this.hasAvailableTradeTarget(this.playerIndex)) {
       globalScene.ui.playError();
       return false;
     }
 
     const sourcePlayerIndex = this.playerIndex;
-    const targetPlayerIndex = (sourcePlayerIndex === 0 ? 1 : 0) as PlayerIndex;
     const restoreRewardScreen = () => this.resetModifierSelect(modifierSelectCallback);
+    const tradeTargets = this.getAvailableTradeTargetPlayerIndexes(sourcePlayerIndex);
+    const options: OptionSelectItem[] = tradeTargets.map(targetPlayerIndex => ({
+      label: `Trade with ${this.getPlayerDisplayName(targetPlayerIndex)}`,
+      handler: () => {
+        this.openTradeScreenWithTarget(sourcePlayerIndex, targetPlayerIndex, restoreRewardScreen);
+        return true;
+      },
+    }) satisfies OptionSelectItem);
+    options.push({
+      label: i18next.t("menu:cancel"),
+      handler: () => {
+        restoreRewardScreen();
+        return true;
+      },
+    });
+
+    this.showRewardOptionSelect({ options, noCancel: true });
+    return true;
+  }
+
+  private openTradeScreenWithTarget(
+    sourcePlayerIndex: PlayerIndex,
+    targetPlayerIndex: PlayerIndex,
+    restoreRewardScreen: () => void,
+  ): void {
     const filterActivePokemon: PokemonSelectFilter = pokemon =>
       pokemon.isOnField() ? "Pokemon currently in battle cannot be traded." : null;
     const openPartySelect = (
@@ -502,8 +581,32 @@ export class SelectModifierPhase extends BattlePhase {
         sourcePlayerIndex,
       );
     });
+  }
 
-    return true;
+  private showRewardOptionSelect(config: OptionSelectConfig): void {
+    globalScene.ui.setModeWithoutClear(UiMode.OPTION_SELECT, config, null, true);
+  }
+
+  private getAvailableTradeTargetPlayerIndexes(sourcePlayerIndex: PlayerIndex): PlayerIndex[] {
+    if (!this.hasLinkingCordGold(sourcePlayerIndex)) {
+      return [];
+    }
+
+    return globalScene
+      .getActivePlayerIndexes()
+      .filter(playerIndex => playerIndex !== sourcePlayerIndex && this.hasLinkingCordGold(playerIndex));
+  }
+
+  private hasAvailableTradeTarget(sourcePlayerIndex: PlayerIndex): boolean {
+    return this.getAvailableTradeTargetPlayerIndexes(sourcePlayerIndex).length > 0;
+  }
+
+  private getPlayerDisplayName(playerIndex: PlayerIndex): string {
+    if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+      return getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex)).name;
+    }
+
+    return `Player ${playerIndex + 1}`;
   }
 
   private hasLinkingCordGold(playerIndex: PlayerIndex): boolean {
@@ -742,7 +845,7 @@ export class SelectModifierPhase extends BattlePhase {
       this.typeOptions,
       modifierSelectCallback,
       this.getRerollCost(this.shouldLockRarities()),
-      globalScene.twoPlayerMode && this.hasLinkingCordGold(this.playerIndex),
+      globalScene.twoPlayerMode && this.hasAvailableTradeTarget(this.playerIndex),
       this.playerIndex,
     );
   }

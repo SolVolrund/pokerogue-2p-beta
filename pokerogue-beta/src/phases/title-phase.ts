@@ -15,8 +15,6 @@ import { BattleType } from "#enums/battle-type";
 import { GameDataType } from "#enums/game-data-type";
 import { GameModes } from "#enums/game-modes";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
-import { PlayerGender } from "#enums/player-gender";
-import { PlayerTrainerSprite } from "#enums/player-trainer-sprite";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import { getBiomeKey } from "#field/arena";
@@ -37,6 +35,8 @@ import i18next from "i18next";
 const NO_SAVE_SLOT = -1;
 const TWO_PLAYER_LOBBY_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const TWO_PLAYER_WS_PORT = "8787";
+type MultiplayerLobbyPlayerCount = 2 | 3;
+type MultiplayerGuestSeat = 1 | 2;
 
 export class TitlePhase extends Phase {
   public readonly phaseName = "TitlePhase";
@@ -213,16 +213,30 @@ export class TitlePhase extends Phase {
   private showMultiplayerSelect(): void {
     const options: OptionSelectItem[] = [
       {
-        label: "Host",
+        label: "Host 2P",
         handler: () => {
-          this.hostMultiplayerLobby();
+          this.hostMultiplayerLobby(2);
           return true;
         },
       },
       {
-        label: "Join",
+        label: "Host 3P",
         handler: () => {
-          this.joinMultiplayerLobby();
+          this.hostMultiplayerLobby(3);
+          return true;
+        },
+      },
+      {
+        label: "Join as 2P",
+        handler: () => {
+          this.joinMultiplayerLobby(1);
+          return true;
+        },
+      },
+      {
+        label: "Join as 3P",
+        handler: () => {
+          this.joinMultiplayerLobby(2);
           return true;
         },
       },
@@ -353,19 +367,24 @@ export class TitlePhase extends Phase {
     this.showOptionSelectWithText(title, options);
   }
 
-  private hostMultiplayerLobby(): void {
+  private hostMultiplayerLobby(playerCount: MultiplayerLobbyPlayerCount): void {
     const lobbyCode = this.generateLobbyCode();
     const lanAddress = this.getLobbyLanAddress();
-    const lobbyUrl = this.getMultiplayerLobbyUrl(lobbyCode, "host", lanAddress);
-    const guestUrl = this.getMultiplayerLobbyUrl(lobbyCode, "guest", lanAddress);
+    const lobbyUrl = this.getMultiplayerLobbyUrl(lobbyCode, "host", lanAddress, playerCount);
+    const player2Url = this.getMultiplayerLobbyUrl(lobbyCode, "guest", lanAddress, playerCount, 1);
+    const player3Url =
+      playerCount === 3 ? this.getMultiplayerLobbyUrl(lobbyCode, "guest", lanAddress, playerCount, 2) : undefined;
     const hostAddress = this.getDisplayHostAddress(lanAddress);
 
     globalScene.ui.setMode(UiMode.MESSAGE);
     globalScene.ui.showText(
-      `Lobby ${lobbyCode} created.$Player 2 can join from ${hostAddress}$Code: ${lobbyCode}`,
+      `Lobby ${lobbyCode} created.$Players can join from ${hostAddress}$Code: ${lobbyCode}`,
       null,
       () => {
-        console.info(`[PokeRogue 2P] Guest lobby link: ${guestUrl}`);
+        console.info(`[PokeRogue 2P] Player 2 lobby link: ${player2Url}`);
+        if (player3Url) {
+          console.info(`[PokeRogue 2P] Player 3 lobby link: ${player3Url}`);
+        }
         window.location.assign(lobbyUrl);
       },
       null,
@@ -373,8 +392,8 @@ export class TitlePhase extends Phase {
     );
   }
 
-  private joinMultiplayerLobby(): void {
-    const lobbyUrl = this.getJoinLobbyUrl(window.prompt("Enter lobby code or lobby link") ?? "");
+  private joinMultiplayerLobby(guestSeat: MultiplayerGuestSeat): void {
+    const lobbyUrl = this.getJoinLobbyUrl(window.prompt("Enter lobby code or lobby link") ?? "", guestSeat);
     if (!lobbyUrl) {
       this.showMultiplayerSelect();
       return;
@@ -422,7 +441,7 @@ export class TitlePhase extends Phase {
     }
   }
 
-  private getJoinLobbyUrl(input: string): string {
+  private getJoinLobbyUrl(input: string, guestSeat: MultiplayerGuestSeat): string {
     const trimmedInput = input.trim();
     if (!trimmedInput) {
       return "";
@@ -435,11 +454,17 @@ export class TitlePhase extends Phase {
         return "";
       }
 
-      return this.configureMultiplayerLobbyUrl(lobbyUrl, this.normalizeLobbyCode(sessionId), "guest").toString();
+      return this.configureMultiplayerLobbyUrl(
+        lobbyUrl,
+        this.normalizeLobbyCode(sessionId),
+        "guest",
+        undefined,
+        guestSeat,
+      ).toString();
     }
 
     const lobbyCode = this.parseLobbyCode(trimmedInput);
-    return lobbyCode ? this.getMultiplayerLobbyUrl(lobbyCode, "guest") : "";
+    return lobbyCode ? this.getMultiplayerLobbyUrl(lobbyCode, "guest", undefined, undefined, guestSeat) : "";
   }
 
   private parseLobbyUrl(input: string): URL | undefined {
@@ -470,17 +495,45 @@ export class TitlePhase extends Phase {
     return /^(localhost|127\.0\.0\.1|\d{1,3}(?:\.\d{1,3}){3})(:\d+)?([/?#]|$)/i.test(input);
   }
 
-  private getMultiplayerLobbyUrl(lobbyCode: string, role: "host" | "guest", lanAddress?: string): string {
+  private getMultiplayerLobbyUrl(
+    lobbyCode: string,
+    role: "host" | "guest",
+    lanAddress?: string,
+    playerCount?: MultiplayerLobbyPlayerCount,
+    guestSeat?: MultiplayerGuestSeat,
+  ): string {
     const url = new URL(window.location.href);
     this.applyLobbyHostAddress(url, lanAddress);
-    return this.configureMultiplayerLobbyUrl(url, lobbyCode, role).toString();
+    return this.configureMultiplayerLobbyUrl(url, lobbyCode, role, playerCount, guestSeat).toString();
   }
 
-  private configureMultiplayerLobbyUrl(url: URL, lobbyCode: string, role: "host" | "guest"): URL {
+  private configureMultiplayerLobbyUrl(
+    url: URL,
+    lobbyCode: string,
+    role: "host" | "guest",
+    requestedPlayerCount?: MultiplayerLobbyPlayerCount,
+    requestedGuestSeat?: MultiplayerGuestSeat,
+  ): URL {
+    const requestedLocalPlayer = url.searchParams.get("twoPlayerLocalPlayer")?.toLowerCase();
+    const guestSeat = requestedGuestSeat
+      ?? (
+        requestedLocalPlayer === "3"
+        || requestedLocalPlayer === "p3"
+        || requestedLocalPlayer === "player3"
+        || requestedLocalPlayer === "guest2"
+        || requestedLocalPlayer === "guest-2"
+        || requestedLocalPlayer === "guest_2"
+          ? 2
+          : 1
+      );
+    const playerCount =
+      requestedPlayerCount ?? (url.searchParams.get("twoPlayerPlayerCount") === "3" || guestSeat === 2 ? 3 : 2);
+
     url.searchParams.set("twoPlayer", "1");
     url.searchParams.set("twoPlayerInputTransport", "websocket");
     url.searchParams.set("twoPlayerNetworkRole", role);
-    url.searchParams.set("twoPlayerLocalPlayer", role === "host" ? "1" : "2");
+    url.searchParams.set("twoPlayerLocalPlayer", role === "host" ? "1" : `${guestSeat + 1}`);
+    url.searchParams.set("twoPlayerPlayerCount", `${playerCount}`);
     url.searchParams.set("twoPlayerSession", lobbyCode);
     url.searchParams.set("twoPlayerWsUrl", this.getMultiplayerWsUrl(url));
     return url;
@@ -612,7 +665,22 @@ export class TitlePhase extends Phase {
               this.showPlayerCountSelect(gameMode),
             );
           } else {
-            this.showComputerPartnerSelect(gameMode);
+            this.showComputerPartnerSelect(gameMode, 2);
+          }
+          return true;
+        },
+        keepOpen: true,
+      },
+      {
+        label: "1P+2C",
+        handler: () => {
+          if (gameMode === GameModes.DAILY) {
+            globalScene.ui.setMode(UiMode.MESSAGE);
+            globalScene.ui.showText(i18next.t("menu:twoPlayerDailyUnavailable"), null, () =>
+              this.showPlayerCountSelect(gameMode),
+            );
+          } else {
+            this.showComputerPartnerSelect(gameMode, 3);
           }
           return true;
         },
@@ -631,14 +699,30 @@ export class TitlePhase extends Phase {
     this.showOptionSelectWithText(i18next.t("menu:selectPlayerCount"), options);
   }
 
-  private showComputerPartnerSelect(gameMode: GameModes): void {
-    const options: OptionSelectItem[] = COMPUTER_PARTNER_KEYS.map(key => {
+  private showComputerPartnerSelect(
+    gameMode: GameModes,
+    playerCount: 2 | 3,
+    firstPartnerKey?: ComputerPartnerKey,
+  ): void {
+    const selectablePartnerKeys = firstPartnerKey
+      ? COMPUTER_PARTNER_KEYS.filter(key => key !== firstPartnerKey)
+      : COMPUTER_PARTNER_KEYS;
+    const playerLabel = playerCount === 3 && firstPartnerKey ? "Player 3" : "Player 2";
+    const options: OptionSelectItem[] = selectablePartnerKeys.map(key => {
       const profile = getComputerPartnerProfile(key);
       return {
         label: profile.name,
         handler: () => {
-          this.setComputerPartner(key);
-          globalScene.configureTwoPlayerMode(true, 6, true);
+          if (playerCount === 3 && !firstPartnerKey) {
+            this.showComputerPartnerSelect(gameMode, playerCount, key);
+            return true;
+          }
+
+          this.setComputerPartner(1, firstPartnerKey ?? key);
+          if (playerCount === 3) {
+            this.setComputerPartner(2, key);
+          }
+          globalScene.configureTwoPlayerMode(true, 6, true, playerCount);
           this.setModeAndEnd(gameMode);
           return true;
         },
@@ -648,31 +732,21 @@ export class TitlePhase extends Phase {
     options.push({
       label: i18next.t("menu:cancel"),
       handler: () => {
-        this.showPlayerCountSelect(gameMode);
+        if (playerCount === 3 && firstPartnerKey) {
+          this.showComputerPartnerSelect(gameMode, playerCount);
+        } else {
+          this.showPlayerCountSelect(gameMode);
+        }
         return true;
       },
       keepOpen: true,
     });
 
-    this.showOptionSelectWithText(i18next.t("menu:selectComputerPartner"), options);
+    this.showOptionSelectWithText(`${i18next.t("menu:selectComputerPartner")} (${playerLabel})`, options);
   }
 
-  private setComputerPartner(key: ComputerPartnerKey): void {
-    const profile = getComputerPartnerProfile(key);
-    globalScene.computerPartnerKey = key;
-
-    if (profile.trainerSprite !== undefined && profile.trainerGender !== undefined) {
-      globalScene.twoPlayerGuestTrainerSprite = profile.trainerSprite;
-      globalScene.twoPlayerGuestGender = profile.trainerGender;
-      return;
-    }
-
-    const playerGender = globalScene.getPlayerGameData(0).gender;
-    globalScene.twoPlayerGuestGender = playerGender === PlayerGender.FEMALE ? PlayerGender.MALE : PlayerGender.FEMALE;
-    globalScene.twoPlayerGuestTrainerSprite =
-      globalScene.twoPlayerGuestGender === PlayerGender.FEMALE
-        ? PlayerTrainerSprite.BASE_GIRL
-        : PlayerTrainerSprite.BASE_BOY;
+  private setComputerPartner(playerIndex: 1 | 2, key: ComputerPartnerKey): void {
+    globalScene.setComputerPartnerKey(playerIndex, key);
   }
 
   private showTwoPlayerModeSelect(gameMode: GameModes): void {
@@ -684,7 +758,13 @@ export class TitlePhase extends Phase {
         );
       } else {
         globalScene.configureTwoPlayerMode(true, partySize);
-        const titleStart: TwoPlayerTitleStart = { action: "new-run", gameMode, partySize, seed: globalScene.seed };
+        const titleStart: TwoPlayerTitleStart = {
+          action: "new-run",
+          gameMode,
+          partySize,
+          playerCount: globalScene.multiplayerPlayerCount === 3 ? 3 : 2,
+          seed: globalScene.seed,
+        };
         globalScene.uiInputs?.broadcastTwoPlayerTitleStart(titleStart);
         this.waitForTwoPlayerProfilesBeforeRun(() => {
           globalScene.uiInputs?.broadcastTwoPlayerTitleStart(titleStart);
@@ -735,7 +815,12 @@ export class TitlePhase extends Phase {
           globalScene.applyTwoPlayerRunBootstrap({ seed: seedOverride });
         }
         globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("session-loaded");
-        const titleStart: TwoPlayerTitleStart = { action: "load-session", slotId, seed: globalScene.seed };
+        const titleStart: TwoPlayerTitleStart = {
+          action: "load-session",
+          slotId,
+          playerCount: globalScene.multiplayerPlayerCount === 3 ? 3 : 2,
+          seed: globalScene.seed,
+        };
         if (globalScene.twoPlayerMode && !fromRemoteStart) {
           globalScene.uiInputs?.broadcastTwoPlayerTitleStart(titleStart);
         }
@@ -771,7 +856,7 @@ export class TitlePhase extends Phase {
         return false;
       }
 
-      globalScene.configureTwoPlayerMode(true, titleStart.partySize ?? 6);
+      globalScene.configureTwoPlayerMode(true, titleStart.partySize ?? 6, false, titleStart.playerCount ?? 2);
       this.waitForTwoPlayerProfilesBeforeRun(() => this.setModeAndEnd(gameMode));
       return true;
     }
@@ -792,7 +877,9 @@ export class TitlePhase extends Phase {
 
     globalScene.waitForPlayerInput(0);
     globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-      globalScene.ui.showText("Waiting for both player profiles...", null, null, null, false);
+      const waitingMessage =
+        globalScene.multiplayerPlayerCount > 2 ? "Waiting for all player profiles..." : "Waiting for both player profiles...";
+      globalScene.ui.showText(waitingMessage, null, null, null, false);
       globalScene.waitForTwoPlayerProfileExchange().then(ready => {
         if (ready) {
           globalScene.ui.clearText();
@@ -800,7 +887,11 @@ export class TitlePhase extends Phase {
           return;
         }
 
-        globalScene.ui.showText("Still waiting for the other player profile.", null, () =>
+        const retryMessage =
+          globalScene.multiplayerPlayerCount > 2
+            ? "Still waiting for the other player profiles."
+            : "Still waiting for the other player profile.";
+        globalScene.ui.showText(retryMessage, null, () =>
           this.waitForTwoPlayerProfilesBeforeRun(onReady),
         );
       });

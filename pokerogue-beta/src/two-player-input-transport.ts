@@ -29,6 +29,7 @@ export interface TwoPlayerTitleStart {
   action: "new-run" | "load-session";
   gameMode?: number;
   partySize?: 3 | 6;
+  playerCount?: 2 | 3;
   slotId?: number;
   seed?: string;
 }
@@ -181,7 +182,7 @@ export function isTwoPlayerInputDebugEnabled(): boolean {
 }
 
 function isValidPlayerIndex(playerIndex: unknown): playerIndex is PlayerIndex {
-  return playerIndex === 0 || playerIndex === 1;
+  return playerIndex === 0 || playerIndex === 1 || playerIndex === 2;
 }
 
 function isValidButton(button: unknown): button is Button {
@@ -220,6 +221,7 @@ function isValidTitleStart(titleStart: unknown): titleStart is TwoPlayerTitleSta
   return (data.action === "new-run" || data.action === "load-session")
     && (data.gameMode === undefined || typeof data.gameMode === "number")
     && (data.partySize === undefined || data.partySize === 3 || data.partySize === 6)
+    && (data.playerCount === undefined || data.playerCount === 2 || data.playerCount === 3)
     && (data.slotId === undefined || typeof data.slotId === "number")
     && (data.seed === undefined || (typeof data.seed === "string" && data.seed.length > 0));
 }
@@ -315,7 +317,7 @@ export class TwoPlayerInputTransport {
   private pendingTitleStart: TwoPlayerTitleStart | undefined;
   private pendingSettingsSnapshot: TwoPlayerSettingsSnapshot | undefined;
   private pendingProfileSnapshot: TwoPlayerProfileSnapshot | undefined;
-  private profileSnapshotResponseSent = false;
+  private readonly profileSnapshotResponseSenderIds = new Set<string>();
 
   private constructor(
     mode: "local" | "websocket",
@@ -1096,8 +1098,8 @@ export class TwoPlayerInputTransport {
     }
 
     const accepted = this.onProfileSnapshot?.(profileSnapshot) ?? false;
-    if (!this.profileSnapshotResponseSent) {
-      this.profileSnapshotResponseSent = true;
+    if (!this.profileSnapshotResponseSenderIds.has(message.senderId)) {
+      this.profileSnapshotResponseSenderIds.add(message.senderId);
       this.sendProfileSnapshot();
     }
 

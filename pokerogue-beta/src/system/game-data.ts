@@ -28,7 +28,6 @@ import { GameModes } from "#enums/game-modes";
 import type { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { Nature } from "#enums/nature";
 import { PlayerGender } from "#enums/player-gender";
-import { PlayerTrainerSprite } from "#enums/player-trainer-sprite";
 import { SpeciesId } from "#enums/species-id";
 import { StatusEffect } from "#enums/status-effect";
 import { TrainerVariant } from "#enums/trainer-variant";
@@ -78,7 +77,6 @@ import { RUN_HISTORY_LIMIT } from "#ui/run-history-ui-handler";
 import { applyChallenges } from "#utils/challenge-utils";
 import {
   type ComputerPartnerKey,
-  getComputerPartnerProfile,
 } from "#utils/computer-partner-profile";
 import { fixedInt, NumberHolder, randInt, randSeedItem } from "#utils/common";
 import { decrypt, encrypt } from "#utils/data";
@@ -826,13 +824,17 @@ export class GameData {
   }
 
   public getSessionSaveData(): SessionSaveData {
+    const playerIndexes = globalScene.getActivePlayerIndexes();
     const playerSessionData = globalScene.twoPlayerMode
-      ? globalScene.players.map(player => ({
-          party: player.party.map(p => new PokemonData(p)),
-          modifiers: player.modifiers.map(m => new PersistentModifierData(m, true)),
-          pokeballCounts: player.pokeballCounts,
-          money: Math.floor(player.money),
-        }))
+      ? playerIndexes.map(playerIndex => {
+          const player = globalScene.getPlayerState(playerIndex);
+          return {
+            party: player.party.map(p => new PokemonData(p)),
+            modifiers: player.modifiers.map(m => new PersistentModifierData(m, true)),
+            pokeballCounts: player.pokeballCounts,
+            money: Math.floor(player.money),
+          };
+        })
       : undefined;
 
     return {
@@ -851,9 +853,18 @@ export class GameData {
       money: Math.floor(globalScene.money),
       players: playerSessionData,
       twoPlayerMode: globalScene.twoPlayerMode,
+      multiplayerPlayerCount: globalScene.twoPlayerMode ? globalScene.multiplayerPlayerCount : undefined,
       twoPlayerPartySize: globalScene.twoPlayerPartySize,
       twoPlayerComputerPartner: globalScene.twoPlayerComputerPartner,
       computerPartnerKey: globalScene.twoPlayerComputerPartner ? globalScene.computerPartnerKey : undefined,
+      computerPartnerKeys: globalScene.twoPlayerComputerPartner
+        ? Object.fromEntries(
+            globalScene
+              .getActivePlayerIndexes()
+              .filter(playerIndex => globalScene.isComputerPartnerPlayer(playerIndex))
+              .map(playerIndex => [playerIndex, globalScene.getComputerPartnerKey(playerIndex)]),
+          )
+        : undefined,
       score: globalScene.score,
       waveIndex: globalScene.currentBattle.waveIndex,
       battleType: globalScene.currentBattle.battleType,
@@ -1014,7 +1025,8 @@ export class GameData {
         loadPlayerParty(2, p3PartyData);
       }
 
-      globalScene.players.forEach((player, playerIndex) => {
+      globalScene.getActivePlayerIndexes().forEach(playerIndex => {
+        const player = globalScene.getPlayerState(playerIndex);
         const playerSave = fromSession.players?.[playerIndex];
         const pokeballCounts = activeOverrides.POKEBALL_OVERRIDE.active
           ? activeOverrides.POKEBALL_OVERRIDE.pokeballs
@@ -1174,33 +1186,56 @@ export class GameData {
 
   private configureSessionPlayerMode(fromSession: SessionSaveData): void {
     const hasTwoPlayerSessionData = !!fromSession.players?.length;
-    const hasThreePlayerSessionData = (fromSession.players?.length ?? 0) > 2;
-    const computerPartnerKey = this.getSessionComputerPartnerKey(fromSession);
-    const isComputerPartnerSession = !!fromSession.twoPlayerComputerPartner || !!computerPartnerKey;
+    const hasThreePlayerSessionData =
+      fromSession.multiplayerPlayerCount === 3
+      || (!!fromSession.players?.[2]?.party && fromSession.players[2].party.length > 0);
+    const computerPartnerKeys = this.getSessionComputerPartnerKeys(fromSession);
+    const computerPartnerKey = computerPartnerKeys[1] ?? this.getSessionComputerPartnerKey(fromSession, 1);
+    const isComputerPartnerSession =
+      !!fromSession.twoPlayerComputerPartner || Object.values(computerPartnerKeys).some(Boolean) || !!computerPartnerKey;
     const isTwoPlayerSession = !!fromSession.twoPlayerMode || hasTwoPlayerSessionData || isComputerPartnerSession;
+    const playerCount = fromSession.multiplayerPlayerCount ?? (hasThreePlayerSessionData ? 3 : 2);
 
     globalScene.configureTwoPlayerMode(
       isTwoPlayerSession,
       fromSession.twoPlayerPartySize ?? 6,
       isComputerPartnerSession,
-      hasThreePlayerSessionData ? 3 : 2,
+      playerCount,
     );
 
     if (isComputerPartnerSession) {
-      this.applySessionComputerPartner(computerPartnerKey ?? "alex");
+      const activePlayerIndexes = globalScene.getActivePlayerIndexes();
+      activePlayerIndexes
+        .filter(playerIndex => playerIndex > 0)
+        .forEach(playerIndex => {
+          const key = computerPartnerKeys[playerIndex] ?? (playerIndex === 1 ? computerPartnerKey : undefined) ?? "alex";
+          this.applySessionComputerPartner(playerIndex, key);
+        });
     }
   }
 
-  private getSessionComputerPartnerKey(fromSession: SessionSaveData): ComputerPartnerKey | undefined {
+  private getSessionComputerPartnerKeys(fromSession: SessionSaveData): Partial<Record<PlayerIndex, ComputerPartnerKey>> {
+    const keys: Partial<Record<PlayerIndex, ComputerPartnerKey>> = {};
+    for (const [playerIndexValue, key] of Object.entries(fromSession.computerPartnerKeys ?? {})) {
+      const playerIndex = Number(playerIndexValue) as PlayerIndex;
+      if ((playerIndex === 1 || playerIndex === 2) && this.isComputerPartnerKey(key)) {
+        keys[playerIndex] = key;
+      }
+    }
+
+    return keys;
+  }
+
+  private getSessionComputerPartnerKey(fromSession: SessionSaveData, playerIndex: PlayerIndex): ComputerPartnerKey | undefined {
     if (this.isComputerPartnerKey(fromSession.computerPartnerKey)) {
       return fromSession.computerPartnerKey;
     }
 
-    if (!fromSession.twoPlayerComputerPartner && !fromSession.players?.[1]?.party.some(pokemon => pokemon.computerPartnerAce)) {
+    if (!fromSession.twoPlayerComputerPartner && !fromSession.players?.[playerIndex]?.party.some(pokemon => pokemon.computerPartnerAce)) {
       return undefined;
     }
 
-    const ace = fromSession.players?.[1]?.party.find(pokemon => pokemon.computerPartnerAce);
+    const ace = fromSession.players?.[playerIndex]?.party.find(pokemon => pokemon.computerPartnerAce);
     switch (ace?.species) {
       case SpeciesId.HAPPINY:
       case SpeciesId.CHANSEY:
@@ -1230,22 +1265,8 @@ export class GameData {
     return key === "alex" || key === "cheryl" || key === "riley" || key === "mira" || key === "buck" || key === "marley";
   }
 
-  private applySessionComputerPartner(key: ComputerPartnerKey): void {
-    const profile = getComputerPartnerProfile(key);
-    globalScene.computerPartnerKey = key;
-
-    if (profile.trainerSprite !== undefined && profile.trainerGender !== undefined) {
-      globalScene.twoPlayerGuestTrainerSprite = profile.trainerSprite;
-      globalScene.twoPlayerGuestGender = profile.trainerGender;
-      return;
-    }
-
-    const playerGender = globalScene.getPlayerGameData(0).gender;
-    globalScene.twoPlayerGuestGender = playerGender === PlayerGender.FEMALE ? PlayerGender.MALE : PlayerGender.FEMALE;
-    globalScene.twoPlayerGuestTrainerSprite =
-      globalScene.twoPlayerGuestGender === PlayerGender.FEMALE
-        ? PlayerTrainerSprite.BASE_GIRL
-        : PlayerTrainerSprite.BASE_BOY;
+  private applySessionComputerPartner(playerIndex: PlayerIndex, key: ComputerPartnerKey): void {
+    globalScene.setComputerPartnerKey(playerIndex, key);
   }
 
   /**

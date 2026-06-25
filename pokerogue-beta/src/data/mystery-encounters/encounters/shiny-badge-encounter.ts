@@ -164,8 +164,7 @@ async function runTwoPlayerShinyBadgeChoices(): Promise<boolean> {
   }
 
   if (wantChoices.length === 0) {
-    const winningPlayerIndex = globalScene.twoPlayerMysteryDecisionPriority;
-    globalScene.twoPlayerMysteryDecisionPriority = winningPlayerIndex === 0 ? 1 : 0;
+    const winningPlayerIndex = globalScene.resolvePlayerTieBreak(choices.map(choice => choice.playerIndex));
     await showEncounterText(`Player ${winningPlayerIndex + 1}'s choice wins this time.`);
     await awardShinyBadgeWithoutBattle(winningPlayerIndex, `${namespace}:outro.tiebreak`);
     return true;

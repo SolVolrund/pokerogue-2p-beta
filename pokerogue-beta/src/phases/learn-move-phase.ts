@@ -70,8 +70,7 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
 
   private tryComputerPartnerMoveLearning(move: Move, pokemon: Pokemon, currentMoveIds: MoveId[]): boolean {
     if (
-      !globalScene.twoPlayerComputerPartner
-      || this.playerIndex !== 1
+      !globalScene.isComputerPartnerPlayer(this.playerIndex)
       || (this.learnMoveType !== LearnMoveType.LEARN_MOVE && this.learnMoveType !== LearnMoveType.TM)
     ) {
       return false;
@@ -296,7 +295,7 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
   }
 
   private setLearnMoveInputOwner(): void {
-    if (globalScene.twoPlayerComputerPartner && this.playerIndex === 1) {
+    if (globalScene.isComputerPartnerPlayer(this.playerIndex)) {
       globalScene.waitForPlayerInput(0);
       return;
     }

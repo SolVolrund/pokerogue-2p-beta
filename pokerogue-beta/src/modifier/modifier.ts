@@ -771,8 +771,9 @@ export abstract class PokemonHeldItemModifier extends PersistentModifier {
       return 0;
     }
     if (pokemon.isPlayer() && forThreshold) {
+      const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.activePlayerIndex;
       return globalScene
-        .getPlayerParty()
+        .getPlayerParty(playerIndex)
         .map(p => this.getMaxHeldItemCount(p))
         .reduce((stackCount: number, maxStackCount: number) => Math.max(stackCount, maxStackCount), 0);
     }
@@ -2147,7 +2148,8 @@ export abstract class ConsumablePokemonModifier extends ConsumableModifier {
   abstract override apply(playerPokemon: PlayerPokemon, ...args: unknown[]): boolean;
 
   getPokemon() {
-    return globalScene.getPlayerParty().find(p => p.id === this.pokemonId);
+    const pokemon = globalScene.getPokemonById(this.pokemonId);
+    return pokemon?.isPlayer() ? pokemon as PlayerPokemon : undefined;
   }
 }
 

@@ -42,9 +42,9 @@ export function getComputerPartnerCaptureDecision(
   activePokemon: PlayerPokemon,
   enemyField: EnemyPokemon[],
   pokeballCounts: PokeballCounts,
-  reservedTargetId?: number,
+  reservedTargetIds?: number | readonly number[],
 ): ComputerPartnerCaptureDecision | undefined {
-  return getComputerPartnerCaptureDecisions(partnerKey, party, activePokemon, enemyField, pokeballCounts, reservedTargetId)[0];
+  return getComputerPartnerCaptureDecisions(partnerKey, party, activePokemon, enemyField, pokeballCounts, reservedTargetIds)[0];
 }
 
 export function getComputerPartnerCaptureDecisions(
@@ -53,12 +53,19 @@ export function getComputerPartnerCaptureDecisions(
   activePokemon: PlayerPokemon,
   enemyField: EnemyPokemon[],
   pokeballCounts: PokeballCounts,
-  reservedTargetId?: number,
+  reservedTargetIds?: number | readonly number[],
 ): ComputerPartnerCaptureDecision[] {
   const profile = getComputerPartnerProfile(partnerKey);
+  const reservedTargetIdSet = new Set(
+    Array.isArray(reservedTargetIds)
+      ? reservedTargetIds
+      : reservedTargetIds === undefined
+        ? []
+        : [reservedTargetIds],
+  );
   return enemyField
     .map((target, targetIndex) => {
-      if (!target.isActive(true) || target.isFainted() || target.isBoss() || target.id === reservedTargetId) {
+      if (!target.isActive(true) || target.isFainted() || target.isBoss() || reservedTargetIdSet.has(target.id)) {
         return undefined;
       }
 
