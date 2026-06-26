@@ -46,8 +46,13 @@ export class BattleEndPhase extends BattlePhase {
       globalScene.phaseManager.unshiftNew("GameOverPhase", true);
     }
 
-    for (const pokemon of globalScene.getPokemonAllowedInBattle()) {
-      applyAbAttrs("PostBattleAbAttr", { pokemon, victory: this.isVictory });
+    const playerIndexes = globalScene.twoPlayerMode
+      ? globalScene.getActivePlayerIndexes()
+      : [globalScene.activePlayerIndex];
+    for (const playerIndex of playerIndexes) {
+      for (const pokemon of globalScene.getPokemonAllowedInBattle(playerIndex)) {
+        applyAbAttrs("PostBattleAbAttr", { pokemon, victory: this.isVictory });
+      }
     }
 
     if (globalScene.currentBattle.moneyScattered) {
@@ -63,20 +68,23 @@ export class BattleEndPhase extends BattlePhase {
       }
     }
 
-    const lapsingModifiers = globalScene.findModifiers(
-      m => m instanceof LapsingPersistentModifier || m instanceof LapsingPokemonHeldItemModifier,
-    ) as (LapsingPersistentModifier | LapsingPokemonHeldItemModifier)[];
-    for (const m of lapsingModifiers) {
-      const args: any[] = [];
-      if (m instanceof LapsingPokemonHeldItemModifier) {
-        args.push(globalScene.getPokemonById(m.pokemonId));
+    for (const playerIndex of playerIndexes) {
+      const lapsingModifiers = globalScene.findModifiersForPlayer(
+        m => m instanceof LapsingPersistentModifier || m instanceof LapsingPokemonHeldItemModifier,
+        playerIndex,
+      ) as (LapsingPersistentModifier | LapsingPokemonHeldItemModifier)[];
+      for (const m of lapsingModifiers) {
+        const args: unknown[] = [];
+        if (m instanceof LapsingPokemonHeldItemModifier) {
+          args.push(globalScene.getPokemonById(m.pokemonId));
+        }
+        if (!m.lapse(...args)) {
+          globalScene.removeModifier(m, false, playerIndex);
+        }
       }
-      if (!m.lapse(...args)) {
-        globalScene.removeModifier(m);
-      }
-    }
 
-    globalScene.updateModifiers();
+      globalScene.updateModifiers(true, undefined, playerIndex);
+    }
     this.end();
   }
 }

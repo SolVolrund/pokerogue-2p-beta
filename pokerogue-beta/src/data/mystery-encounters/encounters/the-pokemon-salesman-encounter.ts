@@ -12,7 +12,6 @@ import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { PokeballType } from "#enums/pokeball";
 import { SpeciesId } from "#enums/species-id";
-import { UiMode } from "#enums/ui-mode";
 import type { EnemyPokemon } from "#field/pokemon";
 import { PlayerPokemon } from "#field/pokemon";
 import { showEncounterDialogue, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
@@ -25,12 +24,22 @@ import {
   getRandomSpeciesByStarterCost,
   getSpriteKeysFromPokemon,
 } from "#mystery-encounters/encounter-pokemon-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
+import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { MoneyRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import { PokemonData } from "#system/pokemon-data";
 import { updateWindowType } from "#ui/ui-theme";
+import {
+  getBestComputerPartnerReplacementSlot,
+  getComputerPartnerProfile,
+} from "#utils/computer-partner-profile";
 import { randSeedInt, randSeedItem } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
@@ -77,7 +86,9 @@ class TwoPlayerAnyPlayerSalesmanMoneyRequirement extends MoneyRequirement {
       this.requiredMoney = globalScene.getWaveMoneyAmount(this.scalingMultiplier);
     }
 
-    return ([0, 1] as PlayerIndex[]).some(playerIndex => globalScene.getPlayerMoney(playerIndex) >= this.requiredMoney);
+    return getMysteryEncounterPlayerIndexes().some(
+      playerIndex => globalScene.getPlayerMoney(playerIndex) >= this.requiredMoney,
+    );
   }
 }
 
@@ -137,20 +148,51 @@ function spendPokemonSalesmanMoney(price: number, playerIndex: PlayerIndex): voi
   globalScene.phaseManager.queueMessage(i18next.t("mysteryEncounterMessages:paidMoney", { amount: price }), null, true);
 }
 
-function showPokemonSalesmanPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
-  setPokemonSalesmanOfferTokens(playerIndex);
+function chooseComputerPartnerPokemonSalesmanOption(playerIndex: PlayerIndex): PokemonSalesmanOptionIndex {
+  const offer = getPokemonSalesmanOffer(playerIndex);
+  if (globalScene.getPlayerMoney(playerIndex) < offer.price) {
+    return 2;
+  }
 
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: i18next.t(`${namespace}:query`),
-      overrideOptions: [buildPokemonSalesmanAcceptOption(playerIndex), buildPokemonSalesmanRefuseOption(playerIndex)],
-      startingCursorIndex,
-    });
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  return getBestComputerPartnerReplacementSlot(profile, globalScene.getPlayerParty(playerIndex), offer.pokemon)
+    ? 1
+    : 2;
+}
+
+function queueComputerPartnerPokemonSalesmanChoiceMessage(
+  playerIndex: PlayerIndex,
+  optionIndex: PokemonSalesmanOptionIndex,
+): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const offer = getPokemonSalesmanOffer(playerIndex);
+  const message =
+    optionIndex === 1
+      ? `${profile.name} paid an outrageous sum and bought the ${offer.pokemon.getNameToRender()}.`
+      : `${profile.name} passed on the offer for ${offer.pokemon.getNameToRender()}.`;
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(message, null, true);
+}
+
+function buildPokemonSalesmanPlayerOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
+  return [buildPokemonSalesmanAcceptOption(playerIndex), buildPokemonSalesmanRefuseOption(playerIndex)];
+}
+
+async function promptNextPokemonSalesmanPlayer(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  setPokemonSalesmanOfferTokens(playerIndex);
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildPokemonSalesmanPlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerPokemonSalesmanOption,
+      onOptionChosen: (optionIndex, choicePlayerIndex) =>
+        storePokemonSalesmanChoice(optionIndex as PokemonSalesmanOptionIndex, choicePlayerIndex),
+    },
   });
+  return result ?? false;
 }
 
 async function storePokemonSalesmanChoice(
@@ -168,9 +210,13 @@ async function storePokemonSalesmanChoice(
   data.choices = (data.choices ?? []).filter(choice => choice.playerIndex !== playerIndex);
   data.choices.push({ playerIndex, optionIndex });
 
-  if (playerIndex === 0) {
-    showPokemonSalesmanPlayerMenu(1, optionIndex - 1);
-    return false;
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    queueComputerPartnerPokemonSalesmanChoiceMessage(playerIndex, optionIndex);
+  }
+
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+  if (nextPlayerIndex != null) {
+    return promptNextPokemonSalesmanPlayer(nextPlayerIndex, optionIndex - 1);
   }
 
   data.skipSelectedDialogueOnce = true;
@@ -427,10 +473,12 @@ export const ThePokemonSalesmanEncounter: MysteryEncounter = MysteryEncounterBui
   .withQuery(`${namespace}:query`)
   .withOnInit(() => {
     const encounter = globalScene.currentBattle.mysteryEncounter!;
-    const offers = Array.from({ length: globalScene.twoPlayerMode ? 2 : 1 }, () => generatePokemonSalesmanOffer());
+    const playerIndexes = getMysteryEncounterPlayerIndexes();
+    const offers = Array.from({ length: playerIndexes.length }, () => generatePokemonSalesmanOffer());
 
     for (const [index, offer] of offers.entries()) {
       const { spriteKey, fileRoot } = getSpriteKeysFromPokemon(offer.pokemon);
+      const x = offers.length > 1 ? -22 * (offers.length - 1) + index * 44 : undefined;
       encounter.spriteConfigs.push({
         spriteKey,
         fileRoot,
@@ -439,7 +487,7 @@ export const ThePokemonSalesmanEncounter: MysteryEncounter = MysteryEncounterBui
         isPokemon: true,
         isShiny: offer.pokemon.shiny,
         variant: offer.pokemon.variant,
-        ...(globalScene.twoPlayerMode ? { x: -22 + index * 44 } : {}),
+        ...(x == null ? {} : { x }),
       });
     }
 

@@ -1,5 +1,5 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
-import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { allAbilities, modifierTypes } from "#data/data-lists";
@@ -7,7 +7,6 @@ import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { SpeciesId } from "#enums/species-id";
-import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon } from "#field/pokemon";
 import { showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
 import {
@@ -15,12 +14,18 @@ import {
   leaveEncounterWithoutBattle,
   setEncounterExp,
 } from "#mystery-encounters/encounter-phase-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import { EXTORTION_ABILITIES, EXTORTION_MOVES } from "#mystery-encounters/requirement-groups";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -53,7 +58,7 @@ interface OfferPlayerData {
 }
 
 interface OfferData {
-  players: Record<TwoPlayerIndex, OfferPlayerData>;
+  players: Partial<Record<PlayerIndex, OfferPlayerData>>;
   choices: OfferChoice[];
   skipSelectedDialogueOnce?: boolean;
 }
@@ -70,7 +75,7 @@ class OfferSpawnRequirement extends EncounterSceneRequirement {
       return getValidOfferPokemonCount(0) >= MIN_VALID_POKEMON_FOR_OFFER;
     }
 
-    return ([0, 1] as PlayerIndex[]).some(
+    return getMysteryEncounterPlayerIndexes().some(
       playerIndex => getValidOfferPokemonCount(playerIndex) >= MIN_VALID_POKEMON_FOR_OFFER,
     );
   }
@@ -113,7 +118,7 @@ function getOfferData(): OfferData {
 }
 
 function getOfferPlayerData(playerIndex: PlayerIndex): OfferPlayerData {
-  return getOfferData().players[playerIndex];
+  return getOfferData().players[playerIndex] ?? createOfferPlayerData(playerIndex);
 }
 
 function getHighestStatTotalPlayerPokemon(
@@ -197,34 +202,55 @@ function getOfferIntroPlayerIndex(): PlayerIndex {
     return 0;
   }
 
-  return ([0, 1] as PlayerIndex[]).find(
+  return getMysteryEncounterPlayerIndexes().find(
     playerIndex => getValidOfferPokemonCount(playerIndex) >= MIN_VALID_POKEMON_FOR_OFFER,
   ) ?? 0;
 }
 
-function showOfferPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.waitForPlayerInput(playerIndex);
-  setOfferTokens(playerIndex);
-
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: i18next.t(`${namespace}:query`),
-      overrideOptions: buildOfferOptions(playerIndex),
-      startingCursorIndex,
-    });
-  });
+function chooseComputerPartnerOfferOption(playerIndex: PlayerIndex): OfferChoiceIndex {
+  return getOfferPlayerData(playerIndex).extortionPokemon ? 2 : 3;
 }
 
-function storeOfferChoice(choice: OfferChoice): boolean {
+function queueComputerPartnerOfferChoiceMessage(playerIndex: PlayerIndex, optionIndex: OfferChoiceIndex): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const playerData = getOfferPlayerData(playerIndex);
+  const message =
+    optionIndex === 2
+      ? `${profile.name}'s ${playerData.extortionPokemon?.getNameToRender()} used ${playerData.moveOrAbility} to rob the rich kid.`
+      : `${profile.name} refused the offer.`;
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(message, null, true);
+}
+
+async function promptNextOfferPlayer(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  setOfferTokens(playerIndex);
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildOfferOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerOfferOption,
+      onOptionChosen: (optionIndex, choicePlayerIndex) =>
+        collectOfferChoice(choicePlayerIndex, optionIndex as OfferChoiceIndex),
+    },
+  });
+  return result ?? false;
+}
+
+function storeOfferChoice(choice: OfferChoice): boolean | Promise<boolean> {
   const data = getOfferData();
   data.choices = data.choices.filter(existingChoice => existingChoice.playerIndex !== choice.playerIndex);
   data.choices.push(choice);
 
-  if (globalScene.twoPlayerMode && choice.playerIndex === 0) {
-    showOfferPlayerMenu(1, choice.optionIndex - 1);
-    return false;
+  if (globalScene.isComputerPartnerPlayer(choice.playerIndex)) {
+    queueComputerPartnerOfferChoiceMessage(choice.playerIndex, choice.optionIndex);
+  }
+
+  const nextPlayerIndex = globalScene.twoPlayerMode ? getNextMysteryEncounterPlayerIndex(choice.playerIndex) : undefined;
+  if (nextPlayerIndex != null) {
+    return promptNextOfferPlayer(nextPlayerIndex, choice.optionIndex - 1);
   }
 
   if (globalScene.twoPlayerMode) {
@@ -234,7 +260,7 @@ function storeOfferChoice(choice: OfferChoice): boolean {
   return true;
 }
 
-function collectOfferChoice(playerIndex: PlayerIndex, optionIndex: OfferChoiceIndex): boolean {
+function collectOfferChoice(playerIndex: PlayerIndex, optionIndex: OfferChoiceIndex): boolean | Promise<boolean> {
   globalScene.waitForPlayerInput(playerIndex);
   setOfferTokens(playerIndex);
 
@@ -357,11 +383,11 @@ export const AnOfferYouCantRefuseEncounter: MysteryEncounter = MysteryEncounterB
   .withQuery(`${namespace}:query`)
   .withOnInit(() => {
     const encounter = globalScene.currentBattle.mysteryEncounter!;
+    const players = Object.fromEntries(
+      getMysteryEncounterPlayerIndexes().map(playerIndex => [playerIndex, createOfferPlayerData(playerIndex)]),
+    ) as Partial<Record<PlayerIndex, OfferPlayerData>>;
     encounter.misc = {
-      players: {
-        0: createOfferPlayerData(0),
-        1: globalScene.twoPlayerMode ? createOfferPlayerData(1) : createOfferPlayerData(0),
-      },
+      players,
       choices: [],
     } satisfies OfferData;
 
