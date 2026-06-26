@@ -1,0 +1,56 @@
+name: Build PokeRogue 2P Windows EXE
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "Build number suffix. Leave blank to use the workflow run number."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Enable pnpm
+        shell: pwsh
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.33.2 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app
+        env:
+          VITE_BYPASS_LOGIN: "1"
+        run: pnpm build:app
+
+      - name: Build portable EXE
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          CSC_LINK: ""
+          WIN_CSC_LINK: ""
+        run: pnpm build:desktop:win
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PokeRogue2P-Windows
+          path: desktop-release/PokeRogue2P.exe
+          if-no-files-found: error
+          retention-days: 30

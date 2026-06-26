@@ -264,6 +264,7 @@ const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
   MysteryEncounterType.SHINY_BADGE,
 ];
+const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] = [];
 
 export interface PlayerRunState {
   party: PlayerPokemon[];
@@ -2490,7 +2491,8 @@ export class BattleScene extends SceneBase {
 
     // Reset RNG after end of game or save & quit.
     // This needs to happen after clearing this.currentBattle or the seed will be affected by the last wave played
-    this.setSeed(activeOverrides.SEED_OVERRIDE || getTwoPlayerRunSeedOverride() || randomString(24));
+    const existingTwoPlayerSeed = this.twoPlayerMode ? this.seed : undefined;
+    this.setSeed(activeOverrides.SEED_OVERRIDE || getTwoPlayerRunSeedOverride() || existingTwoPlayerSeed || randomString(24));
     console.log("Seed:", this.seed);
     this.resetSeed();
     this.uiInputs?.broadcastTwoPlayerRunBootstrap(this.seed);
@@ -2783,8 +2785,7 @@ export class BattleScene extends SceneBase {
     // NB: battle type checks are offloaded to `isWaveMysteryEncounter`
     // TODO: This means MEs can generate when the override is set to `BattleType.WILD`
     if (
-      (!this.twoPlayerMode || TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST.length > 0)
-      && this.multiplayerPlayerCount < 3
+      (!this.twoPlayerMode || this.getMultiplayerMysteryEncounterAllowlist().length > 0)
       && !activeOverrides.BATTLE_TYPE_OVERRIDE
       && this.isWaveMysteryEncounter(resolved.battleType, waveIndex)
     ) {
@@ -4991,7 +4992,6 @@ export class BattleScene extends SceneBase {
       && DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE != null
       && waveIndex === DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE
       && this.twoPlayerMode
-      && this.multiplayerPlayerCount < 3
       && this.gameMode.hasMysteryEncounters
       && battleType === BattleType.WILD
       && !this.gameMode.isBoss(waveIndex)
@@ -5023,13 +5023,19 @@ export class BattleScene extends SceneBase {
     );
   }
 
-  private isMysteryEncounterAllowedInTwoPlayer(encounterType: MysteryEncounterType): boolean {
-    return !this.twoPlayerMode || TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST.includes(encounterType);
+  private getMultiplayerMysteryEncounterAllowlist(): readonly MysteryEncounterType[] {
+    return this.multiplayerPlayerCount >= 3
+      ? THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST
+      : TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST;
+  }
+
+  private isMysteryEncounterAllowedInMultiplayer(encounterType: MysteryEncounterType): boolean {
+    return !this.twoPlayerMode || this.getMultiplayerMysteryEncounterAllowlist().includes(encounterType);
   }
 
   private isMysteryEncounterEnabled(encounterType: MysteryEncounterType, canBypass = false): boolean {
     return (
-      this.isMysteryEncounterAllowedInTwoPlayer(encounterType)
+      this.isMysteryEncounterAllowedInMultiplayer(encounterType)
       && (canBypass || isMysteryEncounterEnabledBySettings(encounterType))
     );
   }
@@ -5199,9 +5205,11 @@ export class BattleScene extends SceneBase {
 
     // If absolutely no encounters are available, spawn 0th encounter
     if (availableEncounters.length === 0) {
+      const multiplayerAllowlist = this.getMultiplayerMysteryEncounterAllowlist();
       const fallbackEncounterType = this.twoPlayerMode
-        ? (TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST.find(type => isMysteryEncounterEnabledBySettings(type))
-          ?? TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST[0])
+        ? (multiplayerAllowlist.find(type => isMysteryEncounterEnabledBySettings(type))
+          ?? multiplayerAllowlist[0]
+          ?? MysteryEncounterType.MYSTERIOUS_CHALLENGERS)
         : isMysteryEncounterEnabledBySettings(MysteryEncounterType.MYSTERIOUS_CHALLENGERS)
           ? MysteryEncounterType.MYSTERIOUS_CHALLENGERS
           : (Object.values(MysteryEncounterType).find(

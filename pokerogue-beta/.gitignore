@@ -15,6 +15,9 @@ temp
 node_modules
 dist
 dist-ssr
+desktop-dist
+desktop-release
+desktop-stage
 *.local
 build
 .pnpm-store

@@ -10,8 +10,14 @@ import { MysteryEncounterMode } from "#enums/mystery-encounter-mode";
 import { SwitchType } from "#enums/switch-type";
 import { TrainerSlot } from "#enums/trainer-slot";
 import { UiMode } from "#enums/ui-mode";
+import type { PlayerPokemon } from "#field/pokemon";
 import { IvScannerModifier } from "#modifiers/modifier";
 import { getEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getMysteryEncounterPlayerTitle,
+  getNextMysteryEncounterPlayerIndex,
+} from "#mystery-encounters/encounter-player-utils";
 import type { OptionSelectSettings } from "#mystery-encounters/encounter-phase-utils";
 import { transitionMysteryEncounterIntroVisuals } from "#mystery-encounters/encounter-phase-utils";
 import type { MysteryEncounterOption, OptionPhaseCallback } from "#mystery-encounters/mystery-encounter-option";
@@ -33,7 +39,7 @@ export class MysteryEncounterPhase extends Phase {
   public readonly phaseName = "MysteryEncounterPhase";
   private readonly FIRST_DIALOGUE_PROMPT_DELAY = 300;
   optionSelectSettings?: OptionSelectSettings | undefined;
-  private firstTwoPlayerDecisionIndex: number | undefined;
+  private twoPlayerDecisionIndexes: Partial<Record<PlayerIndex, number>> = {};
   private twoPlayerDecisionMessage: string | undefined;
 
   /**
@@ -79,19 +85,21 @@ export class MysteryEncounterPhase extends Phase {
       return;
     }
 
-    globalScene.tweens.killTweensOf(globalScene.trainer);
-    globalScene.tweens.killTweensOf(globalScene.trainerPartner);
+    const playerIndexes = getMysteryEncounterPlayerIndexes();
+    const hasPartnerTrainer = playerIndexes.length > 1;
 
-    globalScene.trainer
-      .setVisible(true)
-      .setTexture(globalScene.getTrainerBackTextureKey(0))
-      .setFrame(0)
-      .setPosition(globalScene.getTrainerBackSpriteX(0, true), globalScene.getTrainerBackSpriteY(0));
-    globalScene.trainerPartner
-      .setVisible(true)
-      .setTexture(globalScene.getTrainerBackTextureKey(1))
-      .setFrame(0)
-      .setPosition(globalScene.getTrainerBackSpriteX(1, true), globalScene.getTrainerBackSpriteY(1));
+    ([0, 1, 2] as PlayerIndex[]).forEach(playerIndex => {
+      const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
+      globalScene.tweens.killTweensOf(trainerSprite);
+      trainerSprite
+        .setVisible(playerIndexes.includes(playerIndex))
+        .setTexture(globalScene.getTrainerBackTextureKey(playerIndex))
+        .setFrame(0)
+        .setPosition(
+          globalScene.getTrainerBackSpriteX(playerIndex, hasPartnerTrainer),
+          globalScene.getTrainerBackSpriteY(playerIndex),
+        );
+    });
   }
 
   /**
@@ -101,34 +109,40 @@ export class MysteryEncounterPhase extends Phase {
    */
   handleOptionSelect(option: MysteryEncounterOption, index: number): boolean {
     const encounter = globalScene.currentBattle.mysteryEncounter!;
-    const shouldAskSecondPlayer =
-      globalScene.twoPlayerMode
-      && encounter.twoPlayerSharedDecision
-      && !this.optionSelectSettings
-      && this.firstTwoPlayerDecisionIndex == null;
+    const shouldCollectSharedDecision =
+      globalScene.twoPlayerMode && encounter.twoPlayerSharedDecision && !this.optionSelectSettings;
 
-    if (shouldAskSecondPlayer) {
-      this.firstTwoPlayerDecisionIndex = index;
-      globalScene.waitForPlayerInput(1);
-      globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-        slideInDescription: false,
-        overrideTitle: "Player 2",
-        overrideQuery: "What will you do?",
-        startingCursorIndex: index,
-      });
-      return true;
-    }
+    if (shouldCollectSharedDecision) {
+      const playerIndexes = getMysteryEncounterPlayerIndexes();
+      const currentPlayerIndex = globalScene.activePlayerIndex;
+      this.twoPlayerDecisionIndexes[currentPlayerIndex] = index;
 
-    if (this.firstTwoPlayerDecisionIndex != null) {
-      const firstIndex = this.firstTwoPlayerDecisionIndex;
-      this.firstTwoPlayerDecisionIndex = undefined;
+      const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(currentPlayerIndex, playerIndexes);
+      if (nextPlayerIndex != null) {
+        globalScene.waitForPlayerInput(nextPlayerIndex);
+        globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
+          slideInDescription: false,
+          overrideTitle: getMysteryEncounterPlayerTitle(nextPlayerIndex),
+          overrideQuery: "What will you do?",
+          startingCursorIndex: index,
+        });
+        return true;
+      }
 
-      if (firstIndex !== index) {
-        const winningPlayerIndex = globalScene.resolvePlayerTieBreak([0, 1]);
-        index = winningPlayerIndex === 0 ? firstIndex : index;
+      const selectedIndexes = playerIndexes.map(playerIndex => this.twoPlayerDecisionIndexes[playerIndex] ?? index);
+      const firstIndex = selectedIndexes[0] ?? index;
+      const hasDisagreement = selectedIndexes.some(selectedIndex => selectedIndex !== firstIndex);
+      if (hasDisagreement) {
+        const winningPlayerIndex = globalScene.resolvePlayerTieBreak(playerIndexes);
+        index = this.twoPlayerDecisionIndexes[winningPlayerIndex] ?? index;
         option = encounter.options[index];
         this.twoPlayerDecisionMessage = `Player ${winningPlayerIndex + 1}'s choice wins this time.`;
+      } else {
+        index = firstIndex;
+        option = encounter.options[index];
       }
+
+      this.twoPlayerDecisionIndexes = {};
     }
 
     if (globalScene.twoPlayerMode) {
@@ -506,29 +520,38 @@ export class MysteryEncounterBattlePhase extends Phase {
     }
 
     const playerFieldOwners = globalScene.getPlayerFieldOwners();
-    const availablePartyMembers = globalScene.twoPlayerMode
+    const availablePartyMemberEntries = globalScene.twoPlayerMode
       ? playerFieldOwners
-          .map(playerIndex => globalScene.getPlayerParty(playerIndex)[0])
-          .filter(pokemon => pokemon?.isAllowedInBattle())
-      : globalScene.getPlayerParty().filter(p => p.isAllowedInBattle());
+          .map((playerIndex, fieldIndex) => ({ fieldIndex, pokemon: globalScene.getPlayerParty(playerIndex)[0] }))
+          .filter((entry): entry is { fieldIndex: number; pokemon: PlayerPokemon } => !!entry.pokemon?.isAllowedInBattle())
+      : globalScene
+          .getPlayerParty()
+          .filter(p => p.isAllowedInBattle())
+          .map((pokemon, fieldIndex) => ({ fieldIndex, pokemon }));
+    const availablePartyMembers = availablePartyMemberEntries.map(entry => entry.pokemon);
 
-    if (availablePartyMembers[0] && !availablePartyMembers[0].isOnField()) {
-      globalScene.phaseManager.pushNew("SummonPhase", 0);
+    if (availablePartyMemberEntries[0] && !availablePartyMemberEntries[0].pokemon.isOnField()) {
+      globalScene.phaseManager.pushNew("SummonPhase", availablePartyMemberEntries[0].fieldIndex);
     }
 
     if (globalScene.currentBattle.double) {
       if (availablePartyMembers.length > 1) {
         globalScene.phaseManager.pushNew("ToggleDoublePositionPhase", true);
-        if (!availablePartyMembers[1].isOnField()) {
-          globalScene.phaseManager.pushNew("SummonPhase", 1);
+        for (const entry of availablePartyMemberEntries.slice(1)) {
+          if (!entry.pokemon.isOnField()) {
+            globalScene.phaseManager.pushNew("SummonPhase", entry.fieldIndex);
+          }
         }
       }
     } else {
-      if (availablePartyMembers.length > 1 && availablePartyMembers[1].isOnField()) {
+      const extraFieldEntries = availablePartyMemberEntries.slice(1).filter(entry => entry.pokemon.isOnField());
+      if (extraFieldEntries.length > 0) {
         for (const pokemon of inSpeedOrder(ArenaTagSide.PLAYER)) {
           pokemon.lapseTag(BattlerTagType.COMMANDED);
         }
-        globalScene.phaseManager.pushNew("ReturnPhase", 1);
+        for (const entry of extraFieldEntries) {
+          globalScene.phaseManager.pushNew("ReturnPhase", entry.fieldIndex);
+        }
       }
       globalScene.phaseManager.pushNew("ToggleDoublePositionPhase", false);
     }
@@ -541,8 +564,10 @@ export class MysteryEncounterBattlePhase extends Phase {
           : 1;
       if (availablePartyMembers.length > minPartySize) {
         globalScene.phaseManager.pushNew("CheckSwitchPhase", 0, globalScene.currentBattle.double);
-        if (globalScene.currentBattle.double && playerFieldOwners.length > 1) {
-          globalScene.phaseManager.pushNew("CheckSwitchPhase", 1, globalScene.currentBattle.double);
+        if (globalScene.currentBattle.double) {
+          playerFieldOwners.slice(1).forEach((_playerIndex, fieldIndex) => {
+            globalScene.phaseManager.pushNew("CheckSwitchPhase", fieldIndex + 1, globalScene.currentBattle.double);
+          });
         }
       }
     }

@@ -204,23 +204,27 @@ export class MenuUiHandler extends MessageUiHandler {
 
     const manageDataOptions: any[] = []; // TODO: proper type
 
-    const confirmSlot = (message: string, slotFilter: (i: number) => boolean, callback: (i: number) => void) => {
+    const confirmSlot = (message: string, slotEnabled: (i: number) => boolean, callback: (i: number) => void) => {
       ui.revertMode();
       ui.showText(message, null, () => {
         const config: OptionSelectConfig = {
           options: new Array(5)
             .fill(null)
             .map((_, i) => i)
-            .filter(slotFilter)
             .map(i => {
+              const enabled = slotEnabled(i);
               return {
                 label: i18next.t("menuUiHandler:slot", { slotNumber: i + 1 }),
                 handler: () => {
+                  if (!enabled) {
+                    return true;
+                  }
                   callback(i);
                   ui.revertMode();
                   ui.showText("", 0);
                   return true;
                 },
+                ...(!enabled ? { disabled: true, style: TextStyle.SETTINGS_LOCKED } : {}),
               };
             })
             .concat([

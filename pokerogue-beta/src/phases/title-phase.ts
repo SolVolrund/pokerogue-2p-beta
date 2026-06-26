@@ -23,7 +23,7 @@ import { getDailyRunStarterModifiers, regenerateModifierPoolThresholds } from "#
 import { vouchers } from "#system/voucher";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { SaveSlotUiMode } from "#ui/save-slot-select-ui-handler";
-import { isLocalServerConnected } from "#utils/common";
+import { isLocalServerConnected, randomString } from "#utils/common";
 import {
   COMPUTER_PARTNER_KEYS,
   getComputerPartnerProfile,
@@ -39,6 +39,14 @@ const TWO_PLAYER_LOBBY_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const TWO_PLAYER_WS_PORT = "8787";
 type MultiplayerLobbyPlayerCount = 2 | 3;
 type MultiplayerGuestSeat = 1 | 2;
+
+function getTwoPlayerRunSeedOverride(): string | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  return new URLSearchParams(window.location.search).get("twoPlayerRunSeed") ?? undefined;
+}
 
 export class TitlePhase extends Phase {
   public readonly phaseName = "TitlePhase";
@@ -315,12 +323,6 @@ export class TitlePhase extends Phase {
       ),
     );
 
-    if (!dataSlots.length) {
-      globalScene.ui.setMode(UiMode.MESSAGE);
-      globalScene.ui.showText("No run saves found.", null, () => this.showSaveDataSelect());
-      return;
-    }
-
     this.showRunSlotSelect("Export Run", slotId => dataSlots.includes(slotId), slotId => {
       void globalScene.gameData.tryExportData(GameDataType.SESSION, slotId);
     });
@@ -341,21 +343,27 @@ export class TitlePhase extends Phase {
 
   private showRunSlotSelect(
     title: string,
-    slotFilter: (slotId: number) => boolean,
+    slotEnabled: (slotId: number) => boolean,
     handler: (slotId: number) => void,
   ): void {
     const options = new Array(5)
       .fill(null)
       .map((_, slotId) => slotId)
-      .filter(slotFilter)
-      .map<OptionSelectItem>(slotId => ({
-        label: `Slot ${slotId + 1}`,
-        handler: () => {
-          handler(slotId);
-          return true;
-        },
-        keepOpen: true,
-      }));
+      .map<OptionSelectItem>(slotId => {
+        const enabled = slotEnabled(slotId);
+        return {
+          label: `Slot ${slotId + 1}`,
+          handler: () => {
+            if (!enabled) {
+              return true;
+            }
+            handler(slotId);
+            return true;
+          },
+          keepOpen: true,
+          ...(!enabled ? { disabled: true, style: TextStyle.SETTINGS_LOCKED } : {}),
+        };
+      });
 
     options.push({
       label: i18next.t("menu:cancel"),
@@ -392,6 +400,7 @@ export class TitlePhase extends Phase {
       null,
       true,
     );
+    globalScene.ui.getMessageHandler().bringMessageToTop();
   }
 
   private joinMultiplayerLobby(guestSeat: MultiplayerGuestSeat): void {
@@ -652,8 +661,7 @@ export class TitlePhase extends Phase {
               this.showPlayerCountSelect(gameMode),
             );
           } else {
-            globalScene.configureTwoPlayerMode(true, 6, false, 3);
-            this.setModeAndEnd(gameMode);
+            this.startMultiplayerRun(gameMode, 3, 6);
           }
           return true;
         },
@@ -849,19 +857,7 @@ export class TitlePhase extends Phase {
           this.showPlayerCountSelect(gameMode),
         );
       } else {
-        globalScene.configureTwoPlayerMode(true, partySize);
-        const titleStart: TwoPlayerTitleStart = {
-          action: "new-run",
-          gameMode,
-          partySize,
-          playerCount: globalScene.multiplayerPlayerCount === 3 ? 3 : 2,
-          seed: globalScene.seed,
-        };
-        globalScene.uiInputs?.broadcastTwoPlayerTitleStart(titleStart);
-        this.waitForTwoPlayerProfilesBeforeRun(() => {
-          globalScene.uiInputs?.broadcastTwoPlayerTitleStart(titleStart);
-          this.setModeAndEnd(gameMode);
-        });
+        this.startMultiplayerRun(gameMode, 2, partySize);
       }
     };
 
@@ -891,6 +887,28 @@ export class TitlePhase extends Phase {
     ];
 
     this.showOptionSelectWithText(i18next.t("menu:selectTwoPlayerMode"), options);
+  }
+
+  private startMultiplayerRun(gameMode: GameModes, playerCount: 2 | 3, partySize: 3 | 6): void {
+    globalScene.configureTwoPlayerMode(true, partySize, false, playerCount);
+    const runSeed = activeOverrides.SEED_OVERRIDE || getTwoPlayerRunSeedOverride() || randomString(24);
+    globalScene.setSeed(runSeed);
+    globalScene.resetSeed();
+    const titleStart: TwoPlayerTitleStart = {
+      action: "new-run",
+      gameMode,
+      partySize,
+      playerCount,
+      seed: runSeed,
+    };
+    console.info("[PokeRogue 2P] Broadcasting multiplayer run start", titleStart);
+    globalScene.uiInputs?.broadcastTwoPlayerTitleStart(titleStart);
+    globalScene.uiInputs?.broadcastTwoPlayerRunBootstrap(runSeed);
+    this.waitForTwoPlayerProfilesBeforeRun(() => {
+      globalScene.uiInputs?.broadcastTwoPlayerTitleStart(titleStart);
+      globalScene.uiInputs?.broadcastTwoPlayerRunBootstrap(runSeed);
+      this.setModeAndEnd(gameMode);
+    });
   }
 
   // TODO: Make callers actually wait for the save slot to load
@@ -938,6 +956,7 @@ export class TitlePhase extends Phase {
 
     this.remoteTitleStartApplied = true;
     globalScene.clearPendingTwoPlayerTitleStart(titleStart);
+    console.info("[PokeRogue 2P] Received multiplayer run start", titleStart);
     if (titleStart.seed) {
       globalScene.applyTwoPlayerRunBootstrap({ seed: titleStart.seed });
     }

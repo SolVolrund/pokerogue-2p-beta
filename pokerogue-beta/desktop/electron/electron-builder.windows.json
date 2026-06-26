@@ -1,0 +1,33 @@
+{
+  "appId": "net.pokerogue.two-player",
+  "productName": "PokeRogue 2P",
+  "asar": false,
+  "npmRebuild": false,
+  "directories": {
+    "output": "desktop-release"
+  },
+  "extraMetadata": {
+    "main": "desktop/electron/main.cjs",
+    "description": "PokeRogue 2P desktop build",
+    "author": "SolVolrund",
+    "dependencies": {},
+    "devDependencies": {},
+    "optionalDependencies": {}
+  },
+  "files": [
+    "desktop/electron/main.cjs",
+    "dist/**/*",
+    "scripts/two-player-ws-relay.mjs",
+    "app-icon.png",
+    "package.json"
+  ],
+  "win": {
+    "target": ["portable"],
+    "icon": "app-icon.png",
+    "verifyUpdateCodeSignature": false,
+    "signAndEditExecutable": false
+  },
+  "portable": {
+    "artifactName": "PokeRogue2P.exe"
+  }
+}

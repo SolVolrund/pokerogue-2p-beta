@@ -1,10 +1,10 @@
-import { globalScene } from "#app/global-scene";
 import type { MoveId } from "#enums/move-id";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import type { PokemonType } from "#enums/pokemon-type";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import type { CanLearnMoveRequirementOptions } from "#mystery-encounters/can-learn-move-requirement";
 import { CanLearnMoveRequirement } from "#mystery-encounters/can-learn-move-requirement";
+import { getMysteryEncounterRequirementParty } from "#mystery-encounters/encounter-player-utils";
 import type { OptionTextDisplay } from "#mystery-encounters/mystery-encounter-dialogue";
 import {
   EncounterPokemonRequirement,
@@ -16,14 +16,6 @@ import { randSeedInt } from "#utils/common";
 
 // biome-ignore lint/suspicious/noConfusingVoidType: void unions in callbacks are OK
 export type OptionPhaseCallback = () => Promise<void | boolean>;
-
-function getMysteryEncounterRequirementParty(): PlayerPokemon[] {
-  if (!globalScene.twoPlayerMode) {
-    return globalScene.getPlayerParty();
-  }
-
-  return [...globalScene.getPlayerParty(0), ...globalScene.getPlayerParty(1)];
-}
 
 /**
  * Used by {@linkcode MysteryEncounterOptionBuilder} class to define required/optional properties on the {@linkcode MysteryEncounterOption} class when building.
@@ -110,7 +102,11 @@ export class MysteryEncounterOption implements IMysteryEncounterOption {
   pokemonMeetsPrimaryRequirements(pokemon: Pokemon): boolean {
     const party = getMysteryEncounterRequirementParty();
     return !this.primaryPokemonRequirements.some(
-      req => !req.queryParty(party).map(p => p.id).includes(pokemon.id),
+      req =>
+        !req
+          .queryParty(party)
+          .map(p => p.id)
+          .includes(pokemon.id),
     );
   }
 

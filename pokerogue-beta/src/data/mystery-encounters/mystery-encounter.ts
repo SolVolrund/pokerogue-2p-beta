@@ -14,6 +14,7 @@ import { MysteryEncounterIntroVisuals } from "#field/mystery-encounter-intro";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import type { PokemonMove } from "#moves/pokemon-move";
 import type { EnemyPartyConfig } from "#mystery-encounters/encounter-phase-utils";
+import { getMysteryEncounterRequirementParty } from "#mystery-encounters/encounter-player-utils";
 import type { MysteryEncounterDialogue, OptionTextDisplay } from "#mystery-encounters/mystery-encounter-dialogue";
 import type { MysteryEncounterOption, OptionPhaseCallback } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
@@ -39,14 +40,6 @@ export interface EncounterStartOfBattleEffect {
 
 const DEFAULT_MAX_ALLOWED_ENCOUNTERS = 2;
 const DEFAULT_MAX_ALLOWED_ROGUE_ENCOUNTERS = 1;
-
-function getMysteryEncounterRequirementParty(): PlayerPokemon[] {
-  if (!globalScene.twoPlayerMode) {
-    return globalScene.getPlayerParty();
-  }
-
-  return [...globalScene.getPlayerParty(0), ...globalScene.getPlayerParty(1)];
-}
 
 /**
  * Used by {@linkcode MysteryEncounterBuilder} class to define required/optional properties on the {@linkcode MysteryEncounter} class when building.
@@ -355,7 +348,11 @@ export class MysteryEncounter implements IMysteryEncounter {
   pokemonMeetsPrimaryRequirements(pokemon: Pokemon): boolean {
     const party = getMysteryEncounterRequirementParty();
     return !this.primaryPokemonRequirements.some(
-      req => !req.queryParty(party).map(p => p.id).includes(pokemon.id),
+      req =>
+        !req
+          .queryParty(party)
+          .map(p => p.id)
+          .includes(pokemon.id),
     );
   }
 
