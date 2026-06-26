@@ -15,6 +15,7 @@ import { PlayerPartyMemberPokemonPhase } from "#phases/player-party-member-pokem
 import { EvolutionSceneUiHandler } from "#ui/evolution-scene-ui-handler";
 import { SummaryUiMode } from "#ui/summary-ui-handler";
 import { chooseComputerPartnerMoveLearningDecision } from "#utils/computer-partner-move-ai";
+import { getComputerPartnerProfile, isComputerPartnerAcePokemon } from "#utils/computer-partner-profile";
 import i18next from "i18next";
 
 export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
@@ -77,7 +78,14 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
     }
 
     globalScene.waitForPlayerInput(0);
-    const decision = chooseComputerPartnerMoveLearningDecision(pokemon, currentMoveIds, move, this.learnMoveType);
+    const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(this.playerIndex));
+    const role = isComputerPartnerAcePokemon(pokemon, profile)
+      ? "ace"
+      : profile.roles[this.partyMemberIndex] ?? "balanced";
+    const decision = chooseComputerPartnerMoveLearningDecision(pokemon, currentMoveIds, move, this.learnMoveType, {
+      profile,
+      role,
+    });
     if (decision.shouldLearn) {
       const replacedMove = pokemon.moveset[decision.replaceIndex];
       if (replacedMove) {

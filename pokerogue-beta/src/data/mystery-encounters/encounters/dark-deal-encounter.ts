@@ -8,20 +8,27 @@ import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import type { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
-import { UiMode } from "#enums/ui-mode";
+import type { PlayerPokemon } from "#field/pokemon";
 import type { PokemonHeldItemModifier } from "#modifiers/modifier";
 import { PokemonFormChangeItemModifier } from "#modifiers/modifier";
 import { showEncounterDialogue, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
 import type { EnemyPartyConfig, EnemyPokemonConfig } from "#mystery-encounters/encounter-phase-utils";
 import { initBattleWithEnemyConfig, leaveEncounterWithoutBattle } from "#mystery-encounters/encounter-phase-utils";
 import { getRandomPlayerPokemon, getRandomSpeciesByStarterCost } from "#mystery-encounters/encounter-pokemon-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import { updateWindowType } from "#ui/ui-theme";
 import { randSeedInt } from "#utils/common";
+import { getComputerPartnerProfile, isComputerPartnerAcePokemon } from "#utils/computer-partner-profile";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
+import i18next from "i18next";
 
 /** i18n namespace for encounter */
 const namespace = "mysteryEncounters/darkDeal";
@@ -30,6 +37,7 @@ type DarkDealAcceptedPlayer = {
   playerIndex: PlayerIndex;
   removedTypes: PokemonType[];
   modifiers: PokemonHeldItemModifier[];
+  removedPokemonName: string;
 };
 
 interface DarkDealChoice {
@@ -37,8 +45,14 @@ interface DarkDealChoice {
   acceptDeal: boolean;
 }
 
+interface DarkDealCaptureTarget {
+  playerIndex: PlayerIndex;
+  targetId: number;
+}
+
 interface DarkDealData {
   choices: DarkDealChoice[];
+  captureTargets?: DarkDealCaptureTarget[];
   skipSelectedDialogueOnce?: boolean;
 }
 
@@ -64,7 +78,7 @@ class DarkDealSpawnRequirement extends EncounterSceneRequirement {
       return globalScene.getPokemonAllowedInBattle().length >= MIN_HEALTHY_POKEMON_FOR_DARK_DEAL;
     }
 
-    return ([0, 1] as PlayerIndex[]).some(
+    return getMysteryEncounterPlayerIndexes().some(
       playerIndex => globalScene.getPokemonAllowedInBattle(playerIndex).length >= MIN_HEALTHY_POKEMON_FOR_DARK_DEAL,
     );
   }
@@ -169,9 +183,17 @@ async function storeDarkDealChoice(acceptDeal: boolean, playerIndex: PlayerIndex
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
   data.choices.push({ playerIndex, acceptDeal: acceptDeal && canAcceptDeal });
 
-  if (playerIndex === 0) {
-    showDarkDealPlayerMenu(1, canAcceptDeal ? 0 : 1);
-    return false;
+  if (!acceptDeal || !canAcceptDeal) {
+    hideDarkDealTrainer(playerIndex);
+  }
+
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    queueComputerPartnerDarkDealChoiceMessage(playerIndex, acceptDeal && canAcceptDeal);
+  }
+
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+  if (nextPlayerIndex != null) {
+    return promptNextDarkDealPlayer(nextPlayerIndex, canAcceptDeal ? 0 : 1);
   }
 
   data.skipSelectedDialogueOnce = true;
@@ -180,36 +202,107 @@ async function storeDarkDealChoice(acceptDeal: boolean, playerIndex: PlayerIndex
   return true;
 }
 
-function showDarkDealPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+async function promptNextDarkDealPlayer(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: [buildDarkDealAcceptOption(playerIndex), buildDarkDealRefuseOption(playerIndex)],
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerDarkDealOption,
+      onOptionChosen: (optionIndex, choicePlayerIndex) =>
+        storeDarkDealChoice(optionIndex === 1, choicePlayerIndex),
+    },
+  });
+  return result ?? false;
+}
 
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: "What will you do?",
-      overrideOptions: [buildDarkDealAcceptOption(playerIndex), buildDarkDealRefuseOption(playerIndex)],
-      startingCursorIndex,
-    });
+function chooseComputerPartnerDarkDealOption(playerIndex: PlayerIndex): 1 | 2 {
+  return chooseComputerPartnerDarkDealSacrifice(playerIndex) ? 1 : 2;
+}
+
+function queueComputerPartnerDarkDealChoiceMessage(playerIndex: PlayerIndex, acceptDeal: boolean): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const choice = acceptDeal ? i18next.t(`${namespace}:option.1.label`) : i18next.t(`${namespace}:option.2.label`);
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${choice}.`, null, true);
+}
+
+function hideDarkDealTrainer(playerIndex: PlayerIndex, animate = true): void {
+  if (!globalScene.twoPlayerMode) {
+    return;
+  }
+
+  const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
+  globalScene.tweens.killTweensOf(trainerSprite);
+  if (!trainerSprite.visible) {
+    return;
+  }
+
+  if (!animate) {
+    trainerSprite.setVisible(false);
+    return;
+  }
+
+  globalScene.tweens.add({
+    targets: trainerSprite,
+    x: -36,
+    duration: 500,
+    onComplete: () => trainerSprite.setVisible(false),
   });
 }
 
-function acceptDarkDealForPlayer(playerIndex: PlayerIndex): DarkDealAcceptedPlayer {
+function getDarkDealSacrificeCandidates(playerIndex: PlayerIndex): PlayerPokemon[] {
+  const healthyLegalPokemon = globalScene
+    .getPlayerParty(playerIndex)
+    .filter(pokemon => pokemon.isAllowedInChallenge() && !pokemon.isFainted());
+  if (healthyLegalPokemon.length > 1) {
+    return healthyLegalPokemon;
+  }
+
+  return globalScene
+    .getPlayerParty(playerIndex)
+    .filter(pokemon => pokemon.isAllowedInChallenge() && pokemon.isFainted());
+}
+
+function chooseComputerPartnerDarkDealSacrifice(playerIndex: PlayerIndex): PlayerPokemon | undefined {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const candidates = getDarkDealSacrificeCandidates(playerIndex).filter(
+    pokemon => !isComputerPartnerAcePokemon(pokemon, profile),
+  );
+  return candidates.length ? candidates[randSeedInt(candidates.length)] : undefined;
+}
+
+function chooseDarkDealSacrifice(playerIndex: PlayerIndex): PlayerPokemon | undefined {
   globalScene.setActivePlayerIndex(playerIndex);
   updateWindowType(playerIndex + 1);
 
-  const removedPokemon = getRandomPlayerPokemon(true, false, true);
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    return chooseComputerPartnerDarkDealSacrifice(playerIndex);
+  }
+
+  return getRandomPlayerPokemon(true, false, true);
+}
+
+function acceptDarkDealForPlayer(playerIndex: PlayerIndex): DarkDealAcceptedPlayer | undefined {
+  const removedPokemon = chooseDarkDealSacrifice(playerIndex);
+  if (!removedPokemon) {
+    return undefined;
+  }
+
   const modifiers = removedPokemon.getHeldItems().filter(m => !(m instanceof PokemonFormChangeItemModifier));
+  const removedPokemonName = removedPokemon.getNameToRender();
 
   globalScene.removePokemonFromPlayerParty(removedPokemon);
   globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypes.ROGUE_BALL, playerIndex);
-  globalScene.phaseManager.queueMessage(`${removedPokemon.getNameToRender()} hops into the strange machine...`);
+  globalScene.phaseManager.queueMessage(`${removedPokemonName} hops into the strange machine...`);
 
   return {
     playerIndex,
     removedTypes: removedPokemon.getTypes(),
     modifiers,
+    removedPokemonName,
   };
 }
 
@@ -316,7 +409,8 @@ async function runTwoPlayerDarkDealChoices(): Promise<boolean> {
   const choices = getDarkDealData().choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
   const acceptedDeals = choices
     .filter(choice => choice.acceptDeal)
-    .map(choice => acceptDarkDealForPlayer(choice.playerIndex));
+    .map(choice => acceptDarkDealForPlayer(choice.playerIndex))
+    .filter((deal): deal is DarkDealAcceptedPlayer => !!deal);
 
   if (acceptedDeals.length === 0) {
     await showEncounterDialogue(`${namespace}:option.2.selected`, `${namespace}:speaker`);
@@ -328,11 +422,73 @@ async function runTwoPlayerDarkDealChoices(): Promise<boolean> {
   await showEncounterText(`${namespace}:option.1.selectedMessage`);
 
   const config: EnemyPartyConfig = {
-    doubleBattle: true,
+    doubleBattle: acceptedDeals.length > 1,
     pokemonConfigs: acceptedDeals.map(getDarkDealBossConfig),
   };
+  globalScene.setMysteryEncounterBattlePlayerFieldOwners(acceptedDeals.map(deal => deal.playerIndex));
   await initBattleWithEnemyConfig(config);
+  registerDarkDealCaptureTargets(acceptedDeals);
   return true;
+}
+
+function registerDarkDealCaptureTargets(acceptedDeals: DarkDealAcceptedPlayer[]): void {
+  const data = getDarkDealData();
+  data.captureTargets = acceptedDeals
+    .map((deal, index): DarkDealCaptureTarget | undefined => {
+      const enemyPokemon = globalScene.getEnemyParty()[index];
+      return enemyPokemon ? { playerIndex: deal.playerIndex, targetId: enemyPokemon.id } : undefined;
+    })
+    .filter((target): target is DarkDealCaptureTarget => !!target);
+
+  globalScene.currentBattle.computerPartnerCaptureClaims = [...data.captureTargets];
+  globalScene.currentBattle.computerPartnerReservedCaptureTargetIds = data.captureTargets.map(target => target.targetId);
+  globalScene.currentBattle.computerPartnerReservedCaptureTargetId = data.captureTargets[0]?.targetId;
+  queueDarkDealCaptureReservationMessages(data.captureTargets);
+}
+
+function queueDarkDealCaptureReservationMessages(captureTargets: DarkDealCaptureTarget[]): void {
+  if (captureTargets.length === 0) {
+    return;
+  }
+
+  for (const [targetIndex, captureTarget] of captureTargets.entries()) {
+    const targetPokemon = globalScene.getEnemyParty().find(pokemon => pokemon.id === captureTarget.targetId);
+    if (!targetPokemon) {
+      continue;
+    }
+
+    const trainerName = getDarkDealTrainerName(captureTarget.playerIndex);
+    const positionLabel = getDarkDealCapturePositionLabel(targetIndex, captureTargets.length);
+    globalScene.phaseManager.queueMessage(
+      `${trainerName} is reserving ${positionLabel}${targetPokemon.getNameToRender()}.`,
+      null,
+      true,
+    );
+  }
+}
+
+function getDarkDealTrainerName(playerIndex: PlayerIndex): string {
+  return globalScene.isComputerPartnerPlayer(playerIndex)
+    ? getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex)).name
+    : `Player ${playerIndex + 1}`;
+}
+
+function getDarkDealCapturePositionLabel(targetIndex: number, targetCount: number): string {
+  if (targetCount <= 1) {
+    return "";
+  }
+  if (targetCount > 2) {
+    switch (targetIndex) {
+      case 0:
+        return "the left ";
+      case 1:
+        return "the right ";
+      case 2:
+        return "the center ";
+    }
+  }
+
+  return targetIndex === 0 ? "the left " : "the right ";
 }
 
 async function runOnePlayerDarkDeal(): Promise<void> {

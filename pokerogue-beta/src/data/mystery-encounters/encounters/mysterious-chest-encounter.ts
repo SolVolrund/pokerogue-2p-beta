@@ -10,6 +10,11 @@ import { SpeciesId } from "#enums/species-id";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import { queueEncounterMessage, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import type { EnemyPartyConfig } from "#mystery-encounters/encounter-phase-utils";
 import {
@@ -25,8 +30,14 @@ import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encount
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import type { OptionSelectConfig } from "#ui/abstract-option-select-ui-handler";
 import { updateWindowType } from "#ui/ui-theme";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import {
+  getComputerPartnerTeamConfidence,
+  type ComputerPartnerTeamConfidenceLevel,
+} from "#utils/computer-partner-team-confidence";
 import { randSeedInt } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
+import i18next from "i18next";
 
 /** i18n namespace for encounter */
 const namespace = "mysteryEncounters/mysteriousChest";
@@ -39,6 +50,7 @@ const ROGUE_REWARDS_PERCENT = 10;
 const MASTER_REWARDS_PERCENT = 5;
 const MIN_HEALTHY_POKEMON_FOR_ONE_CHEST = 2;
 const MIN_HEALTHY_POKEMON_FOR_TWO_CHESTS = 3;
+const MIN_HEALTHY_POKEMON_FOR_THREE_CHESTS = 4;
 
 class PlayerHealthyPokemonRequirement extends EncounterSceneRequirement {
   constructor(
@@ -63,7 +75,7 @@ class MysteriousChestSpawnRequirement extends EncounterSceneRequirement {
       return globalScene.getPokemonAllowedInBattle().length >= MIN_HEALTHY_POKEMON_FOR_ONE_CHEST;
     }
 
-    return ([0, 1] as PlayerIndex[]).some(
+    return getMysteryEncounterPlayerIndexes().some(
       playerIndex => globalScene.getPokemonAllowedInBattle(playerIndex).length >= MIN_HEALTHY_POKEMON_FOR_ONE_CHEST,
     );
   }
@@ -151,6 +163,43 @@ function getMysteriousChestData(): MysteriousChestData {
   return encounter.misc as MysteriousChestData;
 }
 
+function getMaxMysteriousChestsForPlayer(playerIndex: PlayerIndex): number {
+  const healthyPokemon = globalScene.getPokemonAllowedInBattle(playerIndex).length;
+  const maxEncounterChests = getMysteryEncounterPlayerIndexes().length;
+  if (healthyPokemon >= MIN_HEALTHY_POKEMON_FOR_THREE_CHESTS) {
+    return Math.min(3, maxEncounterChests);
+  }
+  if (healthyPokemon >= MIN_HEALTHY_POKEMON_FOR_TWO_CHESTS) {
+    return Math.min(2, maxEncounterChests);
+  }
+  if (healthyPokemon >= MIN_HEALTHY_POKEMON_FOR_ONE_CHEST) {
+    return 1;
+  }
+  return 0;
+}
+
+function getComputerPartnerDesiredChestCount(playerIndex: PlayerIndex): number {
+  const confidence = getComputerPartnerTeamConfidence(globalScene.getPlayerParty(playerIndex));
+  const desiredByConfidence: Record<ComputerPartnerTeamConfidenceLevel, number> = {
+    none: 0,
+    low: 1,
+    medium: 2,
+    high: 3,
+  };
+  return Math.min(desiredByConfidence[confidence.level], getMaxMysteriousChestsForPlayer(playerIndex));
+}
+
+function chooseComputerPartnerMysteriousChestOpen(playerIndex: PlayerIndex): 1 | 2 {
+  return getComputerPartnerDesiredChestCount(playerIndex) > 0 ? 1 : 2;
+}
+
+function queueComputerPartnerMysteriousChestChoiceMessage(playerIndex: PlayerIndex, openChest: boolean): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const optionLabel = i18next.t(`${namespace}:option.${openChest ? 1 : 2}.label`);
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionLabel}.`, null, true);
+}
+
 async function storeMysteriousChestChoice(openChest: boolean, playerIndex: PlayerIndex = 0): Promise<boolean> {
   if (!globalScene.twoPlayerMode) {
     return true;
@@ -172,9 +221,13 @@ async function storeMysteriousChestChoice(openChest: boolean, playerIndex: Playe
     hideMysteriousChestTrainer(playerIndex);
   }
 
-  if (playerIndex === 0) {
-    showMysteriousChestPlayerMenu(1, canOpenChest ? 0 : 1);
-    return false;
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    queueComputerPartnerMysteriousChestChoiceMessage(playerIndex, canOpenChest);
+  }
+
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+  if (nextPlayerIndex != null) {
+    return showMysteriousChestPlayerMenu(nextPlayerIndex, canOpenChest ? 0 : 1);
   }
 
   data.skipSelectedDialogueOnce = true;
@@ -183,19 +236,20 @@ async function storeMysteriousChestChoice(openChest: boolean, playerIndex: Playe
   return true;
 }
 
-function showMysteriousChestPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
-
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: "Will you open it?",
-      overrideOptions: buildMysteriousChestPlayerOptions(playerIndex),
-      startingCursorIndex,
-    });
+async function showMysteriousChestPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: "Will you open it?",
+    overrideOptions: buildMysteriousChestPlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerMysteriousChestOpen,
+      onOptionChosen: (optionIndex, choicePlayerIndex) =>
+        storeMysteriousChestChoice(optionIndex === 1, choicePlayerIndex),
+    },
   });
+  return result ?? false;
 }
 
 function buildMysteriousChestPlayerOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
@@ -220,7 +274,7 @@ function buildMysteriousChestOpenOption(playerIndex: PlayerIndex): MysteryEncoun
       globalScene.twoPlayerMode ? storeMysteriousChestChoice(true, playerIndex) : runOnePlayerChestOpenPreOption(),
     )
     .withOptionPhase(async () =>
-      globalScene.twoPlayerMode ? runTwoPlayerMysteriousChestChoices() : runOnePlayerChestOpen(),
+      globalScene.twoPlayerMode ? runMultiplayerMysteriousChestChoices() : runOnePlayerChestOpen(),
     )
     .build();
 }
@@ -239,7 +293,7 @@ function buildMysteriousChestLeaveOption(playerIndex: PlayerIndex): MysteryEncou
     .withPreOptionPhase(async () => storeMysteriousChestChoice(false, playerIndex))
     .withOptionPhase(async () => {
       if (globalScene.twoPlayerMode) {
-        return runTwoPlayerMysteriousChestChoices();
+        return runMultiplayerMysteriousChestChoices();
       }
 
       leaveEncounterWithoutBattle(true);
@@ -259,39 +313,88 @@ function playChestOpenAnimation(hasTrap = false): void {
   introVisuals.playAnim();
 }
 
-async function promptSingleOpenerForSecondChest(playerIndex: PlayerIndex): Promise<boolean> {
+function chooseComputerPartnerExtraChestCount(
+  playerIndex: PlayerIndex,
+  currentChestCount: number,
+  remainingChests: number,
+): number {
+  const desiredChestCount = getComputerPartnerDesiredChestCount(playerIndex);
+  return Math.max(0, Math.min(remainingChests, desiredChestCount - currentChestCount));
+}
+
+async function promptPlayerForExtraChests(
+  playerIndex: PlayerIndex,
+  currentChestCount: number,
+  remainingChests: number,
+): Promise<number> {
   globalScene.setActivePlayerIndex(playerIndex);
   updateWindowType(playerIndex + 1);
 
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    const extraChestCount = chooseComputerPartnerExtraChestCount(playerIndex, currentChestCount, remainingChests);
+    if (extraChestCount > 0) {
+      const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+      globalScene.waitForPlayerInput(0);
+      globalScene.phaseManager.queueMessage(
+        `${profile.name}: Opened ${extraChestCount === 1 ? "one more chest" : "all the loot"}.`,
+        null,
+        true,
+      );
+    }
+    return extraChestCount;
+  }
+
   await showEncounterText(`${namespace}:option.1.openBothPrompt`);
-  const canOpenBothChests =
-    globalScene.getPokemonAllowedInBattle(playerIndex).length >= MIN_HEALTHY_POKEMON_FOR_TWO_CHESTS;
+  const maxChestCount = getMaxMysteriousChestsForPlayer(playerIndex);
+  const canOpenOneMoreChest = maxChestCount >= currentChestCount + 1;
+  const canOpenAllRemainingChests = maxChestCount >= currentChestCount + remainingChests;
 
   return new Promise(resolve => {
-    const config: OptionSelectConfig = {
-      options: [
+    const options: OptionSelectConfig["options"] = [
+      {
+        label: canOpenOneMoreChest ? "Open another chest!" : "You dont feel too confident, so...",
+        disabled: !canOpenOneMoreChest,
+        style: canOpenOneMoreChest ? TextStyle.WINDOW : TextStyle.SUMMARY_GRAY,
+        handler: () => {
+          if (!canOpenOneMoreChest) {
+            return false;
+          }
+          globalScene.ui.setMode(UiMode.MESSAGE);
+          resolve(1);
+          return true;
+        },
+      },
+    ];
+
+    if (remainingChests > 1) {
+      options.push(
         {
-          label: canOpenBothChests ? "Open both chests!" : "You dont feel too confident, so...",
-          disabled: !canOpenBothChests,
-          style: canOpenBothChests ? TextStyle.WINDOW : TextStyle.SUMMARY_GRAY,
+          label: canOpenAllRemainingChests ? "Take all the loot!" : "That's too risky...",
+          disabled: !canOpenAllRemainingChests,
+          style: canOpenAllRemainingChests ? TextStyle.WINDOW : TextStyle.SUMMARY_GRAY,
           handler: () => {
-            if (!canOpenBothChests) {
+            if (!canOpenAllRemainingChests) {
               return false;
             }
             globalScene.ui.setMode(UiMode.MESSAGE);
-            resolve(true);
+            resolve(remainingChests);
             return true;
           },
         },
-        {
-          label: "Just open one chest",
-          handler: () => {
-            globalScene.ui.setMode(UiMode.MESSAGE);
-            resolve(false);
-            return true;
-          },
-        },
-      ],
+      );
+    }
+
+    options.push({
+      label: currentChestCount > 1 ? "No more chests" : "Just open one chest",
+      handler: () => {
+        globalScene.ui.setMode(UiMode.MESSAGE);
+        resolve(0);
+        return true;
+      },
+    });
+
+    const config: OptionSelectConfig = {
+      options,
       noCancel: true,
       supportHover: true,
     };
@@ -300,8 +403,56 @@ async function promptSingleOpenerForSecondChest(playerIndex: PlayerIndex): Promi
   });
 }
 
+async function collectExtraChestCounts(openingPlayers: PlayerIndex[]): Promise<Map<PlayerIndex, number>> {
+  const chestCounts = new Map<PlayerIndex, number>();
+  openingPlayers.forEach(playerIndex => chestCounts.set(playerIndex, 1));
+
+  let remainingChests = Math.max(0, getMysteryEncounterPlayerIndexes().length - openingPlayers.length);
+  const declinedPlayers = new Set<PlayerIndex>();
+
+  while (remainingChests > 0) {
+    const eligiblePlayers = openingPlayers.filter(playerIndex => {
+      const currentChestCount = chestCounts.get(playerIndex) ?? 0;
+      return !declinedPlayers.has(playerIndex) && getMaxMysteriousChestsForPlayer(playerIndex) > currentChestCount;
+    });
+
+    if (eligiblePlayers.length === 0) {
+      break;
+    }
+
+    const offerPlayerIndex = globalScene.resolvePlayerTieBreak(eligiblePlayers);
+    const currentChestCount = chestCounts.get(offerPlayerIndex) ?? 0;
+    const extraChestCount = await promptPlayerForExtraChests(
+      offerPlayerIndex,
+      currentChestCount,
+      remainingChests,
+    );
+
+    if (extraChestCount > 0) {
+      chestCounts.set(offerPlayerIndex, currentChestCount + extraChestCount);
+      remainingChests -= extraChestCount;
+    }
+
+    declinedPlayers.add(offerPlayerIndex);
+  }
+
+  return chestCounts;
+}
+
+function getChestRollRequests(chestCounts: Map<PlayerIndex, number>): Array<{
+  playerIndex: PlayerIndex;
+  extraChest: boolean;
+}> {
+  return [...chestCounts.entries()].flatMap(([playerIndex, chestCount]) =>
+    Array.from({ length: chestCount }, (_value, index) => ({
+      playerIndex,
+      extraChest: index > 0,
+    })),
+  );
+}
+
 function getMysteriousChestTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
-  return playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+  return globalScene.getPlayerTrainerBackSprite(playerIndex);
 }
 
 function setMysteriousChestTrainerVisible(playerIndex: PlayerIndex): void {
@@ -311,12 +462,14 @@ function setMysteriousChestTrainerVisible(playerIndex: PlayerIndex): void {
     .setVisible(true)
     .setTexture(globalScene.getTrainerBackTextureKey(playerIndex))
     .setFrame(0)
-    .setPosition(playerIndex === 1 ? 122 : 90, globalScene.getTrainerBackSpriteY(playerIndex));
+    .setPosition(
+      globalScene.getTrainerBackSpriteX(playerIndex, getMysteryEncounterPlayerIndexes().length > 1),
+      globalScene.getTrainerBackSpriteY(playerIndex),
+    );
 }
 
-function showTwoPlayerMysteriousChestTrainers(): void {
-  setMysteriousChestTrainerVisible(0);
-  setMysteriousChestTrainerVisible(1);
+function showMultiplayerMysteriousChestTrainers(): void {
+  getMysteryEncounterPlayerIndexes().forEach(playerIndex => setMysteriousChestTrainerVisible(playerIndex));
 }
 
 function hideMysteriousChestTrainer(playerIndex: PlayerIndex, animate = true): void {
@@ -341,7 +494,7 @@ function hideMysteriousChestTrainer(playerIndex: PlayerIndex, animate = true): v
 
 function prepareMysteriousChestBattleTrainers(playerIndexes: PlayerIndex[]): void {
   const battlePlayerIndexes = new Set(playerIndexes);
-  ([0, 1] as PlayerIndex[]).forEach(playerIndex => {
+  getMysteryEncounterPlayerIndexes().forEach(playerIndex => {
     if (battlePlayerIndexes.has(playerIndex)) {
       setMysteriousChestTrainerVisible(playerIndex);
       getMysteriousChestTrainerSprite(playerIndex).setVisible(false);
@@ -358,9 +511,9 @@ function prepareMysteriousChestBattleTrainers(playerIndexes: PlayerIndex[]): voi
  */
 export const MysteriousChestEncounter: MysteryEncounter = MysteryEncounterBuilder.withEncounterType(
   MysteryEncounterType.MYSTERIOUS_CHEST,
-  )
-    .withEncounterTier(MysteryEncounterTier.COMMON)
-    .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
+)
+  .withEncounterTier(MysteryEncounterTier.COMMON)
+  .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withSceneRequirement(new MysteriousChestSpawnRequirement())
   .withAutoHideIntroVisuals(false)
   .withCatchAllowed(true)
@@ -415,7 +568,7 @@ export const MysteriousChestEncounter: MysteryEncounter = MysteryEncounterBuilde
   })
   .withOnVisualsStart(() => {
     if (globalScene.twoPlayerMode) {
-      showTwoPlayerMysteriousChestTrainers();
+      showMultiplayerMysteriousChestTrainers();
     }
 
     return true;
@@ -462,7 +615,7 @@ async function runOnePlayerChestOpen(): Promise<void> {
   await initBattleWithEnemyConfig(encounter.enemyPartyConfigs[0]);
 }
 
-async function runTwoPlayerMysteriousChestChoices(): Promise<boolean> {
+async function runMultiplayerMysteriousChestChoices(): Promise<boolean> {
   const data = getMysteriousChestData();
   const openingPlayers = data.choices
     .filter(choice => choice.openChest)
@@ -475,22 +628,7 @@ async function runTwoPlayerMysteriousChestChoices(): Promise<boolean> {
     return true;
   }
 
-  let rollRequests = openingPlayers.map(playerIndex => ({
-    playerIndex,
-    extraChest: false,
-  }));
-  if (openingPlayers.length === 1 && await promptSingleOpenerForSecondChest(openingPlayers[0])) {
-    rollRequests = [
-      {
-        playerIndex: openingPlayers[0],
-        extraChest: false,
-      },
-      {
-        playerIndex: openingPlayers[0],
-        extraChest: true,
-      },
-    ];
-  }
+  const rollRequests = getChestRollRequests(await collectExtraChestCounts(openingPlayers));
 
   const outcomes: MysteriousChestOutcome[] = rollRequests.map(({ playerIndex, extraChest }) => {
     const roll = randSeedInt(RAND_LENGTH);
@@ -568,8 +706,8 @@ async function runTwoPlayerMysteriousChestChoices(): Promise<boolean> {
   }
 
   await transitionMysteryEncounterIntroVisuals(true, true, 500);
-  globalScene.setMysteryEncounterBattlePlayerFieldOwners(trappedPlayers);
+  globalScene.setMysteryEncounterBattlePlayerFieldOwners(fightingPlayers);
   prepareMysteriousChestBattleTrainers(fightingPlayers);
-  await initBattleWithEnemyConfig(getGimmighoulConfig(trappedPlayers.length));
+  await initBattleWithEnemyConfig(getGimmighoulConfig(fightingPlayers.length));
   return true;
 }

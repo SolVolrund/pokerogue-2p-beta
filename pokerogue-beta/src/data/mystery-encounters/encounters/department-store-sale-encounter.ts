@@ -5,15 +5,21 @@ import { modifierTypes } from "#data/data-lists";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
+import { PokeballType } from "#enums/pokeball";
 import { SpeciesId } from "#enums/species-id";
-import { UiMode } from "#enums/ui-mode";
 import { leaveEncounterWithoutBattle, setEncounterRewards } from "#mystery-encounters/encounter-phase-utils";
+import {
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
+import { getPlayerModifierTypeOptions, type ModifierTypeOption } from "#modifiers/modifier-type";
 import type { ModifierTypeFunc } from "#types/modifier-types";
-import { updateWindowType } from "#ui/ui-theme";
 import { randSeedInt } from "#utils/common";
+import { getComputerPartnerProfileWithRolePreferences } from "#utils/computer-partner-profile";
+import { chooseComputerPartnerRewardOption } from "#utils/computer-partner-reward-ai";
 import i18next from "i18next";
 
 /** i18n namespace for encounter */
@@ -24,11 +30,11 @@ type DepartmentStoreOptionIndex = 1 | 2 | 3 | 4;
 interface DepartmentStoreChoice {
   playerIndex: PlayerIndex;
   optionIndex: DepartmentStoreOptionIndex;
+  rewardOptions: ModifierTypeOption[];
 }
 
 interface DepartmentStoreData {
   choices: DepartmentStoreChoice[];
-  selectingPlayerIndex?: PlayerIndex;
 }
 
 function getDepartmentStoreData(): DepartmentStoreData {
@@ -37,37 +43,121 @@ function getDepartmentStoreData(): DepartmentStoreData {
     encounter.misc = {
       ...(encounter.misc ?? {}),
       choices: [],
-      selectingPlayerIndex: 0,
     } satisfies DepartmentStoreData;
   }
 
   return encounter.misc as DepartmentStoreData;
 }
 
-function storeDepartmentStoreChoice(optionIndex: DepartmentStoreOptionIndex): boolean {
+const CATCH_BALL_TYPES = [
+  PokeballType.POKEBALL,
+  PokeballType.GREAT_BALL,
+  PokeballType.ULTRA_BALL,
+  PokeballType.ROGUE_BALL,
+] as const;
+const LOW_CATCH_BALL_TOTAL = 6;
+
+function createDepartmentStoreModifierOptions(
+  optionIndex: DepartmentStoreOptionIndex,
+  playerIndex: PlayerIndex,
+): ModifierTypeOption[] {
+  const modifierTypeFuncs = getDepartmentStoreModifiers(optionIndex);
+  return getPlayerModifierTypeOptions(modifierTypeFuncs.length, globalScene.getPlayerParty(playerIndex), [], {
+    guaranteedModifierTypeFuncs: modifierTypeFuncs,
+    fillRemaining: false,
+  });
+}
+
+function previewDepartmentStoreModifierOptions(
+  optionIndex: DepartmentStoreOptionIndex,
+  playerIndex: PlayerIndex,
+): ModifierTypeOption[] {
+  const seedState = Phaser.Math.RND.state();
+  const options = createDepartmentStoreModifierOptions(optionIndex, playerIndex);
+  Phaser.Math.RND.state(seedState);
+  return options;
+}
+
+function hasLowCatchBallSupply(playerIndex: PlayerIndex): boolean {
+  const pokeballCounts = globalScene.getPlayerPokeballCounts(playerIndex);
+  const catchBallTotal = CATCH_BALL_TYPES.reduce((total, ballType) => total + (pokeballCounts[ballType] ?? 0), 0);
+  return catchBallTotal <= LOW_CATCH_BALL_TOTAL;
+}
+
+function getComputerPartnerRewardContext(playerIndex: PlayerIndex) {
+  return {
+    pokeballCounts: globalScene.getPlayerPokeballCounts(playerIndex),
+    computerPartnerProfile: getComputerPartnerProfileWithRolePreferences(
+      globalScene.getComputerPartnerKey(playerIndex),
+      globalScene.getComputerPartnerRolePreferences(playerIndex),
+    ),
+  };
+}
+
+function chooseComputerPartnerDepartmentStoreOption(playerIndex: PlayerIndex): DepartmentStoreOptionIndex {
+  if (hasLowCatchBallSupply(playerIndex)) {
+    return 4;
+  }
+
+  const party = globalScene.getPlayerParty(playerIndex);
+  const context = getComputerPartnerRewardContext(playerIndex);
+  const tmChoice = chooseComputerPartnerRewardOption(previewDepartmentStoreModifierOptions(1, playerIndex), party, context);
+  if (tmChoice?.itemId.startsWith("TM")) {
+    return 1;
+  }
+
+  return 2;
+}
+
+function queueComputerPartnerDepartmentStoreChoiceMessage(
+  playerIndex: PlayerIndex,
+  optionIndex: DepartmentStoreOptionIndex,
+): void {
+  const profile = getComputerPartnerProfileWithRolePreferences(
+    globalScene.getComputerPartnerKey(playerIndex),
+    globalScene.getComputerPartnerRolePreferences(playerIndex),
+  );
+  const optionLabel = i18next.t(`${namespace}:option.${optionIndex}.label`);
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionLabel}.`, null, true);
+}
+
+async function storeDepartmentStoreChoice(
+  optionIndex: DepartmentStoreOptionIndex,
+  playerIndex: PlayerIndex = globalScene.activePlayerIndex,
+): Promise<boolean> {
   const data = getDepartmentStoreData();
-  const playerIndex = globalScene.twoPlayerMode ? (data.selectingPlayerIndex ?? 0) : globalScene.activePlayerIndex;
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
-  data.choices.push({ playerIndex, optionIndex });
+  data.choices.push({
+    playerIndex,
+    optionIndex,
+    rewardOptions: createDepartmentStoreModifierOptions(optionIndex, playerIndex),
+  });
 
-  if (globalScene.twoPlayerMode && playerIndex === 0) {
-    data.selectingPlayerIndex = 1;
-    globalScene.setActivePlayerIndex(1);
-    updateWindowType(2);
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: "Player 2",
-      overrideQuery: i18next.t(`${namespace}:query`),
-      startingCursorIndex: optionIndex - 1,
-    });
-    return false;
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    queueComputerPartnerDepartmentStoreChoiceMessage(playerIndex, optionIndex);
   }
 
-  delete data.selectingPlayerIndex;
   if (globalScene.twoPlayerMode) {
-    globalScene.setActivePlayerIndex(0);
-    updateWindowType(1);
+    const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+    if (nextPlayerIndex != null) {
+      const result = await showMysteryEncounterPlayerMenu({
+        playerIndex: nextPlayerIndex,
+        slideInDescription: false,
+        overrideQuery: i18next.t(`${namespace}:query`),
+        startingCursorIndex: optionIndex - 1,
+        computerPartnerOption: {
+          chooseOptionIndex: chooseComputerPartnerDepartmentStoreOption,
+          onOptionChosen: (nextOptionIndex, nextChoicePlayerIndex) =>
+            storeDepartmentStoreChoice(nextOptionIndex as DepartmentStoreOptionIndex, nextChoicePlayerIndex),
+        },
+      });
+      return result ?? false;
+    }
+
+    globalScene.waitForPlayerInput(0);
   }
+
   return true;
 }
 
@@ -120,10 +210,10 @@ function getDepartmentStoreModifiers(optionIndex: DepartmentStoreOptionIndex): M
 
 function runDepartmentStoreSale(): void {
   const data = getDepartmentStoreData();
-  for (const choice of data.choices) {
+  for (const choice of data.choices.toSorted((a, b) => a.playerIndex - b.playerIndex)) {
     setEncounterRewards(
       {
-        guaranteedModifierTypeFuncs: getDepartmentStoreModifiers(choice.optionIndex),
+        guaranteedModifierTypeOptions: choice.rewardOptions,
         fillRemaining: false,
       },
       undefined,

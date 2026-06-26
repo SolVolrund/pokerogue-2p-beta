@@ -12,6 +12,7 @@ import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import type { PokemonSpecies } from "#data/pokemon-species";
 import type { Starter, StarterMoveset } from "#types/save-data";
 import { randSeedShuffle } from "#utils/common";
+import { getSpeciesHealingSupportAccessScore } from "#utils/computer-partner-healing-support";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 
 export type ComputerPartnerKey = "alex" | "cheryl" | "riley" | "mira" | "buck" | "marley";
@@ -446,6 +447,7 @@ export function scorePokemonForPartnerSlot(
     + getOffensiveCoverageGain(projectedPokemon.species, projectedComparisonParty)
     + getDefensiveCoveragePatchValue(projectedPokemon.species, projectedComparisonParty)
     + getPersonalityTypeBonus(profile, projectedPokemon.species)
+    + getCherylHealingSupportSpeciesBonus(profile, role, projectedPokemon.species)
     - getSharedWeaknessPenalty(projectedPokemon.species, projectedComparisonParty)
     - projectedPokemon.growthCost
     - getProjectOverloadPenalty(profile, projectedPokemon.growthCost, comparisonParty)
@@ -492,8 +494,16 @@ function getProjectedPartnerPokemon(
   const projections = getEvolutionProjections(species, currentLevel);
 
   return projections.sort((a, b) => {
-    const leftScore = scorePokemonForPartnerRole(b.species, role) + getPersonalityTypeBonus(profile, b.species) - b.growthCost;
-    const rightScore = scorePokemonForPartnerRole(a.species, role) + getPersonalityTypeBonus(profile, a.species) - a.growthCost;
+    const leftScore =
+      scorePokemonForPartnerRole(b.species, role)
+      + getPersonalityTypeBonus(profile, b.species)
+      + getCherylHealingSupportSpeciesBonus(profile, role, b.species)
+      - b.growthCost;
+    const rightScore =
+      scorePokemonForPartnerRole(a.species, role)
+      + getPersonalityTypeBonus(profile, a.species)
+      + getCherylHealingSupportSpeciesBonus(profile, role, a.species)
+      - a.growthCost;
     return leftScore - rightScore;
   })[0];
 }
@@ -636,6 +646,34 @@ function getSharedWeaknessPenalty(pokemon: ComputerPartnerScoringPokemon, party:
 
 function getPersonalityTypeBonus(profile: ComputerPartnerProfile, pokemon: ComputerPartnerScoringPokemon): number {
   return getPokemonTypes(pokemon).filter(type => profile.personalityTypes.includes(type)).length * 3;
+}
+
+function getCherylHealingSupportSpeciesBonus(
+  profile: ComputerPartnerProfile,
+  role: ComputerPartnerRole,
+  pokemon: ComputerPartnerScoringPokemon,
+): number {
+  if (profile.key !== "cheryl") {
+    return 0;
+  }
+
+  const species = getPokemonSpeciesForScoring(pokemon);
+  const accessScore = getSpeciesHealingSupportAccessScore(species);
+  if (!accessScore) {
+    return 0;
+  }
+
+  switch (role) {
+    case "ace":
+    case "hpBulk":
+      return accessScore;
+    case "bulk":
+    case "defense":
+    case "specialDefense":
+      return accessScore * 0.7;
+    default:
+      return accessScore * 0.45;
+  }
 }
 
 function getBestOffensiveMultiplier(pokemon: ComputerPartnerScoringPokemon, defenderType: PokemonType): number {

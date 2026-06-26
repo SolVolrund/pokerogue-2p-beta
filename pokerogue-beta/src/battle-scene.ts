@@ -227,9 +227,10 @@ const TWO_PLAYER_SYNC_SETTING_KEYS = [
   SettingKeys.Shop_Cursor_Target,
   SettingKeys.Command_Cursor_Memory,
 ] as const;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = null;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = null;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = 2;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.FIGHT_OR_FLIGHT;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = true;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_PLAYER_MONEY: number | null = 1000;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.MYSTERIOUS_CHEST,
   MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
@@ -264,7 +265,15 @@ const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
   MysteryEncounterType.SHINY_BADGE,
 ];
-const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] = [];
+const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.MYSTERIOUS_CHEST,
+  MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
+  MysteryEncounterType.DARK_DEAL,
+  MysteryEncounterType.FIGHT_OR_FLIGHT,
+  MysteryEncounterType.DEPARTMENT_STORE_SALE,
+  MysteryEncounterType.DELIBIRDY,
+  MysteryEncounterType.TRASH_TO_TREASURE,
+];
 
 export interface PlayerRunState {
   party: PlayerPokemon[];
@@ -3872,7 +3881,7 @@ export class BattleScene extends SceneBase {
           p.updateInfo(instant);
         });
       } else {
-        const args = [this];
+        const args = [this, playerIndex];
         if (modifier.shouldApply(...args)) {
           const result = modifier.apply(...args);
           success ||= result;
@@ -5005,6 +5014,16 @@ export class BattleScene extends SceneBase {
     );
   }
 
+  private seedDebugForcedMysteryEncounterPlayerMoney(): void {
+    if (DEBUG_FORCED_MYSTERY_ENCOUNTER_PLAYER_MONEY == null) {
+      return;
+    }
+
+    this.getActivePlayerIndexes().forEach(playerIndex => {
+      this.setPlayerMoney(DEBUG_FORCED_MYSTERY_ENCOUNTER_PLAYER_MONEY, playerIndex);
+    });
+  }
+
   /**
    * Returns if a wave COULD spawn a {@linkcode MysteryEncounter}.
    * @param battleType - The {@linkcode BattleType} of the newly created battle
@@ -5103,6 +5122,7 @@ export class BattleScene extends SceneBase {
       && this.isDebugForcedMysteryEncounterWave(BattleType.WILD, this.currentBattle.waveIndex)
       && (DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS || forcedDebugEncounter.meetsRequirements())
     ) {
+      this.seedDebugForcedMysteryEncounterPlayerMoney();
       encounter = new MysteryEncounter(forcedDebugEncounter);
       encounter.populateDialogueTokensFromRequirements();
       return encounter;

@@ -127,6 +127,7 @@ export interface EnemyPokemonConfig {
   tera?: PokemonType;
   aiType?: AiType;
   friendship?: number;
+  fieldPosition?: FieldPosition;
 }
 
 export interface EnemyPartyConfig {
@@ -139,13 +140,20 @@ export interface EnemyPartyConfig {
   trainerConfig?: TrainerConfig;
   /** More customizable option for configuring a second trainer in double trainer battles */
   partnerTrainerConfig?: TrainerConfig;
+  /** More customizable option for configuring a third trainer in triple trainer battles */
+  partnerTrainerConfig2?: TrainerConfig;
   /** Generates a second trainer in double trainer battles solely off trainer type */
   partnerTrainerType?: TrainerType;
+  /** Generates a third trainer in triple trainer battles solely off trainer type */
+  partnerTrainerType2?: TrainerType;
   pokemonConfigs?: EnemyPokemonConfig[];
   /** `true` for female trainer, false for male */
   female?: boolean;
   /** `true` for female partner trainer, false for male */
   partnerFemale?: boolean;
+  /** `true` for female third trainer, false for male */
+  partnerFemale2?: boolean;
+  trainerLevelAdditiveModifiers?: Partial<Record<TrainerSlot, number>>;
   /** `true` will prevent player from switching */
   disableSwitch?: boolean;
   /** Allows one visible trainer to send two active Pokemon without requiring a double trainer sprite. */
@@ -174,7 +182,9 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
   const trainerType = partyConfig?.trainerType;
   const partyTrainerConfig = partyConfig?.trainerConfig;
   const partnerTrainerConfig = partyConfig?.partnerTrainerConfig;
+  const partnerTrainerConfig2 = partyConfig?.partnerTrainerConfig2;
   const partnerTrainerType = partyConfig?.partnerTrainerType ?? partnerTrainerConfig?.trainerType;
+  const partnerTrainerType2 = partyConfig?.partnerTrainerType2 ?? partnerTrainerConfig2?.trainerType;
   let trainerConfig: TrainerConfig;
   if (trainerType != null || partyTrainerConfig) {
     globalScene.currentBattle.mysteryEncounter!.encounterMode = MysteryEncounterMode.TRAINER_BATTLE;
@@ -189,6 +199,8 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
       trainerConfig.doubleOnly
       || partnerTrainerType != null
       || !!partnerTrainerConfig
+      || partnerTrainerType2 != null
+      || !!partnerTrainerConfig2
       || (trainerConfig.hasDouble && !!partyConfig.doubleBattle);
     doubleBattle = partyConfig.forceDoubleBattle ? true : doubleTrainer;
     const trainerFemale = partyConfig.female == null ? !!randSeedInt(2) : partyConfig.female;
@@ -196,6 +208,12 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
       partyConfig.partnerFemale == null
         ? undefined
         : partyConfig.partnerFemale
+          ? TrainerVariant.FEMALE
+          : TrainerVariant.DEFAULT;
+    const partnerVariant2 =
+      partyConfig.partnerFemale2 == null
+        ? undefined
+        : partyConfig.partnerFemale2
           ? TrainerVariant.FEMALE
           : TrainerVariant.DEFAULT;
     const newTrainer = new Trainer(
@@ -208,6 +226,9 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
       partnerTrainerType,
       partnerVariant,
       partnerTrainerConfig,
+      partnerTrainerType2,
+      partnerVariant2,
+      partnerTrainerConfig2,
     );
     newTrainer.x += 300;
     newTrainer.setVisible(false);
@@ -241,9 +262,14 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
   // This can be amplified or counteracted by setting levelAdditiveModifier in config
   // levelAdditiveModifier value of 0.5 will halve the modifier scaling, 2 will double it, etc.
   // Leaving null/undefined will disable level scaling
-  const mult = partyConfig.levelAdditiveModifier ?? 0;
-  const additive = Math.max(Math.round((globalScene.currentBattle.waveIndex / 10) * mult), 0);
-  battle.enemyLevels = battle.enemyLevels.map(level => level + additive);
+  const getLevelAdditive = (partyIndex: number): number => {
+    const trainerSlot = battle.trainer?.getTrainerSlotForPartyIndex(partyIndex);
+    const mult = trainerSlot != null
+      ? (partyConfig.trainerLevelAdditiveModifiers?.[trainerSlot] ?? partyConfig.levelAdditiveModifier ?? 0)
+      : (partyConfig.levelAdditiveModifier ?? 0);
+    return Math.max(Math.round((globalScene.currentBattle.waveIndex / 10) * mult), 0);
+  };
+  battle.enemyLevels = battle.enemyLevels.map((level, index) => level + getLevelAdditive(index));
 
   battle.enemyLevels.forEach((level, e) => {
     let enemySpecies: PokemonSpecies | undefined;
@@ -301,7 +327,7 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
     enemyPokemon.status = null;
     enemyPokemon.passive = false;
 
-    if (e < (doubleBattle ? 2 : 1)) {
+    if (e < battle.getBattlerCount()) {
       enemyPokemon.setX(-66 + enemyPokemon.getFieldPositionOffset()[0]);
       enemyPokemon.resetSummonData();
     }
@@ -472,10 +498,20 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
 
   await Promise.all(loadEnemyAssets);
   battle.enemyParty.forEach((enemyPokemon_2, e_1) => {
-    if (e_1 < (doubleBattle ? 2 : 1)) {
+    if (e_1 < battle.getBattlerCount()) {
       enemyPokemon_2.setVisible(false);
       if (battle.double) {
-        enemyPokemon_2.setFieldPosition(e_1 ? FieldPosition.RIGHT : FieldPosition.LEFT);
+        const configuredPosition = partyConfig.pokemonConfigs?.[e_1]?.fieldPosition;
+        enemyPokemon_2.setFieldPosition(
+          configuredPosition
+          ?? (battle.getBattlerCount() > 2 && e_1 === 2
+            ? FieldPosition.CENTER
+            : e_1
+              ? FieldPosition.RIGHT
+              : FieldPosition.LEFT),
+        );
+      } else if (partyConfig.pokemonConfigs?.[e_1]?.fieldPosition != null) {
+        enemyPokemon_2.setFieldPosition(partyConfig.pokemonConfigs[e_1].fieldPosition!);
       }
       // Spawns at current visible field instead of on "next encounter" field (off screen to the left)
       enemyPokemon_2.x += 300;

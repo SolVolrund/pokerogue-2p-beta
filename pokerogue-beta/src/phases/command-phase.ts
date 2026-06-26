@@ -18,6 +18,7 @@ import { FieldPosition } from "#enums/field-position";
 import { MoveId } from "#enums/move-id";
 import { isIgnorePP, isVirtual, MoveUseMode } from "#enums/move-use-mode";
 import { MysteryEncounterMode } from "#enums/mystery-encounter-mode";
+import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { PokeballType } from "#enums/pokeball";
 import { UiMode } from "#enums/ui-mode";
 import type { EnemyPokemon, PlayerPokemon } from "#field/pokemon";
@@ -109,12 +110,13 @@ export class CommandPhase extends FieldPhase {
   }
 
   private handleComputerPartnerCaptureCommand(playerPokemon: PlayerPokemon): boolean {
-    if (globalScene.currentBattle.battleType !== BattleType.WILD) {
+    if (!this.canComputerPartnerCaptureInCurrentBattle()) {
       return false;
     }
 
     const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
     const blockedTargetIds = this.getComputerPartnerBlockedCaptureTargetIds(playerIndex);
+    const darkDealTargetIds = this.getDarkDealCaptureTargetIds(playerIndex);
     const captureDecision = getComputerPartnerCaptureDecision(
       globalScene.getComputerPartnerKey(playerIndex),
       globalScene.getPlayerParty(playerIndex),
@@ -123,6 +125,13 @@ export class CommandPhase extends FieldPhase {
       globalScene.getPlayerPokeballCounts(playerIndex),
       blockedTargetIds,
       globalScene.getComputerPartnerRolePreferences(playerIndex),
+      darkDealTargetIds.length > 0
+        ? {
+          allowedBossTargetIds: darkDealTargetIds,
+          forceThrowTargetIds: darkDealTargetIds,
+          preferredTargetIds: darkDealTargetIds,
+        }
+        : undefined,
     );
 
     if (!captureDecision) {
@@ -158,6 +167,37 @@ export class CommandPhase extends FieldPhase {
     }
 
     return false;
+  }
+
+  private canComputerPartnerCaptureInCurrentBattle(): boolean {
+    const battle = globalScene.currentBattle;
+    if (battle.battleType === BattleType.WILD) {
+      return true;
+    }
+
+    return (
+      battle.isBattleMysteryEncounter()
+      && !!battle.mysteryEncounter?.catchAllowed
+      && battle.mysteryEncounter.encounterMode !== MysteryEncounterMode.TRAINER_BATTLE
+    );
+  }
+
+  private getDarkDealCaptureTargetIds(playerIndex: PlayerIndex): number[] {
+    const encounter = globalScene.currentBattle.mysteryEncounter;
+    if (encounter?.encounterType !== MysteryEncounterType.DARK_DEAL) {
+      return [];
+    }
+
+    const captureTargets = encounter.misc?.captureTargets;
+    if (!Array.isArray(captureTargets)) {
+      return [];
+    }
+
+    return captureTargets
+      .filter((target): target is { playerIndex: PlayerIndex; targetId: number } =>
+        target?.playerIndex === playerIndex && typeof target.targetId === "number",
+      )
+      .map(target => target.targetId);
   }
 
   private hasUsableCaptureBall(playerIndex: PlayerIndex): boolean {

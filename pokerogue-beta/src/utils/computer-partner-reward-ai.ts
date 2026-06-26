@@ -4,10 +4,12 @@ import { allMoves } from "#data/data-lists";
 import { LearnMoveType } from "#enums/learn-move-type";
 import { ModifierTier } from "#enums/modifier-tier";
 import { PokeballType } from "#enums/pokeball";
+import { Stat, type PermanentStat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
 import type { PlayerPokemon } from "#field/pokemon";
 import {
   AttackTypeBoosterModifierType,
+  BaseStatBoosterModifierType,
   PokemonModifierType,
   PokemonMoveModifierType,
   PokemonPpUpModifierType,
@@ -18,6 +20,11 @@ import {
 } from "#modifiers/modifier-type";
 import type { PokemonMove } from "#moves/pokemon-move";
 import { chooseComputerPartnerMoveLearningDecision } from "#utils/computer-partner-move-ai";
+import {
+  isComputerPartnerAcePokemon,
+  type ComputerPartnerProfile,
+  type ComputerPartnerRole,
+} from "#utils/computer-partner-profile";
 
 export type ComputerPartnerRecoveryItemId =
   | "POTION"
@@ -80,6 +87,13 @@ export interface ComputerPartnerRewardChoice {
 
 export interface ComputerPartnerRewardContext {
   pokeballCounts?: Partial<Record<PokeballType, number>>;
+  computerPartnerProfile?: ComputerPartnerProfile;
+}
+
+interface RewardTarget {
+  targetPokemonIndex?: number;
+  targetMoveIndex?: number;
+  targetScore?: number;
 }
 
 const MIN_HEALING_MISSING_HP_RATIO = 0.2;
@@ -378,7 +392,79 @@ function chooseTeraShardTarget(type: TerastallizeModifierType, party: PlayerPoke
   )[0];
 }
 
-function chooseTmTarget(type: TmModifierType, party: PlayerPokemon[]): { targetPokemonIndex: number } | undefined {
+function getBetterOffensiveStat(pokemon: PlayerPokemon): PermanentStat {
+  return pokemon.getStat(Stat.ATK) >= pokemon.getStat(Stat.SPATK) ? Stat.ATK : Stat.SPATK;
+}
+
+function getWeakerBulkStat(pokemon: PlayerPokemon): PermanentStat {
+  return pokemon.getStat(Stat.DEF) <= pokemon.getStat(Stat.SPDEF) ? Stat.DEF : Stat.SPDEF;
+}
+
+function getComputerPartnerRolePreferredStats(role: ComputerPartnerRole, pokemon: PlayerPokemon): PermanentStat[] {
+  switch (role) {
+    case "physical":
+      return [Stat.ATK, Stat.SPD, Stat.HP];
+    case "special":
+      return [Stat.SPATK, Stat.SPD, Stat.HP];
+    case "bulk":
+      return [Stat.HP, getWeakerBulkStat(pokemon), Stat.DEF, Stat.SPDEF];
+    case "hpBulk":
+      return [Stat.HP, Stat.DEF, Stat.SPDEF];
+    case "defense":
+      return [Stat.DEF, Stat.HP, Stat.SPDEF];
+    case "specialDefense":
+      return [Stat.SPDEF, Stat.HP, Stat.DEF];
+    case "speed":
+      return [Stat.SPD, getBetterOffensiveStat(pokemon), Stat.HP];
+    case "ace":
+    case "balanced":
+      return [getBetterOffensiveStat(pokemon), Stat.SPD, Stat.HP, getWeakerBulkStat(pokemon)];
+  }
+}
+
+function scoreBaseStatBoosterTarget(
+  vitaminStat: PermanentStat,
+  pokemon: PlayerPokemon,
+  targetPokemonIndex: number,
+  profile?: ComputerPartnerProfile,
+): number {
+  if (!profile) {
+    return 0 - targetPokemonIndex;
+  }
+
+  const role = profile.roles[targetPokemonIndex] ?? "balanced";
+  const preferredStats = getComputerPartnerRolePreferredStats(role, pokemon);
+  const preferenceIndex = preferredStats.indexOf(vitaminStat);
+  const roleScore = preferenceIndex === -1 ? 15 : 300 - preferenceIndex * 50;
+  return roleScore - targetPokemonIndex;
+}
+
+function chooseBaseStatBoosterTarget(
+  type: BaseStatBoosterModifierType,
+  party: PlayerPokemon[],
+  profile?: ComputerPartnerProfile,
+): RewardTarget | undefined {
+  const vitaminStat = type.getPregenArgs()[0] as PermanentStat | undefined;
+  if (vitaminStat === undefined) {
+    const targetPokemonIndex = chooseGenericPokemonTarget(type, party);
+    return targetPokemonIndex !== undefined ? { targetPokemonIndex } : undefined;
+  }
+
+  const bestTarget = getTargetablePartyIndexes(type, party)
+    .map(targetPokemonIndex => ({
+      targetPokemonIndex,
+      targetScore: scoreBaseStatBoosterTarget(vitaminStat, party[targetPokemonIndex], targetPokemonIndex, profile),
+    }))
+    .sort((a, b) => b.targetScore - a.targetScore)[0];
+
+  return bestTarget;
+}
+
+function chooseTmTarget(
+  type: TmModifierType,
+  party: PlayerPokemon[],
+  profile?: ComputerPartnerProfile,
+): { targetPokemonIndex: number } | undefined {
   const move = allMoves[type.moveId];
   let bestTarget: { targetPokemonIndex: number; improvementRatio: number; replaceIndex: number } | undefined;
 
@@ -392,6 +478,14 @@ function chooseTmTarget(type: TmModifierType, party: PlayerPokemon[]): { targetP
       pokemon.getMoveset().map(pokemonMove => pokemonMove.moveId),
       move,
       LearnMoveType.TM,
+      {
+        profile,
+        role: profile
+          ? isComputerPartnerAcePokemon(pokemon, profile)
+            ? "ace"
+            : profile.roles[targetPokemonIndex] ?? "balanced"
+          : undefined,
+      },
     );
 
     if (!decision.shouldLearn) {
@@ -430,7 +524,8 @@ function getRewardTarget(
   type: ModifierType,
   itemId: string,
   party: PlayerPokemon[],
-): { targetPokemonIndex?: number; targetMoveIndex?: number } | undefined {
+  context: ComputerPartnerRewardContext,
+): RewardTarget | undefined {
   if (!(type instanceof PokemonModifierType)) {
     return {};
   }
@@ -449,8 +544,12 @@ function getRewardTarget(
     return targetPokemonIndex !== undefined ? { targetPokemonIndex } : undefined;
   }
 
+  if (type instanceof BaseStatBoosterModifierType) {
+    return chooseBaseStatBoosterTarget(type, party, context.computerPartnerProfile);
+  }
+
   if (type instanceof TmModifierType) {
-    return chooseTmTarget(type, party);
+    return chooseTmTarget(type, party, context.computerPartnerProfile);
   }
 
   if (type instanceof PokemonMoveModifierType) {
@@ -869,7 +968,8 @@ export function chooseComputerPartnerRewardOption(
         return undefined;
       }
 
-      const target = recoveryChoice ?? getRewardTarget(option.type, itemId, party);
+      const rewardTarget = recoveryChoice ? undefined : getRewardTarget(option.type, itemId, party, context);
+      const target = recoveryChoice ?? rewardTarget;
       if (!target) {
         return undefined;
       }
@@ -877,12 +977,13 @@ export function chooseComputerPartnerRewardOption(
       const tierScore = getTierRank(effectiveTier) * 10000;
       const priorityScore = (1000 - priority) * 10;
       const recoveryScore = recoveryChoice ? Math.min(recoveryChoice.score, 500) : 0;
+      const targetScore = rewardTarget?.targetScore ?? 0;
 
       return {
         option,
         optionIndex,
         itemId,
-        score: tierScore + priorityScore + recoveryScore,
+        score: tierScore + priorityScore + recoveryScore + targetScore,
         effectiveTier,
         priority,
         reason: recoveryChoice

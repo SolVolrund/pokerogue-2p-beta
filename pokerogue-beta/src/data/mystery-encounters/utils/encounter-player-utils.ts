@@ -11,6 +11,12 @@ export interface MysteryEncounterPlayerMenuConfig {
   overrideQuery?: string;
   startingCursorIndex?: number;
   slideInDescription?: boolean;
+  computerPartnerOption?: MysteryEncounterComputerPartnerOptionConfig;
+}
+
+export interface MysteryEncounterComputerPartnerOptionConfig<TOptionIndex extends number = number> {
+  chooseOptionIndex: (playerIndex: PlayerIndex) => TOptionIndex | Promise<TOptionIndex>;
+  onOptionChosen: (optionIndex: TOptionIndex, playerIndex: PlayerIndex) => boolean | Promise<boolean>;
 }
 
 export function getMysteryEncounterPlayerIndexes(): PlayerIndex[] {
@@ -37,13 +43,19 @@ export function getNextMysteryEncounterPlayerIndex(
   return currentIndex >= 0 ? playerIndexes[currentIndex + 1] : undefined;
 }
 
-export function showMysteryEncounterPlayerMenu({
+export async function showMysteryEncounterPlayerMenu({
   playerIndex,
   overrideOptions,
   overrideQuery = "What will you do?",
   startingCursorIndex = 0,
   slideInDescription = false,
-}: MysteryEncounterPlayerMenuConfig): void {
+  computerPartnerOption,
+}: MysteryEncounterPlayerMenuConfig): Promise<boolean | undefined> {
+  if (computerPartnerOption && globalScene.isComputerPartnerPlayer(playerIndex)) {
+    const optionIndex = await computerPartnerOption.chooseOptionIndex(playerIndex);
+    return computerPartnerOption.onOptionChosen(optionIndex, playerIndex);
+  }
+
   globalScene.waitForPlayerInput(playerIndex);
   updateWindowType(playerIndex + 1);
 
@@ -56,4 +68,5 @@ export function showMysteryEncounterPlayerMenu({
       startingCursorIndex,
     });
   });
+  return undefined;
 }

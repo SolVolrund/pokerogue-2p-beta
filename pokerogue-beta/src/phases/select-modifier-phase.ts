@@ -40,7 +40,7 @@ import {
   type ComputerPartnerRecoveryChoice,
   type ComputerPartnerRewardChoice,
 } from "#utils/computer-partner-reward-ai";
-import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import { getComputerPartnerProfile, getComputerPartnerProfileWithRolePreferences } from "#utils/computer-partner-profile";
 import { NumberHolder } from "#utils/common";
 import i18next from "i18next";
 
@@ -199,6 +199,10 @@ export class SelectModifierPhase extends BattlePhase {
 
     const rewardChoice = chooseComputerPartnerRewardOption(this.typeOptions, globalScene.getPlayerParty(this.playerIndex), {
       pokeballCounts: globalScene.getPlayerPokeballCounts(this.playerIndex),
+      computerPartnerProfile: getComputerPartnerProfileWithRolePreferences(
+        globalScene.getComputerPartnerKey(this.playerIndex),
+        globalScene.getComputerPartnerRolePreferences(this.playerIndex),
+      ),
     });
     const rewardModifier = rewardChoice ? this.createComputerPartnerChoiceModifier(rewardChoice) : null;
     if (rewardChoice && rewardModifier) {

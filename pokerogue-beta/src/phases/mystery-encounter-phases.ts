@@ -426,18 +426,20 @@ export class MysteryEncounterBattlePhase extends Phase {
    */
   private doMysteryEncounterBattle() {
     const encounterMode = globalScene.currentBattle.mysteryEncounter!.encounterMode;
+    const queueEnemySummonPhases = (availablePartyMembers: number) => {
+      const summonCount = Math.min(availablePartyMembers, globalScene.currentBattle.getBattlerCount());
+      for (let fieldIndex = 0; fieldIndex < summonCount; fieldIndex++) {
+        globalScene.phaseManager.unshiftNew("SummonPhase", fieldIndex, false);
+      }
+    };
+
     if (encounterMode === MysteryEncounterMode.WILD_BATTLE || encounterMode === MysteryEncounterMode.BOSS_BATTLE) {
       // Summons the wild/boss Pokemon
       if (encounterMode === MysteryEncounterMode.BOSS_BATTLE) {
         audioManager.playBgm();
       }
       const availablePartyMembers = globalScene.getEnemyParty().filter(p => !p.isFainted()).length;
-      if (availablePartyMembers > 0) {
-        globalScene.phaseManager.unshiftNew("SummonPhase", 0, false);
-      }
-      if (globalScene.currentBattle.double && availablePartyMembers > 1) {
-        globalScene.phaseManager.unshiftNew("SummonPhase", 1, false);
-      }
+      queueEnemySummonPhases(availablePartyMembers);
 
       if (globalScene.currentBattle.mysteryEncounter?.hideBattleIntroMessage || availablePartyMembers === 0) {
         this.endBattleSetup();
@@ -454,10 +456,7 @@ export class MysteryEncounterBattlePhase extends Phase {
         const doTrainerSummon = () => {
           this.hideEnemyTrainer();
           const availablePartyMembers = globalScene.getEnemyParty().filter(p => !p.isFainted()).length;
-          globalScene.phaseManager.unshiftNew("SummonPhase", 0, false);
-          if (globalScene.currentBattle.double && availablePartyMembers > 1) {
-            globalScene.phaseManager.unshiftNew("SummonPhase", 1, false);
-          }
+          queueEnemySummonPhases(availablePartyMembers);
           this.endBattleSetup();
         };
         if (globalScene.currentBattle.mysteryEncounter?.hideBattleIntroMessage) {

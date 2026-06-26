@@ -767,6 +767,16 @@ export class Trainer extends Phaser.GameObjects.Container {
     );
   }
 
+  public getTrainerSlotForPartyIndex(index: number): TrainerSlot {
+    if (this.shouldUseTwoPlayerNamedPartnerParty() && !this.shouldUseTateLizaPairParty()) {
+      return this.getTwoPlayerNamedPartnerPartySlot(index).trainerSlot;
+    }
+
+    return this.isDouble()
+      ? getTrainerSlotForFieldIndex(index % globalScene.currentBattle.getBattlerCount())
+      : TrainerSlot.TRAINER;
+  }
+
   private getTwoPlayerNamedPartnerPartySlot(index: number): {
     config: TrainerConfig;
     partyIndex: number;

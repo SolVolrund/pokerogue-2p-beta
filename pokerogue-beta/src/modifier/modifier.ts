@@ -1,4 +1,5 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
+import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
@@ -315,8 +316,8 @@ export class AddPokeballModifier extends ConsumableModifier {
    * @param battleScene {@linkcode BattleScene}
    * @returns always `true`
    */
-  override apply(): boolean {
-    const pokeballCounts = globalScene.pokeballCounts;
+  override apply(_scene?: unknown, playerIndex: PlayerIndex = globalScene.activePlayerIndex): boolean {
+    const pokeballCounts = globalScene.getPlayerPokeballCounts(playerIndex);
     pokeballCounts[this.pokeballType] = Math.min(
       pokeballCounts[this.pokeballType] + this.count,
       MAX_PER_TYPE_POKEBALLS,
@@ -342,8 +343,8 @@ export class AddVoucherModifier extends ConsumableModifier {
    * @param battleScene {@linkcode BattleScene}
    * @returns always `true`
    */
-  override apply(): boolean {
-    const voucherCounts = globalScene.getPlayerGameData().voucherCounts;
+  override apply(_scene?: unknown, playerIndex: PlayerIndex = globalScene.activePlayerIndex): boolean {
+    const voucherCounts = globalScene.getPlayerGameData(playerIndex).voucherCounts;
     voucherCounts[this.voucherType] += this.count;
     globalScene.savePlayerSystemSaveLocal();
 
@@ -3166,21 +3167,21 @@ export class MoneyRewardModifier extends ConsumableModifier {
    * Applies {@linkcode MoneyRewardModifier}
    * @returns always `true`
    */
-  override apply(): boolean {
+  override apply(_scene?: unknown, playerIndex: PlayerIndex = globalScene.activePlayerIndex): boolean {
     const moneyAmount = new NumberHolder(globalScene.getWaveMoneyAmount(this.moneyMultiplier));
 
-    globalScene.applyModifiers(MoneyMultiplierModifier, true, moneyAmount);
+    globalScene.applyModifiersForPlayer(MoneyMultiplierModifier, playerIndex, moneyAmount);
 
-    globalScene.addMoney(moneyAmount.value);
+    globalScene.addMoneyForPlayer(moneyAmount.value, playerIndex);
 
-    globalScene.getPlayerParty().map(p => {
+    globalScene.getPlayerParty(playerIndex).map(p => {
       if (p.species?.speciesId === SpeciesId.GIMMIGHOUL || p.fusionSpecies?.speciesId === SpeciesId.GIMMIGHOUL) {
         const factor = Math.min(Math.floor(this.moneyMultiplier), 3);
         const modifier = getModifierType(modifierTypes.EVOLUTION_TRACKER_GIMMIGHOUL).newModifier(
           p,
           factor,
         ) as EvoTrackerModifier;
-        globalScene.addModifier(modifier);
+        globalScene.addModifier(modifier, undefined, undefined, undefined, undefined, undefined, playerIndex);
       }
     });
 

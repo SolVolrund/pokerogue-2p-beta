@@ -12,6 +12,7 @@ import {
   getBestComputerPartnerReplacementSlot,
   getComputerPartnerProfileWithRolePreferences,
   type ComputerPartnerKey,
+  type ComputerPartnerProfile,
   type ComputerPartnerRolePreferences,
   type ComputerPartnerSlotScore,
 } from "#utils/computer-partner-profile";
@@ -24,6 +25,12 @@ export interface ComputerPartnerCaptureDecision {
   chance: number;
   shouldThrow: boolean;
   weakeningMoveIndex: number | undefined;
+}
+
+export interface ComputerPartnerCaptureDecisionOptions {
+  allowedBossTargetIds?: number | readonly number[];
+  forceThrowTargetIds?: number | readonly number[];
+  preferredTargetIds?: number | readonly number[];
 }
 
 const PREFERRED_CATCH_CHANCE = 0.4;
@@ -45,6 +52,7 @@ export function getComputerPartnerCaptureDecision(
   pokeballCounts: PokeballCounts,
   reservedTargetIds?: number | readonly number[],
   rolePreferences?: ComputerPartnerRolePreferences,
+  options: ComputerPartnerCaptureDecisionOptions = {},
 ): ComputerPartnerCaptureDecision | undefined {
   return getComputerPartnerCaptureDecisions(
     partnerKey,
@@ -54,6 +62,7 @@ export function getComputerPartnerCaptureDecision(
     pokeballCounts,
     reservedTargetIds,
     rolePreferences,
+    options,
   )[0];
 }
 
@@ -65,6 +74,7 @@ export function getComputerPartnerCaptureDecisions(
   pokeballCounts: PokeballCounts,
   reservedTargetIds?: number | readonly number[],
   rolePreferences?: ComputerPartnerRolePreferences,
+  options: ComputerPartnerCaptureDecisionOptions = {},
 ): ComputerPartnerCaptureDecision[] {
   const profile = getComputerPartnerProfileWithRolePreferences(partnerKey, rolePreferences);
   const reservedTargetIdSet = new Set(
@@ -74,28 +84,44 @@ export function getComputerPartnerCaptureDecisions(
         ? []
         : [reservedTargetIds],
   );
+  const allowedBossTargetIdSet = toNumberSet(options.allowedBossTargetIds);
+  const forceThrowTargetIdSet = toNumberSet(options.forceThrowTargetIds);
+  const preferredTargetIdSet = toNumberSet(options.preferredTargetIds);
   return enemyField
     .map((target, targetIndex) => {
-      if (!target.isActive(true) || target.isFainted() || target.isBoss() || reservedTargetIdSet.has(target.id)) {
+      const isAllowedBossTarget = allowedBossTargetIdSet.has(target.id);
+      if (
+        !target.isActive(true)
+        || target.isFainted()
+        || (target.isBoss() && (!isAllowedBossTarget || target.bossSegmentIndex >= 1))
+        || reservedTargetIdSet.has(target.id)
+      ) {
         return undefined;
       }
 
-      const replacementScore = getBestComputerPartnerReplacementSlot(profile, party, target);
+      const replacementScore =
+        getBestComputerPartnerReplacementSlot(profile, party, target)
+        ?? getForcedComputerPartnerCaptureSlotScore(profile, party, target, forceThrowTargetIdSet);
       if (!replacementScore) {
         return undefined;
       }
 
-      const ballChoice = chooseComputerPartnerPokeball(target, pokeballCounts);
+      const ballChoice = chooseComputerPartnerPokeball(
+        target,
+        pokeballCounts,
+        forceThrowTargetIdSet.has(target.id),
+      );
       if (ballChoice.ballType === undefined) {
         return undefined;
       }
 
       const weakeningMoveIndex =
-        ballChoice.chance < PREFERRED_CATCH_CHANCE
+        ballChoice.chance < PREFERRED_CATCH_CHANCE && !forceThrowTargetIdSet.has(target.id)
           ? getSafestComputerPartnerWeakeningMoveIndex(activePokemon, target)
           : undefined;
       const shouldThrow =
-        ballChoice.chance >= PREFERRED_CATCH_CHANCE
+        forceThrowTargetIdSet.has(target.id)
+        || ballChoice.chance >= PREFERRED_CATCH_CHANCE
         || (weakeningMoveIndex === undefined && ballChoice.chance >= MIN_DESPERATE_CATCH_CHANCE);
       if (!shouldThrow && weakeningMoveIndex === undefined) {
         return undefined;
@@ -113,12 +139,51 @@ export function getComputerPartnerCaptureDecisions(
     })
     .filter((decision): decision is ComputerPartnerCaptureDecision => !!decision)
     .sort((a, b) => {
+      const preferredDelta =
+        Number(preferredTargetIdSet.has(b.target.id)) - Number(preferredTargetIdSet.has(a.target.id));
+      if (preferredDelta) {
+        return preferredDelta;
+      }
       const roleDelta = b.replacementScore.candidateScore - a.replacementScore.candidateScore;
       if (roleDelta) {
         return roleDelta;
       }
       return b.chance - a.chance;
     });
+}
+
+function toNumberSet(values?: number | readonly number[]): Set<number> {
+  return new Set(
+    Array.isArray(values)
+      ? values
+      : values === undefined
+        ? []
+        : [values],
+  );
+}
+
+function getForcedComputerPartnerCaptureSlotScore(
+  profile: ComputerPartnerProfile,
+  party: PlayerPokemon[],
+  target: EnemyPokemon,
+  forceThrowTargetIdSet: Set<number>,
+): ComputerPartnerSlotScore | undefined {
+  if (!forceThrowTargetIdSet.has(target.id) || party.length >= profile.roles.length) {
+    return undefined;
+  }
+
+  return {
+    slotIndex: party.length,
+    role: profile.roles[party.length] ?? "balanced",
+    currentScore: undefined,
+    candidateScore: 1,
+    improvementRatio: Number.POSITIVE_INFINITY,
+    canReplace: true,
+    replacedPokemon: undefined,
+    replacedPokemonIndex: undefined,
+    currentTeamScore: 0,
+    candidateTeamScore: 1,
+  };
 }
 
 export function getComputerPartnerCaptureChance(pokemon: EnemyPokemon, pokeballType: PokeballType): number {
@@ -146,6 +211,7 @@ export function getComputerPartnerCaptureChance(pokemon: EnemyPokemon, pokeballT
 function chooseComputerPartnerPokeball(
   pokemon: EnemyPokemon,
   pokeballCounts: PokeballCounts,
+  preferBestBall = false,
 ): { ballType?: PokeballType; chance: number } {
   const usableBalls = CAPTURE_BALL_ORDER.filter(ballType => (pokeballCounts[ballType] ?? 0) > 0);
   if (!usableBalls.length) {
@@ -156,6 +222,10 @@ function chooseComputerPartnerPokeball(
     ballType,
     chance: getComputerPartnerCaptureChance(pokemon, ballType),
   }));
+
+  if (preferBestBall) {
+    return ballScores.sort((a, b) => b.chance - a.chance)[0];
+  }
 
   const preferredBall = ballScores.find(ballScore => ballScore.chance >= PREFERRED_CATCH_CHANCE);
   if (preferredBall) {

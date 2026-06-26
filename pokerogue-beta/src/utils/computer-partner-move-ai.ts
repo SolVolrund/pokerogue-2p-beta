@@ -8,11 +8,18 @@ import { Stat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
 import type { Pokemon } from "#field/pokemon";
 import type { Move } from "#moves/move";
+import { getHealingSupportMoveCapabilities } from "#utils/computer-partner-healing-support";
+import type { ComputerPartnerProfile, ComputerPartnerRole } from "#utils/computer-partner-profile";
 
 export interface ComputerPartnerMoveLearningDecision {
   shouldLearn: boolean;
   replaceIndex: number;
   improvementRatio: number;
+}
+
+export interface ComputerPartnerMoveLearningContext {
+  profile?: ComputerPartnerProfile;
+  role?: ComputerPartnerRole;
 }
 
 const REGULAR_TYPES = [
@@ -45,12 +52,13 @@ export function chooseComputerPartnerMoveLearningDecision(
   currentMoveIds: MoveId[],
   newMove: Move,
   learnMoveType: LearnMoveType,
+  context: ComputerPartnerMoveLearningContext = {},
 ): ComputerPartnerMoveLearningDecision {
   if (currentMoveIds.length < 4) {
     return { shouldLearn: true, replaceIndex: currentMoveIds.length, improvementRatio: Number.POSITIVE_INFINITY };
   }
 
-  const oldScore = scoreMoveset(pokemon, currentMoveIds);
+  const oldScore = scoreMoveset(pokemon, currentMoveIds, context);
   const minimumImprovementRatio = getImprovementThreshold(learnMoveType);
   let bestReplaceIndex = -1;
   let bestScore = oldScore;
@@ -58,7 +66,7 @@ export function chooseComputerPartnerMoveLearningDecision(
   for (const [index] of currentMoveIds.entries()) {
     const candidateMoveIds = currentMoveIds.slice();
     candidateMoveIds[index] = newMove.id;
-    const candidateScore = scoreMoveset(pokemon, candidateMoveIds);
+    const candidateScore = scoreMoveset(pokemon, candidateMoveIds, context);
     if (candidateScore > bestScore) {
       bestScore = candidateScore;
       bestReplaceIndex = index;
@@ -101,14 +109,19 @@ function getFlatImprovementFloor(learnMoveType: LearnMoveType): number {
   }
 }
 
-function scoreMoveset(pokemon: Pokemon, moveIds: MoveId[]): number {
+function scoreMoveset(
+  pokemon: Pokemon,
+  moveIds: MoveId[],
+  context: ComputerPartnerMoveLearningContext = {},
+): number {
   const moves = moveIds.map(moveId => allMoves[moveId]).filter((move): move is Move => !!move);
   const moveScores = moves.map(move => scoreMove(pokemon, move));
   return (
     moveScores.reduce((total, score) => total + score, 0)
     + scoreOffensiveCoverage(moves)
     + scoreStabOptions(pokemon, moves)
-    - scoreRedundancy(moves)
+    + scoreCherylHealingSupportMoveset(moves, context)
+    - scoreRedundancy(moves, context)
   );
 }
 
@@ -293,7 +306,10 @@ function scoreStabOptions(pokemon: Pokemon, moves: readonly Move[]): number {
     .reduce((score, type) => score + (damagingTypes.has(type) ? 7 : 0), 0);
 }
 
-function scoreRedundancy(moves: readonly Move[]): number {
+function scoreRedundancy(
+  moves: readonly Move[],
+  context: ComputerPartnerMoveLearningContext = {},
+): number {
   let penalty = 0;
   const damagingMovesByType = new Map<PokemonType, Move[]>();
   let statusMoveCount = 0;
@@ -319,6 +335,8 @@ function scoreRedundancy(moves: readonly Move[]): number {
     penalty += (statusMoveCount - 2) * 10;
   }
 
+  penalty += scoreCherylHealingRedundancy(moves, context);
+
   const physicalCount = moves.filter(move => move.category === MoveCategory.PHYSICAL).length;
   const specialCount = moves.filter(move => move.category === MoveCategory.SPECIAL).length;
   if (physicalCount > 0 && specialCount > 0) {
@@ -326,6 +344,67 @@ function scoreRedundancy(moves: readonly Move[]): number {
   }
 
   return penalty;
+}
+
+function scoreCherylHealingSupportMoveset(
+  moves: readonly Move[],
+  context: ComputerPartnerMoveLearningContext,
+): number {
+  const preferenceScale = getCherylHealingPreferenceScale(context);
+  if (!preferenceScale) {
+    return 0;
+  }
+
+  const capabilities = moves.map(move => getHealingSupportMoveCapabilities(move));
+  const hasSelfHeal = capabilities.some(capability => capability.healsSelf);
+  const hasPartnerHeal = capabilities.some(capability => capability.healsPartner);
+  const hasAllAlliesHeal = capabilities.some(capability => capability.healsAllAllies);
+
+  return (
+    (hasSelfHeal ? 32 : 0)
+    + (hasPartnerHeal ? 36 : 0)
+    + (hasAllAlliesHeal ? 16 : 0)
+  ) * preferenceScale;
+}
+
+function scoreCherylHealingRedundancy(
+  moves: readonly Move[],
+  context: ComputerPartnerMoveLearningContext,
+): number {
+  const preferenceScale = getCherylHealingPreferenceScale(context);
+  if (!preferenceScale) {
+    return 0;
+  }
+
+  const healCounts = moves
+    .map(move => getHealingSupportMoveCapabilities(move))
+    .reduce(
+      (counts, capability) => ({
+        self: counts.self + (capability.healsSelf ? 1 : 0),
+        partner: counts.partner + (capability.healsPartner ? 1 : 0),
+      }),
+      { self: 0, partner: 0 },
+    );
+
+  return (Math.max(healCounts.self - 1, 0) * 34 + Math.max(healCounts.partner - 1, 0) * 38) * preferenceScale;
+}
+
+function getCherylHealingPreferenceScale(context: ComputerPartnerMoveLearningContext): number {
+  if (context.profile?.key !== "cheryl") {
+    return 0;
+  }
+
+  switch (context.role) {
+    case "ace":
+    case "hpBulk":
+      return 1;
+    case "bulk":
+    case "defense":
+    case "specialDefense":
+      return 0.55;
+    default:
+      return 0.3;
+  }
 }
 
 function averageCoreStat(pokemon: Pokemon): number {

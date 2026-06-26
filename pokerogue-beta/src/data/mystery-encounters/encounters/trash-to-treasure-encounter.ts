@@ -4,6 +4,7 @@ import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { modifierTypes } from "#data/data-lists";
 import { BattlerIndex } from "#enums/battler-index";
+import { FieldPosition } from "#enums/field-position";
 import { ModifierTier } from "#enums/modifier-tier";
 import { MoveId } from "#enums/move-id";
 import { MoveUseMode } from "#enums/move-use-mode";
@@ -11,11 +12,15 @@ import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { SpeciesId } from "#enums/species-id";
-import { UiMode } from "#enums/ui-mode";
 import { HitHealModifier, PokemonHeldItemModifier, TurnHealModifier } from "#modifiers/modifier";
 import type { PokemonHeldItemModifierType } from "#modifiers/modifier-type";
 import { PokemonMove } from "#moves/pokemon-move";
 import { showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import {
   type EnemyPartyConfig,
   type EnemyPokemonConfig,
@@ -31,6 +36,11 @@ import { type MysteryEncounter, MysteryEncounterBuilder } from "#mystery-encount
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { updateWindowType } from "#ui/ui-theme";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import {
+  getComputerPartnerTeamConfidence,
+  isComputerPartnerConfidentForDanger,
+} from "#utils/computer-partner-team-confidence";
 import { randSeedInt } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
@@ -67,23 +77,24 @@ function getTrashToTreasureData(): TrashToTreasureData {
   return encounter.misc as TrashToTreasureData;
 }
 
-function showTrashToTreasurePlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
-
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: i18next.t(`${namespace}:query`),
-      overrideOptions: buildTrashToTreasurePlayerOptions(playerIndex),
-      startingCursorIndex,
-    });
+async function showTrashToTreasurePlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildTrashToTreasurePlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerTrashToTreasureOption,
+      onOptionChosen: (optionIndex, choicePlayerIndex) =>
+        storeTrashToTreasureChoice(optionIndex as TrashToTreasureOptionIndex, choicePlayerIndex),
+    },
   });
+  return result ?? false;
 }
 
 function getTrashToTreasureTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
-  return playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+  return globalScene.getPlayerTrainerBackSprite(playerIndex);
 }
 
 async function hideTrashToTreasureNonBattleTrainers(battlePlayers: PlayerIndex[]): Promise<void> {
@@ -93,7 +104,7 @@ async function hideTrashToTreasureNonBattleTrainers(battlePlayers: PlayerIndex[]
 
   const battlePlayerSet = new Set(battlePlayers);
   await Promise.all(
-    ([0, 1] as PlayerIndex[])
+    getMysteryEncounterPlayerIndexes()
       .filter(playerIndex => !battlePlayerSet.has(playerIndex))
       .map(
         playerIndex =>
@@ -120,7 +131,25 @@ async function hideTrashToTreasureNonBattleTrainers(battlePlayers: PlayerIndex[]
   );
 }
 
-function storeTrashToTreasureChoice(optionIndex: TrashToTreasureOptionIndex, playerIndex: PlayerIndex): boolean {
+function chooseComputerPartnerTrashToTreasureOption(playerIndex: PlayerIndex): TrashToTreasureOptionIndex {
+  const confidence = getComputerPartnerTeamConfidence(globalScene.getPlayerParty(playerIndex));
+  return isComputerPartnerConfidentForDanger(confidence, "high") ? 1 : 2;
+}
+
+function queueComputerPartnerTrashToTreasureChoiceMessage(
+  playerIndex: PlayerIndex,
+  optionIndex: TrashToTreasureOptionIndex,
+): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const optionLabel = i18next.t(`${namespace}:option.${optionIndex}.label`);
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionLabel}.`, null, true);
+}
+
+async function storeTrashToTreasureChoice(
+  optionIndex: TrashToTreasureOptionIndex,
+  playerIndex: PlayerIndex,
+): Promise<boolean> {
   if (!globalScene.twoPlayerMode) {
     return true;
   }
@@ -132,9 +161,13 @@ function storeTrashToTreasureChoice(optionIndex: TrashToTreasureOptionIndex, pla
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
   data.choices.push({ playerIndex, optionIndex });
 
-  if (playerIndex === 0) {
-    showTrashToTreasurePlayerMenu(1, optionIndex - 1);
-    return false;
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    queueComputerPartnerTrashToTreasureChoiceMessage(playerIndex, optionIndex);
+  }
+
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+  if (nextPlayerIndex != null) {
+    return showTrashToTreasurePlayerMenu(nextPlayerIndex, optionIndex - 1);
   }
 
   data.skipSelectedDialogueOnce = true;
@@ -145,37 +178,32 @@ function storeTrashToTreasureChoice(optionIndex: TrashToTreasureOptionIndex, pla
 
 function createGarbodorBattleConfig(battlePlayers: PlayerIndex[]): EnemyPartyConfig {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const fieldPosition = battlePlayers.length > 2 ? FieldPosition.CENTER : undefined;
   return {
     ...encounter.enemyPartyConfigs[0],
     doubleBattle: battlePlayers.length > 1,
+    pokemonConfigs: encounter.enemyPartyConfigs[0].pokemonConfigs?.map((config, index) =>
+      index === 0 && fieldPosition != null ? { ...config, fieldPosition } : config,
+    ),
   };
 }
 
 function queueGarbodorStartOfBattleEffects(battlePlayers: PlayerIndex[]): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const garbodorBattlerIndex = BattlerIndex.ENEMY;
   encounter.startOfBattleEffects.push(
-    {
-      sourceBattlerIndex: BattlerIndex.ENEMY,
-      targets: [BattlerIndex.PLAYER],
+    ...battlePlayers.map((_playerIndex, fieldIndex) => ({
+      sourceBattlerIndex: garbodorBattlerIndex,
+      targets: [globalScene.getPlayerBattlerIndex(fieldIndex)],
       move: new PokemonMove(MoveId.TOXIC),
       useMode: MoveUseMode.IGNORE_PP,
-    },
-    ...(battlePlayers.length > 1
-      ? [
-          {
-            sourceBattlerIndex: BattlerIndex.ENEMY,
-            targets: [BattlerIndex.PLAYER_2],
-            move: new PokemonMove(MoveId.TOXIC),
-            useMode: MoveUseMode.IGNORE_PP,
-          },
-        ]
-      : []),
-    {
-      sourceBattlerIndex: BattlerIndex.ENEMY,
-      targets: [BattlerIndex.ENEMY],
+    })),
+    ...battlePlayers.map(() => ({
+      sourceBattlerIndex: garbodorBattlerIndex,
+      targets: [garbodorBattlerIndex],
       move: new PokemonMove(MoveId.STOCKPILE),
       useMode: MoveUseMode.IGNORE_PP,
-    },
+    })),
   );
 }
 
@@ -222,10 +250,9 @@ async function runOnePlayerInvestigate(): Promise<void> {
   await showEncounterText(`${namespace}:option.1.selected2`);
   await transitionMysteryEncounterIntroVisuals();
 
-  const encounter = globalScene.currentBattle.mysteryEncounter!;
   setGarbodorBattleRewards(globalScene.activePlayerIndex);
   queueGarbodorStartOfBattleEffects([globalScene.activePlayerIndex]);
-  await initBattleWithEnemyConfig(encounter.enemyPartyConfigs[0]);
+  await initBattleWithEnemyConfig(createGarbodorBattleConfig([globalScene.activePlayerIndex]));
 }
 
 async function runOnePlayerDig(): Promise<void> {
@@ -235,7 +262,7 @@ async function runOnePlayerDig(): Promise<void> {
   leaveEncounterWithoutBattle(true);
 }
 
-async function runTwoPlayerTrashToTreasureChoices(): Promise<boolean> {
+async function runMultiplayerTrashToTreasureChoices(): Promise<boolean> {
   const choices = getTrashToTreasureData().choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
   const investigateChoices = choices.filter(choice => choice.optionIndex === 1);
   const digChoices = choices.filter(choice => choice.optionIndex === 2);
@@ -290,7 +317,7 @@ function buildInvestigateOption(playerIndex: PlayerIndex): MysteryEncounterOptio
     })
     .withPreOptionPhase(async () => storeTrashToTreasureChoice(1, playerIndex))
     .withOptionPhase(async () =>
-      globalScene.twoPlayerMode ? runTwoPlayerTrashToTreasureChoices() : runOnePlayerInvestigate(),
+      globalScene.twoPlayerMode ? runMultiplayerTrashToTreasureChoices() : runOnePlayerInvestigate(),
     )
     .build();
 }
@@ -308,7 +335,7 @@ function buildDigOption(playerIndex: PlayerIndex): MysteryEncounterOption {
     })
     .withPreOptionPhase(async () => storeTrashToTreasureChoice(2, playerIndex))
     .withOptionPhase(async () =>
-      globalScene.twoPlayerMode ? runTwoPlayerTrashToTreasureChoices() : runOnePlayerDig(),
+      globalScene.twoPlayerMode ? runMultiplayerTrashToTreasureChoices() : runOnePlayerDig(),
     )
     .build();
 }
