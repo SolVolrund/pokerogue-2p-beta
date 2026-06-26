@@ -1326,19 +1326,25 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     return new Promise(resolve => {
       const battleInfo = this.battleInfo;
       const isPlayerPokemon = this.isPlayer();
-      const useThreePlayerCompactInfo = isPlayerPokemon && globalScene.getPlayerFieldOwners().length > 2;
+      const playerFieldOwnerCount = globalScene.getPlayerFieldOwners().length;
+      const usePlayerCompactInfo =
+        isPlayerPokemon
+        && globalScene.twoPlayerMode
+        && globalScene.multiplayerPlayerCount > 2
+        && playerFieldOwnerCount > 1;
       const useThreeEnemyCompactInfo = this.isEnemy() && globalScene.currentBattle?.getBattlerCount() > 2;
       const useMiniBattleInfo = isPlayerPokemon && globalScene.twoPlayerMode
         ? true
         : fieldPosition !== FieldPosition.CENTER;
+      if (!usePlayerCompactInfo && !useThreeEnemyCompactInfo) {
+        battleInfo.clearCompactLayout();
+      }
       battleInfo.setMini(useMiniBattleInfo);
-      battleInfo.setOffset(useThreePlayerCompactInfo || useThreeEnemyCompactInfo ? false : fieldPosition === FieldPosition.RIGHT);
-      if (useThreePlayerCompactInfo) {
-        battleInfo.setThreePlayerCompactLayout(this.getFieldIndex());
+      battleInfo.setOffset(usePlayerCompactInfo || useThreeEnemyCompactInfo ? false : fieldPosition === FieldPosition.RIGHT);
+      if (usePlayerCompactInfo) {
+        battleInfo.setPlayerCompactLayout(this.getFieldIndex(), playerFieldOwnerCount);
       } else if (useThreeEnemyCompactInfo) {
         battleInfo.setThreeEnemyCompactLayout(this.getFieldIndex());
-      } else {
-        battleInfo.clearCompactLayout();
       }
 
       if (fieldPosition === this.fieldPosition) {

@@ -1,4 +1,5 @@
 import type { PlayerIndex } from "#app/battle-scene";
+import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
@@ -37,6 +38,7 @@ import { PartyUiMode } from "#ui/party-ui-handler";
 import { SummaryUiMode } from "#ui/summary-ui-handler";
 import { applyChallenges } from "#utils/challenge-utils";
 import { BooleanHolder, randSeedInt } from "#utils/common";
+import { getBestComputerPartnerReplacementSlot, getComputerPartnerProfile } from "#utils/computer-partner-profile";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -466,7 +468,10 @@ export function trainerThrowPokeball(
 
   const fpOffset = pokemon.getFieldPositionOffset();
   const pokeballAtlasKey = getPokeballAtlasKey(pokeballType);
-  const pokeballX = playerIndex === 1 ? 122 : 16 + 75;
+  const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
+  const pokeballX = globalScene.twoPlayerMode
+    ? globalScene.getTrainerBackSpriteX(playerIndex, globalScene.getPlayerFieldOwners().length > 1)
+    : 16 + 75;
   const pokeball: Phaser.GameObjects.Sprite = globalScene.addFieldSprite(pokeballX, 80 + 25, "pb", pokeballAtlasKey);
   pokeball.setOrigin(0.5, 0.625);
   globalScene.field.add(pokeball);
@@ -476,9 +481,8 @@ export function trainerThrowPokeball(
   });
 
   return new Promise(resolve => {
-    const trainerSprite = playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
     if (globalScene.twoPlayerMode) {
-      globalScene.setTrainerBackSpritePosition(trainerSprite, playerIndex, playerIndex === 1 ? 122 : 90);
+      globalScene.setTrainerBackSpritePosition(trainerSprite, playerIndex, pokeballX);
     }
     trainerSprite.setVisible(true);
     trainerSprite.setTexture(globalScene.getTrainerBackTextureKey(playerIndex, true));
@@ -638,6 +642,11 @@ function failCatch(
   });
 }
 
+function getPartyUiFieldSlotForPlayer(playerIndex: PlayerIndex): number {
+  const fieldSlot = globalScene.getPlayerFieldOwners().indexOf(playerIndex);
+  return fieldSlot > -1 ? fieldSlot : playerIndex;
+}
+
 /**
  *
  * @param scene
@@ -705,8 +714,11 @@ export async function catchPokemon(
       };
       const addToParty = (slotIndex?: number) => {
         const newPokemon = pokemon.addToParty(pokeballType, slotIndex, playerIndex);
-        const modifiers = globalScene.findModifiers(m => m instanceof PokemonHeldItemModifier, false);
-        if (globalScene.getPlayerParty(playerIndex).filter(p => p.isShiny()).length === 6) {
+        const modifiers = globalScene.findModifiers(
+          m => m instanceof PokemonHeldItemModifier && m.pokemonId === pokemon.id,
+          false,
+        );
+        if (globalScene.getPlayerParty(playerIndex).filter(p => p.isShiny()).length === PLAYER_PARTY_MAX_SIZE) {
           globalScene.validateAchv(achvs.SHINY_PARTY);
         }
         Promise.all(
@@ -728,8 +740,56 @@ export async function catchPokemon(
           end();
           return;
         }
-        if (globalScene.getPlayerParty(playerIndex).length === 6) {
+        if (globalScene.getPlayerParty(playerIndex).length === PLAYER_PARTY_MAX_SIZE) {
+          if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+            const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+            const replacementScore = getBestComputerPartnerReplacementSlot(
+              profile,
+              globalScene.getPlayerParty(playerIndex),
+              pokemon,
+            );
+            const replacedPokemonIndex = replacementScore?.replacedPokemonIndex;
+            const replacedPokemon = replacedPokemonIndex === undefined
+              ? undefined
+              : globalScene.getPlayerParty(playerIndex)[replacedPokemonIndex];
+
+            if (replacedPokemonIndex === undefined || !replacedPokemon || replacedPokemon.computerPartnerAce) {
+              globalScene.ui.showText(
+                `${profile.name} decided not to keep ${pokemon.getNameToRender()}.`,
+                null,
+                () => {
+                  removePokemon();
+                  end();
+                },
+                0,
+                true,
+              );
+              return;
+            }
+
+            const replacementIndex = replacedPokemonIndex;
+            globalScene.ui.showText(
+              `${profile.name} added ${pokemon.getNameToRender()} to their team and released ${replacedPokemon.getNameToRender()}.`,
+              null,
+              () => {
+                globalScene.removePartyMemberModifiers(replacementIndex, playerIndex).then(() => {
+                  const party = globalScene.getPlayerParty(playerIndex);
+                  const releasedPokemon = party.splice(replacementIndex, 1)[0];
+                  releasedPokemon?.destroy();
+                  addToParty(replacementIndex);
+                });
+              },
+              0,
+              true,
+            );
+            return;
+          }
+
           const promptRelease = () => {
+            if (globalScene.twoPlayerMode) {
+              globalScene.waitForPlayerInput(playerIndex);
+              globalScene.setActivePlayerIndex(playerIndex);
+            }
             globalScene.ui.showText(
               i18next.t("battle:partyFull", {
                 pokemonName: pokemon.getNameToRender(),
@@ -789,7 +849,7 @@ export async function catchPokemon(
                     globalScene.ui.setMode(
                       UiMode.PARTY,
                       PartyUiMode.RELEASE,
-                      0,
+                      getPartyUiFieldSlotForPlayer(playerIndex),
                       (slotIndex: number, _option: PartyOption) => {
                         globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
                           if (slotIndex < 6) {

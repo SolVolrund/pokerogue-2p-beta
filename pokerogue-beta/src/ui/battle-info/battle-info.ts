@@ -59,6 +59,13 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
   protected lastMaxHp: number;
   protected lastHpFrame: string | null;
   protected lastStats: string;
+  private compactLayoutRestore: {
+    x: number;
+    y: number;
+    baseY: number;
+    scaleX: number;
+    scaleY: number;
+  } | null;
 
   protected box: Phaser.GameObjects.Sprite;
   protected nameText: Phaser.GameObjects.Text;
@@ -220,6 +227,7 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
     this.lastHp = -1;
     this.lastMaxHp = -1;
     this.lastHpFrame = null;
+    this.compactLayoutRestore = null;
     this.baseLvContainerX = posParams.levelContainerX;
 
     // Initially invisible and shown via Pokemon.showInfo
@@ -429,24 +437,47 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
     this.baseY = this.y;
   }
 
-  setThreePlayerCompactLayout(fieldIndex: number): void {
-    if (!this.player) {
-      return;
-    }
-
-    const compactLayouts = [
-      { x: globalScene.scaledCanvas.width - 78, y: -68 },
-      { x: globalScene.scaledCanvas.width - 8, y: -68 },
-      { x: globalScene.scaledCanvas.width - 43, y: -54 },
-    ];
-    const layout = compactLayouts[fieldIndex];
-    if (!layout) {
-      return;
+  private applyCompactLayout(layout: { x: number; y: number }): void {
+    if (!this.compactLayoutRestore) {
+      this.compactLayoutRestore = {
+        x: this.x,
+        y: this.y,
+        baseY: this.baseY,
+        scaleX: this.scaleX,
+        scaleY: this.scaleY,
+      };
     }
 
     this.setScale(0.5);
     this.setPosition(layout.x, layout.y);
     this.baseY = layout.y;
+  }
+
+  setPlayerCompactLayout(fieldIndex: number, fieldSlotCount: number): void {
+    if (!this.player) {
+      return;
+    }
+
+    const twoPlayerCompactLayouts = [
+      { x: globalScene.scaledCanvas.width - 78, y: -68 },
+      { x: globalScene.scaledCanvas.width - 8, y: -68 },
+    ];
+    const threePlayerCompactLayouts = [
+      { x: globalScene.scaledCanvas.width - 78, y: -68 },
+      { x: globalScene.scaledCanvas.width - 8, y: -68 },
+      { x: globalScene.scaledCanvas.width - 43, y: -54 },
+    ];
+    const compactLayouts = fieldSlotCount > 2 ? threePlayerCompactLayouts : twoPlayerCompactLayouts;
+    const layout = compactLayouts[fieldIndex];
+    if (!layout) {
+      return;
+    }
+
+    this.applyCompactLayout(layout);
+  }
+
+  setThreePlayerCompactLayout(fieldIndex: number): void {
+    this.setPlayerCompactLayout(fieldIndex, 3);
   }
 
   setThreeEnemyCompactLayout(fieldIndex: number): void {
@@ -464,13 +495,17 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
       return;
     }
 
-    this.setScale(0.5);
-    this.setPosition(layout.x, layout.y);
-    this.baseY = layout.y;
+    this.applyCompactLayout(layout);
   }
 
   clearCompactLayout(): void {
-    if (this.scaleX !== 1 || this.scaleY !== 1) {
+    if (this.compactLayoutRestore) {
+      const restore = this.compactLayoutRestore;
+      this.compactLayoutRestore = null;
+      this.setScale(restore.scaleX, restore.scaleY);
+      this.setPosition(restore.x, restore.y);
+      this.baseY = restore.baseY;
+    } else if (this.scaleX !== 1 || this.scaleY !== 1) {
       this.setScale(1);
     }
   }

@@ -6,18 +6,24 @@ import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { SpeciesId } from "#enums/species-id";
-import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon } from "#field/pokemon";
 import { CanLearnMoveRequirement } from "#mystery-encounters/can-learn-move-requirement";
 import { PokemonMove } from "#moves/pokemon-move";
 import { showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
 import { leaveEncounterWithoutBattle, setEncounterExp } from "#mystery-encounters/encounter-phase-utils";
 import { applyDamageToPokemon } from "#mystery-encounters/encounter-pokemon-utils";
+import {
+  getMysteryEncounterPlayerTitle,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { EncounterPokemonRequirement } from "#mystery-encounters/mystery-encounter-requirements";
+import { updateWindowType } from "#ui/ui-theme";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 
 const OPTION_1_REQUIRED_MOVE = MoveId.SURF;
@@ -109,11 +115,61 @@ function getChoiceGuidePokemon(playerIndex: PlayerIndex, optionIndex: LostAtSeaO
   return undefined;
 }
 
-function storeLostAtSeaChoice(optionIndex: LostAtSeaOptionIndex, playerIndex: PlayerIndex = 0): boolean {
+function chooseComputerPartnerLostAtSeaOption(playerIndex: PlayerIndex): LostAtSeaOptionIndex {
+  if (getChoiceGuidePokemon(playerIndex, 1)) {
+    return 1;
+  }
+  if (getChoiceGuidePokemon(playerIndex, 2)) {
+    return 2;
+  }
+  return 3;
+}
+
+function getLostAtSeaTrainerDisplayName(playerIndex: PlayerIndex): string {
+  return globalScene.isComputerPartnerPlayer(playerIndex)
+    ? getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex)).name
+    : getMysteryEncounterPlayerTitle(playerIndex);
+}
+
+function queueComputerPartnerLostAtSeaChoiceMessage(playerIndex: PlayerIndex, optionIndex: LostAtSeaOptionIndex): void {
+  const guidePokemon = getChoiceGuidePokemon(playerIndex, optionIndex);
+  if (!guidePokemon) {
+    return;
+  }
+
+  const actionText = optionIndex === 1 ? "pushed" : "helped guide";
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(
+    `${guidePokemon.getNameToRender()} ${actionText} ${getLostAtSeaTrainerDisplayName(playerIndex)}'s boat to shore.`,
+    null,
+    true,
+  );
+}
+
+async function promptNextLostAtSeaPlayer(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  setLostAtSeaPlayerOptionTokens(playerIndex);
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: "What will you do?",
+    overrideOptions: buildLostAtSeaPlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerLostAtSeaOption,
+      onOptionChosen: (optionIndex, choicePlayerIndex) =>
+        storeLostAtSeaChoice(optionIndex as LostAtSeaOptionIndex, choicePlayerIndex),
+    },
+  });
+  return result ?? false;
+}
+
+function storeLostAtSeaChoice(optionIndex: LostAtSeaOptionIndex, playerIndex: PlayerIndex = 0): boolean | Promise<boolean> {
   if (!globalScene.twoPlayerMode) {
     return true;
   }
 
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
   const data = getLostAtSeaData();
   const guidePokemon = getChoiceGuidePokemon(playerIndex, optionIndex);
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
@@ -123,32 +179,21 @@ function storeLostAtSeaChoice(optionIndex: LostAtSeaOptionIndex, playerIndex: Pl
     ...(guidePokemon ? { guidePokemon } : {}),
   });
 
-  if (playerIndex === 0) {
-    data.selectingPlayerIndex = 1;
-    globalScene.waitForPlayerInput(1);
-    showLostAtSeaPlayerMenu(1, optionIndex - 1);
-    return false;
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    queueComputerPartnerLostAtSeaChoiceMessage(playerIndex, optionIndex);
+  }
+
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+  if (nextPlayerIndex != null) {
+    data.selectingPlayerIndex = nextPlayerIndex;
+    return promptNextLostAtSeaPlayer(nextPlayerIndex, optionIndex - 1);
   }
 
   delete data.selectingPlayerIndex;
   data.skipSelectedDialogueOnce = true;
-  globalScene.waitForPlayerInput(0);
+  globalScene.setActivePlayerIndex(0);
+  updateWindowType(1);
   return true;
-}
-
-function showLostAtSeaPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  const overrideOptions = buildLostAtSeaPlayerOptions(playerIndex);
-  setLostAtSeaPlayerOptionTokens(playerIndex);
-
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: "What will you do?",
-      overrideOptions,
-      startingCursorIndex,
-    });
-  });
 }
 
 function setLostAtSeaPlayerOptionTokens(playerIndex: PlayerIndex): void {
@@ -221,7 +266,7 @@ async function runTwoPlayerLostAtSeaChoices(): Promise<boolean> {
   const data = getLostAtSeaData();
   const laprasSpecies = getPokemonSpecies(SpeciesId.LAPRAS);
 
-  for (const choice of data.choices) {
+  for (const choice of data.choices.toSorted((a, b) => a.playerIndex - b.playerIndex)) {
     globalScene.waitForPlayerInput(choice.playerIndex);
 
     if (choice.optionIndex === 3) {

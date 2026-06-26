@@ -5,7 +5,6 @@ import { EncounterBattleAnim } from "#data/battle-anims";
 import { allAbilities, modifierTypes } from "#data/data-lists";
 import { Gender } from "#data/gender";
 import { AbilityId } from "#enums/ability-id";
-import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { EncounterAnim } from "#enums/encounter-anims";
 import { MoveId } from "#enums/move-id";
@@ -17,7 +16,6 @@ import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { Stat, type BattleStat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
-import { UiMode } from "#enums/ui-mode";
 import { WeatherType } from "#enums/weather-type";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import type { AttackTypeBoosterModifierType } from "#modifiers/modifier-type";
@@ -38,6 +36,11 @@ import {
   applyDamageToPokemon,
   applyModifierTypeToPlayerPokemon,
 } from "#mystery-encounters/encounter-pokemon-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
@@ -50,6 +53,8 @@ import {
 } from "#mystery-encounters/mystery-encounter-requirements";
 import { FIRE_RESISTANT_ABILITIES } from "#mystery-encounters/requirement-groups";
 import { updateWindowType } from "#ui/ui-theme";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import { getComputerPartnerTeamConfidence } from "#utils/computer-partner-team-confidence";
 import { randSeedInt } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 
@@ -62,6 +67,7 @@ const namespace = "mysteryEncounters/fieryFallout";
  * The higher the more damage taken (100% = instant KO).
  */
 const DAMAGE_PERCENTAGE: number = 20;
+const VOLCARONA_COUNT = 3;
 
 type FieryFalloutOptionIndex = 1 | 2 | 3;
 
@@ -142,11 +148,59 @@ function getChoiceHelperPokemon(
   return optionIndex === 3 ? getFireResistantPokemon(playerIndex) : undefined;
 }
 
-function storeFieryFalloutChoice(optionIndex: FieryFalloutOptionIndex, playerIndex: PlayerIndex = 0): boolean {
+function chooseComputerPartnerFieryFalloutOption(playerIndex: PlayerIndex): FieryFalloutOptionIndex {
+  if (getFireResistantPokemon(playerIndex)) {
+    return 3;
+  }
+
+  const confidence = getComputerPartnerTeamConfidence(globalScene.getPlayerParty(playerIndex));
+  return confidence.level === "medium" || confidence.level === "high" ? 1 : 2;
+}
+
+function queueComputerPartnerFieryFalloutChoiceMessage(
+  playerIndex: PlayerIndex,
+  optionIndex: FieryFalloutOptionIndex,
+): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const optionNames: Record<FieryFalloutOptionIndex, string> = {
+    1: "Find the source",
+    2: "Hunker down",
+    3: "Calm the Volcarona",
+  };
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionNames[optionIndex]}.`, null, true);
+}
+
+async function promptNextFieryFalloutPlayer(
+  playerIndex: PlayerIndex,
+  startingCursorIndex = 0,
+): Promise<boolean> {
+  setFieryFalloutPlayerOptionTokens(playerIndex);
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: "What will you do?",
+    overrideOptions: buildFieryFalloutPlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerFieryFalloutOption,
+      onOptionChosen: (optionIndex, choicePlayerIndex) =>
+        storeFieryFalloutChoice(optionIndex as FieryFalloutOptionIndex, choicePlayerIndex),
+    },
+  });
+  return result ?? false;
+}
+
+function storeFieryFalloutChoice(
+  optionIndex: FieryFalloutOptionIndex,
+  playerIndex: PlayerIndex = 0,
+): boolean | Promise<boolean> {
   if (!globalScene.twoPlayerMode) {
     return true;
   }
 
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
   const data = getFieryFalloutData();
   const helperPokemon = getChoiceHelperPokemon(playerIndex, optionIndex);
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
@@ -156,10 +210,14 @@ function storeFieryFalloutChoice(optionIndex: FieryFalloutOptionIndex, playerInd
     ...(helperPokemon ? { helperPokemon } : {}),
   });
 
-  if (playerIndex === 0) {
-    data.selectingPlayerIndex = 1;
-    showFieryFalloutPlayerMenu(1, optionIndex - 1);
-    return false;
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    queueComputerPartnerFieryFalloutChoiceMessage(playerIndex, optionIndex);
+  }
+
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+  if (nextPlayerIndex != null) {
+    data.selectingPlayerIndex = nextPlayerIndex;
+    return promptNextFieryFalloutPlayer(nextPlayerIndex, optionIndex - 1);
   }
 
   delete data.selectingPlayerIndex;
@@ -169,26 +227,12 @@ function storeFieryFalloutChoice(optionIndex: FieryFalloutOptionIndex, playerInd
   return true;
 }
 
-function showFieryFalloutPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  const overrideOptions = buildFieryFalloutPlayerOptions(playerIndex);
-  setFieryFalloutPlayerOptionTokens(playerIndex);
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
-
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: "What will you do?",
-      overrideOptions,
-      startingCursorIndex,
-    });
-  });
-}
-
 function setFieryFalloutPlayerOptionTokens(playerIndex: PlayerIndex): void {
   const helperPokemon = getFireResistantPokemon(playerIndex);
-  globalScene.currentBattle.mysteryEncounter!.setDialogueToken("option3PrimaryName", helperPokemon?.getNameToRender() ?? "");
+  globalScene.currentBattle.mysteryEncounter!.setDialogueToken(
+    "option3PrimaryName",
+    helperPokemon?.getNameToRender() ?? "",
+  );
 }
 
 function buildFieryFalloutPlayerOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
@@ -283,7 +327,7 @@ export const FieryFalloutEncounter: MysteryEncounter = MysteryEncounterBuilder.w
   .withOnInit(() => {
     const encounter = globalScene.currentBattle.mysteryEncounter!;
 
-    encounter.enemyPartyConfigs = [createVolcaronaEnemyPartyConfig(2)];
+    encounter.enemyPartyConfigs = [createVolcaronaEnemyPartyConfig(VOLCARONA_COUNT)];
     if (globalScene.twoPlayerMode) {
       encounter.misc = {
         ...(encounter.misc ?? {}),
@@ -301,7 +345,7 @@ export const FieryFalloutEncounter: MysteryEncounter = MysteryEncounterBuilder.w
         repeat: true,
         hidden: true,
         hasShadow: true,
-        x: -20,
+        x: -40,
         startFrame: 20,
       },
       {
@@ -311,7 +355,16 @@ export const FieryFalloutEncounter: MysteryEncounter = MysteryEncounterBuilder.w
         repeat: true,
         hidden: true,
         hasShadow: true,
-        x: 20,
+        x: 0,
+      },
+      {
+        spriteKey: "",
+        fileRoot: "",
+        species: SpeciesId.VOLCARONA,
+        repeat: true,
+        hidden: true,
+        hasShadow: true,
+        x: 40,
       },
     ];
 
@@ -373,10 +426,11 @@ function createVolcaronaPokemonConfig(gender: Gender): EnemyPokemonConfig {
   };
 }
 
-function createVolcaronaEnemyPartyConfig(volcaronaCount: 1 | 2): EnemyPartyConfig {
+function createVolcaronaEnemyPartyConfig(volcaronaCount: 1 | 2 | 3): EnemyPartyConfig {
   const pokemonConfigs = [
     createVolcaronaPokemonConfig(Gender.MALE),
     ...(volcaronaCount > 1 ? [createVolcaronaPokemonConfig(Gender.FEMALE)] : []),
+    ...(volcaronaCount > 2 ? [createVolcaronaPokemonConfig(Gender.FEMALE)] : []),
   ];
 
   return {
@@ -389,7 +443,7 @@ function createVolcaronaEnemyPartyConfig(volcaronaCount: 1 | 2): EnemyPartyConfi
 async function runOnePlayerFindSource(): Promise<void> {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   setEncounterRewards({ fillRemaining: true }, undefined, () => giveLeadPokemonAttackTypeBoostItem());
-  queueVolcaronaStartOfBattleEffects([0], 2);
+  queueVolcaronaStartOfBattleEffects([0], VOLCARONA_COUNT);
   await initBattleWithEnemyConfig(encounter.enemyPartyConfigs[0]);
 }
 
@@ -408,6 +462,40 @@ async function runOnePlayerFireResistantHelp(): Promise<void> {
   leaveEncounterWithoutBattle();
 }
 
+async function hideFieryFalloutNonBattleTrainers(battlePlayers: PlayerIndex[]): Promise<void> {
+  if (!globalScene.twoPlayerMode) {
+    return;
+  }
+
+  const battlePlayerSet = new Set(battlePlayers);
+  await Promise.all(
+    getMysteryEncounterPlayerIndexes()
+      .filter(playerIndex => !battlePlayerSet.has(playerIndex))
+      .map(
+        playerIndex =>
+          new Promise<void>(resolve => {
+            const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
+            globalScene.tweens.killTweensOf(trainerSprite);
+
+            if (!trainerSprite.visible) {
+              resolve();
+              return;
+            }
+
+            globalScene.tweens.add({
+              targets: trainerSprite,
+              x: -36,
+              duration: 500,
+              onComplete: () => {
+                trainerSprite.setVisible(false);
+                resolve();
+              },
+            });
+          }),
+      ),
+  );
+}
+
 async function runTwoPlayerFieryFalloutChoices(): Promise<void> {
   const choices = getFieryFalloutData().choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
   const sourceChoices = choices.filter(choice => choice.optionIndex === 1);
@@ -422,9 +510,10 @@ async function runTwoPlayerFieryFalloutChoices(): Promise<void> {
     applyFieryFalloutHelperReward(choice);
   }
 
+  const hunkerDamageMultiplier = Math.max(0, 1 - helperChoices.length / VOLCARONA_COUNT);
   const helperSoftensHeat = helperChoices.length > 0;
   for (const choice of hunkerChoices) {
-    applyHunkerDownForPlayer(choice.playerIndex, helperSoftensHeat ? 0.5 : 1, !helperSoftensHeat);
+    applyHunkerDownForPlayer(choice.playerIndex, hunkerDamageMultiplier, !helperSoftensHeat);
   }
 
   if (sourceChoices.length === 0) {
@@ -433,7 +522,7 @@ async function runTwoPlayerFieryFalloutChoices(): Promise<void> {
   }
 
   const sourcePlayers = sourceChoices.map(choice => choice.playerIndex);
-  const volcaronaCount = sourceChoices.length > 1 || (helperChoices.length === 0 && choices.length > 1) ? 2 : 1;
+  const volcaronaCount = Math.max(1, VOLCARONA_COUNT - helperChoices.length) as 1 | 2 | 3;
 
   for (const choice of sourceChoices) {
     setEncounterRewards(
@@ -445,6 +534,7 @@ async function runTwoPlayerFieryFalloutChoices(): Promise<void> {
   }
 
   globalScene.setMysteryEncounterBattlePlayerFieldOwners(sourcePlayers);
+  await hideFieryFalloutNonBattleTrainers(sourcePlayers);
   queueVolcaronaStartOfBattleEffects(sourcePlayers, volcaronaCount);
   await transitionMysteryEncounterIntroVisuals(true, true, 500);
   await initBattleWithEnemyConfig(createVolcaronaEnemyPartyConfig(volcaronaCount));
@@ -521,27 +611,18 @@ function applyHunkerDownForPlayer(playerIndex: PlayerIndex, damageMultiplier = 1
   applyAbilityOverrideToPokemon(chosenPokemon, AbilityId.HEATPROOF);
 }
 
-function queueVolcaronaStartOfBattleEffects(playerIndexes: PlayerIndex[], volcaronaCount: 1 | 2): void {
+function queueVolcaronaStartOfBattleEffects(playerIndexes: PlayerIndex[], volcaronaCount: 1 | 2 | 3): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
-  const secondTarget =
-    globalScene.twoPlayerMode && playerIndexes.length === 1 ? BattlerIndex.PLAYER : BattlerIndex.PLAYER_2;
   encounter.startOfBattleEffects.push(
-    {
-      sourceBattlerIndex: BattlerIndex.ENEMY,
-      targets: [BattlerIndex.PLAYER],
-      move: new PokemonMove(MoveId.FIRE_SPIN),
-      useMode: MoveUseMode.IGNORE_PP,
-    },
-    ...(volcaronaCount > 1
-      ? [
-          {
-            sourceBattlerIndex: BattlerIndex.ENEMY_2,
-            targets: [secondTarget],
-            move: new PokemonMove(MoveId.FIRE_SPIN),
-            useMode: MoveUseMode.IGNORE_PP,
-          },
-        ]
-      : []),
+    ...Array.from({ length: volcaronaCount }, (_unused, fieldIndex) => {
+      const targetFieldIndex = Math.min(fieldIndex, Math.max(playerIndexes.length - 1, 0));
+      return {
+        sourceBattlerIndex: globalScene.getEnemyBattlerIndex(fieldIndex),
+        targets: [globalScene.getPlayerBattlerIndex(targetFieldIndex)],
+        move: new PokemonMove(MoveId.FIRE_SPIN),
+        useMode: MoveUseMode.IGNORE_PP,
+      };
+    }),
   );
 }
 

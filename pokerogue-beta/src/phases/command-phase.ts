@@ -18,7 +18,6 @@ import { FieldPosition } from "#enums/field-position";
 import { MoveId } from "#enums/move-id";
 import { isIgnorePP, isVirtual, MoveUseMode } from "#enums/move-use-mode";
 import { MysteryEncounterMode } from "#enums/mystery-encounter-mode";
-import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { PokeballType } from "#enums/pokeball";
 import { UiMode } from "#enums/ui-mode";
 import type { EnemyPokemon, PlayerPokemon } from "#field/pokemon";
@@ -116,7 +115,7 @@ export class CommandPhase extends FieldPhase {
 
     const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
     const blockedTargetIds = this.getComputerPartnerBlockedCaptureTargetIds(playerIndex);
-    const darkDealTargetIds = this.getDarkDealCaptureTargetIds(playerIndex);
+    const claimedTargetIds = this.getComputerPartnerClaimedCaptureTargetIds(playerIndex);
     const captureDecision = getComputerPartnerCaptureDecision(
       globalScene.getComputerPartnerKey(playerIndex),
       globalScene.getPlayerParty(playerIndex),
@@ -125,11 +124,11 @@ export class CommandPhase extends FieldPhase {
       globalScene.getPlayerPokeballCounts(playerIndex),
       blockedTargetIds,
       globalScene.getComputerPartnerRolePreferences(playerIndex),
-      darkDealTargetIds.length > 0
+      claimedTargetIds.length > 0
         ? {
-          allowedBossTargetIds: darkDealTargetIds,
-          forceThrowTargetIds: darkDealTargetIds,
-          preferredTargetIds: darkDealTargetIds,
+          allowedBossTargetIds: claimedTargetIds,
+          forceThrowTargetIds: claimedTargetIds,
+          preferredTargetIds: claimedTargetIds,
         }
         : undefined,
     );
@@ -182,22 +181,10 @@ export class CommandPhase extends FieldPhase {
     );
   }
 
-  private getDarkDealCaptureTargetIds(playerIndex: PlayerIndex): number[] {
-    const encounter = globalScene.currentBattle.mysteryEncounter;
-    if (encounter?.encounterType !== MysteryEncounterType.DARK_DEAL) {
-      return [];
-    }
-
-    const captureTargets = encounter.misc?.captureTargets;
-    if (!Array.isArray(captureTargets)) {
-      return [];
-    }
-
-    return captureTargets
-      .filter((target): target is { playerIndex: PlayerIndex; targetId: number } =>
-        target?.playerIndex === playerIndex && typeof target.targetId === "number",
-      )
-      .map(target => target.targetId);
+  private getComputerPartnerClaimedCaptureTargetIds(playerIndex: PlayerIndex): number[] {
+    return globalScene.currentBattle.computerPartnerCaptureClaims
+      .filter(claim => claim.playerIndex === playerIndex)
+      .map(claim => claim.targetId);
   }
 
   private hasUsableCaptureBall(playerIndex: PlayerIndex): boolean {
@@ -733,6 +720,43 @@ export class CommandPhase extends FieldPhase {
   }
 
   /**
+   * Checks whether the selected ball can be thrown at a specific target.
+   * @param targetPokemon - The Pokemon being targeted by the ball
+   * @param pokeballType - The selected ball type
+   * @returns The locale key for the denial message, or `undefined` when the target is valid
+   */
+  private getBallTargetBlockMessage(targetPokemon: EnemyPokemon, pokeballType: PokeballType): string | undefined {
+    const isChallengeActive = globalScene.gameMode.hasAnyChallenges();
+    const isFinalBoss = globalScene.gameMode.isBattleClassicFinalBoss(globalScene.currentBattle.waveIndex);
+    const isCatchableDailyBoss = isDailyFinalBoss() && (getDailyEventSeedBoss()?.catchable ?? false);
+
+    if (
+      !targetPokemon.isBoss()
+      || targetPokemon.bossSegmentIndex < 1 // TODO: Decouple this hardcoded exception for wonder guard and just check the target...
+      || targetPokemon.hasAbility(AbilityId.WONDER_GUARD, false, true)
+    ) {
+      return undefined;
+    }
+
+    // When facing the final boss, it must be weakened unless a Master Ball is used AND no challenges are active.
+    // The message is customized for the final boss.
+    if (
+      isFinalBoss
+      && (pokeballType < PokeballType.MASTER_BALL
+        || (pokeballType === PokeballType.MASTER_BALL && isChallengeActive))
+    ) {
+      return "battle:noPokeballForceFinalBossCatchable";
+    }
+
+    // When facing any other boss, Master Ball can always be used, and we use the standard message.
+    if (isCatchableDailyBoss || pokeballType < PokeballType.MASTER_BALL) {
+      return "battle:noPokeballStrong";
+    }
+
+    return undefined;
+  }
+
+  /**
    * Helper method for {@linkcode handleCommand} that handles the logic when the selected command is to use a pokeball.
    *
    * @param cursor - The index of the pokeball to use
@@ -753,32 +777,23 @@ export class CommandPhase extends FieldPhase {
       return false;
     }
 
-    const isChallengeActive = globalScene.gameMode.hasAnyChallenges();
-    const isFinalBoss = globalScene.gameMode.isBattleClassicFinalBoss(globalScene.currentBattle.waveIndex);
-    const isCatchableDailyBoss = isDailyFinalBoss() && (getDailyEventSeedBoss()?.catchable ?? false);
-
     const numBallTypes = 5;
     if (cursor < numBallTypes) {
-      const targetPokemon = globalScene.getEnemyPokemon(false);
-      if (
-        targetPokemon?.isBoss()
-        && targetPokemon?.bossSegmentIndex >= 1 // TODO: Decouple this hardcoded exception for wonder guard and just check the target...
-        && !targetPokemon?.hasAbility(AbilityId.WONDER_GUARD, false, true)
-      ) {
-        // When facing the final boss, it must be weakened unless a Master Ball is used AND no challenges are active.
-        // The message is customized for the final boss.
-        if (
-          isFinalBoss
-          && (cursor < PokeballType.MASTER_BALL || (cursor === PokeballType.MASTER_BALL && isChallengeActive))
-        ) {
-          this.queueShowText("battle:noPokeballForceFinalBossCatchable");
-          return false;
-        }
-        // When facing any other boss, Master Ball can always be used, and we use the standard message.
-        if (isCatchableDailyBoss || cursor < PokeballType.MASTER_BALL) {
-          this.queueShowText("battle:noPokeballStrong");
-          return false;
-        }
+      const validTargets = targets.filter(target => {
+        const targetPokemon = globalScene.getField()[target] as EnemyPokemon | undefined;
+        return targetPokemon && !this.getBallTargetBlockMessage(targetPokemon, cursor);
+      });
+
+      if (validTargets.length === 0) {
+        const firstTarget = targets
+          .map(target => globalScene.getField()[target] as EnemyPokemon | undefined)
+          .find(targetPokemon => !!targetPokemon);
+        this.queueShowText(
+          firstTarget
+            ? this.getBallTargetBlockMessage(firstTarget, cursor) ?? "battle:noPokeballStrong"
+            : "battle:noPokeballStrong",
+        );
+        return false;
       }
 
       this.setTurnCommand({
@@ -786,9 +801,9 @@ export class CommandPhase extends FieldPhase {
         cursor,
         playerIndex: globalScene.getPlayerIndexForFieldSlot(this.fieldIndex),
       });
-      this.getTurnCommand()!.targets = targets;
-      if (targets.length > 1) {
-        globalScene.phaseManager.unshiftNew("SelectTargetPhase", this.fieldIndex, targets);
+      this.getTurnCommand()!.targets = validTargets;
+      if (validTargets.length > 1) {
+        globalScene.phaseManager.unshiftNew("SelectTargetPhase", this.fieldIndex, validTargets);
       }
       if (!globalScene.twoPlayerMode && this.fieldIndex) {
         globalScene.currentBattle.turnCommands[this.getPreviousFieldBattlerIndex()]!.skip = true;

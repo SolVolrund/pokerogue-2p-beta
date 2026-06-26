@@ -4,18 +4,22 @@ import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { allAbilities } from "#data/data-lists";
-import { getNatureName } from "#data/nature";
+import { getNatureName, getNatureStatMultiplier } from "#data/nature";
 import { AbilityAttr } from "#enums/ability-attr";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { Nature } from "#enums/nature";
-import { getStatKey } from "#enums/stat";
-import { UiMode } from "#enums/ui-mode";
+import { getStatKey, Stat, type EffectiveStat } from "#enums/stat";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import type { PokemonHeldItemModifier } from "#modifiers/modifier";
 import { queueEncounterMessage, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import type { EnemyPartyConfig } from "#mystery-encounters/encounter-phase-utils";
 import {
   initBattleWithEnemyConfig,
@@ -26,12 +30,15 @@ import {
 import { isPokemonValidForEncounterOptionSelection } from "#mystery-encounters/encounter-pokemon-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
+import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import { PokemonData } from "#system/pokemon-data";
 import type { HeldModifierConfig } from "#types/held-modifier-config";
 import type { OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { updateWindowType } from "#ui/ui-theme";
+import { getComputerPartnerProfile, type ComputerPartnerKey, type ComputerPartnerRole } from "#utils/computer-partner-profile";
+import { getComputerPartnerTeamConfidence } from "#utils/computer-partner-team-confidence";
 import { randSeedShuffle } from "#utils/common";
 import { getEnumValues } from "#utils/enums";
 import i18next from "i18next";
@@ -64,7 +71,7 @@ class TrainingSessionSpawnRequirement extends EncounterSceneRequirement {
       return globalScene.getPokemonAllowedInBattle().length >= MIN_HEALTHY_POKEMON_FOR_TRAINING;
     }
 
-    return ([0, 1] as PlayerIndex[]).every(
+    return getMysteryEncounterPlayerIndexes().every(
       playerIndex => globalScene.getPokemonAllowedInBattle(playerIndex).length >= MIN_HEALTHY_POKEMON_FOR_TRAINING,
     );
   }
@@ -97,23 +104,206 @@ function getTrainingSelectableFilter() {
   return (pokemon: Pokemon) => isPokemonValidForEncounterOptionSelection(pokemon, `${namespace}:invalidSelection`);
 }
 
-function promptSecondTrainingPlayer(startingCursorIndex: number): void {
-  const data = getTrainingSessionData();
-  data.selectingPlayerIndex = 1;
-  globalScene.setActivePlayerIndex(1);
-  updateWindowType(2);
-  globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-    slideInDescription: false,
-    overrideTitle: "Player 2",
-    overrideQuery: i18next.t(`${namespace}:query`),
-    startingCursorIndex,
-  });
+function getTrainableParty(playerIndex: PlayerIndex): PlayerPokemon[] {
+  const selectableFilter = getTrainingSelectableFilter();
+  return globalScene.getPlayerParty(playerIndex).filter(pokemon => !selectableFilter(pokemon));
 }
 
-function finishTrainingChoiceCollection(playerIndex: PlayerIndex, optionIndex: TrainingOptionIndex): boolean {
-  if (globalScene.twoPlayerMode && playerIndex === 0) {
-    promptSecondTrainingPlayer(optionIndex - 1);
+function getTrainingPokemonRole(playerIndex: PlayerIndex, pokemon: PlayerPokemon): ComputerPartnerRole {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const party = globalScene.getPlayerParty(playerIndex);
+  const slotIndex = party.indexOf(pokemon);
+
+  if (pokemon.computerPartnerAce || slotIndex === 0) {
+    switch (profile.key as ComputerPartnerKey) {
+      case "riley":
+        return "physical";
+      case "mira":
+        return "special";
+      case "buck":
+      case "cheryl":
+        return "bulk";
+      case "marley":
+        return "speed";
+      default:
+        return profile.roles[0] ?? "balanced";
+    }
+  }
+
+  return profile.roles[slotIndex] ?? "balanced";
+}
+
+function getPokemonNaturalStat(pokemon: PlayerPokemon, stat: Stat): number {
+  return pokemon.getSpeciesForm().getBaseStat(stat);
+}
+
+function getLessNeededOffensiveStat(pokemon: PlayerPokemon): Stat.ATK | Stat.SPATK {
+  return getPokemonNaturalStat(pokemon, Stat.ATK) <= getPokemonNaturalStat(pokemon, Stat.SPATK)
+    ? Stat.ATK
+    : Stat.SPATK;
+}
+
+function getPreferredDefensiveStat(pokemon: PlayerPokemon): Stat.DEF | Stat.SPDEF {
+  return getPokemonNaturalStat(pokemon, Stat.DEF) <= getPokemonNaturalStat(pokemon, Stat.SPDEF)
+    ? Stat.DEF
+    : Stat.SPDEF;
+}
+
+function getTrainingDesiredStat(playerIndex: PlayerIndex, pokemon: PlayerPokemon): EffectiveStat {
+  const role = getTrainingPokemonRole(playerIndex, pokemon);
+  switch (role) {
+    case "physical":
+      return Stat.ATK;
+    case "special":
+      return Stat.SPATK;
+    case "speed":
+      return Stat.SPD;
+    case "defense":
+      return Stat.DEF;
+    case "specialDefense":
+      return Stat.SPDEF;
+    case "bulk":
+    case "hpBulk":
+      return getPreferredDefensiveStat(pokemon);
+    case "ace":
+    case "balanced":
+      return getPokemonNaturalStat(pokemon, Stat.ATK) >= getPokemonNaturalStat(pokemon, Stat.SPATK)
+        ? Stat.ATK
+        : Stat.SPATK;
+  }
+}
+
+function getTrainingDumpStat(pokemon: PlayerPokemon, desiredStat: EffectiveStat): EffectiveStat {
+  if (desiredStat === Stat.ATK) {
+    return Stat.SPATK;
+  }
+  if (desiredStat === Stat.SPATK) {
+    return Stat.ATK;
+  }
+
+  return getLessNeededOffensiveStat(pokemon);
+}
+
+function getPreferredTrainingNature(playerIndex: PlayerIndex, pokemon: PlayerPokemon): Nature {
+  const desiredStat = getTrainingDesiredStat(playerIndex, pokemon);
+  const dumpStat = getTrainingDumpStat(pokemon, desiredStat);
+  const natures = getEnumValues(Nature) as Nature[];
+
+  return (
+    natures.find(
+      nature =>
+        getNatureStatMultiplier(nature, desiredStat) > 1 && getNatureStatMultiplier(nature, dumpStat) < 1,
+    )
+    ?? natures.find(nature => getNatureStatMultiplier(nature, desiredStat) > 1)
+    ?? pokemon.getNature()
+  );
+}
+
+function isPokemonNatureBadForTraining(playerIndex: PlayerIndex, pokemon: PlayerPokemon): boolean {
+  return getNatureStatMultiplier(pokemon.getNature(), getTrainingDesiredStat(playerIndex, pokemon)) < 1;
+}
+
+function getHiddenAbilityIndex(pokemon: PlayerPokemon): number | undefined {
+  const speciesForm = pokemon.getFusionSpeciesForm() ? pokemon.getFusionSpeciesForm() : pokemon.getSpeciesForm();
+  const abilityCount = speciesForm.getAbilityCount();
+  if (abilityCount < 3) {
+    return undefined;
+  }
+
+  return abilityCount - 1;
+}
+
+function canBenefitFromHeavyTraining(pokemon: PlayerPokemon): boolean {
+  const hiddenAbilityIndex = getHiddenAbilityIndex(pokemon);
+  if (hiddenAbilityIndex == null) {
     return false;
+  }
+
+  const currentAbilityIndex = pokemon.getFusionSpeciesForm() ? pokemon.fusionAbilityIndex : pokemon.abilityIndex;
+  return currentAbilityIndex !== hiddenAbilityIndex;
+}
+
+function getTrainingCandidateScore(playerIndex: PlayerIndex, pokemon: PlayerPokemon): number {
+  const desiredStat = getTrainingDesiredStat(playerIndex, pokemon);
+  const ivDeficit = pokemon.ivs.reduce((total, iv) => total + (31 - iv), 0);
+  return getPokemonNaturalStat(pokemon, desiredStat) * 4 + ivDeficit;
+}
+
+function getBestTrainingCandidate(
+  playerIndex: PlayerIndex,
+  predicate: (pokemon: PlayerPokemon) => boolean,
+): PlayerPokemon | undefined {
+  return getTrainableParty(playerIndex)
+    .filter(predicate)
+    .sort((a, b) => getTrainingCandidateScore(playerIndex, b) - getTrainingCandidateScore(playerIndex, a))[0];
+}
+
+function chooseComputerPartnerTrainingChoice(playerIndex: PlayerIndex): TrainingChoice {
+  const confidence = getComputerPartnerTeamConfidence(globalScene.getPlayerParty(playerIndex));
+
+  if (confidence.level === "none") {
+    return { playerIndex, optionIndex: 4 };
+  }
+
+  if (confidence.level === "high") {
+    const heavyCandidate = getBestTrainingCandidate(playerIndex, canBenefitFromHeavyTraining);
+    const abilityIndex = heavyCandidate ? getHiddenAbilityIndex(heavyCandidate) : undefined;
+    if (heavyCandidate && abilityIndex != null) {
+      return { playerIndex, optionIndex: 3, playerPokemon: heavyCandidate, abilityIndex };
+    }
+  }
+
+  if (confidence.level === "high" || confidence.level === "medium") {
+    const moderateCandidate = getBestTrainingCandidate(playerIndex, pokemon =>
+      isPokemonNatureBadForTraining(playerIndex, pokemon),
+    );
+    if (moderateCandidate) {
+      return {
+        playerIndex,
+        optionIndex: 2,
+        playerPokemon: moderateCandidate,
+        chosenNature: getPreferredTrainingNature(playerIndex, moderateCandidate),
+      };
+    }
+  }
+
+  const lightCandidate = getBestTrainingCandidate(playerIndex, pokemon => pokemon.ivs.some(iv => iv < 31))
+    ?? getTrainableParty(playerIndex)[0];
+  return lightCandidate
+    ? { playerIndex, optionIndex: 1, playerPokemon: lightCandidate }
+    : { playerIndex, optionIndex: 4 };
+}
+
+function queueComputerPartnerTrainingChoiceMessage(choice: TrainingChoice): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(choice.playerIndex));
+  const optionLabel = i18next.t(`${namespace}:option.${choice.optionIndex}.label`);
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionLabel}.`, null, true);
+}
+
+async function promptTrainingPlayer(playerIndex: PlayerIndex, startingCursorIndex: number): Promise<boolean> {
+  const data = getTrainingSessionData();
+  data.selectingPlayerIndex = playerIndex;
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildTrainingSessionPlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: choicePlayerIndex => chooseComputerPartnerTrainingChoice(choicePlayerIndex).optionIndex,
+      onOptionChosen: (_optionIndex, choicePlayerIndex) => collectComputerPartnerTrainingChoice(choicePlayerIndex),
+    },
+  });
+  return result ?? false;
+}
+
+function finishTrainingChoiceCollection(playerIndex: PlayerIndex, optionIndex: TrainingOptionIndex): boolean | Promise<boolean> {
+  if (globalScene.twoPlayerMode) {
+    const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+    if (nextPlayerIndex != null) {
+      return promptTrainingPlayer(nextPlayerIndex, optionIndex - 1);
+    }
   }
 
   const data = getTrainingSessionData();
@@ -126,9 +316,24 @@ function finishTrainingChoiceCollection(playerIndex: PlayerIndex, optionIndex: T
   return true;
 }
 
-async function collectTrainingChoice(optionIndex: TrainingOptionIndex): Promise<boolean> {
+async function collectComputerPartnerTrainingChoice(playerIndex: PlayerIndex): Promise<boolean> {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  const choice = chooseComputerPartnerTrainingChoice(playerIndex);
+  storeTrainingChoice(choice);
+  queueComputerPartnerTrainingChoiceMessage(choice);
+  return finishTrainingChoiceCollection(playerIndex, choice.optionIndex);
+}
+
+async function collectTrainingChoice(
+  optionIndex: TrainingOptionIndex,
+  choosingPlayerIndex?: PlayerIndex,
+): Promise<boolean> {
   const data = getTrainingSessionData();
-  const playerIndex = globalScene.twoPlayerMode ? (data.selectingPlayerIndex ?? 0) : globalScene.activePlayerIndex;
+  const playerIndex = globalScene.twoPlayerMode
+    ? choosingPlayerIndex ?? data.selectingPlayerIndex ?? globalScene.activePlayerIndex
+    : globalScene.activePlayerIndex;
   globalScene.setActivePlayerIndex(playerIndex);
   if (globalScene.twoPlayerMode) {
     updateWindowType(playerIndex + 1);
@@ -235,6 +440,7 @@ function restoreTrainingPokemon(choice: TrainingChoice): PlayerPokemon {
 function applyLightTrainingReward(choice: TrainingChoice): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const playerPokemon = choice.playerPokemon!;
+  const gameData = globalScene.getPlayerGameData(choice.playerIndex);
   encounter.setDialogueToken("stat1", "-");
   encounter.setDialogueToken("stat2", "-");
 
@@ -267,8 +473,8 @@ function applyLightTrainingReward(choice: TrainingChoice): void {
 
   if (improvedCount > 0) {
     playerPokemon.calculateStats();
-    globalScene.gameData.updateSpeciesDexIvs(playerPokemon.species.getRootSpeciesId(true), playerPokemon.ivs);
-    globalScene.gameData.setPokemonCaught(playerPokemon, false);
+    gameData.updateSpeciesDexIvs(playerPokemon.species.getRootSpeciesId(true), playerPokemon.ivs);
+    gameData.setPokemonCaught(playerPokemon, false);
   }
 
   restoreTrainingPokemon(choice);
@@ -278,9 +484,10 @@ function applyLightTrainingReward(choice: TrainingChoice): void {
 function applyModerateTrainingReward(choice: TrainingChoice): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const playerPokemon = choice.playerPokemon!;
+  const gameData = globalScene.getPlayerGameData(choice.playerIndex);
   encounter.setDialogueToken("nature", getNatureName(choice.chosenNature!));
   playerPokemon.setCustomNature(choice.chosenNature!);
-  globalScene.gameData.unlockSpeciesNature(playerPokemon.species, choice.chosenNature!);
+  gameData.unlockSpeciesNature(playerPokemon.species, choice.chosenNature!);
   restoreTrainingPokemon(choice);
   queueEncounterMessage(`${namespace}:option.2.finished`);
 }
@@ -288,6 +495,7 @@ function applyModerateTrainingReward(choice: TrainingChoice): void {
 function applyHeavyTrainingReward(choice: TrainingChoice): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const playerPokemon = choice.playerPokemon!;
+  const gameData = globalScene.getPlayerGameData(choice.playerIndex);
   const abilityIndex = choice.abilityIndex!;
   const speciesForm = playerPokemon.getFusionSpeciesForm()
     ? playerPokemon.getFusionSpeciesForm()
@@ -301,9 +509,9 @@ function applyHeavyTrainingReward(choice: TrainingChoice): void {
     if (
       rootFusionSpecies != null
       && speciesDataRegistry.isStarter(rootFusionSpecies)
-      && globalScene.gameData.dexData[rootFusionSpecies].caughtAttr
+      && gameData.dexData[rootFusionSpecies].caughtAttr
     ) {
-      globalScene.gameData.starterData[rootFusionSpecies].abilityAttr |=
+      gameData.starterData[rootFusionSpecies].abilityAttr |=
         playerPokemon.fusionAbilityIndex !== 1 || playerPokemon.fusionSpecies?.ability2
           ? 1 << playerPokemon.fusionAbilityIndex
           : AbilityAttr.ABILITY_HIDDEN;
@@ -313,7 +521,7 @@ function applyHeavyTrainingReward(choice: TrainingChoice): void {
   }
 
   playerPokemon.calculateStats();
-  globalScene.gameData.setPokemonCaught(playerPokemon, false);
+  gameData.setPokemonCaught(playerPokemon, false);
   restoreTrainingPokemon(choice);
   queueEncounterMessage(`${namespace}:option.3.finished`);
 }
@@ -342,10 +550,45 @@ function applyTrainingReward(choice: TrainingChoice): void {
   }
 }
 
+async function hideTrainingSessionNonBattleTrainers(battlePlayers: PlayerIndex[]): Promise<void> {
+  if (!globalScene.twoPlayerMode) {
+    return;
+  }
+
+  const battlePlayerSet = new Set(battlePlayers);
+  await Promise.all(
+    getMysteryEncounterPlayerIndexes()
+      .filter(playerIndex => !battlePlayerSet.has(playerIndex))
+      .map(
+        playerIndex =>
+          new Promise<void>(resolve => {
+            const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
+            globalScene.tweens.killTweensOf(trainerSprite);
+
+            if (!trainerSprite.visible) {
+              resolve();
+              return;
+            }
+
+            globalScene.tweens.add({
+              targets: trainerSprite,
+              x: -36,
+              duration: 500,
+              onComplete: () => {
+                trainerSprite.setVisible(false);
+                resolve();
+              },
+            });
+          }),
+      ),
+  );
+}
+
 async function runTrainingSession(): Promise<boolean | void> {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const data = getTrainingSessionData();
-  const choices = data.trainingChoices.filter(choice => choice.optionIndex !== 4 && choice.playerPokemon);
+  const sortedChoices = data.trainingChoices.toSorted((a, b) => a.playerIndex - b.playerIndex);
+  const choices = sortedChoices.filter(choice => choice.optionIndex !== 4 && choice.playerPokemon);
 
   if (choices.length === 0) {
     if (globalScene.twoPlayerMode) {
@@ -356,9 +599,13 @@ async function runTrainingSession(): Promise<boolean | void> {
   }
 
   if (globalScene.twoPlayerMode) {
-    for (const choice of choices) {
-      encounter.setDialogueToken("selectedPokemon", choice.playerPokemon!.getNameToRender());
-      await showEncounterText(`${namespace}:option.selected`);
+    for (const choice of sortedChoices) {
+      if (choice.optionIndex === 4 || !choice.playerPokemon) {
+        await showEncounterText(`${namespace}:option.4.selected`);
+      } else {
+        encounter.setDialogueToken("selectedPokemon", choice.playerPokemon.getNameToRender());
+        await showEncounterText(`${namespace}:option.selected`);
+      }
     }
   }
 
@@ -375,10 +622,91 @@ async function runTrainingSession(): Promise<boolean | void> {
     return config.pokemonConfigs![0];
   });
 
+  const battlePlayers = choices.map(choice => choice.playerIndex);
+  globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
+  await hideTrainingSessionNonBattleTrainers(battlePlayers);
   await initBattleWithEnemyConfig({
-    doubleBattle: globalScene.twoPlayerMode,
+    doubleBattle: choices.length > 1,
     pokemonConfigs,
   });
+}
+
+function buildLightTrainingOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withHasDexProgress(true)
+    .withDialogue({
+      buttonLabel: `${namespace}:option.1.label`,
+      buttonTooltip: `${namespace}:option.1.tooltip`,
+      selected: [
+        {
+          text: `${namespace}:option.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async (): Promise<boolean> => collectTrainingChoice(1, playerIndex))
+    .withOptionPhase(async () => runTrainingSession())
+    .build();
+}
+
+function buildModerateTrainingOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withHasDexProgress(true)
+    .withDialogue({
+      buttonLabel: `${namespace}:option.2.label`,
+      buttonTooltip: `${namespace}:option.2.tooltip`,
+      secondOptionPrompt: `${namespace}:option.2.selectPrompt`,
+      selected: [
+        {
+          text: `${namespace}:option.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async (): Promise<boolean> => collectTrainingChoice(2, playerIndex))
+    .withOptionPhase(async () => runTrainingSession())
+    .build();
+}
+
+function buildHeavyTrainingOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withHasDexProgress(true)
+    .withDialogue({
+      buttonLabel: `${namespace}:option.3.label`,
+      buttonTooltip: `${namespace}:option.3.tooltip`,
+      secondOptionPrompt: `${namespace}:option.3.selectPrompt`,
+      selected: [
+        {
+          text: `${namespace}:option.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async (): Promise<boolean> => collectTrainingChoice(3, playerIndex))
+    .withOptionPhase(async () => runTrainingSession())
+    .build();
+}
+
+function buildLeaveTrainingOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
+      buttonLabel: `${namespace}:option.4.label`,
+      buttonTooltip: `${namespace}:option.4.tooltip`,
+      selected: [
+        {
+          text: `${namespace}:option.4.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async (): Promise<boolean> => collectTrainingChoice(4, playerIndex))
+    .withOptionPhase(async () => runTrainingSession())
+    .build();
+}
+
+function buildTrainingSessionPlayerOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
+  return [
+    buildLightTrainingOption(playerIndex),
+    buildModerateTrainingOption(playerIndex),
+    buildHeavyTrainingOption(playerIndex),
+    buildLeaveTrainingOption(playerIndex),
+  ];
 }
 
 /**
@@ -388,10 +716,10 @@ async function runTrainingSession(): Promise<boolean | void> {
  */
 export const TrainingSessionEncounter: MysteryEncounter = MysteryEncounterBuilder.withEncounterType(
   MysteryEncounterType.TRAINING_SESSION,
-  )
-    .withEncounterTier(MysteryEncounterTier.ULTRA)
-    .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
-  .withSceneRequirement(new TrainingSessionSpawnRequirement()) // Both 2P players must have at least 2 healthy Pokemon
+)
+  .withEncounterTier(MysteryEncounterTier.ULTRA)
+  .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
+  .withSceneRequirement(new TrainingSessionSpawnRequirement())
   .withFleeAllowed(false)
   .withHideWildIntroMessage(true)
   .withPreventGameStatsUpdates(true) // Do not count the Pokemon as seen or defeated since it is ours
@@ -414,87 +742,10 @@ export const TrainingSessionEncounter: MysteryEncounter = MysteryEncounterBuilde
   .withTitle(`${namespace}:title`)
   .withDescription(`${namespace}:description`)
   .withQuery(`${namespace}:query`)
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
-      .withHasDexProgress(true)
-      .withDialogue({
-        buttonLabel: `${namespace}:option.1.label`,
-        buttonTooltip: `${namespace}:option.1.tooltip`,
-        selected: [
-          {
-            text: `${namespace}:option.selected`,
-          },
-        ],
-      })
-      .withPreOptionPhase(async (): Promise<boolean> => {
-        return collectTrainingChoice(1);
-      })
-      .withOptionPhase(async () => {
-        return runTrainingSession();
-      })
-      .build(),
-  )
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
-      .withHasDexProgress(true)
-      .withDialogue({
-        buttonLabel: `${namespace}:option.2.label`,
-        buttonTooltip: `${namespace}:option.2.tooltip`,
-        secondOptionPrompt: `${namespace}:option.2.selectPrompt`,
-        selected: [
-          {
-            text: `${namespace}:option.selected`,
-          },
-        ],
-      })
-      .withPreOptionPhase(async (): Promise<boolean> => {
-        return collectTrainingChoice(2);
-      })
-      .withOptionPhase(async () => {
-        return runTrainingSession();
-      })
-      .build(),
-  )
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
-      .withHasDexProgress(true)
-      .withDialogue({
-        buttonLabel: `${namespace}:option.3.label`,
-        buttonTooltip: `${namespace}:option.3.tooltip`,
-        secondOptionPrompt: `${namespace}:option.3.selectPrompt`,
-        selected: [
-          {
-            text: `${namespace}:option.selected`,
-          },
-        ],
-      })
-      .withPreOptionPhase(async (): Promise<boolean> => {
-        return collectTrainingChoice(3);
-      })
-      .withOptionPhase(async () => {
-        return runTrainingSession();
-      })
-      .build(),
-  )
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
-      .withDialogue({
-        buttonLabel: `${namespace}:option.4.label`,
-        buttonTooltip: `${namespace}:option.4.tooltip`,
-        selected: [
-          {
-            text: `${namespace}:option.4.selected`,
-          },
-        ],
-      })
-      .withPreOptionPhase(async (): Promise<boolean> => {
-        return collectTrainingChoice(4);
-      })
-      .withOptionPhase(async () => {
-        return runTrainingSession();
-      })
-      .build(),
-  )
+  .withOption(buildLightTrainingOption(0))
+  .withOption(buildModerateTrainingOption(0))
+  .withOption(buildHeavyTrainingOption(0))
+  .withOption(buildLeaveTrainingOption(0))
   .build();
 
 function getEnemyConfig(playerPokemon: PlayerPokemon, segments: number, modifiers: ModifiersHolder): EnemyPartyConfig {

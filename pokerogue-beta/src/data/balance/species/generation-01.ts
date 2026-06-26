@@ -6192,6 +6192,7 @@ export function initGenerationOne(): SpeciesDataMapConfig {
     passives: AbilityId.COMATOSE,
     levelMoves: [
       [1, MoveId.TELEPORT],
+      [1, MoveId.CONFUSION],
       [1, MoveId.PSYWAVE],
     ],
     tms: [

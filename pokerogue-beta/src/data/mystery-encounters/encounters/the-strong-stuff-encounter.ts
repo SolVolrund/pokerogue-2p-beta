@@ -3,7 +3,6 @@ import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { modifierTypes } from "#data/data-lists";
 import { CustomPokemonData } from "#data/pokemon-data";
-import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BerryType } from "#enums/berry-type";
 import { MoveId } from "#enums/move-id";
@@ -14,7 +13,6 @@ import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { Nature } from "#enums/nature";
 import { SpeciesId } from "#enums/species-id";
 import { Stat, type BattleStat } from "#enums/stat";
-import { UiMode } from "#enums/ui-mode";
 import type { Pokemon } from "#field/pokemon";
 import type { PokemonHeldItemModifierType } from "#modifiers/modifier-type";
 import { PokemonMove } from "#moves/pokemon-move";
@@ -29,11 +27,19 @@ import {
   transitionMysteryEncounterIntroVisuals,
 } from "#mystery-encounters/encounter-phase-utils";
 import { modifyPlayerPokemonBST } from "#mystery-encounters/encounter-pokemon-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
+import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import { updateWindowType } from "#ui/ui-theme";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import { getComputerPartnerTeamConfidence } from "#utils/computer-partner-team-confidence";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 
 /** the i18n namespace for the encounter */
@@ -62,7 +68,7 @@ class StrongStuffSpawnRequirement extends EncounterSceneRequirement {
       return globalScene.getPlayerParty().length >= MIN_PARTY_SIZE_FOR_STRONG_STUFF;
     }
 
-    return ([0, 1] as PlayerIndex[]).every(
+    return getMysteryEncounterPlayerIndexes().every(
       playerIndex => globalScene.getPlayerParty(playerIndex).length >= MIN_PARTY_SIZE_FOR_STRONG_STUFF,
     );
   }
@@ -84,6 +90,44 @@ function getStrongStuffData(): StrongStuffData {
   return encounter.misc as StrongStuffData;
 }
 
+function chooseComputerPartnerStrongStuffOption(playerIndex: PlayerIndex): StrongStuffOptionIndex {
+  const confidence = getComputerPartnerTeamConfidence(globalScene.getPlayerParty(playerIndex));
+  return confidence.level === "medium" || confidence.level === "high" ? 2 : 1;
+}
+
+function queueComputerPartnerStrongStuffChoiceMessage(
+  playerIndex: PlayerIndex,
+  optionIndex: StrongStuffOptionIndex,
+): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const optionNames: Record<StrongStuffOptionIndex, string> = {
+    1: "Approach carefully",
+    2: "Battle Shuckle",
+  };
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionNames[optionIndex]}.`, null, true);
+}
+
+function buildStrongStuffPlayerOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
+  return [buildStrongStuffApproachOption(playerIndex), buildStrongStuffBattleOption(playerIndex)];
+}
+
+async function promptNextStrongStuffPlayer(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: "What will you do?",
+    overrideOptions: buildStrongStuffPlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerStrongStuffOption,
+      onOptionChosen: (optionIndex, choicePlayerIndex) =>
+        storeStrongStuffChoice(optionIndex as StrongStuffOptionIndex, choicePlayerIndex),
+    },
+  });
+  return result ?? false;
+}
+
 async function storeStrongStuffChoice(optionIndex: StrongStuffOptionIndex, playerIndex: PlayerIndex): Promise<boolean> {
   if (!globalScene.twoPlayerMode) {
     return true;
@@ -96,30 +140,19 @@ async function storeStrongStuffChoice(optionIndex: StrongStuffOptionIndex, playe
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
   data.choices.push({ playerIndex, optionIndex });
 
-  if (playerIndex === 0) {
-    showStrongStuffPlayerMenu(1, optionIndex - 1);
-    return false;
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    queueComputerPartnerStrongStuffChoiceMessage(playerIndex, optionIndex);
+  }
+
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+  if (nextPlayerIndex != null) {
+    return promptNextStrongStuffPlayer(nextPlayerIndex, optionIndex - 1);
   }
 
   data.skipSelectedDialogueOnce = true;
   globalScene.setActivePlayerIndex(0);
   updateWindowType(1);
   return true;
-}
-
-function showStrongStuffPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
-
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: "What will you do?",
-      overrideOptions: [buildStrongStuffApproachOption(playerIndex), buildStrongStuffBattleOption(playerIndex)],
-      startingCursorIndex,
-    });
-  });
 }
 
 function getShucklePokemonConfig(): EnemyPokemonConfig {
@@ -161,7 +194,7 @@ function getShucklePokemonConfig(): EnemyPokemonConfig {
   };
 }
 
-function createShuckleEnemyPartyConfig(shuckleCount: 1 | 2): EnemyPartyConfig {
+function createShuckleEnemyPartyConfig(shuckleCount: 1 | 2 | 3): EnemyPartyConfig {
   return {
     levelAdditiveModifier: 1,
     disableSwitch: true,
@@ -170,39 +203,29 @@ function createShuckleEnemyPartyConfig(shuckleCount: 1 | 2): EnemyPartyConfig {
   };
 }
 
-function queueShuckleStartOfBattleEffects(playerIndexes: PlayerIndex[], shuckleCount: 1 | 2): void {
+function queueShuckleStartOfBattleEffects(playerIndexes: PlayerIndex[], shuckleCount: 1 | 2 | 3): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
-  const secondTarget =
-    globalScene.twoPlayerMode && playerIndexes.length === 1 ? BattlerIndex.PLAYER : BattlerIndex.PLAYER_2;
   encounter.startOfBattleEffects.push(
-    {
-      sourceBattlerIndex: BattlerIndex.ENEMY,
-      targets: [BattlerIndex.PLAYER],
-      move: new PokemonMove(MoveId.GASTRO_ACID),
-      useMode: MoveUseMode.IGNORE_PP,
-    },
-    {
-      sourceBattlerIndex: BattlerIndex.ENEMY,
-      targets: [BattlerIndex.PLAYER],
-      move: new PokemonMove(MoveId.STEALTH_ROCK),
-      useMode: MoveUseMode.IGNORE_PP,
-    },
-    ...(shuckleCount > 1
-      ? [
-          {
-            sourceBattlerIndex: BattlerIndex.ENEMY_2,
-            targets: [secondTarget],
-            move: new PokemonMove(MoveId.GASTRO_ACID),
-            useMode: MoveUseMode.IGNORE_PP,
-          },
-          {
-            sourceBattlerIndex: BattlerIndex.ENEMY_2,
-            targets: [secondTarget],
-            move: new PokemonMove(MoveId.STEALTH_ROCK),
-            useMode: MoveUseMode.IGNORE_PP,
-          },
-        ]
-      : []),
+    ...Array.from({ length: shuckleCount }, (_unused, fieldIndex) => {
+      const sourceBattlerIndex = globalScene.getEnemyBattlerIndex(fieldIndex);
+      const target = globalScene.getPlayerBattlerIndex(
+        Math.min(fieldIndex, Math.max(playerIndexes.length - 1, 0)),
+      );
+      return [
+        {
+          sourceBattlerIndex,
+          targets: [target],
+          move: new PokemonMove(MoveId.GASTRO_ACID),
+          useMode: MoveUseMode.IGNORE_PP,
+        },
+        {
+          sourceBattlerIndex,
+          targets: [target],
+          move: new PokemonMove(MoveId.STEALTH_ROCK),
+          useMode: MoveUseMode.IGNORE_PP,
+        },
+      ];
+    }).flat(),
   );
 }
 
@@ -218,22 +241,38 @@ function setStrongStuffBattleReward(playerIndex: PlayerIndex): void {
   );
 }
 
-function getStrongStuffTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
-  return playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
-}
-
-function hideStrongStuffNonBattleTrainers(battlePlayers: PlayerIndex[]): void {
+async function hideStrongStuffNonBattleTrainers(battlePlayers: PlayerIndex[]): Promise<void> {
   if (!globalScene.twoPlayerMode) {
     return;
   }
 
-  ([0, 1] as PlayerIndex[])
-    .filter(playerIndex => !battlePlayers.includes(playerIndex))
-    .forEach(playerIndex => {
-      const trainerSprite = getStrongStuffTrainerSprite(playerIndex);
-      globalScene.tweens.killTweensOf(trainerSprite);
-      trainerSprite.setVisible(false);
-    });
+  const battlePlayerSet = new Set(battlePlayers);
+  await Promise.all(
+    getMysteryEncounterPlayerIndexes()
+      .filter(playerIndex => !battlePlayerSet.has(playerIndex))
+      .map(
+        playerIndex =>
+          new Promise<void>(resolve => {
+            const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
+            globalScene.tweens.killTweensOf(trainerSprite);
+
+            if (!trainerSprite.visible) {
+              resolve();
+              return;
+            }
+
+            globalScene.tweens.add({
+              targets: trainerSprite,
+              x: -36,
+              duration: 500,
+              onComplete: () => {
+                trainerSprite.setVisible(false);
+                resolve();
+              },
+            });
+          }),
+      ),
+  );
 }
 
 function applyStrongStuffApproachStatChanges(playerIndex: PlayerIndex): void {
@@ -375,19 +414,19 @@ async function runTwoPlayerStrongStuffChoices(): Promise<boolean> {
   }
 
   const battlePlayers = battleChoices.map(choice => choice.playerIndex);
-  const shuckleCount = battlePlayers.length > 1 ? 2 : 1;
+  const shuckleCount = battlePlayers.length as 1 | 2 | 3;
   for (const playerIndex of battlePlayers) {
     setStrongStuffBattleReward(playerIndex);
   }
 
   encounter.dialogue.outro = [];
   globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
+  await hideStrongStuffNonBattleTrainers(battlePlayers);
   if (approachChoices.length > 0) {
     queueStrongStuffPostBattleApproachEffects(approachChoices.map(choice => choice.playerIndex));
   }
   queueShuckleStartOfBattleEffects(battlePlayers, shuckleCount);
   await transitionMysteryEncounterIntroVisuals(true, true, 500);
-  hideStrongStuffNonBattleTrainers(battlePlayers);
   await initBattleWithEnemyConfig(createShuckleEnemyPartyConfig(shuckleCount));
   return true;
 }

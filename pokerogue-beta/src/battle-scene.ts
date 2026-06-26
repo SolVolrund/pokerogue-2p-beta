@@ -228,7 +228,7 @@ const TWO_PLAYER_SYNC_SETTING_KEYS = [
   SettingKeys.Command_Cursor_Memory,
 ] as const;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = 2;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.FIGHT_OR_FLIGHT;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.THE_STRONG_STUFF;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = true;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_PLAYER_MONEY: number | null = 1000;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
@@ -270,7 +270,14 @@ const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] 
   MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
   MysteryEncounterType.DARK_DEAL,
   MysteryEncounterType.FIGHT_OR_FLIGHT,
+  MysteryEncounterType.SLUMBERING_SNORLAX,
+  MysteryEncounterType.TRAINING_SESSION,
   MysteryEncounterType.DEPARTMENT_STORE_SALE,
+  MysteryEncounterType.SHADY_VITAMIN_DEALER,
+  MysteryEncounterType.SAFARI_ZONE,
+  MysteryEncounterType.LOST_AT_SEA,
+  MysteryEncounterType.FIERY_FALLOUT,
+  MysteryEncounterType.THE_STRONG_STUFF,
   MysteryEncounterType.DELIBIRDY,
   MysteryEncounterType.TRASH_TO_TREASURE,
 ];

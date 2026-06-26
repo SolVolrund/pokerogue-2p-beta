@@ -168,9 +168,8 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
     trainerGender: PlayerGender.FEMALE,
     roles: ["ace", "special", "special", "physical", "bulk", "speed"],
     personalityTypes: [PokemonType.PSYCHIC, PokemonType.GHOST, PokemonType.ELECTRIC, PokemonType.ICE],
-    starterMoveset: [MoveId.CONFUSION],
     startingStarters: [
-      { speciesId: SpeciesId.ABRA, points: 4, moveset: [MoveId.CONFUSION] },
+      { speciesId: SpeciesId.ABRA, points: 4 },
       { speciesId: SpeciesId.MAGNEMITE, points: 4 },
       { speciesId: SpeciesId.TOGEPI, points: 3 },
       { speciesId: SpeciesId.GASTLY, points: 4 },
