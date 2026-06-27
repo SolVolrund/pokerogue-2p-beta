@@ -636,7 +636,6 @@ export class EncounterPhase extends BattlePhase {
 
     const config: OptionSelectConfig = {
       options,
-      noCancel: true,
     };
 
     globalScene.waitForPlayerInput(0);
