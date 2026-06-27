@@ -21,6 +21,7 @@ import { FieldPosition } from "#enums/field-position";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import type { MoveId } from "#enums/move-id";
 import { MysteryEncounterMode } from "#enums/mystery-encounter-mode";
+import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import type { Nature } from "#enums/nature";
 import { PokemonType } from "#enums/pokemon-type";
 import { StatusEffect } from "#enums/status-effect";
@@ -969,7 +970,8 @@ export function handleMysteryEncounterVictory(addHealPhase = false, doNotContinu
     globalScene.phaseManager.pushNew("MysteryEncounterRewardsPhase", addHealPhase);
     globalScene.phaseManager.pushNew("EggLapsePhase");
   } else if (
-    !globalScene
+    isLegendaryConflictVictoryReady(encounter)
+    || !globalScene
       .getEnemyParty()
       .find(p =>
         encounter.encounterMode === MysteryEncounterMode.TRAINER_BATTLE ? !p?.isFainted(true) : p.isOnField(),
@@ -987,6 +989,13 @@ export function handleMysteryEncounterVictory(addHealPhase = false, doNotContinu
       }
     }
   }
+}
+
+function isLegendaryConflictVictoryReady(encounter: MysteryEncounter): boolean {
+  return (
+    encounter.encounterType === MysteryEncounterType.LEGENDARY_CONFLICT
+    && !!encounter.misc?.rewardBlessing
+  );
 }
 
 /**

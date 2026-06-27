@@ -60,7 +60,7 @@ export function isSpreadMove(move: Move): boolean {
 
 export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: MoveTarget): MoveTargetSet {
   const variableTarget = new ValueHolder(replaceTarget ?? allMoves[move].moveTarget);
-  user.getOpponents(false).forEach(p => applyMoveAttrs("VariableTargetAttr", user, p, allMoves[move], variableTarget));
+  getOpponents(user).forEach(p => applyMoveAttrs("VariableTargetAttr", user, p, allMoves[move], variableTarget));
 
   const moveTarget: MoveTarget = variableTarget.value;
   const opponents = getOpponents(user);
@@ -68,8 +68,7 @@ export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: Move
 
   let set: Pokemon[] = [];
   let multiple = false;
-  const ally: Pokemon | undefined = allies[0];
-  const forcedDuelTarget = getForcedDuelTarget(user, ally);
+  const forcedDuelTargets = getForcedDuelTargets(user);
   const duelTargets = getShinyBadgeDuelTargets(user);
   switch (moveTarget) {
     case MoveTarget.USER:
@@ -99,9 +98,10 @@ export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: Move
     case MoveTarget.ALL_NEAR_ENEMIES:
     case MoveTarget.ALL_ENEMIES:
     case MoveTarget.ENEMY_SIDE:
-      set = forcedDuelTarget ?? duelTargets ?? opponents;
+      set = forcedDuelTargets ?? duelTargets ?? opponents;
       if (
-        !duelTargets
+        !forcedDuelTargets
+        && !duelTargets
         && (moveTarget === MoveTarget.NEAR_ENEMY
           || moveTarget === MoveTarget.ALL_NEAR_ENEMIES)
       ) {
@@ -111,7 +111,7 @@ export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: Move
       break;
     case MoveTarget.RANDOM_NEAR_ENEMY:
       set =
-        forcedDuelTarget
+        forcedDuelTargets
         ?? (duelTargets
           ? getRandomNearEnemyTarget(user, duelTargets, false)
           : getRandomNearEnemyTarget(user, opponents));
@@ -150,13 +150,21 @@ export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: Move
 }
 
 function getOpponents(user: Pokemon): Pokemon[] {
-  return (user.isPlayer() ? globalScene.getEnemyField() : globalScene.getPlayerField()).filter(p => p.isActive(false));
+  const normalOpponents = (user.isPlayer() ? globalScene.getEnemyField() : globalScene.getPlayerField()).filter(p =>
+    p.isActive(false) && !isForcedDuelAlly(user, p),
+  );
+  return uniquePokemon(normalOpponents.concat(getForcedDuelRelatedTargets(user, "opponent")));
 }
 
 function getAllies(user: Pokemon): Pokemon[] {
-  return (user.isPlayer() ? globalScene.getPlayerField() : globalScene.getEnemyField()).filter(
-    p => p !== user && p.isActive(false),
+  const normalAllies = (user.isPlayer() ? globalScene.getPlayerField() : globalScene.getEnemyField()).filter(
+    p => p !== user && p.isActive(false) && !isForcedDuelOpponent(user, p),
   );
+  return uniquePokemon(normalAllies.concat(getForcedDuelRelatedTargets(user, "ally")));
+}
+
+function uniquePokemon(pokemon: Pokemon[]): Pokemon[] {
+  return [...new Set(pokemon)];
 }
 
 function getRandomNearEnemyTarget(user: Pokemon, opponents: Pokemon[], requireNear = true): Pokemon[] {
@@ -190,6 +198,10 @@ function areTriplePokemonAdjacent(user: Pokemon, target: Pokemon): boolean {
   }
 
   if (isForcedDuelOpponent(user, target)) {
+    return true;
+  }
+
+  if (isForcedDuelAlly(user, target)) {
     return true;
   }
 
@@ -227,12 +239,19 @@ function getActiveShinyBadgeDuelPokemon(playerIndex: PlayerIndex): Pokemon | und
 }
 
 export function isForcedDuelOpponent(user: Pokemon, target: Pokemon): boolean {
+  return getForcedDuelRelation(user, target) === "opponent";
+}
+
+export function isForcedDuelAlly(user: Pokemon, target: Pokemon): boolean {
+  return getForcedDuelRelation(user, target) === "ally";
+}
+
+function getForcedDuelRelation(user: Pokemon, target: Pokemon): "ally" | "opponent" | undefined {
   if (isShinyBadgeDuelOpponent(user, target)) {
-    return true;
+    return "opponent";
   }
 
-  const duelPokemonIds = getForcedDuelPokemonIds();
-  return !!duelPokemonIds && duelPokemonIds.includes(user.id) && duelPokemonIds.includes(target.id) && user !== target;
+  return getLegendaryConflictDuelRelation(user, target);
 }
 
 function isShinyBadgeDuelOpponent(user: Pokemon, target: Pokemon): boolean {
@@ -253,16 +272,21 @@ function isShinyBadgeDuelOpponent(user: Pokemon, target: Pokemon): boolean {
   );
 }
 
-function getForcedDuelTarget(user: Pokemon, ally?: Pokemon): Pokemon[] | undefined {
-  const duelPokemonIds = getForcedDuelPokemonIds();
-  if (!duelPokemonIds || user.isPlayer() || !ally || !duelPokemonIds.includes(user.id) || !duelPokemonIds.includes(ally.id)) {
-    return;
-  }
-
-  return [ally];
+function getForcedDuelTargets(user: Pokemon): Pokemon[] | undefined {
+  const opponents = getForcedDuelRelatedTargets(user, "opponent");
+  return opponents.length > 0 ? opponents : undefined;
 }
 
-function getForcedDuelPokemonIds(): number[] | undefined {
+function getForcedDuelRelatedTargets(user: Pokemon, relation: "ally" | "opponent"): Pokemon[] {
+  return globalScene
+    .getField()
+    .filter(
+      (target): target is Pokemon =>
+        !!target && target !== user && target.isActive(false) && getForcedDuelRelation(user, target) === relation,
+    );
+}
+
+function getLegendaryConflictDuelRelation(user: Pokemon, target: Pokemon): "ally" | "opponent" | undefined {
   const battle = globalScene.currentBattle;
   if (
     !battle?.isBattleMysteryEncounter()
@@ -272,12 +296,43 @@ function getForcedDuelPokemonIds(): number[] | undefined {
   }
 
   const misc = battle.mysteryEncounter.misc;
-  if (!misc?.legendaryConflictDuelActive || !Array.isArray(misc.legendaryConflictPokemonIds)) {
+  if (
+    !misc?.legendaryConflictDuelActive
+    || !Array.isArray(misc.legendaryConflictPokemonIds)
+    || misc.helpedIndex == null
+    || misc.phaseTwoIndex == null
+    || user === target
+  ) {
     return;
   }
 
-  const activeEnemyIds = globalScene.getEnemyField().map(pokemon => pokemon.id);
-  return misc.legendaryConflictPokemonIds.filter(id => activeEnemyIds.includes(id));
+  const userLegendaryIndex = getLegendaryConflictPokemonIndex(user, misc.legendaryConflictPokemonIds);
+  const targetLegendaryIndex = getLegendaryConflictPokemonIndex(target, misc.legendaryConflictPokemonIds);
+
+  if (userLegendaryIndex != null && targetLegendaryIndex != null) {
+    return userLegendaryIndex !== targetLegendaryIndex ? "opponent" : undefined;
+  }
+
+  if (userLegendaryIndex === misc.helpedIndex && target.isPlayer()) {
+    return "ally";
+  }
+
+  if (targetLegendaryIndex === misc.helpedIndex && user.isPlayer()) {
+    return "ally";
+  }
+
+  if (userLegendaryIndex === misc.phaseTwoIndex && target.isPlayer()) {
+    return "opponent";
+  }
+
+  if (targetLegendaryIndex === misc.phaseTwoIndex && user.isPlayer()) {
+    return "opponent";
+  }
+}
+
+function getLegendaryConflictPokemonIndex(pokemon: Pokemon, legendaryPokemonIds: number[]): 0 | 1 | undefined {
+  const index = legendaryPokemonIds.indexOf(pokemon.id);
+  return index === 0 || index === 1 ? index : undefined;
 }
 
 export const frenzyMissFunc: UserMoveConditionFunc = (user: Pokemon, move: Move) => {

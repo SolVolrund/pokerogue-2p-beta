@@ -8,7 +8,7 @@ import { getClassicFinalBossDialogue } from "#data/dialogue";
 import { SpeciesFormChangeActiveTrigger } from "#data/form-change-triggers";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import { BattleType } from "#enums/battle-type";
-import type { BattlerIndex } from "#enums/battler-index";
+import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagLapseType } from "#enums/battler-tag-lapse-type";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { HitResult } from "#enums/hit-result";
@@ -46,7 +46,11 @@ export class FaintPhase extends PokemonPhase {
   public override start(): void {
     super.start();
 
-    const faintPokemon = this.getPokemon();
+    const faintPokemon = this.getFaintPokemon();
+    if (!faintPokemon) {
+      this.end();
+      return;
+    }
     // Failsafe: end early if the Pokemon is somehow not fainted at this point
     // (such as if the original faintee switched out via U-Turn/etc before this Phase had a chance to run).
     // TODO: This effectively bypasses the root phase ordering issue at play, and should be removed once force switching moves are fixed to work properly
@@ -113,7 +117,11 @@ export class FaintPhase extends PokemonPhase {
   }
 
   private doFaint(): void {
-    const pokemon = this.getPokemon();
+    const pokemon = this.getFaintPokemon();
+    if (!pokemon) {
+      this.end();
+      return;
+    }
 
     // Track total times pokemon have been KO'd for Last Respects/Supreme Overlord
     if (pokemon.isPlayer()) {
@@ -260,7 +268,11 @@ export class FaintPhase extends PokemonPhase {
 
   private handleFinalBossFaint(): void {
     const { phaseManager, ui } = globalScene;
-    const enemy = this.getPokemon();
+    const enemy = this.getFaintPokemon();
+    if (!enemy) {
+      this.end();
+      return;
+    }
 
     if (isClassicFinalBossPhaseTwo(enemy)) {
       ui.showDialogue(
@@ -276,5 +288,13 @@ export class FaintPhase extends PokemonPhase {
     enemy.hp++;
     phaseManager.unshiftNew("DamageAnimPhase", enemy.getBattlerIndex(), 0, HitResult.INDIRECT);
     this.end();
+  }
+
+  private getFaintPokemon(): Pokemon | undefined {
+    if (this.battlerIndex > BattlerIndex.ENEMY_3) {
+      return globalScene.getPokemonById(this.battlerIndex) ?? undefined;
+    }
+
+    return globalScene.getField()[this.battlerIndex] ?? undefined;
   }
 }

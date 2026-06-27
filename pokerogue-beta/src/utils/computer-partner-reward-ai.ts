@@ -142,6 +142,7 @@ const REWARD_PRIORITY: Partial<Record<ComputerPartnerRecoveryItemId | string, nu
   HEALING_CHARM: 4,
   SHINY_BADGE: 5,
   MASTER_BALL: 6,
+  LINKING_CORD_GOLD: 7,
 
   LEFTOVERS: 1,
   DYNAMAX_BAND: 2,

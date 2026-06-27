@@ -136,7 +136,7 @@ import {
 } from "#modifiers/modifier";
 import { applyMoveAttrs } from "#moves/apply-attrs";
 import type { HitsTagAttr, Move } from "#moves/move";
-import { getMoveTargets, isForcedDuelOpponent } from "#moves/move-utils";
+import { getMoveTargets, isForcedDuelAlly, isForcedDuelOpponent } from "#moves/move-utils";
 import { PokemonMove } from "#moves/pokemon-move";
 import { loadMoveAnimations } from "#sprites/pokemon-asset-loader";
 import type { Variant } from "#sprites/variant";
@@ -194,6 +194,10 @@ import Phaser from "phaser";
 import SoundFade from "phaser3-rex-plugins/plugins/soundfade";
 import type { NonEmptyTuple } from "type-fest";
 import { getBaseLearnableMoveSource, getLevelMoves } from "./learnsets";
+
+function isBattleOpponentForTargeting(user: Pokemon, target: Pokemon): boolean {
+  return user.isOpponent(target);
+}
 
 export abstract class Pokemon extends Phaser.GameObjects.Container {
   /**
@@ -3325,7 +3329,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * @returns `true` if the two pokemon are opponents, `false` otherwise
    */
   public isOpponent(target: Pokemon): boolean {
-    return this.isPlayer() !== target.isPlayer();
+    return isForcedDuelOpponent(this, target) || (this.isPlayer() !== target.isPlayer() && !isForcedDuelAlly(this, target));
   }
 
   getOpponent(targetIndex: number): Pokemon | null {
@@ -6814,7 +6818,7 @@ export class EnemyPokemon extends Pokemon {
             const fieldPokemon = globalScene.getField();
             const moveTargets = getMoveTargets(this, move.id)
               .targets.map(ind => fieldPokemon[ind])
-              .filter(p => this.isPlayer() !== p.isPlayer() || isForcedDuelOpponent(this, p));
+              .filter(p => isBattleOpponentForTargeting(this, p));
             // Only considers critical hits for crit-only moves or when this Pokemon is under the effect of Laser Focus
             const isCritical = move.hasAttr("CritOnlyAttr") || !!this.getTag(BattlerTagType.ALWAYS_CRIT);
 
@@ -6871,7 +6875,7 @@ export class EnemyPokemon extends Pokemon {
                * Target benefit scores are from the target's perspective, so harmful moves are negative.
                * Invert that score for opponents so harming them is valuable, but keep ally scores as-is.
                */
-              const targetIsOpponent = target.isPlayer() !== this.isPlayer() || isForcedDuelOpponent(this, target);
+              const targetIsOpponent = isBattleOpponentForTargeting(this, target);
               let targetScore =
                 move.getUserBenefitScore(this, target, move)
                 + move.getTargetBenefitScore(this, target, move) * (targetIsOpponent ? -1 : 1);
@@ -7010,7 +7014,7 @@ export class EnemyPokemon extends Pokemon {
     const benefitScores = targets.map(p => [
       p.getBattlerIndex(),
       move.getTargetBenefitScore(this, p, move)
-        * (p.isPlayer() !== this.isPlayer() || isForcedDuelOpponent(this, p) ? -1 : 1),
+        * (isBattleOpponentForTargeting(this, p) ? -1 : 1),
     ]);
 
     const sortedBenefitScores = benefitScores.slice(0);

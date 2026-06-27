@@ -12,7 +12,7 @@ import {
   getComputerPartnerProfile,
   type ComputerPartnerKey,
 } from "#utils/computer-partner-profile";
-import { inviteComputerPartnerToRun } from "#utils/computer-partner-run";
+import { canInviteComputerPartnerToRun, inviteComputerPartnerToRun } from "#utils/computer-partner-run";
 import { randSeedShuffle } from "#utils/common";
 
 const namespace = "mysteryEncounters/itIsDangerousToGoAlone";
@@ -22,7 +22,7 @@ const ELIGIBLE_PARTNER_KEYS = COMPUTER_PARTNER_KEYS.filter(key => key !== "alex"
 
 class SoloPartnerOfferRequirement extends EncounterSceneRequirement {
   override meetsRequirement(): boolean {
-    return !globalScene.twoPlayerMode && globalScene.gameMode.isClassic;
+    return globalScene.gameMode.isClassic && canInviteComputerPartnerToRun();
   }
 
   override getDialogueToken(): [string, string] {
@@ -36,7 +36,7 @@ export const ItIsDangerousToGoAloneEncounter: MysteryEncounter = MysteryEncounte
   .withEncounterTier(MysteryEncounterTier.GREAT)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withSceneRequirement(new SoloPartnerOfferRequirement())
-  .withMaxAllowedEncounters(1)
+  .withMaxAllowedEncounters(2)
   .withIntroSpriteConfigs([])
   .withIntroDialogue([
     {
@@ -45,7 +45,13 @@ export const ItIsDangerousToGoAloneEncounter: MysteryEncounter = MysteryEncounte
   ])
   .withOnInit(() => {
     const encounter = globalScene.currentBattle.mysteryEncounter!;
-    const partnerKeys = randSeedShuffle([...ELIGIBLE_PARTNER_KEYS]).slice(0, PARTNER_OPTIONS);
+    const existingPartnerKeys = globalScene
+      .getActivePlayerIndexes()
+      .filter(playerIndex => globalScene.isComputerPartnerPlayer(playerIndex))
+      .map(playerIndex => globalScene.getComputerPartnerKey(playerIndex));
+    const partnerKeys = randSeedShuffle(
+      ELIGIBLE_PARTNER_KEYS.filter(key => !existingPartnerKeys.includes(key)),
+    ).slice(0, PARTNER_OPTIONS);
 
     encounter.misc = { partnerKeys };
     partnerKeys.forEach((key, index) => {

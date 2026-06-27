@@ -228,7 +228,7 @@ const TWO_PLAYER_SYNC_SETTING_KEYS = [
   SettingKeys.Command_Cursor_Memory,
 ] as const;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = 2;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.SHINY_BADGE;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = null;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = true;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_PLAYER_MONEY: number | null = 1000;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
@@ -264,6 +264,8 @@ const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.GTS_MALFUNCTION,
   MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
   MysteryEncounterType.SHINY_BADGE,
+  MysteryEncounterType.LEGENDARY_CONFLICT,
+  MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE,
 ];
 const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] = [
   MysteryEncounterType.MYSTERIOUS_CHEST,
@@ -293,8 +295,10 @@ const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] 
   MysteryEncounterType.TELEPORTING_HIJINKS,
   MysteryEncounterType.BUG_TYPE_SUPERFAN,
   MysteryEncounterType.GLOBAL_TRADE_SYSTEM,
+  MysteryEncounterType.GTS_MALFUNCTION,
   MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
   MysteryEncounterType.SHINY_BADGE,
+  MysteryEncounterType.LEGENDARY_CONFLICT,
 ];
 
 export interface PlayerRunState {

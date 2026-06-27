@@ -240,6 +240,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
     }
 
     const fpOffset = pokemon.getFieldPositionOffset();
+    pokemon.setPosition(pokemonBaseX + fpOffset[0], pokemonBaseY + fpOffset[1]);
 
     pokeball.setVisible(true);
 

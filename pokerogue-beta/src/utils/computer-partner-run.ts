@@ -10,7 +10,27 @@ import {
 } from "#utils/computer-partner-profile";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 
+export function canInviteComputerPartnerToRun(): boolean {
+  return getNextComputerPartnerInviteIndex() != null;
+}
+
+export function getNextComputerPartnerInviteIndex(): PlayerIndex | undefined {
+  if (!globalScene.twoPlayerMode) {
+    return 1;
+  }
+  if (!globalScene.twoPlayerComputerPartner || globalScene.multiplayerPlayerCount >= 3) {
+    return undefined;
+  }
+
+  return 2;
+}
+
 export async function inviteComputerPartnerToRun(key: ComputerPartnerKey): Promise<void> {
+  const playerIndex = getNextComputerPartnerInviteIndex();
+  if (playerIndex == null) {
+    return;
+  }
+
   const profile = getComputerPartnerProfile(key);
   const starters = createComputerPartnerStarter(profile);
 
@@ -18,10 +38,10 @@ export async function inviteComputerPartnerToRun(key: ComputerPartnerKey): Promi
     return;
   }
 
-  globalScene.configureTwoPlayerMode(true, 6, true);
-  applyComputerPartnerIdentity(profile, 1);
+  globalScene.configureTwoPlayerMode(true, 6, true, playerIndex === 2 ? 3 : 2);
+  applyComputerPartnerIdentity(profile, playerIndex);
 
-  const party = globalScene.getPlayerParty(1);
+  const party = globalScene.getPlayerParty(playerIndex);
   party.splice(0, party.length);
 
   const loadPokemonAssets = starters.map((starter, index) => {

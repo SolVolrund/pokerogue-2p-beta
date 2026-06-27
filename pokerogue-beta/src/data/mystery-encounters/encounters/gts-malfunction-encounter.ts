@@ -11,16 +11,26 @@ import { PokemonHeldItemModifier } from "#modifiers/modifier";
 import { showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
 import type { EnemyPartyConfig, EnemyPokemonConfig } from "#mystery-encounters/encounter-phase-utils";
 import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
+import {
   initBattleWithEnemyConfig,
   leaveEncounterWithoutBattle,
   setEncounterRewards,
 } from "#mystery-encounters/encounter-phase-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
+import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
+import { updateWindowType } from "#ui/ui-theme";
 import { randSeedInt, randSeedItem, randSeedShuffle } from "#utils/common";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import { getComputerPartnerTeamConfidence } from "#utils/computer-partner-team-confidence";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
+import i18next from "i18next";
 
 /** i18n namespace for the encounter */
 const namespace = "mysteryEncounters/gtsMalfunction";
@@ -28,6 +38,17 @@ const namespace = "mysteryEncounters/gtsMalfunction";
 const GTS_MALFUNCTION_SEED_OFFSET = 81237;
 
 type GtsPokemonPair = readonly [SpeciesId, SpeciesId];
+type GtsMalfunctionOptionIndex = 1 | 2;
+
+interface GtsMalfunctionChoice {
+  playerIndex: PlayerIndex;
+  optionIndex: GtsMalfunctionOptionIndex;
+}
+
+interface GtsMalfunctionData {
+  choices: GtsMalfunctionChoice[];
+  skipSelectedDialogueOnce?: boolean;
+}
 
 const TRADE_EVO_PAIRS: GtsPokemonPair[] = [
   [SpeciesId.ALAKAZAM, SpeciesId.GENGAR],
@@ -92,16 +113,90 @@ const GTS_MALFUNCTION_BUCKETS = [
 
 class GtsMalfunctionSpawnRequirement extends EncounterSceneRequirement {
   override meetsRequirement(): boolean {
+    const playerIndexes = getMysteryEncounterPlayerIndexes();
     return (
       globalScene.twoPlayerMode
       && globalScene.currentBattle.waveIndex === getGtsMalfunctionTargetWave()
-      && ([0, 1] as PlayerIndex[]).every(playerIndex => globalScene.getPokemonAllowedInBattle(playerIndex).length >= 2)
+      && playerIndexes.every(playerIndex => globalScene.getPokemonAllowedInBattle(playerIndex).length >= 2)
     );
   }
 
   override getDialogueToken(): [string, string] {
     return ["gtsWave", getGtsMalfunctionTargetWave().toString()];
   }
+}
+
+function getGtsMalfunctionData(): GtsMalfunctionData {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  if (!encounter.misc || !Array.isArray(encounter.misc.choices)) {
+    encounter.misc = {
+      ...(encounter.misc ?? {}),
+      choices: [],
+    } satisfies GtsMalfunctionData;
+  }
+
+  return encounter.misc as GtsMalfunctionData;
+}
+
+function chooseComputerPartnerGtsMalfunctionOption(playerIndex: PlayerIndex): GtsMalfunctionOptionIndex {
+  const confidence = getComputerPartnerTeamConfidence(globalScene.getPlayerParty(playerIndex));
+  return confidence.level === "medium" || confidence.level === "high" ? 1 : 2;
+}
+
+function queueComputerPartnerGtsMalfunctionChoiceMessage(
+  playerIndex: PlayerIndex,
+  optionIndex: GtsMalfunctionOptionIndex,
+): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const optionLabel = i18next.t(`${namespace}:option.${optionIndex}.label`);
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionLabel}.`, null, true);
+}
+
+async function storeGtsMalfunctionChoice(
+  optionIndex: GtsMalfunctionOptionIndex,
+  playerIndex: PlayerIndex,
+): Promise<boolean> {
+  if (!globalScene.twoPlayerMode) {
+    return true;
+  }
+
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
+
+  const data = getGtsMalfunctionData();
+  data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
+  data.choices.push({ playerIndex, optionIndex });
+
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    queueComputerPartnerGtsMalfunctionChoiceMessage(playerIndex, optionIndex);
+  }
+
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+  if (nextPlayerIndex != null) {
+    return promptNextGtsMalfunctionPlayer(nextPlayerIndex, optionIndex - 1);
+  }
+
+  data.skipSelectedDialogueOnce = true;
+  globalScene.setActivePlayerIndex(0);
+  updateWindowType(1);
+  return true;
+}
+
+async function promptNextGtsMalfunctionPlayer(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildGtsMalfunctionPlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerGtsMalfunctionOption,
+      onOptionChosen: (optionIndex, choicePlayerIndex) =>
+        storeGtsMalfunctionChoice(optionIndex as GtsMalfunctionOptionIndex, choicePlayerIndex),
+    },
+  });
+  return result ?? false;
 }
 
 function getGtsModsTeamSize(wave: number): number {
@@ -253,7 +348,7 @@ function swapPlayerPokemon(
 function refreshPlayerPartyModifiers(): void {
   const previousActivePlayer = globalScene.activePlayerIndex;
 
-  for (const playerIndex of [0, 1] as PlayerIndex[]) {
+  for (const playerIndex of getMysteryEncounterPlayerIndexes()) {
     globalScene.setActivePlayerIndex(playerIndex);
     globalScene.updateModifiers(true, true, playerIndex);
   }
@@ -261,19 +356,59 @@ function refreshPlayerPartyModifiers(): void {
   globalScene.setActivePlayerIndex(previousActivePlayer);
 }
 
-function tradePlayerTeams(): void {
-  const partySizes = ([0, 1] as PlayerIndex[]).map(playerIndex => globalScene.getPlayerParty(playerIndex).length);
+function getGtsMalfunctionShufflablePartyIndexes(playerIndex: PlayerIndex): number[] {
+  return globalScene
+    .getPlayerParty(playerIndex)
+    .map((pokemon, partyIndex) => ({ pokemon, partyIndex }))
+    .filter(({ pokemon }) => !(globalScene.isComputerPartnerPlayer(playerIndex) && pokemon.computerPartnerAce))
+    .map(({ partyIndex }) => partyIndex);
+}
+
+function tradePlayerTeamPair(firstPlayerIndex: PlayerIndex, secondPlayerIndex: PlayerIndex): void {
+  const firstPartyIndexes = getGtsMalfunctionShufflablePartyIndexes(firstPlayerIndex);
+  const secondPartyIndexes = getGtsMalfunctionShufflablePartyIndexes(secondPlayerIndex);
+  if (firstPartyIndexes.length === 0 || secondPartyIndexes.length === 0) {
+    return;
+  }
+
+  const partySizes = [firstPartyIndexes.length, secondPartyIndexes.length];
   const sourcePlayerIndex: PlayerIndex =
-    partySizes[0] === partySizes[1] ? (randSeedInt(2) as PlayerIndex) : partySizes[0] < partySizes[1] ? 0 : 1;
-  const targetPlayerIndex: PlayerIndex = sourcePlayerIndex === 0 ? 1 : 0;
+    partySizes[0] === partySizes[1]
+      ? randSeedInt(2) === 0
+        ? firstPlayerIndex
+        : secondPlayerIndex
+      : partySizes[0] < partySizes[1]
+        ? firstPlayerIndex
+        : secondPlayerIndex;
+  const targetPlayerIndex: PlayerIndex = sourcePlayerIndex === firstPlayerIndex ? secondPlayerIndex : firstPlayerIndex;
   const sourcePartyIndexes = randSeedShuffle(
-    globalScene.getPlayerParty(sourcePlayerIndex).map((_, partyIndex) => partyIndex),
+    sourcePlayerIndex === firstPlayerIndex ? firstPartyIndexes : secondPartyIndexes,
   );
 
   for (const sourcePartyIndex of sourcePartyIndexes) {
-    const targetParty = globalScene.getPlayerParty(targetPlayerIndex);
-    const targetPartyIndex = randSeedInt(targetParty.length);
+    const targetPartyIndexes = getGtsMalfunctionShufflablePartyIndexes(targetPlayerIndex);
+    const targetPartyIndex = randSeedItem(targetPartyIndexes);
     swapPlayerPokemon(sourcePlayerIndex, sourcePartyIndex, targetPlayerIndex, targetPartyIndex);
+  }
+}
+
+function tradePlayerTeams(playerIndexes: PlayerIndex[]): void {
+  if (playerIndexes.length < 2) {
+    return;
+  }
+
+  if (playerIndexes.length === 2) {
+    tradePlayerTeamPair(playerIndexes[0], playerIndexes[1]);
+    refreshPlayerPartyModifiers();
+    return;
+  }
+
+  for (let i = 0; i < playerIndexes.length; i++) {
+    const firstPlayerIndex = playerIndexes[i];
+    const secondPlayerIndex = playerIndexes[(i + 1) % playerIndexes.length];
+    if (firstPlayerIndex !== secondPlayerIndex) {
+      tradePlayerTeamPair(firstPlayerIndex, secondPlayerIndex);
+    }
   }
 
   refreshPlayerPartyModifiers();
@@ -302,13 +437,15 @@ function hideGtsMalfunctionIntroVisuals(): Promise<void> {
   });
 }
 
-async function startGtsMalfunctionBattle(): Promise<boolean> {
+async function startGtsMalfunctionBattle(
+  playerIndexes: PlayerIndex[] = getMysteryEncounterPlayerIndexes(),
+): Promise<boolean> {
   await showEncounterText(`${namespace}:tradeStart`);
-  tradePlayerTeams();
+  tradePlayerTeams(playerIndexes);
   await showEncounterText(`${namespace}:battleStart`);
   await hideGtsMalfunctionIntroVisuals();
 
-  for (const playerIndex of [0, 1] as PlayerIndex[]) {
+  for (const playerIndex of playerIndexes) {
     setEncounterRewards(
       {
         guaranteedModifierTypeFuncs: [modifierTypes.LINKING_CORD_GOLD],
@@ -321,17 +458,87 @@ async function startGtsMalfunctionBattle(): Promise<boolean> {
     );
   }
 
-  globalScene.setActivePlayerIndex(0);
-  globalScene.setMysteryEncounterBattlePlayerFieldOwners([0, 1]);
+  globalScene.setActivePlayerIndex(playerIndexes[0]);
+  globalScene.setMysteryEncounterBattlePlayerFieldOwners(playerIndexes);
   await initBattleWithEnemyConfig(buildGtsMalfunctionBattleConfig());
   return true;
+}
+
+async function runGtsMalfunctionChoices(): Promise<boolean> {
+  if (!globalScene.twoPlayerMode) {
+    return startGtsMalfunctionBattle([0]);
+  }
+
+  const activePlayerIndexes = getMysteryEncounterPlayerIndexes();
+  const choices = getGtsMalfunctionData().choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
+  const participateChoices = choices.filter(choice => choice.optionIndex === 1);
+  const leaveChoices = choices.filter(choice => choice.optionIndex === 2);
+  let shouldParticipate = participateChoices.length > leaveChoices.length;
+
+  if (participateChoices.length === leaveChoices.length) {
+    const winningPlayerIndex = globalScene.resolvePlayerTieBreak(choices.map(choice => choice.playerIndex));
+    shouldParticipate = participateChoices.some(choice => choice.playerIndex === winningPlayerIndex);
+    await showEncounterText(`Player ${winningPlayerIndex + 1}'s choice wins this time.`);
+  }
+
+  for (const choice of choices) {
+    globalScene.setActivePlayerIndex(choice.playerIndex);
+    updateWindowType(choice.playerIndex + 1);
+    await showEncounterText(`${namespace}:option.${choice.optionIndex}.selected`);
+  }
+
+  if (!shouldParticipate) {
+    leaveEncounterWithoutBattle(true);
+    return true;
+  }
+
+  return startGtsMalfunctionBattle(activePlayerIndexes);
+}
+
+function buildGtsMalfunctionParticipateOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
+      buttonLabel: `${namespace}:option.1.label`,
+      buttonTooltip: `${namespace}:option.1.tooltip`,
+      selected: [
+        {
+          text: `${namespace}:option.1.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => storeGtsMalfunctionChoice(1, playerIndex))
+    .withOptionPhase(runGtsMalfunctionChoices)
+    .build();
+}
+
+function buildGtsMalfunctionLeaveOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
+      buttonLabel: `${namespace}:option.2.label`,
+      buttonTooltip: `${namespace}:option.2.tooltip`,
+      selected: [
+        {
+          text: `${namespace}:option.2.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => storeGtsMalfunctionChoice(2, playerIndex))
+    .withOptionPhase(runGtsMalfunctionChoices)
+    .build();
+}
+
+function buildGtsMalfunctionPlayerOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
+  return [
+    buildGtsMalfunctionParticipateOption(playerIndex),
+    buildGtsMalfunctionLeaveOption(playerIndex),
+  ];
 }
 
 /**
  * GTS Malfunction encounter.
  *
- * A two-player-only event where a Scientist's experimental GTS upgrade shuffles
- * the players' teams, then drops them into a double battle against angry traded Pokemon.
+ * A multiplayer event where a Scientist's experimental GTS upgrade shuffles
+ * the players' teams, then drops them into a battle against angry traded Pokemon.
  */
 export const GtsMalfunctionEncounter: MysteryEncounter = MysteryEncounterBuilder.withEncounterType(
   MysteryEncounterType.GTS_MALFUNCTION,
@@ -339,7 +546,6 @@ export const GtsMalfunctionEncounter: MysteryEncounter = MysteryEncounterBuilder
   .withEncounterTier(MysteryEncounterTier.ROGUE)
   .withSceneWaveRangeRequirement(10, 180)
   .withSceneRequirement(new GtsMalfunctionSpawnRequirement())
-  .withTwoPlayerSharedDecision()
   .withMaxAllowedEncounters(1)
   .withHideWildIntroMessage(true)
   .withFleeAllowed(false)
@@ -356,42 +562,17 @@ export const GtsMalfunctionEncounter: MysteryEncounter = MysteryEncounterBuilder
     },
   ])
   .withOnInit(() => {
-    globalScene.currentBattle.mysteryEncounter!.spriteConfigs = buildGtsMalfunctionIntroSpriteConfigs();
+    const encounter = globalScene.currentBattle.mysteryEncounter!;
+    encounter.spriteConfigs = buildGtsMalfunctionIntroSpriteConfigs();
+    encounter.misc = {
+      choices: [],
+    } satisfies GtsMalfunctionData;
     return true;
   })
   .setLocalizationKey(namespace)
   .withTitle(`${namespace}:title`)
   .withDescription(`${namespace}:description`)
   .withQuery(`${namespace}:query`)
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
-      .withDialogue({
-        buttonLabel: `${namespace}:option.1.label`,
-        buttonTooltip: `${namespace}:option.1.tooltip`,
-        selected: [
-          {
-            text: `${namespace}:option.1.selected`,
-          },
-        ],
-      })
-      .withOptionPhase(startGtsMalfunctionBattle)
-      .build(),
-  )
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
-      .withDialogue({
-        buttonLabel: `${namespace}:option.2.label`,
-        buttonTooltip: `${namespace}:option.2.tooltip`,
-        selected: [
-          {
-            text: `${namespace}:option.2.selected`,
-          },
-        ],
-      })
-      .withOptionPhase(async () => {
-        leaveEncounterWithoutBattle(true);
-        return true;
-      })
-      .build(),
-  )
+  .withOption(buildGtsMalfunctionParticipateOption(0))
+  .withOption(buildGtsMalfunctionLeaveOption(0))
   .build();
