@@ -27,6 +27,12 @@ export interface ComputerPartnerCaptureDecision {
   weakeningMoveIndex: number | undefined;
 }
 
+export interface ComputerPartnerCaptureInterest {
+  target: EnemyPokemon;
+  targetIndex: number;
+  replacementScore: ComputerPartnerSlotScore;
+}
+
 export interface ComputerPartnerCaptureDecisionOptions {
   allowedBossTargetIds?: number | readonly number[];
   forceThrowTargetIds?: number | readonly number[];
@@ -76,6 +82,33 @@ export function getComputerPartnerCaptureDecisions(
   rolePreferences?: ComputerPartnerRolePreferences,
   options: ComputerPartnerCaptureDecisionOptions = {},
 ): ComputerPartnerCaptureDecision[] {
+  const interests = getComputerPartnerCaptureInterests(
+    partnerKey,
+    party,
+    enemyField,
+    reservedTargetIds,
+    rolePreferences,
+    options,
+  );
+
+  return getComputerPartnerCaptureDecisionsFromInterests(
+    activePokemon,
+    interests,
+    enemyField,
+    pokeballCounts,
+    reservedTargetIds,
+    options,
+  );
+}
+
+export function getComputerPartnerCaptureInterests(
+  partnerKey: ComputerPartnerKey,
+  party: PlayerPokemon[],
+  enemyField: EnemyPokemon[],
+  reservedTargetIds?: number | readonly number[],
+  rolePreferences?: ComputerPartnerRolePreferences,
+  options: ComputerPartnerCaptureDecisionOptions = {},
+): ComputerPartnerCaptureInterest[] {
   const profile = getComputerPartnerProfileWithRolePreferences(partnerKey, rolePreferences);
   const reservedTargetIdSet = new Set(
     Array.isArray(reservedTargetIds)
@@ -106,6 +139,57 @@ export function getComputerPartnerCaptureDecisions(
         return undefined;
       }
 
+      return {
+        target,
+        targetIndex,
+        replacementScore,
+      };
+    })
+    .filter((interest): interest is ComputerPartnerCaptureInterest => !!interest)
+    .sort((a, b) => {
+      const preferredDelta =
+        Number(preferredTargetIdSet.has(b.target.id)) - Number(preferredTargetIdSet.has(a.target.id));
+      if (preferredDelta) {
+        return preferredDelta;
+      }
+      return b.replacementScore.candidateScore - a.replacementScore.candidateScore;
+    });
+}
+
+export function getComputerPartnerCaptureDecisionsFromInterests(
+  activePokemon: PlayerPokemon,
+  interests: ComputerPartnerCaptureInterest[],
+  enemyField: EnemyPokemon[],
+  pokeballCounts: PokeballCounts,
+  reservedTargetIds?: number | readonly number[],
+  options: ComputerPartnerCaptureDecisionOptions = {},
+): ComputerPartnerCaptureDecision[] {
+  const reservedTargetIdSet = new Set(
+    Array.isArray(reservedTargetIds)
+      ? reservedTargetIds
+      : reservedTargetIds === undefined
+        ? []
+        : [reservedTargetIds],
+  );
+  const allowedBossTargetIdSet = toNumberSet(options.allowedBossTargetIds);
+  const forceThrowTargetIdSet = toNumberSet(options.forceThrowTargetIds);
+  const preferredTargetIdSet = toNumberSet(options.preferredTargetIds);
+
+  return interests
+    .map(interest => {
+      const target = enemyField.find(pokemon => pokemon.id === interest.target.id) ?? interest.target;
+      const targetIndex = enemyField.indexOf(target);
+      const isAllowedBossTarget = allowedBossTargetIdSet.has(target.id);
+      if (
+        targetIndex < 0
+        || !target.isActive(true)
+        || target.isFainted()
+        || (target.isBoss() && (!isAllowedBossTarget || target.bossSegmentIndex >= 1))
+        || reservedTargetIdSet.has(target.id)
+      ) {
+        return undefined;
+      }
+
       const ballChoice = chooseComputerPartnerPokeball(
         target,
         pokeballCounts,
@@ -130,7 +214,7 @@ export function getComputerPartnerCaptureDecisions(
       return {
         target,
         targetIndex,
-        replacementScore,
+        replacementScore: interest.replacementScore,
         ballType: ballChoice.ballType,
         chance: ballChoice.chance,
         shouldThrow,

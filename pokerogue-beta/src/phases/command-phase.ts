@@ -28,7 +28,9 @@ import type { TurnMove } from "#types/turn-move";
 import { getComputerPartnerImprovedSwitchIndex, isComputerPartnerFieldIndex } from "#utils/computer-partner-ai";
 import {
   getComputerPartnerCaptureDecision,
+  getComputerPartnerCaptureDecisionsFromInterests,
   isComputerPartnerMoveSafeForCaptureTarget,
+  type ComputerPartnerCaptureDecisionOptions,
 } from "#utils/computer-partner-capture-ai";
 import i18next from "i18next";
 
@@ -120,22 +122,31 @@ export class CommandPhase extends FieldPhase {
 
     const blockedTargetIds = this.getComputerPartnerBlockedCaptureTargetIds(playerIndex);
     const claimedTargetIds = this.getComputerPartnerClaimedCaptureTargetIds(playerIndex);
-    const captureDecision = getComputerPartnerCaptureDecision(
-      globalScene.getComputerPartnerKey(playerIndex),
-      globalScene.getPlayerParty(playerIndex),
-      playerPokemon,
-      globalScene.getEnemyField(),
-      globalScene.getPlayerPokeballCounts(playerIndex),
-      blockedTargetIds,
-      globalScene.getComputerPartnerRolePreferences(playerIndex),
-      claimedTargetIds.length > 0
-        ? {
-          allowedBossTargetIds: claimedTargetIds,
-          forceThrowTargetIds: claimedTargetIds,
-          preferredTargetIds: claimedTargetIds,
-        }
-        : undefined,
-    );
+    const captureDecisionOptions = claimedTargetIds.length > 0
+      ? {
+        allowedBossTargetIds: claimedTargetIds,
+        forceThrowTargetIds: claimedTargetIds,
+        preferredTargetIds: claimedTargetIds,
+      }
+      : undefined;
+    const captureDecision =
+      globalScene.currentBattle.battleType === BattleType.WILD
+        ? this.getCachedComputerPartnerCaptureDecision(
+          playerIndex,
+          playerPokemon,
+          blockedTargetIds,
+          captureDecisionOptions,
+        )
+        : getComputerPartnerCaptureDecision(
+          globalScene.getComputerPartnerKey(playerIndex),
+          globalScene.getPlayerParty(playerIndex),
+          playerPokemon,
+          globalScene.getEnemyField(),
+          globalScene.getPlayerPokeballCounts(playerIndex),
+          blockedTargetIds,
+          globalScene.getComputerPartnerRolePreferences(playerIndex),
+          captureDecisionOptions,
+        );
 
     if (!captureDecision) {
       return false;
@@ -170,6 +181,39 @@ export class CommandPhase extends FieldPhase {
     }
 
     return false;
+  }
+
+  private getCachedComputerPartnerCaptureDecision(
+    playerIndex: PlayerIndex,
+    playerPokemon: PlayerPokemon,
+    blockedTargetIds: number[],
+    options?: ComputerPartnerCaptureDecisionOptions,
+  ) {
+    const cachedInterests = globalScene.currentBattle.computerPartnerCaptureInterests.find(
+      entry => entry.playerIndex === playerIndex,
+    )?.interests;
+
+    if (cachedInterests === undefined) {
+      return getComputerPartnerCaptureDecision(
+        globalScene.getComputerPartnerKey(playerIndex),
+        globalScene.getPlayerParty(playerIndex),
+        playerPokemon,
+        globalScene.getEnemyField(),
+        globalScene.getPlayerPokeballCounts(playerIndex),
+        blockedTargetIds,
+        globalScene.getComputerPartnerRolePreferences(playerIndex),
+        options,
+      );
+    }
+
+    return getComputerPartnerCaptureDecisionsFromInterests(
+      playerPokemon,
+      cachedInterests,
+      globalScene.getEnemyField(),
+      globalScene.getPlayerPokeballCounts(playerIndex),
+      blockedTargetIds,
+      options,
+    )[0];
   }
 
   private canComputerPartnerCaptureInCurrentBattle(): boolean {

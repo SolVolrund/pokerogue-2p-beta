@@ -24,6 +24,7 @@ import { MusicPreference } from "#system/settings";
 import { trainerConfigs } from "#trainers/trainer-config";
 import type { NewBattleResolvedProps } from "#types/new-battle-props";
 import type { TurnMove } from "#types/turn-move";
+import type { ComputerPartnerCaptureInterest } from "#utils/computer-partner-capture-ai";
 import {
   isBetween,
   NumberHolder,
@@ -106,6 +107,7 @@ export class Battle {
   public computerPartnerCaptureClaims: Array<{ playerIndex: PlayerIndex; targetId: number }> = [];
   public computerPartnerReservedCaptureTargetIds: number[] = [];
   public computerPartnerReservedCaptureTargetId: number | undefined;
+  public computerPartnerCaptureInterests: Array<{ playerIndex: PlayerIndex; interests: ComputerPartnerCaptureInterest[] }> = [];
   public computerPartnerWildCaptureDisabled = false;
 
   /**

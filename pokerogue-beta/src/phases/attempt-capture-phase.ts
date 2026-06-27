@@ -14,6 +14,7 @@ import {
   getPokeballTintColor,
 } from "#data/pokeball";
 import { getStatusEffectCatchRateMultiplier } from "#data/status-effect";
+import { BattleType } from "#enums/battle-type";
 import { ChallengeType } from "#enums/challenge-type";
 import type { PokeballType } from "#enums/pokeball";
 import { StatusEffect } from "#enums/status-effect";
@@ -334,11 +335,65 @@ export class AttemptCapturePhase extends PokemonPhase {
             }
           });
         };
+        const resolveComputerPartnerWildCapture = () => {
+          const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(this.playerIndex));
+          const replacementScore = getBestComputerPartnerReplacementSlot(
+            profile,
+            globalScene.getPlayerParty(this.playerIndex),
+            pokemon,
+          );
+          const replacedPokemonIndex = replacementScore?.replacedPokemonIndex;
+          const replacedPokemon = replacedPokemonIndex === undefined
+            ? undefined
+            : globalScene.getPlayerParty(this.playerIndex)[replacedPokemonIndex];
+
+          if (!replacementScore || replacedPokemon?.computerPartnerAce) {
+            globalScene.ui.showText(
+              `${profile.name} decided not to keep ${pokemon.getNameToRender()}.`,
+              null,
+              () => {
+                removePokemon();
+                end();
+              },
+              0,
+              true,
+            );
+            return;
+          }
+
+          if (replacedPokemonIndex === undefined) {
+            addToParty();
+            return;
+          }
+
+          const replacementIndex = replacedPokemonIndex;
+          globalScene.ui.showText(
+            `${profile.name} added ${pokemon.getNameToRender()} to their team and released ${replacedPokemon?.getNameToRender()}.`,
+            null,
+            () => {
+              globalScene.removePartyMemberModifiers(replacementIndex, this.playerIndex).then(() => {
+                const party = globalScene.getPlayerParty(this.playerIndex);
+                const releasedPokemon = party.splice(replacementIndex, 1)[0];
+                releasedPokemon?.destroy();
+                addToParty(replacementIndex);
+              });
+            },
+            0,
+            true,
+          );
+        };
         Promise.all([pokemon.hideInfo(), capturingPlayerGameData.setPokemonCaught(pokemon)]).then(() => {
           void globalScene.savePlayerSystemSave(this.playerIndex);
           if (!addStatus.value) {
             removePokemon();
             end();
+            return;
+          }
+          if (
+            globalScene.currentBattle.battleType === BattleType.WILD
+            && globalScene.isComputerPartnerPlayer(this.playerIndex)
+          ) {
+            resolveComputerPartnerWildCapture();
             return;
           }
           if (globalScene.getPlayerParty(this.playerIndex).length === PLAYER_PARTY_MAX_SIZE) {

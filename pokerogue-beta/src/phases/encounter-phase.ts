@@ -40,7 +40,8 @@ import { BattlePhase } from "#phases/battle-phase";
 import { achvs } from "#system/achv";
 import { randSeedInt, randSeedItem } from "#utils/common";
 import {
-  getComputerPartnerCaptureDecisions,
+  getComputerPartnerCaptureDecisionsFromInterests,
+  getComputerPartnerCaptureInterests,
   type ComputerPartnerCaptureDecision,
 } from "#utils/computer-partner-capture-ai";
 import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
@@ -525,10 +526,13 @@ export class EncounterPhase extends BattlePhase {
       return undefined;
     }
 
+    globalScene.currentBattle.computerPartnerCaptureInterests = [];
+
     const capturableTargets = globalScene.getEnemyField().filter(pokemon =>
       pokemon.isActive(true) && !pokemon.isFainted() && !pokemon.isBoss(),
     );
     if (!capturableTargets.length) {
+      globalScene.currentBattle.computerPartnerWildCaptureDisabled = true;
       return undefined;
     }
 
@@ -543,14 +547,20 @@ export class EncounterPhase extends BattlePhase {
         continue;
       }
 
-      const captureDecisions = getComputerPartnerCaptureDecisions(
+      const interests = getComputerPartnerCaptureInterests(
         globalScene.getComputerPartnerKey(playerIndex),
         globalScene.getPlayerParty(playerIndex),
-        partnerPokemon,
         globalScene.getEnemyField(),
-        globalScene.getPlayerPokeballCounts(playerIndex),
         undefined,
         globalScene.getComputerPartnerRolePreferences(playerIndex),
+      );
+      globalScene.currentBattle.computerPartnerCaptureInterests.push({ playerIndex, interests });
+
+      const captureDecisions = getComputerPartnerCaptureDecisionsFromInterests(
+        partnerPokemon,
+        interests,
+        globalScene.getEnemyField(),
+        globalScene.getPlayerPokeballCounts(playerIndex),
       );
 
       if (!captureDecisions.length) {
