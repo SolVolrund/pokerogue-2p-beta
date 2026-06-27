@@ -228,7 +228,7 @@ const TWO_PLAYER_SYNC_SETTING_KEYS = [
   SettingKeys.Command_Cursor_Memory,
 ] as const;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = 2;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.SHINY_BADGE;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = true;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_PLAYER_MONEY: number | null = 1000;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
@@ -294,6 +294,7 @@ const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] 
   MysteryEncounterType.BUG_TYPE_SUPERFAN,
   MysteryEncounterType.GLOBAL_TRADE_SYSTEM,
   MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
+  MysteryEncounterType.SHINY_BADGE,
 ];
 
 export interface PlayerRunState {
@@ -1983,7 +1984,22 @@ export class BattleScene extends SceneBase {
   public clearMysteryEncounterBattlePlayerFieldOwners(): void {
     if (this.currentBattle) {
       this.currentBattle.playerFieldOwners = undefined;
+      this.currentBattle.mysteryEncounterEnemySidePlayerIndexes = undefined;
     }
+  }
+
+  public setMysteryEncounterEnemySidePlayerIndexes(playerIndexes?: PlayerIndex[]): void {
+    if (!this.currentBattle) {
+      return;
+    }
+
+    this.currentBattle.mysteryEncounterEnemySidePlayerIndexes = playerIndexes?.length
+      ? [...new Set(playerIndexes)].filter(playerIndex => this.getActivePlayerIndexes().includes(playerIndex))
+      : undefined;
+  }
+
+  public isMysteryEncounterEnemySidePlayer(playerIndex: PlayerIndex): boolean {
+    return !!this.currentBattle?.mysteryEncounterEnemySidePlayerIndexes?.includes(playerIndex);
   }
 
   public getPlayerFieldOwners(): PlayerIndex[] {

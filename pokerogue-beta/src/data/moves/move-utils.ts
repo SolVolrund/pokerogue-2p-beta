@@ -1,4 +1,5 @@
 import { globalScene } from "#app/global-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import { allMoves } from "#data/data-lists";
 import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
@@ -69,7 +70,7 @@ export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: Move
   let multiple = false;
   const ally: Pokemon | undefined = allies[0];
   const forcedDuelTarget = getForcedDuelTarget(user, ally);
-  const duelTargets = getShinyBadgeDuelTargets(user, ally);
+  const duelTargets = getShinyBadgeDuelTargets(user);
   switch (moveTarget) {
     case MoveTarget.USER:
     case MoveTarget.PARTY:
@@ -88,8 +89,8 @@ export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: Move
     case MoveTarget.OTHER:
     case MoveTarget.ALL_NEAR_OTHERS:
     case MoveTarget.ALL_OTHERS:
-      set = opponents.concat(allies);
-      if (moveTarget === MoveTarget.NEAR_OTHER || moveTarget === MoveTarget.ALL_NEAR_OTHERS) {
+      set = duelTargets ?? opponents.concat(allies);
+      if (!duelTargets && (moveTarget === MoveTarget.NEAR_OTHER || moveTarget === MoveTarget.ALL_NEAR_OTHERS)) {
         set = getNearTargets(user, set);
       }
       multiple = moveTarget === MoveTarget.ALL_NEAR_OTHERS || moveTarget === MoveTarget.ALL_OTHERS;
@@ -100,15 +101,20 @@ export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: Move
     case MoveTarget.ENEMY_SIDE:
       set = forcedDuelTarget ?? duelTargets ?? opponents;
       if (
-        moveTarget === MoveTarget.NEAR_ENEMY
-        || moveTarget === MoveTarget.ALL_NEAR_ENEMIES
+        !duelTargets
+        && (moveTarget === MoveTarget.NEAR_ENEMY
+          || moveTarget === MoveTarget.ALL_NEAR_ENEMIES)
       ) {
         set = getNearTargets(user, set);
       }
       multiple = moveTarget !== MoveTarget.NEAR_ENEMY;
       break;
     case MoveTarget.RANDOM_NEAR_ENEMY:
-      set = forcedDuelTarget ?? duelTargets ?? getRandomNearEnemyTarget(user, opponents);
+      set =
+        forcedDuelTarget
+        ?? (duelTargets
+          ? getRandomNearEnemyTarget(user, duelTargets, false)
+          : getRandomNearEnemyTarget(user, opponents));
       break;
     case MoveTarget.ATTACKER:
       // TODO: Remove MoveTarget.ATTACKER and BattlerIndex.ATTACKER
@@ -153,8 +159,8 @@ function getAllies(user: Pokemon): Pokemon[] {
   );
 }
 
-function getRandomNearEnemyTarget(user: Pokemon, opponents: Pokemon[]): Pokemon[] {
-  const nearOpponents = getNearTargets(user, opponents);
+function getRandomNearEnemyTarget(user: Pokemon, opponents: Pokemon[], requireNear = true): Pokemon[] {
+  const nearOpponents = requireNear ? getNearTargets(user, opponents) : opponents;
 
   if (nearOpponents.length === 0) {
     return [];
@@ -183,6 +189,10 @@ function areTriplePokemonAdjacent(user: Pokemon, target: Pokemon): boolean {
     return false;
   }
 
+  if (isForcedDuelOpponent(user, target)) {
+    return true;
+  }
+
   const userCenter = user.fieldPosition === FieldPosition.CENTER;
   const targetCenter = target.fieldPosition === FieldPosition.CENTER;
 
@@ -193,17 +203,54 @@ function areTriplePokemonAdjacent(user: Pokemon, target: Pokemon): boolean {
   return userCenter || targetCenter || user.fieldPosition === target.fieldPosition;
 }
 
-function getShinyBadgeDuelTargets(user: Pokemon, ally?: Pokemon): Pokemon[] | undefined {
-  if (!user.isPlayer() || !globalScene.currentBattle?.mysteryEncounter?.misc?.shinyBadgeDuelActive || !ally) {
+function getShinyBadgeDuelTargets(user: Pokemon): Pokemon[] | undefined {
+  const misc = globalScene.currentBattle?.mysteryEncounter?.misc;
+  if (!user.isPlayer() || !misc?.shinyBadgeDuelActive || !Array.isArray(misc.shinyBadgeDuelPlayerIndexes)) {
     return;
   }
 
-  return [ally];
+  const userPlayerIndex = globalScene.getPlayerIndexForPokemon(user);
+  if (userPlayerIndex == null || !misc.shinyBadgeDuelPlayerIndexes.includes(userPlayerIndex)) {
+    return;
+  }
+
+  return (misc.shinyBadgeDuelPlayerIndexes as PlayerIndex[])
+    .filter(playerIndex => playerIndex !== userPlayerIndex)
+    .map(playerIndex => getActiveShinyBadgeDuelPokemon(playerIndex))
+    .filter((pokemon): pokemon is Pokemon => !!pokemon && pokemon.isActive(false));
+}
+
+function getActiveShinyBadgeDuelPokemon(playerIndex: PlayerIndex): Pokemon | undefined {
+  return globalScene
+    .getPlayerParty(playerIndex)
+    .find(pokemon => pokemon.isOnField() && pokemon.isActive(false));
 }
 
 export function isForcedDuelOpponent(user: Pokemon, target: Pokemon): boolean {
+  if (isShinyBadgeDuelOpponent(user, target)) {
+    return true;
+  }
+
   const duelPokemonIds = getForcedDuelPokemonIds();
   return !!duelPokemonIds && duelPokemonIds.includes(user.id) && duelPokemonIds.includes(target.id) && user !== target;
+}
+
+function isShinyBadgeDuelOpponent(user: Pokemon, target: Pokemon): boolean {
+  const misc = globalScene.currentBattle?.mysteryEncounter?.misc;
+  if (!misc?.shinyBadgeDuelActive || !Array.isArray(misc.shinyBadgeDuelPlayerIndexes) || user === target) {
+    return false;
+  }
+
+  const userPlayerIndex = globalScene.getPlayerIndexForPokemon(user);
+  const targetPlayerIndex = globalScene.getPlayerIndexForPokemon(target);
+
+  return (
+    userPlayerIndex != null
+    && targetPlayerIndex != null
+    && userPlayerIndex !== targetPlayerIndex
+    && misc.shinyBadgeDuelPlayerIndexes.includes(userPlayerIndex)
+    && misc.shinyBadgeDuelPlayerIndexes.includes(targetPlayerIndex)
+  );
 }
 
 function getForcedDuelTarget(user: Pokemon, ally?: Pokemon): Pokemon[] | undefined {

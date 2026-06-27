@@ -344,6 +344,18 @@ function chooseGenericPokemonTarget(type: PokemonModifierType, party: PlayerPoke
   return getTargetablePartyIndexes(type, party)[0];
 }
 
+function chooseComputerPartnerAceTarget(
+  type: PokemonModifierType,
+  party: PlayerPokemon[],
+  profile?: ComputerPartnerProfile,
+): number | undefined {
+  if (!profile) {
+    return undefined;
+  }
+
+  return getTargetablePartyIndexes(type, party, pokemon => isComputerPartnerAcePokemon(pokemon, profile))[0];
+}
+
 function chooseMoveModifierTarget(
   type: PokemonMoveModifierType,
   party: PlayerPokemon[],
@@ -532,6 +544,13 @@ function getRewardTarget(
 
   if (!hasUsefulOrbTarget(itemId, type, party)) {
     return undefined;
+  }
+
+  if (itemId === "SHINY_BADGE") {
+    const aceTargetPokemonIndex = chooseComputerPartnerAceTarget(type, party, context.computerPartnerProfile);
+    if (aceTargetPokemonIndex !== undefined) {
+      return { targetPokemonIndex: aceTargetPokemonIndex };
+    }
   }
 
   if (type instanceof AttackTypeBoosterModifierType) {

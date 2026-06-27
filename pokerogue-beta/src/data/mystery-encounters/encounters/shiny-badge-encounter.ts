@@ -6,7 +6,7 @@ import { modifierTypes } from "#data/data-lists";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
-import { UiMode } from "#enums/ui-mode";
+import type { Pokemon } from "#field/pokemon";
 import { showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
 import type { EnemyPartyConfig } from "#mystery-encounters/encounter-phase-utils";
 import {
@@ -20,7 +20,14 @@ import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/utils/encounter-player-utils";
 import { updateWindowType } from "#ui/ui-theme";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import { getComputerPartnerTeamConfidence } from "#utils/computer-partner-team-confidence";
 
 const namespace = "mysteryEncounters/shinyBadge";
 
@@ -34,14 +41,18 @@ interface ShinyBadgeChoice {
 interface ShinyBadgeData {
   choices: ShinyBadgeChoice[];
   shinyBadgeDuelActive?: boolean;
+  shinyBadgeDuelPlayerIndexes?: PlayerIndex[];
   skipSelectedDialogueOnce?: boolean;
+  selectingPlayerIndex?: PlayerIndex;
 }
 
 class ShinyBadgeSpawnRequirement extends EncounterSceneRequirement {
   override meetsRequirement(): boolean {
     return (
       globalScene.twoPlayerMode
-      && ([0, 1] as PlayerIndex[]).every(playerIndex => globalScene.getPokemonAllowedInBattle(playerIndex).length > 0)
+      && getMysteryEncounterPlayerIndexes().every(
+        playerIndex => globalScene.getPokemonAllowedInBattle(playerIndex).length > 0,
+      )
     );
   }
 
@@ -70,30 +81,52 @@ async function storeShinyBadgeChoice(optionIndex: ShinyBadgeOptionIndex, playerI
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
   data.choices.push({ playerIndex, optionIndex });
 
-  if (playerIndex === 0) {
-    showShinyBadgePlayerMenu(1, optionIndex - 1);
-    return false;
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    queueComputerPartnerShinyBadgeChoiceMessage(playerIndex, optionIndex);
+  }
+
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+  if (nextPlayerIndex != null) {
+    data.selectingPlayerIndex = nextPlayerIndex;
+    const result = await promptShinyBadgePlayer(nextPlayerIndex, optionIndex - 1);
+    return result ?? false;
   }
 
   data.skipSelectedDialogueOnce = true;
+  delete data.selectingPlayerIndex;
   globalScene.setActivePlayerIndex(0);
   updateWindowType(1);
   return true;
 }
 
-function showShinyBadgePlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
-
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: "What will you do?",
-      overrideOptions: buildShinyBadgeOptions(playerIndex),
-      startingCursorIndex,
-    });
+async function promptShinyBadgePlayer(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean | undefined> {
+  return showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: "What will you do?",
+    overrideOptions: buildShinyBadgeOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerShinyBadgeOption,
+      onOptionChosen: (optionIndex, choicePlayerIndex) =>
+        storeShinyBadgeChoice(optionIndex as ShinyBadgeOptionIndex, choicePlayerIndex),
+    },
   });
+}
+
+function chooseComputerPartnerShinyBadgeOption(playerIndex: PlayerIndex): ShinyBadgeOptionIndex {
+  const confidence = getComputerPartnerTeamConfidence(globalScene.getPlayerParty(playerIndex));
+  return confidence.level === "medium" || confidence.level === "high" ? 1 : 2;
+}
+
+function queueComputerPartnerShinyBadgeChoiceMessage(
+  playerIndex: PlayerIndex,
+  optionIndex: ShinyBadgeOptionIndex,
+): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const optionName = optionIndex === 1 ? "Claim the badge" : "Pass";
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionName}.`, null, true);
 }
 
 function buildShinyBadgeWantOption(playerIndex: PlayerIndex): MysteryEncounterOption {
@@ -108,7 +141,7 @@ function buildShinyBadgeWantOption(playerIndex: PlayerIndex): MysteryEncounterOp
       ],
     })
     .withPreOptionPhase(async () => storeShinyBadgeChoice(1, playerIndex))
-    .withOptionPhase(runTwoPlayerShinyBadgeChoices)
+    .withOptionPhase(runShinyBadgeChoices)
     .build();
 }
 
@@ -124,7 +157,7 @@ function buildShinyBadgePassOption(playerIndex: PlayerIndex): MysteryEncounterOp
       ],
     })
     .withPreOptionPhase(async () => storeShinyBadgeChoice(2, playerIndex))
-    .withOptionPhase(runTwoPlayerShinyBadgeChoices)
+    .withOptionPhase(runShinyBadgeChoices)
     .build();
 }
 
@@ -145,7 +178,7 @@ function setShinyBadgeReward(playerIndex: PlayerIndex): void {
   );
 }
 
-async function runTwoPlayerShinyBadgeChoices(): Promise<boolean> {
+async function runShinyBadgeChoices(): Promise<boolean> {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const choices = getShinyBadgeData().choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
 
@@ -156,9 +189,8 @@ async function runTwoPlayerShinyBadgeChoices(): Promise<boolean> {
   }
 
   const wantChoices = choices.filter(choice => choice.optionIndex === 1);
-  const passChoices = choices.filter(choice => choice.optionIndex === 2);
 
-  if (wantChoices.length === 1 && passChoices.length === 1) {
+  if (wantChoices.length === 1) {
     await awardShinyBadgeWithoutBattle(wantChoices[0].playerIndex, `${namespace}:outro.awarded`);
     return true;
   }
@@ -173,11 +205,16 @@ async function runTwoPlayerShinyBadgeChoices(): Promise<boolean> {
   encounter.dialogue.outro = [];
   await showEncounterText(`${namespace}:duel.start`);
   await transitionMysteryEncounterIntroVisuals(true, true, 500);
-  getShinyBadgeData().shinyBadgeDuelActive = true;
+  const data = getShinyBadgeData();
+  const duelPlayerIndexes = wantChoices.map(choice => choice.playerIndex);
+  data.shinyBadgeDuelActive = true;
+  data.shinyBadgeDuelPlayerIndexes = duelPlayerIndexes;
   encounter.onGameOver = onShinyBadgeDuelGameOver;
-  globalScene.setMysteryEncounterBattlePlayerFieldOwners([0, 1]);
-  globalScene.setActivePlayerIndex(0);
-  updateWindowType(1);
+  encounter.onPokemonFaint = handleShinyBadgeDuelFaint;
+  globalScene.setMysteryEncounterBattlePlayerFieldOwners(duelPlayerIndexes);
+  globalScene.setMysteryEncounterEnemySidePlayerIndexes(getShinyBadgeEnemySidePlayers(duelPlayerIndexes));
+  globalScene.setActivePlayerIndex(duelPlayerIndexes[0]);
+  updateWindowType(duelPlayerIndexes[0] + 1);
   await initBattleWithEnemyConfig(getDuelBattleConfig());
   return true;
 }
@@ -204,20 +241,55 @@ function getDuelBattleConfig(): EnemyPartyConfig {
   };
 }
 
-function onShinyBadgeDuelGameOver(): boolean {
-  const encounter = globalScene.currentBattle.mysteryEncounter!;
-  const data = getShinyBadgeData();
-  const loser = ([0, 1] as PlayerIndex[]).find(
-    playerIndex => globalScene.getPokemonAllowedInBattle(playerIndex).length === 0,
-  );
+function getShinyBadgeEnemySidePlayers(duelPlayerIndexes: PlayerIndex[]): PlayerIndex[] | undefined {
+  return duelPlayerIndexes.length > 1 ? [duelPlayerIndexes[1]] : undefined;
+}
 
-  if (loser == null) {
-    return true;
+function handleShinyBadgeDuelFaint(pokemon: Pokemon): boolean {
+  if (!pokemon.isPlayer()) {
+    return false;
   }
 
-  const winner = loser === 0 ? 1 : 0;
+  const data = getShinyBadgeData();
+  if (!data.shinyBadgeDuelActive || !data.shinyBadgeDuelPlayerIndexes?.length) {
+    return false;
+  }
+
+  const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon);
+  if (playerIndex == null || !data.shinyBadgeDuelPlayerIndexes.includes(playerIndex)) {
+    return false;
+  }
+
+  const remainingPlayers = getRemainingShinyBadgeDuelPlayers(data.shinyBadgeDuelPlayerIndexes);
+  if (remainingPlayers.length > 1) {
+    return false;
+  }
+
+  const winner = remainingPlayers[0] ?? globalScene.resolvePlayerTieBreak(data.shinyBadgeDuelPlayerIndexes);
+  finishShinyBadgeDuel(winner, data.shinyBadgeDuelPlayerIndexes);
+  return false;
+}
+
+function getRemainingShinyBadgeDuelPlayers(duelPlayerIndexes: PlayerIndex[]): PlayerIndex[] {
+  return duelPlayerIndexes.filter(playerIndex => globalScene.getPokemonAllowedInBattle(playerIndex).length > 0);
+}
+
+function onShinyBadgeDuelGameOver(): boolean {
+  const data = getShinyBadgeData();
+  const duelPlayerIndexes = data.shinyBadgeDuelPlayerIndexes ?? [];
+  const remainingPlayers = getRemainingShinyBadgeDuelPlayers(duelPlayerIndexes);
+  const winner = remainingPlayers[0] ?? globalScene.resolvePlayerTieBreak(duelPlayerIndexes);
+  finishShinyBadgeDuel(winner, duelPlayerIndexes);
+  return false;
+}
+
+function finishShinyBadgeDuel(winner: PlayerIndex, duelPlayerIndexes: PlayerIndex[]): void {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const data = getShinyBadgeData();
   data.shinyBadgeDuelActive = false;
+  data.shinyBadgeDuelPlayerIndexes = undefined;
   encounter.onGameOver = undefined;
+  encounter.onPokemonFaint = undefined;
   encounter.dialogue.outro = [
     {
       text: `${namespace}:outro.duel`,
@@ -230,13 +302,14 @@ function onShinyBadgeDuelGameOver(): boolean {
   audioManager.playBgm(globalScene.arena.bgm);
   globalScene.setActivePlayerIndex(winner);
   updateWindowType(winner + 1);
-  globalScene.phaseManager.clearPhaseQueue();
-  globalScene.phaseManager.unshiftNew("PartyHealPhase", true, loser);
+  globalScene.phaseManager.clearPhaseQueue(true);
+  for (const loser of duelPlayerIndexes.filter(playerIndex => playerIndex !== winner)) {
+    globalScene.phaseManager.unshiftNew("PartyHealPhase", true, loser);
+  }
   globalScene.phaseManager.pushNew("BattleEndPhase", false);
   setShinyBadgeReward(winner);
   globalScene.phaseManager.pushNew("MysteryEncounterRewardsPhase", false);
   globalScene.phaseManager.pushNew("EggLapsePhase");
-  return false;
 }
 
 export const ShinyBadgeEncounter: MysteryEncounter = MysteryEncounterBuilder.withEncounterType(
@@ -271,6 +344,7 @@ export const ShinyBadgeEncounter: MysteryEncounter = MysteryEncounterBuilder.wit
     encounter.misc = {
       choices: [],
       shinyBadgeDuelActive: false,
+      shinyBadgeDuelPlayerIndexes: undefined,
     } satisfies ShinyBadgeData;
 
     return true;

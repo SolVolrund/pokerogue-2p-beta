@@ -25,6 +25,40 @@ export class SummonPhase extends PartyMemberPokemonPhase {
     this.loaded = loaded;
   }
 
+  private getShinyBadgeDuelVisualPosition(playerIndex: number):
+    | { x: number; y: number; fieldPosition: FieldPosition }
+    | undefined {
+    const misc = globalScene.currentBattle.mysteryEncounter?.misc;
+    if (
+      !this.player
+      || !misc?.shinyBadgeDuelActive
+      || !Array.isArray(misc.shinyBadgeDuelPlayerIndexes)
+      || misc.shinyBadgeDuelPlayerIndexes.length < 2
+      || !misc.shinyBadgeDuelPlayerIndexes.includes(playerIndex)
+    ) {
+      return undefined;
+    }
+
+    if (globalScene.isMysteryEncounterEnemySidePlayer(playerIndex)) {
+      return { x: 236, y: 84, fieldPosition: FieldPosition.CENTER };
+    }
+
+    const lowerPlayers = globalScene
+      .getPlayerFieldOwners()
+      .filter(
+        lowerPlayerIndex =>
+          misc.shinyBadgeDuelPlayerIndexes.includes(lowerPlayerIndex)
+          && !globalScene.isMysteryEncounterEnemySidePlayer(lowerPlayerIndex),
+      );
+    const lowerIndex = lowerPlayers.indexOf(playerIndex);
+
+    return {
+      x: 106,
+      y: 148,
+      fieldPosition: lowerIndex === 0 ? FieldPosition.LEFT : FieldPosition.RIGHT,
+    };
+  }
+
   override getParty(): Pokemon[] {
     if (this.player && globalScene.twoPlayerMode) {
       return globalScene.getPlayerParty(globalScene.getPlayerIndexForFieldSlot(this.fieldIndex));
@@ -151,6 +185,8 @@ export class SummonPhase extends PartyMemberPokemonPhase {
   summon(): void {
     const pokemon = this.getPokemon();
     const playerIndex = this.player ? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex) : 0;
+    const enemySidePlayer = this.player && globalScene.isMysteryEncounterEnemySidePlayer(playerIndex);
+    const shinyBadgeDuelVisualPosition = this.getShinyBadgeDuelVisualPosition(playerIndex);
     const playerFieldSlotCount =
       this.player && globalScene.twoPlayerMode ? globalScene.getPlayerFieldOwners().length : 2;
     const fieldSlotCount = this.player ? playerFieldSlotCount : globalScene.currentBattle.getBattlerCount();
@@ -168,8 +204,8 @@ export class SummonPhase extends PartyMemberPokemonPhase {
           : 0;
 
     const pokeball = globalScene.addFieldSprite(
-      this.player ? 36 + twoTrainerThrowOffset : 248,
-      this.player ? 80 : 44,
+      this.player && !enemySidePlayer ? 36 + twoTrainerThrowOffset : 248,
+      this.player && !enemySidePlayer ? 80 : 44,
       "pb",
       getPokeballAtlasKey(pokemon.getPokeball(true)),
     );
@@ -177,7 +213,15 @@ export class SummonPhase extends PartyMemberPokemonPhase {
     pokeball.setOrigin(0.5, 0.625);
     globalScene.field.add(pokeball);
 
-    if (this.inheritedFieldPosition !== undefined) {
+    const pokemonBaseX = shinyBadgeDuelVisualPosition?.x ?? (this.player && !enemySidePlayer ? 106 : 236);
+    const pokemonBaseY = shinyBadgeDuelVisualPosition?.y ?? (this.player && !enemySidePlayer ? 148 : 84);
+    pokemon.setPosition(pokemonBaseX, pokemonBaseY);
+
+    if (shinyBadgeDuelVisualPosition) {
+      pokemon.setFieldPosition(shinyBadgeDuelVisualPosition.fieldPosition, 0);
+    } else if (enemySidePlayer) {
+      pokemon.setFieldPosition(FieldPosition.CENTER, 0);
+    } else if (this.inheritedFieldPosition !== undefined) {
       pokemon.setFieldPosition(this.inheritedFieldPosition, 0);
     } else if (fieldSlotCount > 2 && this.fieldIndex === 2) {
       pokemon.setFieldPosition(FieldPosition.CENTER, 0);
@@ -202,21 +246,25 @@ export class SummonPhase extends PartyMemberPokemonPhase {
     globalScene.tweens.add({
       targets: pokeball,
       duration: 650,
-      x: (this.player ? 100 + twoTrainerThrowOffset : 236) + fpOffset[0],
+      x: (shinyBadgeDuelVisualPosition
+        ? pokemonBaseX
+        : this.player && !enemySidePlayer
+          ? 100 + twoTrainerThrowOffset
+          : 236) + fpOffset[0],
     });
 
     globalScene.tweens.add({
       targets: pokeball,
       duration: 150,
       ease: "Cubic.easeOut",
-      y: (this.player ? 70 : 34) + fpOffset[1],
+      y: (this.player && !enemySidePlayer ? 70 : 34) + fpOffset[1],
       onComplete: () => {
         globalScene.tweens.add({
           targets: pokeball,
           duration: 500,
           ease: "Cubic.easeIn",
           angle: 1440,
-          y: (this.player ? 132 : 86) + fpOffset[1],
+          y: (this.player && !enemySidePlayer ? 132 : 86) + fpOffset[1],
           onComplete: () => {
             audioManager.playSound("se/pb_rel");
             pokeball.destroy();

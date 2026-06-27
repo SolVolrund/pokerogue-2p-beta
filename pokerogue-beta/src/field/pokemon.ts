@@ -980,7 +980,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
   getBattleSpriteId(back?: boolean, ignoreOverride?: boolean): string {
     if (back === undefined) {
-      back = this.isPlayer();
+      const playerIndex = this.isPlayer() ? globalScene.getPlayerIndexForPokemon(this) : undefined;
+      back = this.isPlayer() && (playerIndex == null || !globalScene.isMysteryEncounterEnemySidePlayer(playerIndex));
     }
 
     const formIndex = this.summonData.illusion?.formIndex ?? this.formIndex;
@@ -1263,14 +1264,18 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   getFieldPositionOffset(): [number, number] {
+    const playerIndex = this.isPlayer() ? globalScene.getPlayerIndexForPokemon(this) : undefined;
+    const usePlayerSideLayout =
+      this.isPlayer() && (playerIndex == null || !globalScene.isMysteryEncounterEnemySidePlayer(playerIndex));
+
     if (globalScene.currentBattle?.getBattlerCount() > 2) {
       switch (this.fieldPosition) {
         case FieldPosition.CENTER:
-          return this.isPlayer() ? [-20, -4] : [0, 0];
+          return usePlayerSideLayout ? [-20, -4] : [0, 0];
         case FieldPosition.LEFT:
-          return this.isPlayer() ? [-72, -8] : [-32, -8];
+          return usePlayerSideLayout ? [-72, -8] : [-32, -8];
         case FieldPosition.RIGHT:
-          return this.isPlayer() ? [32, 0] : [48, -8];
+          return usePlayerSideLayout ? [32, 0] : [48, -8];
       }
     }
 

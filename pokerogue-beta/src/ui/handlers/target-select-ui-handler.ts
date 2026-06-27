@@ -306,6 +306,11 @@ interface TripleTargetPosition {
 function getTripleTargetPosition(target: number): TripleTargetPosition | undefined {
   const pokemon = globalScene.getField()[target];
   if (pokemon && (globalScene.currentBattle?.getBattlerCount() ?? 1) > 2) {
+    const shinyBadgePosition = getShinyBadgeDuelTargetPosition(pokemon);
+    if (shinyBadgePosition) {
+      return shinyBadgePosition;
+    }
+
     const row = pokemon.isEnemy() ? 0 : 1;
     switch (pokemon.fieldPosition) {
       case FieldPosition.LEFT:
@@ -331,6 +336,33 @@ function getTripleTargetPosition(target: number): TripleTargetPosition | undefin
     case BattlerIndex.PLAYER_2:
       return { row: 1, column: 2 };
   }
+}
+
+function getShinyBadgeDuelTargetPosition(pokemon: Pokemon): TripleTargetPosition | undefined {
+  const misc = globalScene.currentBattle?.mysteryEncounter?.misc;
+  if (!pokemon.isPlayer() || !misc?.shinyBadgeDuelActive || !Array.isArray(misc.shinyBadgeDuelPlayerIndexes)) {
+    return;
+  }
+
+  const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon);
+  if (playerIndex == null || !misc.shinyBadgeDuelPlayerIndexes.includes(playerIndex)) {
+    return;
+  }
+
+  if (globalScene.isMysteryEncounterEnemySidePlayer(playerIndex)) {
+    return { row: 0, column: 1 };
+  }
+
+  const lowerPlayers = globalScene
+    .getPlayerFieldOwners()
+    .filter(
+      lowerPlayerIndex =>
+        misc.shinyBadgeDuelPlayerIndexes.includes(lowerPlayerIndex)
+        && !globalScene.isMysteryEncounterEnemySidePlayer(lowerPlayerIndex),
+    );
+  const lowerIndex = lowerPlayers.indexOf(playerIndex);
+
+  return { row: 1, column: lowerIndex === 0 ? 0 : 2 };
 }
 
 function getTripleTargetDistance(from: TripleTargetPosition, to: TripleTargetPosition): number {
