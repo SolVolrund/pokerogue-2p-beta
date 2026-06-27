@@ -106,6 +106,7 @@ export class Battle {
   public computerPartnerCaptureClaims: Array<{ playerIndex: PlayerIndex; targetId: number }> = [];
   public computerPartnerReservedCaptureTargetIds: number[] = [];
   public computerPartnerReservedCaptureTargetId: number | undefined;
+  public computerPartnerWildCaptureDisabled = false;
 
   /**
    * Tracker for whether the last run attempt failed.

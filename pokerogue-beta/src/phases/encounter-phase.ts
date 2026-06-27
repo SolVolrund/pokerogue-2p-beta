@@ -592,6 +592,8 @@ export class EncounterPhase extends BattlePhase {
     const setCaptureClaims = (targetId?: number) => {
       const playerClaims = targetId === undefined ? [] : [{ playerIndex: 0 as PlayerIndex, targetId }];
       const partnerClaims = this.resolveComputerPartnerCaptureClaims(announcement.callouts, targetId);
+      globalScene.currentBattle.computerPartnerWildCaptureDisabled =
+        targetId === undefined && partnerClaims.length === 0;
       globalScene.currentBattle.computerPartnerCaptureClaims = [
         ...playerClaims,
         ...partnerClaims,

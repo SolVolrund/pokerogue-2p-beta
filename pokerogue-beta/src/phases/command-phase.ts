@@ -114,6 +114,10 @@ export class CommandPhase extends FieldPhase {
     }
 
     const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
+    if (this.shouldSkipComputerPartnerCaptureCommand(playerIndex)) {
+      return false;
+    }
+
     const blockedTargetIds = this.getComputerPartnerBlockedCaptureTargetIds(playerIndex);
     const claimedTargetIds = this.getComputerPartnerClaimedCaptureTargetIds(playerIndex);
     const captureDecision = getComputerPartnerCaptureDecision(
@@ -179,6 +183,15 @@ export class CommandPhase extends FieldPhase {
       && !!battle.mysteryEncounter?.catchAllowed
       && battle.mysteryEncounter.encounterMode !== MysteryEncounterMode.TRAINER_BATTLE
     );
+  }
+
+  private shouldSkipComputerPartnerCaptureCommand(playerIndex: PlayerIndex): boolean {
+    const battle = globalScene.currentBattle;
+    if (battle.battleType === BattleType.WILD && battle.computerPartnerWildCaptureDisabled) {
+      return true;
+    }
+
+    return !this.hasUsableCaptureBall(playerIndex);
   }
 
   private getComputerPartnerClaimedCaptureTargetIds(playerIndex: PlayerIndex): number[] {
