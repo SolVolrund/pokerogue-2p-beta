@@ -378,39 +378,69 @@ export class TitlePhase extends Phase {
   }
 
   private hostMultiplayerLobby(playerCount: MultiplayerLobbyPlayerCount): void {
+    if (this.isLoopbackHost(window.location.hostname)) {
+      globalScene.ui.setMode(UiMode.LOBBY_IP_FORM, {
+        buttonActions: [
+          (lanAddress: string) => {
+            this.showCreatedMultiplayerLobby(playerCount, this.normalizeLobbyLanAddress(lanAddress));
+          },
+          () => {
+            void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showMultiplayerSelect());
+          },
+        ],
+      });
+      return;
+    }
+
+    this.showCreatedMultiplayerLobby(playerCount);
+  }
+
+  private showCreatedMultiplayerLobby(playerCount: MultiplayerLobbyPlayerCount, lanAddress?: string): void {
     const lobbyCode = this.generateLobbyCode();
-    const lanAddress = this.getLobbyLanAddress();
     const lobbyUrl = this.getMultiplayerLobbyUrl(lobbyCode, "host", lanAddress, playerCount);
     const player2Url = this.getMultiplayerLobbyUrl(lobbyCode, "guest", lanAddress, playerCount, 1);
     const player3Url =
       playerCount === 3 ? this.getMultiplayerLobbyUrl(lobbyCode, "guest", lanAddress, playerCount, 2) : undefined;
     const hostAddress = this.getDisplayHostAddress(lanAddress);
 
-    globalScene.ui.setMode(UiMode.MESSAGE);
-    globalScene.ui.showText(
-      `Lobby ${lobbyCode} created.$Players can join from ${hostAddress}$Code: ${lobbyCode}`,
-      null,
-      () => {
-        console.info(`[PokeRogue 2P] Player 2 lobby link: ${player2Url}`);
-        if (player3Url) {
-          console.info(`[PokeRogue 2P] Player 3 lobby link: ${player3Url}`);
-        }
-        window.location.assign(lobbyUrl);
-      },
-      null,
-      true,
-    );
-    globalScene.ui.getMessageHandler().bringMessageToTop();
+    globalScene.ui.setMode(UiMode.LOBBY_INFO_FORM, {
+      fields: [
+        { label: "Lobby ID", value: lobbyCode },
+        { label: "Web Address", value: hostAddress },
+        { label: "Player 2 Link", value: player2Url },
+        ...(player3Url ? [{ label: "Player 3 Link", value: player3Url }] : []),
+      ],
+      buttonActions: [
+        () => {
+          console.info(`[PokeRogue 2P] Player 2 lobby link: ${player2Url}`);
+          if (player3Url) {
+            console.info(`[PokeRogue 2P] Player 3 lobby link: ${player3Url}`);
+          }
+          void globalScene.ui.setMode(UiMode.MESSAGE).then(() => window.location.assign(lobbyUrl));
+        },
+        () => {
+          void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showMultiplayerSelect());
+        },
+      ],
+    });
   }
 
   private joinMultiplayerLobby(guestSeat: MultiplayerGuestSeat): void {
-    const lobbyUrl = this.getJoinLobbyUrl(window.prompt("Enter lobby code or lobby link") ?? "", guestSeat);
-    if (!lobbyUrl) {
-      this.showMultiplayerSelect();
-      return;
-    }
-
-    window.location.assign(lobbyUrl);
+    globalScene.ui.setMode(UiMode.LOBBY_JOIN_FORM, {
+      buttonActions: [
+        (input: string) => {
+          const lobbyUrl = this.getJoinLobbyUrl(input, guestSeat);
+          if (!lobbyUrl) {
+            void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showMultiplayerSelect());
+            return;
+          }
+          void globalScene.ui.setMode(UiMode.MESSAGE).then(() => window.location.assign(lobbyUrl));
+        },
+        () => {
+          void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showMultiplayerSelect());
+        },
+      ],
+    });
   }
 
   private generateLobbyCode(): string {
@@ -558,15 +588,9 @@ export class TitlePhase extends Phase {
     return url.toString();
   }
 
-  private getLobbyLanAddress(): string | undefined {
-    if (!this.isLoopbackHost(window.location.hostname)) {
-      return undefined;
-    }
-
-    return window.prompt(
-      "Enter this computer's LAN address for Player 2, or leave blank to use this browser address.",
-      "",
-    )?.trim() || undefined;
+  private normalizeLobbyLanAddress(lanAddress: string): string | undefined {
+    const trimmedAddress = lanAddress.trim();
+    return trimmedAddress || undefined;
   }
 
   private isLoopbackHost(hostname: string): boolean {

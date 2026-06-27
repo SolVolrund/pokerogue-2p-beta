@@ -26,6 +26,9 @@ import { FightUiHandler } from "#ui/fight-ui-handler";
 import { GameStatsUiHandler } from "#ui/game-stats-ui-handler";
 import { GamepadBindingUiHandler } from "#ui/gamepad-binding-ui-handler";
 import { KeyboardBindingUiHandler } from "#ui/keyboard-binding-ui-handler";
+import { LobbyInfoFormUiHandler } from "#ui/lobby-info-form-ui-handler";
+import { LobbyIpFormUiHandler } from "#ui/lobby-ip-form-ui-handler";
+import { LobbyJoinFormUiHandler } from "#ui/lobby-join-form-ui-handler";
 import { LoadingModalUiHandler } from "#ui/loading-modal-ui-handler";
 import { LoginFormUiHandler } from "#ui/login-form-ui-handler";
 import { LoginOrRegisterUiHandler } from "#ui/login-or-register-ui-handler";
@@ -105,6 +108,9 @@ const noTransitionModes = [
   UiMode.UNAVAILABLE,
   UiMode.RENAME_POKEMON,
   UiMode.RENAME_RUN,
+  UiMode.LOBBY_IP_FORM,
+  UiMode.LOBBY_INFO_FORM,
+  UiMode.LOBBY_JOIN_FORM,
   UiMode.TEST_DIALOGUE,
   UiMode.AUTO_COMPLETE,
   UiMode.ADMIN,
@@ -178,6 +184,9 @@ export class UI extends Phaser.GameObjects.Container {
       new GameChallengesUiHandler(),
       new RenameFormUiHandler(),
       new RenameRunFormUiHandler(),
+      new LobbyIpFormUiHandler(),
+      new LobbyInfoFormUiHandler(),
+      new LobbyJoinFormUiHandler(),
       new RunHistoryUiHandler(),
       new RunInfoUiHandler(),
       new TestDialogueUiHandler(UiMode.TEST_DIALOGUE),

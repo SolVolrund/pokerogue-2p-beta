@@ -99,7 +99,7 @@ export abstract class FormModalUiHandler extends ModalUiHandler {
       const isReadOnly = config?.isReadOnly;
       const input = addTextInputObject(4, -2, inputWidth * 5.5, 116, TextStyle.TOOLTIP_CONTENT, {
         type: isPassword ? "password" : "text",
-        maxLength: isPassword ? 64 : 20,
+        maxLength: config.maxLength ?? (isPassword ? 64 : 20),
         readOnly: isReadOnly ?? false,
       }).setOrigin(0);
 
@@ -116,6 +116,9 @@ export abstract class FormModalUiHandler extends ModalUiHandler {
     if (super.show(args)) {
       for (const ic of this.inputContainers) {
         ic.setActive(true).setVisible(true);
+      }
+      for (const input of this.inputs) {
+        input.setActive(true).setVisible(true);
       }
 
       const config = args[0] as FormModalConfig;
@@ -192,12 +195,19 @@ export abstract class FormModalUiHandler extends ModalUiHandler {
     for (const ic of this.inputContainers) {
       ic.setVisible(false).setActive(false);
     }
+    for (const input of this.inputs) {
+      input.setVisible(false).setActive(false);
+      this.blurInput(input);
+    }
   }
 
   public unhide(): void {
     this.modalContainer.setActive(true).setVisible(true);
     for (const ic of this.inputContainers) {
       ic.setActive(true).setVisible(true);
+    }
+    for (const input of this.inputs) {
+      input.setActive(true).setVisible(true);
     }
   }
 
@@ -208,11 +218,21 @@ export abstract class FormModalUiHandler extends ModalUiHandler {
     for (const ic of this.inputContainers) {
       ic.setVisible(false).setActive(false);
     }
+    for (const input of this.inputs) {
+      input.setVisible(false).setActive(false);
+      this.blurInput(input);
+    }
 
     this.submitAction = undefined;
+    this.cancelAction = undefined;
 
     this.tween?.remove().destroy();
     this.tween = undefined;
+  }
+
+  private blurInput(input: InputText): void {
+    const inputNode = (input as unknown as { node?: { blur?: () => void } }).node;
+    inputNode?.blur?.();
   }
 }
 
@@ -220,4 +240,5 @@ export interface InputFieldConfig {
   label: string;
   isPassword?: boolean;
   isReadOnly?: boolean;
+  maxLength?: number;
 }
