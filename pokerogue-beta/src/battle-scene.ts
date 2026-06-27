@@ -228,7 +228,7 @@ const TWO_PLAYER_SYNC_SETTING_KEYS = [
   SettingKeys.Command_Cursor_Memory,
 ] as const;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = 2;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.DANCING_LESSONS;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = true;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_PLAYER_MONEY: number | null = 1000;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
@@ -288,6 +288,12 @@ const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] 
   MysteryEncounterType.CLOWNING_AROUND,
   MysteryEncounterType.PART_TIMER,
   MysteryEncounterType.DANCING_LESSONS,
+  MysteryEncounterType.WEIRD_DREAM,
+  MysteryEncounterType.THE_WINSTRATE_CHALLENGE,
+  MysteryEncounterType.TELEPORTING_HIJINKS,
+  MysteryEncounterType.BUG_TYPE_SUPERFAN,
+  MysteryEncounterType.GLOBAL_TRADE_SYSTEM,
+  MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
 ];
 
 export interface PlayerRunState {
@@ -2009,6 +2015,18 @@ export class BattleScene extends SceneBase {
    */
   public getPokemonAllowedInBattle(playerIndex: PlayerIndex = this.activePlayerIndex): PlayerPokemon[] {
     return this.getPlayerParty(playerIndex).filter(p => p.isAllowedInBattle());
+  }
+
+  public hasPlayerUsablePokemon(playerIndex: PlayerIndex): boolean {
+    return this.getPokemonAllowedInBattle(playerIndex).length > 0;
+  }
+
+  public areAllActivePlayersOutOfUsablePokemon(): boolean {
+    return this.getActivePlayerIndexes().every(playerIndex => !this.hasPlayerUsablePokemon(playerIndex));
+  }
+
+  public areAllPlayerFieldOwnersOutOfUsablePokemon(): boolean {
+    return this.getPlayerFieldOwners().every(playerIndex => !this.hasPlayerUsablePokemon(playerIndex));
   }
 
   /**

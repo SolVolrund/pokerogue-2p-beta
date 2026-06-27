@@ -72,6 +72,10 @@ export class SummonPhase extends PartyMemberPokemonPhase {
       if (legalIndex === -1) {
         console.error("Party Details:\n", party);
         console.error("All available Pokemon were fainted or illegal!");
+        if (this.player && globalScene.twoPlayerMode && !globalScene.areAllActivePlayersOutOfUsablePokemon()) {
+          this.end();
+          return;
+        }
         globalScene.phaseManager.clearPhaseQueue();
         globalScene.phaseManager.unshiftNew("GameOverPhase");
         this.end();

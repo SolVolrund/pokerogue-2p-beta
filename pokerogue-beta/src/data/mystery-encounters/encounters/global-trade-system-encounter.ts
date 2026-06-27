@@ -1,5 +1,5 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
-import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
@@ -17,7 +17,6 @@ import type { PokeballType } from "#enums/pokeball";
 import { SpeciesId } from "#enums/species-id";
 import { TrainerSlot } from "#enums/trainer-slot";
 import { TrainerType } from "#enums/trainer-type";
-import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import { EnemyPokemon } from "#field/pokemon";
 import type { PokemonHeldItemModifier } from "#modifiers/modifier";
@@ -26,6 +25,11 @@ import type { ModifierTypeOption } from "#modifiers/modifier-type";
 import { getPlayerModifierTypeOptions, regenerateModifierPoolThresholds } from "#modifiers/modifier-type";
 import { PokemonMove } from "#moves/pokemon-move";
 import { getEncounterText, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import {
   getRandomEncounterPokemon,
   leaveEncounterWithoutBattle,
@@ -41,7 +45,13 @@ import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter
 import { PokemonData } from "#system/pokemon-data";
 import { MusicPreference } from "#system/settings";
 import type { OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
+import { updateWindowType } from "#ui/ui-theme";
 import { randSeedInt, randSeedItem, randSeedShuffle } from "#utils/common";
+import {
+  getComputerPartnerProfileWithRolePreferences,
+  getComputerPartnerReplacementScores,
+  isComputerPartnerAcePokemon,
+} from "#utils/computer-partner-profile";
 import { getEnumKeys } from "#utils/enums";
 import { getRandomLocaleEntry } from "#utils/i18n";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
@@ -57,6 +67,8 @@ const WONDER_TRADE_SHINY_CHANCE = 512;
 const MAX_WONDER_TRADE_SHINY_CHANCE = 4096;
 
 const WONDER_TRADE_HIDDEN_ABILITY_CHANCE = 64;
+const GTS_AI_POKEMON_TRADE_MIN_IMPROVEMENT_RATIO = 1.08;
+const GTS_AI_EXCLUDED_ITEM_TRADE_IDS = new Set(["MINI_BLACK_HOLE", "GOLDEN_PUNCH", "LEFTOVERS"]);
 
 const LEGENDARY_TRADE_POOLS = {
   1: [SpeciesId.RATTATA, SpeciesId.PIDGEY, SpeciesId.WEEDLE],
@@ -107,8 +119,9 @@ interface GlobalTradeSystemChoice {
 
 interface GlobalTradeSystemData {
   tradeOptionsMap: Map<number, EnemyPokemon[]>;
-  tradeOptionsByPlayer?: Record<TwoPlayerIndex, Map<number, EnemyPokemon[]>>;
+  tradeOptionsByPlayer?: Partial<Record<PlayerIndex, Map<number, EnemyPokemon[]>>>;
   choices?: GlobalTradeSystemChoice[];
+  computerPartnerChoices?: Partial<Record<PlayerIndex, GlobalTradeSystemChoice>>;
   bgmKey: string;
   skipSelectedDialogueOnce?: boolean;
 }
@@ -136,21 +149,29 @@ function getPlayerTradeOptionsMap(playerIndex: PlayerIndex): Map<number, EnemyPo
   return data.tradeOptionsByPlayer?.[playerIndex] ?? data.tradeOptionsMap;
 }
 
-function showGlobalTradeSystemPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.waitForPlayerInput(playerIndex);
+async function promptNextGlobalTradeSystemPlayer(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
 
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: i18next.t(`${namespace}:query`),
-      overrideOptions: buildGlobalTradeSystemPlayerOptions(playerIndex),
-      startingCursorIndex,
-    });
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildGlobalTradeSystemPlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerGlobalTradeSystemOption,
+      onOptionChosen: (_optionIndex, choicePlayerIndex) =>
+        collectComputerPartnerGlobalTradeSystemChoice(choicePlayerIndex),
+    },
   });
+  return result ?? false;
 }
 
-function storeGlobalTradeSystemChoice(choice: GlobalTradeSystemChoice, startingCursorIndex: number): boolean {
+async function storeGlobalTradeSystemChoice(
+  choice: GlobalTradeSystemChoice,
+  startingCursorIndex: number,
+): Promise<boolean> {
   const data = getGlobalTradeSystemData();
   data.choices = (data.choices ?? []).filter(existing => existing.playerIndex !== choice.playerIndex);
   data.choices.push(choice);
@@ -159,13 +180,21 @@ function storeGlobalTradeSystemChoice(choice: GlobalTradeSystemChoice, startingC
     return true;
   }
 
-  if (choice.playerIndex === 0) {
-    showGlobalTradeSystemPlayerMenu(1, startingCursorIndex);
-    return false;
+  globalScene.setActivePlayerIndex(choice.playerIndex);
+  updateWindowType(choice.playerIndex + 1);
+
+  if (globalScene.isComputerPartnerPlayer(choice.playerIndex)) {
+    queueComputerPartnerGlobalTradeSystemChoiceMessage(choice);
+  }
+
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(choice.playerIndex);
+  if (nextPlayerIndex != null) {
+    return promptNextGlobalTradeSystemPlayer(nextPlayerIndex, startingCursorIndex);
   }
 
   data.skipSelectedDialogueOnce = true;
-  globalScene.waitForPlayerInput(0);
+  globalScene.setActivePlayerIndex(0);
+  updateWindowType(1);
   return true;
 }
 
@@ -191,6 +220,145 @@ function setItemTradeTokens(choice: GlobalTradeSystemChoice, item?: ModifierType
 
 function getTradeableHeldItems(pokemon: Pokemon): PokemonHeldItemModifier[] {
   return pokemon.getHeldItems().filter((item): item is PokemonHeldItemModifier => item.isTransferable);
+}
+
+function getGlobalTradeSystemProfile(playerIndex: PlayerIndex) {
+  return getComputerPartnerProfileWithRolePreferences(
+    globalScene.getComputerPartnerKey(playerIndex),
+    globalScene.getComputerPartnerRolePreferences(playerIndex),
+  );
+}
+
+function isLastGlobalTradeSystemPlayer(playerIndex: PlayerIndex): boolean {
+  return !globalScene.twoPlayerMode || getNextMysteryEncounterPlayerIndex(playerIndex) == null;
+}
+
+function getItemTradeTier(modifier: PokemonHeldItemModifier, party: PlayerPokemon[]): ModifierTier {
+  const type = modifier.type.withTierFromPool(ModifierPoolType.PLAYER, party);
+  if (type.id === "WHITE_HERB") {
+    return ModifierTier.GREAT;
+  }
+  if (type.id === "LUCKY_EGG") {
+    return ModifierTier.ULTRA;
+  }
+  if (type.id === "GOLDEN_EGG") {
+    return ModifierTier.ROGUE;
+  }
+
+  return type.tier ?? ModifierTier.GREAT;
+}
+
+function getComputerPartnerItemTradeChoice(playerIndex: PlayerIndex): GlobalTradeSystemChoice | undefined {
+  const party = globalScene.getPlayerParty(playerIndex);
+  const itemChoices = party.flatMap((pokemon, pokemonIndex) =>
+    getTradeableHeldItems(pokemon)
+      .filter(modifier => !GTS_AI_EXCLUDED_ITEM_TRADE_IDS.has(modifier.type.id))
+      .map(modifier => ({
+        pokemon,
+        pokemonIndex,
+        modifier,
+        tier: getItemTradeTier(modifier, party),
+      })),
+  );
+
+  const bestChoice = itemChoices.sort(
+    (a, b) => b.tier - a.tier || a.pokemonIndex - b.pokemonIndex || a.modifier.type.name.localeCompare(b.modifier.type.name),
+  )[0];
+
+  return bestChoice
+    ? {
+        playerIndex,
+        optionIndex: 3,
+        chosenPokemon: bestChoice.pokemon,
+        chosenModifier: bestChoice.modifier,
+      }
+    : undefined;
+}
+
+function getComputerPartnerPokemonTradeChoice(playerIndex: PlayerIndex): GlobalTradeSystemChoice | undefined {
+  const party = globalScene.getPlayerParty(playerIndex);
+  const profile = getGlobalTradeSystemProfile(playerIndex);
+  const tradeOptionsMap = getPlayerTradeOptionsMap(playerIndex);
+  let bestChoice:
+    | {
+        choice: GlobalTradeSystemChoice;
+        improvementRatio: number;
+        candidateTeamScore: number;
+      }
+    | undefined;
+
+  for (const [pokemonIndex, pokemon] of party.entries()) {
+    if (isComputerPartnerAcePokemon(pokemon, profile)) {
+      continue;
+    }
+
+    const tradeOptions = tradeOptionsMap.get(pokemon.id) ?? [];
+    for (const receivedPokemon of tradeOptions) {
+      const exactReplacementScore = getComputerPartnerReplacementScores(profile, party, receivedPokemon).find(
+        score =>
+          score.replacedPokemonIndex === pokemonIndex
+          && score.canReplace
+          && score.improvementRatio >= GTS_AI_POKEMON_TRADE_MIN_IMPROVEMENT_RATIO,
+      );
+      if (!exactReplacementScore) {
+        continue;
+      }
+
+      if (
+        !bestChoice
+        || exactReplacementScore.improvementRatio > bestChoice.improvementRatio
+        || (exactReplacementScore.improvementRatio === bestChoice.improvementRatio
+          && exactReplacementScore.candidateTeamScore > bestChoice.candidateTeamScore)
+      ) {
+        bestChoice = {
+          choice: {
+            playerIndex,
+            optionIndex: 1,
+            tradedPokemon: pokemon,
+            receivedPokemon,
+          },
+          improvementRatio: exactReplacementScore.improvementRatio,
+          candidateTeamScore: exactReplacementScore.candidateTeamScore,
+        };
+      }
+    }
+  }
+
+  return bestChoice?.choice;
+}
+
+function chooseComputerPartnerGlobalTradeSystemChoice(playerIndex: PlayerIndex): GlobalTradeSystemChoice {
+  return (
+    getComputerPartnerItemTradeChoice(playerIndex)
+    ?? getComputerPartnerPokemonTradeChoice(playerIndex)
+    ?? { playerIndex, optionIndex: 4 }
+  );
+}
+
+function chooseComputerPartnerGlobalTradeSystemOption(playerIndex: PlayerIndex): GlobalTradeSystemOptionIndex {
+  const data = getGlobalTradeSystemData();
+  const choice = chooseComputerPartnerGlobalTradeSystemChoice(playerIndex);
+  data.computerPartnerChoices = {
+    ...(data.computerPartnerChoices ?? {}),
+    [playerIndex]: choice,
+  };
+  return choice.optionIndex;
+}
+
+function collectComputerPartnerGlobalTradeSystemChoice(playerIndex: PlayerIndex): Promise<boolean> {
+  const data = getGlobalTradeSystemData();
+  const choice =
+    data.computerPartnerChoices?.[playerIndex] ?? chooseComputerPartnerGlobalTradeSystemChoice(playerIndex);
+  setPokemonTradeTokens(choice);
+  setItemTradeTokens(choice);
+  return storeGlobalTradeSystemChoice(choice, choice.optionIndex - 1);
+}
+
+function queueComputerPartnerGlobalTradeSystemChoiceMessage(choice: GlobalTradeSystemChoice): void {
+  const profile = getGlobalTradeSystemProfile(choice.playerIndex);
+  const optionLabel = i18next.t(`${namespace}:option.${choice.optionIndex}.label`);
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionLabel}.`, null, true);
 }
 
 function createWonderTradePokemon(pokemon: PlayerPokemon, playerIndex: PlayerIndex): EnemyPokemon {
@@ -233,7 +401,7 @@ async function resolvePokemonTrade(choice: GlobalTradeSystemChoice): Promise<voi
   }
 
   const encounter = globalScene.currentBattle.mysteryEncounter!;
-  globalScene.waitForPlayerInput(choice.playerIndex);
+  globalScene.waitForPlayerInput(globalScene.isComputerPartnerPlayer(choice.playerIndex) ? 0 : choice.playerIndex);
   setPokemonTradeTokens(choice);
 
   const tradedPokemon = choice.tradedPokemon;
@@ -286,7 +454,7 @@ async function resolveItemTrade(choice: GlobalTradeSystemChoice): Promise<void> 
 
   const party = globalScene.getPlayerParty(choice.playerIndex);
   const modifier = choice.chosenModifier;
-  globalScene.waitForPlayerInput(choice.playerIndex);
+  globalScene.waitForPlayerInput(globalScene.isComputerPartnerPlayer(choice.playerIndex) ? 0 : choice.playerIndex);
 
   const type = modifier.type.withTierFromPool(ModifierPoolType.PLAYER, party);
   let tier = type.tier ?? ModifierTier.GREAT;
@@ -329,12 +497,14 @@ async function resolveItemTrade(choice: GlobalTradeSystemChoice): Promise<void> 
   await showEncounterText(`${namespace}:itemTradeSelected`);
 }
 
-async function runTwoPlayerGlobalTradeSystemChoices(): Promise<boolean> {
+async function runMultiPlayerGlobalTradeSystemChoices(): Promise<boolean> {
   const data = getGlobalTradeSystemData();
   const choices = (data.choices ?? []).toSorted((a, b) => a.playerIndex - b.playerIndex);
 
   for (const choice of choices) {
-    globalScene.waitForPlayerInput(choice.playerIndex);
+    globalScene.setActivePlayerIndex(choice.playerIndex);
+    updateWindowType(choice.playerIndex + 1);
+    globalScene.waitForPlayerInput(globalScene.isComputerPartnerPlayer(choice.playerIndex) ? 0 : choice.playerIndex);
 
     if (choice.optionIndex === 1 || choice.optionIndex === 2) {
       await resolvePokemonTrade(choice);
@@ -345,6 +515,8 @@ async function runTwoPlayerGlobalTradeSystemChoices(): Promise<boolean> {
     }
   }
 
+  globalScene.setActivePlayerIndex(0);
+  updateWindowType(1);
   globalScene.waitForPlayerInput(0);
   leaveEncounterWithoutBattle(true);
   return true;
@@ -360,7 +532,10 @@ function buildCheckTradeOffersOption(playerIndex: PlayerIndex): MysteryEncounter
       secondOptionPrompt: `${namespace}:option.1.tradeOptionsPrompt`,
     })
     .withPreOptionPhase(async (): Promise<boolean> => {
+      globalScene.setActivePlayerIndex(playerIndex);
+      updateWindowType(playerIndex + 1);
       globalScene.waitForPlayerInput(playerIndex);
+      let storedChoiceResult: Promise<boolean> | undefined;
       const onPokemonSelected = (pokemon: PlayerPokemon) => {
         const tradeOptions = getPlayerTradeOptionsMap(playerIndex).get(pokemon.id);
         if (!tradeOptions) {
@@ -373,7 +548,8 @@ function buildCheckTradeOffersOption(playerIndex: PlayerIndex): MysteryEncounter
             handler: () => {
               const choice = { playerIndex, optionIndex: 1, tradedPokemon: pokemon, receivedPokemon: tradePokemon } satisfies GlobalTradeSystemChoice;
               setPokemonTradeTokens(choice);
-              return storeGlobalTradeSystemChoice(choice, 0);
+              storedChoiceResult = storeGlobalTradeSystemChoice(choice, 0);
+              return true;
             },
             onHover: () => {
               const formName =
@@ -398,11 +574,11 @@ function buildCheckTradeOffersOption(playerIndex: PlayerIndex): MysteryEncounter
       };
 
       const selected = await selectPokemonForOption(onPokemonSelected);
-      return selected && (!globalScene.twoPlayerMode || playerIndex === 1);
+      return selected && (await (storedChoiceResult ?? Promise.resolve(isLastGlobalTradeSystemPlayer(playerIndex))));
     })
     .withOptionPhase(async () => {
       if (globalScene.twoPlayerMode) {
-        return runTwoPlayerGlobalTradeSystemChoices();
+        return runMultiPlayerGlobalTradeSystemChoices();
       }
 
       const data = getGlobalTradeSystemData();
@@ -422,20 +598,24 @@ function buildWonderTradeOption(playerIndex: PlayerIndex): MysteryEncounterOptio
       buttonTooltip: `${namespace}:option.2.tooltip`,
     })
     .withPreOptionPhase(async (): Promise<boolean> => {
+      globalScene.setActivePlayerIndex(playerIndex);
+      updateWindowType(playerIndex + 1);
       globalScene.waitForPlayerInput(playerIndex);
+      let storedChoiceResult: Promise<boolean> | undefined;
       const onPokemonSelected = (pokemon: PlayerPokemon) => {
         const tradePokemon = createWonderTradePokemon(pokemon, playerIndex);
         const choice = { playerIndex, optionIndex: 2, tradedPokemon: pokemon, receivedPokemon: tradePokemon } satisfies GlobalTradeSystemChoice;
         setPokemonTradeTokens(choice);
-        storeGlobalTradeSystemChoice(choice, 1);
+        storedChoiceResult = storeGlobalTradeSystemChoice(choice, 1);
+        return true;
       };
 
       const selected = await selectPokemonForOption(onPokemonSelected);
-      return selected && (!globalScene.twoPlayerMode || playerIndex === 1);
+      return selected && (await (storedChoiceResult ?? Promise.resolve(isLastGlobalTradeSystemPlayer(playerIndex))));
     })
     .withOptionPhase(async () => {
       if (globalScene.twoPlayerMode) {
-        return runTwoPlayerGlobalTradeSystemChoices();
+        return runMultiPlayerGlobalTradeSystemChoices();
       }
 
       const data = getGlobalTradeSystemData();
@@ -454,7 +634,10 @@ function buildTradeItemOption(playerIndex: PlayerIndex): MysteryEncounterOption 
       secondOptionPrompt: `${namespace}:option.3.tradeOptionsPrompt`,
     })
     .withPreOptionPhase(async (): Promise<boolean> => {
+      globalScene.setActivePlayerIndex(playerIndex);
+      updateWindowType(playerIndex + 1);
       globalScene.waitForPlayerInput(playerIndex);
+      let storedChoiceResult: Promise<boolean> | undefined;
       const onPokemonSelected = (pokemon: PlayerPokemon) => {
         return getTradeableHeldItems(pokemon).map((modifier: PokemonHeldItemModifier) => {
           const option: OptionSelectItem = {
@@ -462,7 +645,8 @@ function buildTradeItemOption(playerIndex: PlayerIndex): MysteryEncounterOption 
             handler: () => {
               const choice = { playerIndex, optionIndex: 3, chosenModifier: modifier, chosenPokemon: pokemon } satisfies GlobalTradeSystemChoice;
               setItemTradeTokens(choice);
-              return storeGlobalTradeSystemChoice(choice, 2);
+              storedChoiceResult = storeGlobalTradeSystemChoice(choice, 2);
+              return true;
             },
           };
           return option;
@@ -480,11 +664,11 @@ function buildTradeItemOption(playerIndex: PlayerIndex): MysteryEncounterOption 
       };
 
       const selected = await selectPokemonForOption(onPokemonSelected, undefined, selectableFilter);
-      return selected && (!globalScene.twoPlayerMode || playerIndex === 1);
+      return selected && (await (storedChoiceResult ?? Promise.resolve(isLastGlobalTradeSystemPlayer(playerIndex))));
     })
     .withOptionPhase(async () => {
       if (globalScene.twoPlayerMode) {
-        return runTwoPlayerGlobalTradeSystemChoices();
+        return runMultiPlayerGlobalTradeSystemChoices();
       }
 
       const data = getGlobalTradeSystemData();
@@ -509,7 +693,7 @@ function buildGlobalTradeLeaveOption(playerIndex: PlayerIndex): MysteryEncounter
     .withPreOptionPhase(async () => storeGlobalTradeSystemChoice({ playerIndex, optionIndex: 4 }, 3))
     .withOptionPhase(async () => {
       if (globalScene.twoPlayerMode) {
-        return runTwoPlayerGlobalTradeSystemChoices();
+        return runMultiPlayerGlobalTradeSystemChoices();
       }
 
       leaveEncounterWithoutBattle(true);
@@ -574,10 +758,13 @@ export const GlobalTradeSystemEncounter: MysteryEncounter = MysteryEncounterBuil
     // Maps current party member's id to 3 EnemyPokemon objects
     // None of the trade options can be the same species
     const tradeOptionsMap: Map<number, EnemyPokemon[]> = getPokemonTradeOptions(0);
-    const tradeOptionsByPlayer: Record<TwoPlayerIndex, Map<number, EnemyPokemon[]>> = {
-      0: tradeOptionsMap,
-      1: globalScene.twoPlayerMode ? getPokemonTradeOptions(1) : tradeOptionsMap,
-    };
+    const tradeOptionsByPlayer = getMysteryEncounterPlayerIndexes().reduce(
+      (optionsByPlayer, playerIndex) => {
+        optionsByPlayer[playerIndex] = playerIndex === 0 ? tradeOptionsMap : getPokemonTradeOptions(playerIndex);
+        return optionsByPlayer;
+      },
+      {} as Partial<Record<PlayerIndex, Map<number, EnemyPokemon[]>>>,
+    );
     encounter.misc = {
       tradeOptionsMap,
       tradeOptionsByPlayer,

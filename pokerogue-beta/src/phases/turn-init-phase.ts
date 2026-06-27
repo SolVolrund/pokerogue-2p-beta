@@ -4,6 +4,7 @@ import { TurnInitEvent } from "#events/battle-scene";
 import type { PlayerPokemon } from "#field/pokemon";
 import {
   handleMysteryEncounterBattleStartEffects,
+  handleMysteryEncounterBattleFailed,
   handleMysteryEncounterTurnStartEffects,
 } from "#mystery-encounters/encounter-phase-utils";
 import { FieldPhase } from "#phases/field-phase";
@@ -27,10 +28,17 @@ export class TurnInitPhase extends FieldPhase {
         const activePartySlotCount = globalScene.twoPlayerMode ? 1 : globalScene.currentBattle.getBattlerCount();
         const allowedPokemon = globalScene.getPokemonAllowedInBattle(playerIndex);
 
-        if (allowedPokemon.length === 0) {
-          // If there are no longer any legal pokemon in the party, game over.
+        if (allowedPokemon.length === 0 && globalScene.areAllActivePlayersOutOfUsablePokemon()) {
+          // If no active player has legal Pokemon left, game over.
           globalScene.phaseManager.clearPhaseQueue();
           globalScene.phaseManager.unshiftNew("GameOverPhase");
+        } else if (
+          allowedPokemon.length === 0
+          && globalScene.currentBattle.mysteryEncounter
+          && globalScene.areAllPlayerFieldOwnersOutOfUsablePokemon()
+        ) {
+          globalScene.phaseManager.clearPhaseQueue(true);
+          handleMysteryEncounterBattleFailed();
         } else if (
           allowedPokemon.length >= activePartySlotCount
           || (globalScene.currentBattle.double && !allowedPokemon[0].isActive(true))

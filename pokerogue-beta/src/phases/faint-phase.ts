@@ -17,9 +17,9 @@ import { SwitchType } from "#enums/switch-type";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
 import { PokemonInstantReviveModifier, ShinyBadgeModifier } from "#modifiers/modifier";
 import { PokemonMove } from "#moves/pokemon-move";
+import { handleMysteryEncounterBattleFailed } from "#mystery-encounters/encounter-phase-utils";
 import { PokemonPhase } from "#phases/pokemon-phase";
 import { isClassicFinalBossPhaseTwo } from "#utils/classic-final-boss-utils";
-import { dismissComputerPartnerFromRun } from "#utils/computer-partner-run";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import i18next from "i18next";
 
@@ -174,7 +174,6 @@ export class FaintPhase extends PokemonPhase {
       }
     }
 
-    let dismissComputerPartner = false;
     if (this.player) {
       const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
       /** The total number of Pokemon in the player's party that can legally fight */
@@ -182,14 +181,15 @@ export class FaintPhase extends PokemonPhase {
       /** The total number of legal player Pokemon that aren't currently on the field */
       const legalPlayerPartyPokemon = legalPlayerPokemon.filter(p => !p.isActive(true));
       if (legalPlayerPokemon.length === 0) {
-        if (
-          globalScene.isComputerPartnerPlayer(playerIndex)
-          && globalScene.getPokemonAllowedInBattle(0).length > 0
-        ) {
-          dismissComputerPartner = true;
-        } else {
-          /** If the player doesn't have any legal Pokemon, end the game */
+        if (globalScene.areAllActivePlayersOutOfUsablePokemon()) {
+          /** If every active player is out of legal Pokemon, end the game. */
           globalScene.phaseManager.unshiftNew("GameOverPhase");
+        } else if (
+          globalScene.currentBattle.battleType === BattleType.MYSTERY_ENCOUNTER
+          && globalScene.areAllPlayerFieldOwnersOutOfUsablePokemon()
+        ) {
+          globalScene.phaseManager.clearPhaseQueue(true);
+          handleMysteryEncounterBattleFailed();
         }
       } else if (
         !globalScene.twoPlayerMode
@@ -252,16 +252,6 @@ export class FaintPhase extends PokemonPhase {
             globalScene.currentBattle.addPostBattleLoot(pokemon as EnemyPokemon);
           }
           pokemon.leaveField();
-          if (dismissComputerPartner) {
-            const partnerName = dismissComputerPartnerFromRun(
-              globalScene.getPlayerIndexForPokemon(pokemon as PlayerPokemon) ?? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex),
-            );
-            globalScene.phaseManager.queueMessage(
-              `${partnerName} had to head back to the Pokemon Center for safety.`,
-              null,
-              true,
-            );
-          }
           this.end();
         },
       });

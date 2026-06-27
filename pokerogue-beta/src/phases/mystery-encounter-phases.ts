@@ -19,7 +19,10 @@ import {
   getNextMysteryEncounterPlayerIndex,
 } from "#mystery-encounters/encounter-player-utils";
 import type { OptionSelectSettings } from "#mystery-encounters/encounter-phase-utils";
-import { transitionMysteryEncounterIntroVisuals } from "#mystery-encounters/encounter-phase-utils";
+import {
+  handleMysteryEncounterBattleFailed,
+  transitionMysteryEncounterIntroVisuals,
+} from "#mystery-encounters/encounter-phase-utils";
 import type { MysteryEncounterOption, OptionPhaseCallback } from "#mystery-encounters/mystery-encounter-option";
 import { SeenEncounterData } from "#mystery-encounters/mystery-encounter-save-data";
 import { randSeedItem } from "#utils/common";
@@ -333,12 +336,13 @@ export class MysteryEncounterBattleStartCleanupPhase extends Phase {
     // Remove any status tick phases
     globalScene.phaseManager.removeAllPhasesOfType("PostTurnStatusEffectPhase");
 
-    // The total number of Pokemon in the player's party that can legally fight
-    const legalPlayerPokemon = globalScene.getPokemonAllowedInBattle();
-    // The total number of legal player Pokemon that aren't currently on the field
-    const legalPlayerPartyPokemon = legalPlayerPokemon.filter(p => !p.isActive(true));
-    if (legalPlayerPokemon.length === 0) {
+    if (globalScene.areAllActivePlayersOutOfUsablePokemon()) {
       globalScene.phaseManager.unshiftNew("GameOverPhase");
+      return this.end();
+    }
+    if (globalScene.areAllPlayerFieldOwnersOutOfUsablePokemon()) {
+      globalScene.phaseManager.clearPhaseQueue(true);
+      handleMysteryEncounterBattleFailed();
       return this.end();
     }
 
@@ -346,13 +350,22 @@ export class MysteryEncounterBattleStartCleanupPhase extends Phase {
     // For each fainted mon on the field, if there is a legal replacement, summon it
     const playerField = globalScene.getPlayerField();
     playerField.forEach((pokemon, i) => {
-      if (!pokemon.isAllowedInBattle() && legalPlayerPartyPokemon.length > i) {
+      const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.getPlayerIndexForFieldSlot(i);
+      const legalPlayerPartyPokemon = globalScene
+        .getPokemonAllowedInBattle(playerIndex)
+        .filter(p => !p.isActive(true));
+      if (!pokemon.isAllowedInBattle() && legalPlayerPartyPokemon.length > 0) {
         globalScene.phaseManager.unshiftNew("SwitchPhase", SwitchType.SWITCH, i, true, false);
       }
     });
 
     // THEN, if is a double battle, and player only has 1 summoned pokemon, center pokemon on field
-    if (globalScene.currentBattle.double && legalPlayerPokemon.length === 1 && legalPlayerPartyPokemon.length === 0) {
+    if (
+      !globalScene.twoPlayerMode
+      && globalScene.currentBattle.double
+      && globalScene.getPokemonAllowedInBattle().length === 1
+      && globalScene.getPokemonAllowedInBattle().filter(p => !p.isActive(true)).length === 0
+    ) {
       globalScene.phaseManager.unshiftNew("ToggleDoublePositionPhase", true);
     }
 

@@ -935,7 +935,11 @@ export class EncounterPhase extends BattlePhase {
       } else {
         const availablePartyMembers = globalScene.getPokemonAllowedInBattle();
 
-        if (!availablePartyMembers[0].isOnField()) {
+        if (availablePartyMembers.length === 0) {
+          if (globalScene.areAllActivePlayersOutOfUsablePokemon()) {
+            globalScene.phaseManager.unshiftNew("GameOverPhase");
+          }
+        } else if (!availablePartyMembers[0].isOnField()) {
           globalScene.phaseManager.pushNew("SummonPhase", 0);
         }
 

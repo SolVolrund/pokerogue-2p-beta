@@ -12,12 +12,16 @@ import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { PokemonType } from "#enums/pokemon-type";
 import { Stat } from "#enums/stat";
 import { TrainerSlot } from "#enums/trainer-slot";
-import { UiMode } from "#enums/ui-mode";
 import { getBiomeKey } from "#field/arena";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import { EnemyPokemon } from "#field/pokemon";
 import { getPartyLuckValue } from "#modifiers/modifier-type";
 import { queueEncounterMessage, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import type { EnemyPartyConfig, EnemyPokemonConfig } from "#mystery-encounters/encounter-phase-utils";
 import {
   generateModifierTypeOption,
@@ -74,7 +78,7 @@ interface TeleportingHijinksData {
   skipSelectedDialogueOnce?: boolean;
 }
 
-class TwoPlayerAnyPlayerTeleportMoneyRequirement extends MoneyRequirement {
+class AnyPlayerTeleportMoneyRequirement extends MoneyRequirement {
   override meetsRequirement(): boolean {
     if (!globalScene.twoPlayerMode) {
       return super.meetsRequirement();
@@ -84,7 +88,9 @@ class TwoPlayerAnyPlayerTeleportMoneyRequirement extends MoneyRequirement {
       this.requiredMoney = globalScene.getWaveMoneyAmount(this.scalingMultiplier);
     }
 
-    return ([0, 1] as PlayerIndex[]).some(playerIndex => globalScene.getPlayerMoney(playerIndex) >= this.requiredMoney);
+    return getTeleportingHijinksVotingPlayerIndexes().some(
+      playerIndex => globalScene.getPlayerMoney(playerIndex) >= this.requiredMoney,
+    );
   }
 }
 
@@ -142,6 +148,12 @@ function getTeleportingHijinksPrice(): number {
   return data?.price ?? globalScene.getWaveMoneyAmount(MONEY_COST_MULTIPLIER);
 }
 
+function getTeleportingHijinksVotingPlayerIndexes(): PlayerIndex[] {
+  const playerIndexes = getMysteryEncounterPlayerIndexes();
+  const humanPlayerIndexes = playerIndexes.filter(playerIndex => !globalScene.isComputerPartnerPlayer(playerIndex));
+  return humanPlayerIndexes.length > 0 ? humanPlayerIndexes : playerIndexes;
+}
+
 function getMachineInterfacePokemon(playerIndex: PlayerIndex): PlayerPokemon | undefined {
   return new PlayerMachineInterfaceRequirement(playerIndex).queryParty(globalScene.getPlayerParty(playerIndex))[0];
 }
@@ -174,10 +186,10 @@ function spendTeleportingHijinksMoney(playerIndex: PlayerIndex): void {
   globalScene.phaseManager.queueMessage(i18next.t("mysteryEncounterMessages:paidMoney", { amount: price }), null, true);
 }
 
-function storeTeleportingHijinksChoice(
+async function storeTeleportingHijinksChoice(
   optionIndex: TeleportingHijinksOptionIndex,
   playerIndex: PlayerIndex = 0,
-): boolean {
+): Promise<boolean> {
   if (!globalScene.twoPlayerMode) {
     return true;
   }
@@ -191,9 +203,9 @@ function storeTeleportingHijinksChoice(
     ...(helperPokemon ? { helperPokemon } : {}),
   });
 
-  if (playerIndex === 0) {
-    showTeleportingHijinksPlayerMenu(1, optionIndex - 1);
-    return false;
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex, getTeleportingHijinksVotingPlayerIndexes());
+  if (nextPlayerIndex != null) {
+    return promptNextTeleportingHijinksPlayer(nextPlayerIndex, optionIndex - 1);
   }
 
   data.skipSelectedDialogueOnce = true;
@@ -202,21 +214,20 @@ function storeTeleportingHijinksChoice(
   return true;
 }
 
-function showTeleportingHijinksPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
+async function promptNextTeleportingHijinksPlayer(
+  playerIndex: PlayerIndex,
+  startingCursorIndex = 0,
+): Promise<boolean> {
   const overrideOptions = buildTeleportingHijinksPlayerOptions(playerIndex);
   setTeleportingHijinksPlayerOptionTokens(playerIndex);
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
-
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: i18next.t(`${namespace}:query`),
-      overrideOptions,
-      startingCursorIndex,
-    });
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions,
+    startingCursorIndex,
   });
+  return result ?? false;
 }
 
 function buildTeleportingHijinksMoneyOption(playerIndex: PlayerIndex): MysteryEncounterOption {
@@ -240,7 +251,7 @@ function buildTeleportingHijinksMoneyOption(playerIndex: PlayerIndex): MysteryEn
     })
     .withOptionPhase(async () => {
       if (globalScene.twoPlayerMode) {
-        return runTwoPlayerTeleportingHijinksChoices();
+        return runMultiPlayerTeleportingHijinksChoices();
       }
       const config: EnemyPartyConfig = await doBiomeTransitionDialogueAndBattleInit();
       setEncounterRewards({ fillRemaining: true });
@@ -265,7 +276,7 @@ function buildTeleportingHijinksHelperOption(playerIndex: PlayerIndex): MysteryE
     .withPreOptionPhase(async () => storeTeleportingHijinksChoice(2, playerIndex))
     .withOptionPhase(async () => {
       if (globalScene.twoPlayerMode) {
-        return runTwoPlayerTeleportingHijinksChoices();
+        return runMultiPlayerTeleportingHijinksChoices();
       }
       const config: EnemyPartyConfig = await doBiomeTransitionDialogueAndBattleInit();
       setEncounterRewards({ fillRemaining: true });
@@ -289,7 +300,7 @@ function buildTeleportingHijinksInspectOption(playerIndex: PlayerIndex): Mystery
     .withPreOptionPhase(async () => storeTeleportingHijinksChoice(3, playerIndex))
     .withOptionPhase(async () => {
       if (globalScene.twoPlayerMode) {
-        return runTwoPlayerTeleportingHijinksChoices();
+        return runMultiPlayerTeleportingHijinksChoices();
       }
       await runOnePlayerInspectMachine();
     })
@@ -315,7 +326,7 @@ export const TeleportingHijinksEncounter: MysteryEncounter = MysteryEncounterBui
   .withEncounterTier(MysteryEncounterTier.COMMON)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withSceneRequirement(new WaveModulusRequirement([2, 3, 4], 10)) // Must be in first 3 waves after boss wave
-  .withSceneRequirement(new TwoPlayerAnyPlayerTeleportMoneyRequirement(0, MONEY_COST_MULTIPLIER)) // Must be able to pay teleport cost
+  .withSceneRequirement(new AnyPlayerTeleportMoneyRequirement(0, MONEY_COST_MULTIPLIER)) // Must be able to pay teleport cost
   .withAutoHideIntroVisuals(false)
   .withCatchAllowed(true)
   .withFleeAllowed(false)
@@ -353,14 +364,18 @@ export const TeleportingHijinksEncounter: MysteryEncounter = MysteryEncounterBui
   .withOption(buildTeleportingHijinksInspectOption(0))
   .build();
 
-async function runTwoPlayerTeleportingHijinksChoices(): Promise<boolean> {
+async function runMultiPlayerTeleportingHijinksChoices(): Promise<boolean> {
   const data = getTeleportingHijinksData();
-  const choices = (data.choices ?? []).toSorted((a, b) => a.playerIndex - b.playerIndex);
+  const activePlayerIndexes = getMysteryEncounterPlayerIndexes();
+  const votingPlayerIndexes = getTeleportingHijinksVotingPlayerIndexes();
+  const choices = (data.choices ?? [])
+    .filter(choice => votingPlayerIndexes.includes(choice.playerIndex))
+    .toSorted((a, b) => a.playerIndex - b.playerIndex);
   const teleportChoices = choices.filter(choice => choice.optionIndex !== 3);
   const inspectChoices = choices.filter(choice => choice.optionIndex === 3);
-  let useTeleportRoute = teleportChoices.length > 0 && inspectChoices.length === 0;
+  let useTeleportRoute = teleportChoices.length > inspectChoices.length;
 
-  if (teleportChoices.length > 0 && inspectChoices.length > 0) {
+  if (teleportChoices.length === inspectChoices.length) {
     const winningPlayerIndex = globalScene.resolvePlayerTieBreak(choices.map(choice => choice.playerIndex));
     useTeleportRoute = teleportChoices.some(choice => choice.playerIndex === winningPlayerIndex);
     await showEncounterText(`Player ${winningPlayerIndex + 1}'s choice wins this time.`);
@@ -380,18 +395,18 @@ async function runTwoPlayerTeleportingHijinksChoices(): Promise<boolean> {
     }
   }
 
-  globalScene.setActivePlayerIndex(0);
-  updateWindowType(1);
-  globalScene.setMysteryEncounterBattlePlayerFieldOwners([0, 1]);
+  globalScene.setActivePlayerIndex(activePlayerIndexes[0]);
+  updateWindowType(activePlayerIndexes[0] + 1);
+  globalScene.setMysteryEncounterBattlePlayerFieldOwners(activePlayerIndexes);
 
   if (useTeleportRoute) {
-    const config = await doBiomeTransitionDialogueAndBattleInit(2);
-    setTeleportingHijinksDefaultRewards([0, 1]);
+    const config = await doBiomeTransitionDialogueAndBattleInit(activePlayerIndexes.length);
+    setTeleportingHijinksDefaultRewards(activePlayerIndexes);
     await initBattleWithEnemyConfig(config);
     return true;
   }
 
-  await runInspectMachine([0, 1], 2);
+  await runInspectMachine(activePlayerIndexes, activePlayerIndexes.length);
   return true;
 }
 
@@ -501,7 +516,9 @@ function getTeleportingHijinksLuckValue(): number {
     return getPartyLuckValue(globalScene.getPlayerParty());
   }
 
-  return getPartyLuckValue([...globalScene.getPlayerParty(0), ...globalScene.getPlayerParty(1)]);
+  return getPartyLuckValue(
+    getMysteryEncounterPlayerIndexes().flatMap(playerIndex => globalScene.getPlayerParty(playerIndex)),
+  );
 }
 
 async function animateBiomeChange(nextBiome: BiomeId): Promise<void> {

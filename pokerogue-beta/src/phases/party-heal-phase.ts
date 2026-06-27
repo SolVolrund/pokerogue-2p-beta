@@ -25,18 +25,24 @@ export class PartyHealPhase extends BattlePhase {
     globalScene.ui.fadeOut(1000).then(() => {
       const preventRevive = new BooleanHolder(false);
       applyChallenges(ChallengeType.PREVENT_REVIVE, preventRevive);
-      for (const pokemon of globalScene.getPlayerParty(this.playerIndex)) {
-        // Prevent reviving fainted pokemon during certain challenges
-        if (pokemon.isFainted() && preventRevive.value) {
-          continue;
-        }
+      const playerIndexes: Array<PlayerIndex | undefined> =
+        this.playerIndex == null && globalScene.twoPlayerMode
+          ? globalScene.getActivePlayerIndexes()
+          : [this.playerIndex];
+      for (const playerIndex of playerIndexes) {
+        for (const pokemon of globalScene.getPlayerParty(playerIndex)) {
+          // Prevent reviving fainted pokemon during certain challenges
+          if (pokemon.isFainted() && preventRevive.value) {
+            continue;
+          }
 
-        pokemon.hp = pokemon.getMaxHp();
-        pokemon.resetStatus(true, false, false, true);
-        for (const move of pokemon.moveset) {
-          move.ppUsed = 0;
+          pokemon.hp = pokemon.getMaxHp();
+          pokemon.resetStatus(true, false, false, true);
+          for (const move of pokemon.moveset) {
+            move.ppUsed = 0;
+          }
+          pokemon.updateInfo(true);
         }
-        pokemon.updateInfo(true);
       }
 
       const healSound = this.resumeBgm

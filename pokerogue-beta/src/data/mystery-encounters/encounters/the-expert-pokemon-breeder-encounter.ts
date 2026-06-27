@@ -1,5 +1,5 @@
 import { audioManager } from "#app/global-audio-manager";
-import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { modifierTypes } from "#data/data-lists";
@@ -14,11 +14,10 @@ import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { Nature } from "#enums/nature";
-import { PartyMemberStrength } from "#enums/party-member-strength";
 import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
+import { Stat } from "#enums/stat";
 import { TrainerType } from "#enums/trainer-type";
-import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon } from "#field/pokemon";
 import type { PokemonHeldItemModifier } from "#modifiers/modifier";
 import type { PokemonHeldItemModifierType } from "#modifiers/modifier-type";
@@ -35,9 +34,14 @@ import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import { trainerConfigs } from "#trainers/trainer-config";
-import { TrainerPartyTemplate } from "#trainers/trainer-party-template";
 import { updateWindowType } from "#ui/ui-theme";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
 import { randSeedShuffle } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
@@ -72,7 +76,7 @@ interface ExpertBreederPartyBackup {
 }
 
 interface ExpertBreederData {
-  candidatesByPlayer: Record<TwoPlayerIndex, ExpertBreederCandidate[]>;
+  candidatesByPlayer: Partial<Record<PlayerIndex, ExpertBreederCandidate[]>>;
   choices: ExpertBreederChoice[];
   partyBackupsByPlayer?: Partial<Record<PlayerIndex, ExpertBreederPartyBackup>>;
   chosenPokemon?: PlayerPokemon;
@@ -86,7 +90,7 @@ class ExpertBreederSpawnRequirement extends EncounterSceneRequirement {
       return globalScene.getPokemonAllowedInBattle().length >= MIN_LEGAL_POKEMON_FOR_BREEDER;
     }
 
-    return ([0, 1] as PlayerIndex[]).every(
+    return getMysteryEncounterPlayerIndexes().every(
       playerIndex => globalScene.getPokemonAllowedInBattle(playerIndex).length >= MIN_LEGAL_POKEMON_FOR_BREEDER,
     );
   }
@@ -229,33 +233,66 @@ function getBreederCandidateTooltipText(
 
 function setBreederCandidateTokens(playerIndex: PlayerIndex): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
-  const candidates = getExpertBreederData().candidatesByPlayer[playerIndex];
+  const candidates = getExpertBreederData().candidatesByPlayer[playerIndex] ?? [];
   candidates.forEach((candidate, index) => {
     encounter.setDialogueToken(`pokemon${index + 1}Name`, candidate.pokemon.getNameToRender());
   });
 }
 
 function getBreederCandidate(playerIndex: PlayerIndex, candidateIndex: number): ExpertBreederCandidate {
-  return getExpertBreederData().candidatesByPlayer[playerIndex][candidateIndex];
+  return getExpertBreederData().candidatesByPlayer[playerIndex]![candidateIndex];
 }
 
-function showBreederPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
+function getBreederCandidateStrength(candidate: ExpertBreederCandidate): number {
+  const pokemon = candidate.pokemon;
+  return (
+    pokemon.getStat(Stat.HP)
+    + pokemon.getStat(Stat.ATK)
+    + pokemon.getStat(Stat.DEF)
+    + pokemon.getStat(Stat.SPATK)
+    + pokemon.getStat(Stat.SPDEF)
+    + pokemon.getStat(Stat.SPD)
+  );
+}
+
+function chooseComputerPartnerBreederCandidateIndex(playerIndex: PlayerIndex): number {
+  const candidates = getExpertBreederData().candidatesByPlayer[playerIndex] ?? [];
+  return candidates
+    .map((candidate, candidateIndex) => ({
+      candidateIndex,
+      strength: getBreederCandidateStrength(candidate),
+    }))
+    .sort((a, b) => b.strength - a.strength || a.candidateIndex - b.candidateIndex)[0]?.candidateIndex ?? 0;
+}
+
+function queueComputerPartnerBreederChoiceMessage(playerIndex: PlayerIndex, candidateIndex: number): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const candidate = getBreederCandidate(playerIndex, candidateIndex);
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Sent ${candidate.pokemon.getNameToRender()} for training.`, null, true);
+}
+
+async function showBreederPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
   globalScene.setActivePlayerIndex(playerIndex);
   updateWindowType(playerIndex + 1);
   setBreederCandidateTokens(playerIndex);
 
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: i18next.t(`${namespace}:query`),
-      overrideOptions: buildBreederOptions(playerIndex),
-      startingCursorIndex,
-    });
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildBreederOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerBreederCandidateIndex,
+      onOptionChosen: (candidateIndex, choicePlayerIndex) =>
+        storeBreederChoice(choicePlayerIndex, candidateIndex),
+    },
   });
+  return result ?? false;
 }
 
-function storeBreederChoice(playerIndex: PlayerIndex, candidateIndex: number): boolean {
+async function storeBreederChoice(playerIndex: PlayerIndex, candidateIndex: number): Promise<boolean> {
   const data = getExpertBreederData();
   const candidate = getBreederCandidate(playerIndex, candidateIndex);
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
@@ -265,9 +302,13 @@ function storeBreederChoice(playerIndex: PlayerIndex, candidateIndex: number): b
     return true;
   }
 
-  if (playerIndex === 0) {
-    showBreederPlayerMenu(1, candidateIndex);
-    return false;
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    queueComputerPartnerBreederChoiceMessage(playerIndex, candidateIndex);
+  }
+
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+  if (nextPlayerIndex != null) {
+    return showBreederPlayerMenu(nextPlayerIndex, candidateIndex);
   }
 
   data.skipSelectedDialogueOnce = true;
@@ -298,7 +339,7 @@ function buildBreederOption(playerIndex: PlayerIndex, candidateIndex: number): M
     .withPreOptionPhase(async () => storeBreederChoice(playerIndex, candidateIndex))
     .withOptionPhase(async () => {
       if (globalScene.twoPlayerMode) {
-        return runTwoPlayerBreederBattle();
+        return runMultiPlayerBreederBattle();
       }
 
       await runSinglePlayerBreederBattle(candidateIndex);
@@ -375,10 +416,10 @@ async function runSinglePlayerBreederBattle(candidateIndex: number): Promise<voi
   await startBreederBattle([choice], globalScene.currentBattle.mysteryEncounter!.enemyPartyConfigs[0]);
 }
 
-async function runTwoPlayerBreederBattle(): Promise<boolean> {
+async function runMultiPlayerBreederBattle(): Promise<boolean> {
   const choices = getExpertBreederData().choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
   await showEncounterDialogue(`${namespace}:option.selected`, trainerNameKey);
-  await startBreederBattle(choices, createTwoPlayerBreederPartyConfig());
+  await startBreederBattle(choices, createMultiPlayerBreederPartyConfig(choices.length));
   return true;
 }
 
@@ -425,7 +466,7 @@ export const TheExpertPokemonBreederEncounter: MysteryEncounter = MysteryEncount
   .withEncounterTier(MysteryEncounterTier.ULTRA)
   .withDisallowedChallenges(Challenges.HARDCORE)
   .withSceneWaveRangeRequirement(25, 180)
-  .withSceneRequirement(new ExpertBreederSpawnRequirement()) // Both 2P players must have at least 4 legal Pokemon
+  .withSceneRequirement(new ExpertBreederSpawnRequirement()) // All active players must have at least 4 legal Pokemon
   .withIntroSpriteConfigs([]) // These are set in onInit()
   .withIntroDialogue([
     {
@@ -471,16 +512,21 @@ export const TheExpertPokemonBreederEncounter: MysteryEncounter = MysteryEncount
       },
     ];
 
-    encounter.misc = {
-      candidatesByPlayer: {
-        0: getBreederCandidates(0),
-        1: globalScene.twoPlayerMode ? getBreederCandidates(1) : getBreederCandidates(0),
+    const candidatesByPlayer = getMysteryEncounterPlayerIndexes().reduce(
+      (candidates, playerIndex) => {
+        candidates[playerIndex] = getBreederCandidates(playerIndex);
+        return candidates;
       },
+      {} as Partial<Record<PlayerIndex, ExpertBreederCandidate[]>>,
+    );
+
+    encounter.misc = {
+      candidatesByPlayer,
       choices: [],
     } satisfies ExpertBreederData;
 
     setBreederCandidateTokens(0);
-    getExpertBreederData().candidatesByPlayer[0].forEach((candidate, index) => {
+    getExpertBreederData().candidatesByPlayer[0]?.forEach((candidate, index) => {
       encounter.options[index].dialogue!.buttonTooltip = candidate.tooltip;
     });
 
@@ -617,28 +663,12 @@ function getPartyConfig(): EnemyPartyConfig {
   return baseConfig;
 }
 
-function createTwoPlayerBreederPartyConfig(): EnemyPartyConfig {
+function createMultiPlayerBreederPartyConfig(participantCount: number): EnemyPartyConfig {
   const config = getPartyConfig();
-  config.doubleBattle = true;
-  config.forceDoubleBattle = true;
-  config.trainerConfig?.setPartyTemplates(new TrainerPartyTemplate(4, PartyMemberStrength.WEAK));
-
-  if ((config.pokemonConfigs?.length ?? 0) < 4) {
-    const waveIndex = globalScene.currentBattle.waveIndex;
-    const speciesPool = randSeedShuffle([POOL_1_POKEMON, POOL_2_POKEMON])[0];
-    const extraSpecies = getSpeciesFromPool(speciesPool, waveIndex);
-    config.pokemonConfigs!.push({
-      species: getPokemonSpecies(extraSpecies),
-      isBoss: false,
-      modifierConfigs: [
-        {
-          modifier: generateModifierType(modifierTypes.SOOTHE_BELL) as PokemonHeldItemModifierType,
-          stackCount: 3,
-        },
-      ],
-    });
+  if (participantCount > 1) {
+    config.doubleBattle = true;
+    config.forceDoubleBattle = true;
   }
-
   return config;
 }
 
@@ -731,11 +761,23 @@ function isolateBreederParty(playerIndex: PlayerIndex, chosenPokemon: PlayerPoke
   }
 }
 
+function clearBreederIsolatedPartyFieldState(playerIndex: PlayerIndex) {
+  for (const pokemon of globalScene.getPlayerParty(playerIndex)) {
+    pokemon.resetSprite();
+    pokemon.resetTurnData();
+    pokemon.resetSummonData();
+    pokemon.hideInfo();
+    globalScene.field.remove(pokemon, false);
+  }
+}
+
 function restoreBreederParty(playerIndex: PlayerIndex) {
   const backup = getExpertBreederData().partyBackupsByPlayer?.[playerIndex];
   if (!backup) {
     return;
   }
+
+  clearBreederIsolatedPartyFieldState(playerIndex);
 
   const party = globalScene.getPlayerParty(playerIndex);
   party.length = 0;

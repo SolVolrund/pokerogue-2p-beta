@@ -20,9 +20,11 @@ import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { Stat } from "#enums/stat";
 import { TrainerType } from "#enums/trainer-type";
-import type { PokemonHeldItemModifierType } from "#modifiers/modifier-type";
-import { showEncounterDialogue, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
-import type { EnemyPartyConfig } from "#mystery-encounters/encounter-phase-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import {
   generateModifierType,
   generateModifierTypeOption,
@@ -31,15 +33,19 @@ import {
   setEncounterRewards,
   transitionMysteryEncounterIntroVisuals,
 } from "#mystery-encounters/encounter-phase-utils";
+import type { EnemyPartyConfig } from "#mystery-encounters/encounter-phase-utils";
+import { showEncounterDialogue, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
+import type { PokemonHeldItemModifierType } from "#modifiers/modifier-type";
 import { trainerConfigs } from "#trainers/trainer-config";
 import { TrainerPartyTemplate } from "#trainers/trainer-party-template";
 import { updateWindowType } from "#ui/ui-theme";
-import { UiMode } from "#enums/ui-mode";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import { getComputerPartnerTeamConfidence } from "#utils/computer-partner-team-confidence";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -63,11 +69,7 @@ interface WinstrateData {
 
 class WinstrateSpawnRequirement extends EncounterSceneRequirement {
   override meetsRequirement(): boolean {
-    if (!globalScene.twoPlayerMode) {
-      return globalScene.getPlayerParty().length >= MIN_PARTY_SIZE_FOR_WINSTRATE;
-    }
-
-    return ([0, 1] as PlayerIndex[]).every(
+    return getMysteryEncounterPlayerIndexes().every(
       playerIndex => globalScene.getPlayerParty(playerIndex).length >= MIN_PARTY_SIZE_FOR_WINSTRATE,
     );
   }
@@ -90,22 +92,38 @@ function getWinstrateData(): WinstrateData {
   return encounter.misc as WinstrateData;
 }
 
-function showWinstratePlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
-
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: i18next.t(`${namespace}:query`),
-      overrideOptions: buildWinstratePlayerOptions(playerIndex),
-      startingCursorIndex,
-    });
-  });
+function chooseComputerPartnerWinstrateOption(playerIndex: PlayerIndex): WinstrateOptionIndex {
+  const confidence = getComputerPartnerTeamConfidence(globalScene.getPlayerParty(playerIndex));
+  return confidence.level === "medium" || confidence.level === "high" ? 1 : 2;
 }
 
-function storeWinstrateChoice(optionIndex: WinstrateOptionIndex, playerIndex: PlayerIndex): boolean {
+function queueComputerPartnerWinstrateChoiceMessage(
+  playerIndex: PlayerIndex,
+  optionIndex: WinstrateOptionIndex,
+): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const optionLabel = i18next.t(`${namespace}:option.${optionIndex}.label`);
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionLabel}.`, null, true);
+}
+
+async function promptNextWinstratePlayer(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildWinstratePlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerWinstrateOption,
+      onOptionChosen: (optionIndex, choicePlayerIndex) =>
+        storeWinstrateChoice(optionIndex as WinstrateOptionIndex, choicePlayerIndex),
+    },
+  });
+  return result ?? false;
+}
+
+async function storeWinstrateChoice(optionIndex: WinstrateOptionIndex, playerIndex: PlayerIndex): Promise<boolean> {
   if (!globalScene.twoPlayerMode) {
     return true;
   }
@@ -117,9 +135,15 @@ function storeWinstrateChoice(optionIndex: WinstrateOptionIndex, playerIndex: Pl
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
   data.choices.push({ playerIndex, optionIndex });
 
-  if (playerIndex === 0) {
-    showWinstratePlayerMenu(1, optionIndex - 1);
-    return false;
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    queueComputerPartnerWinstrateChoiceMessage(playerIndex, optionIndex);
+  }
+
+  if (globalScene.twoPlayerMode) {
+    const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+    if (nextPlayerIndex != null) {
+      return promptNextWinstratePlayer(nextPlayerIndex, optionIndex - 1);
+    }
   }
 
   data.skipSelectedDialogueOnce = true;
@@ -139,10 +163,6 @@ function healWinstratePlayerParty(playerIndex: PlayerIndex): void {
   }
 }
 
-function getWinstrateTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
-  return playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
-}
-
 async function hideWinstrateNonBattleTrainers(battlePlayers: PlayerIndex[]): Promise<void> {
   if (!globalScene.twoPlayerMode) {
     return;
@@ -150,12 +170,12 @@ async function hideWinstrateNonBattleTrainers(battlePlayers: PlayerIndex[]): Pro
 
   const battlePlayerSet = new Set(battlePlayers);
   await Promise.all(
-    ([0, 1] as PlayerIndex[])
+    getMysteryEncounterPlayerIndexes()
       .filter(playerIndex => !battlePlayerSet.has(playerIndex))
       .map(
         playerIndex =>
           new Promise<void>(resolve => {
-            const trainerSprite = getWinstrateTrainerSprite(playerIndex);
+            const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
             globalScene.tweens.killTweensOf(trainerSprite);
 
             if (!trainerSprite.visible) {
@@ -256,6 +276,40 @@ function createPairedTrainerConfig(mainConfig: EnemyPartyConfig, partnerConfig: 
   };
 }
 
+function createTripleTrainerConfig(
+  mainConfig: EnemyPartyConfig,
+  partnerConfig: EnemyPartyConfig,
+  partnerConfig2: EnemyPartyConfig,
+): EnemyPartyConfig {
+  const mainPokemonConfigs = mainConfig.pokemonConfigs ?? [];
+  const partnerPokemonConfigs = partnerConfig.pokemonConfigs ?? [];
+  const partnerPokemonConfigs2 = partnerConfig2.pokemonConfigs ?? [];
+  const pokemonConfigs: NonNullable<EnemyPartyConfig["pokemonConfigs"]> = [];
+  const mainTrainerType = getTrainerTypeForConfig(mainConfig);
+  const partnerTrainerType = getTrainerTypeForConfig(partnerConfig);
+  const partnerTrainerType2 = getTrainerTypeForConfig(partnerConfig2);
+  const maxPartySize = Math.max(mainPokemonConfigs.length, partnerPokemonConfigs.length, partnerPokemonConfigs2.length);
+  for (let i = 0; i < maxPartySize; i++) {
+    if (i < mainPokemonConfigs.length) {
+      pokemonConfigs.push(mainPokemonConfigs[i]);
+    }
+    if (i < partnerPokemonConfigs.length) {
+      pokemonConfigs.push(partnerPokemonConfigs[i]);
+    }
+    if (i < partnerPokemonConfigs2.length) {
+      pokemonConfigs.push(partnerPokemonConfigs2[i]);
+    }
+  }
+
+  return {
+    trainerConfig: cloneWinstrateTrainerConfig(mainTrainerType, mainPokemonConfigs.length),
+    partnerTrainerConfig: cloneWinstrateTrainerConfig(partnerTrainerType, partnerPokemonConfigs.length),
+    partnerTrainerConfig2: cloneWinstrateTrainerConfig(partnerTrainerType2, partnerPokemonConfigs2.length),
+    pokemonConfigs,
+    doubleBattle: true,
+  };
+}
+
 function loadSinglePlayerWinstrateConfigs(): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   encounter.enemyPartyConfigs = [];
@@ -266,7 +320,7 @@ function loadSinglePlayerWinstrateConfigs(): void {
   encounter.enemyPartyConfigs.push(getVictorTrainerConfig());
 }
 
-function loadTwoPlayerWinstrateConfigs(battlePlayers: PlayerIndex[]): void {
+function loadMultiPlayerWinstrateConfigs(battlePlayers: PlayerIndex[]): void {
   if (battlePlayers.length < 2) {
     loadSinglePlayerWinstrateConfigs();
     return;
@@ -280,17 +334,27 @@ function loadTwoPlayerWinstrateConfigs(battlePlayers: PlayerIndex[]): void {
   const vito = getVitoTrainerConfig();
 
   encounter.enemyPartyConfigs = [];
-  encounter.enemyPartyConfigs.push(createPairedTrainerConfig(vito, vicky));
-  encounter.enemyPartyConfigs.push(createPairedTrainerConfig(vicky, vivi));
-  encounter.enemyPartyConfigs.push(createPairedTrainerConfig(vivi, victoria));
-  encounter.enemyPartyConfigs.push(createPairedTrainerConfig(victoria, victor));
-  encounter.enemyPartyConfigs.push(createSoloDoubleTrainerConfig(victor));
+  if (battlePlayers.length >= 3) {
+    encounter.enemyPartyConfigs.push(createTripleTrainerConfig(vito, vicky, vivi));
+    encounter.enemyPartyConfigs.push(createTripleTrainerConfig(vicky, vivi, victoria));
+    encounter.enemyPartyConfigs.push(createTripleTrainerConfig(vivi, victoria, victor));
+    encounter.enemyPartyConfigs.push(createPairedTrainerConfig(victoria, victor));
+    encounter.enemyPartyConfigs.push(createSoloDoubleTrainerConfig(victor));
+  } else {
+    encounter.enemyPartyConfigs.push(createPairedTrainerConfig(vito, vicky));
+    encounter.enemyPartyConfigs.push(createPairedTrainerConfig(vicky, vivi));
+    encounter.enemyPartyConfigs.push(createPairedTrainerConfig(vivi, victoria));
+    encounter.enemyPartyConfigs.push(createPairedTrainerConfig(victoria, victor));
+    encounter.enemyPartyConfigs.push(createSoloDoubleTrainerConfig(victor));
+  }
 }
 
-async function runTwoPlayerWinstrateChoices(): Promise<boolean> {
+async function runMultiPlayerWinstrateChoices(): Promise<boolean> {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const data = getWinstrateData();
-  const choices = data.choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
+  const choices = globalScene.twoPlayerMode
+    ? data.choices.toSorted((a, b) => a.playerIndex - b.playerIndex)
+    : [{ playerIndex: globalScene.activePlayerIndex, optionIndex: 1 as WinstrateOptionIndex }];
   const battlePlayers = choices.filter(choice => choice.optionIndex === 1).map(choice => choice.playerIndex);
   const refusePlayers = choices.filter(choice => choice.optionIndex === 2).map(choice => choice.playerIndex);
 
@@ -311,7 +375,7 @@ async function runTwoPlayerWinstrateChoices(): Promise<boolean> {
 
   data.battlePlayers = battlePlayers;
   globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
-  loadTwoPlayerWinstrateConfigs(battlePlayers);
+  loadMultiPlayerWinstrateConfigs(battlePlayers);
 
   encounter.doContinueEncounter = async () => {
     await endTrainerBattleAndShowDialogue();
@@ -335,7 +399,7 @@ function buildWinstrateAcceptOption(playerIndex: PlayerIndex): MysteryEncounterO
       ],
     })
     .withPreOptionPhase(async () => storeWinstrateChoice(1, playerIndex))
-    .withOptionPhase(async () => (globalScene.twoPlayerMode ? runTwoPlayerWinstrateChoices() : runOnePlayerWinstrateAccept()))
+    .withOptionPhase(async () => (globalScene.twoPlayerMode ? runMultiPlayerWinstrateChoices() : runOnePlayerWinstrateAccept()))
     .build();
 }
 
@@ -352,12 +416,25 @@ function buildWinstrateRefuseOption(playerIndex: PlayerIndex): MysteryEncounterO
       ],
     })
     .withPreOptionPhase(async () => storeWinstrateChoice(2, playerIndex))
-    .withOptionPhase(async () => (globalScene.twoPlayerMode ? runTwoPlayerWinstrateChoices() : runOnePlayerWinstrateRefuse()))
+    .withOptionPhase(async () => (globalScene.twoPlayerMode ? runMultiPlayerWinstrateChoices() : runOnePlayerWinstrateRefuse()))
     .build();
 }
 
 function buildWinstratePlayerOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
   return [buildWinstrateAcceptOption(playerIndex), buildWinstrateRefuseOption(playerIndex)];
+}
+
+function getWinstrateBattlePlayers(): PlayerIndex[] {
+  const data = getWinstrateData();
+  return (data.battlePlayers.length ? data.battlePlayers : [globalScene.activePlayerIndex]) as PlayerIndex[];
+}
+
+function updateWinstrateBattlePlayersForUsablePokemon(): PlayerIndex[] {
+  const data = getWinstrateData();
+  const battlePlayers = getWinstrateBattlePlayers().filter(playerIndex => globalScene.hasPlayerUsablePokemon(playerIndex));
+  data.battlePlayers = battlePlayers;
+  globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
+  return battlePlayers;
 }
 
 async function runOnePlayerWinstrateAccept(): Promise<void> {
@@ -454,20 +531,21 @@ export const TheWinstrateChallengeEncounter: MysteryEncounter = MysteryEncounter
 
 async function spawnNextTrainerOrEndEncounter() {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const battlePlayers = updateWinstrateBattlePlayersForUsablePokemon();
+  if (battlePlayers.length === 0) {
+    await transitionMysteryEncounterIntroVisuals(false, false);
+    encounter.doContinueEncounter = undefined;
+    leaveEncounterWithoutBattle(false, MysteryEncounterMode.NO_BATTLE);
+    return;
+  }
+
   const nextConfig = encounter.enemyPartyConfigs.pop();
   if (nextConfig) {
-    const battlePlayers = (getWinstrateData().battlePlayers.length
-      ? getWinstrateData().battlePlayers
-      : [globalScene.activePlayerIndex]) as PlayerIndex[];
-    globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
+    await hideWinstrateNonBattleTrainers(battlePlayers);
     await initBattleWithEnemyConfig(nextConfig);
   } else {
     await transitionMysteryEncounterIntroVisuals(false, false);
     await showEncounterDialogue(`${namespace}:victory`, `${namespace}:speaker`);
-
-    const battlePlayers = (getWinstrateData().battlePlayers.length
-      ? getWinstrateData().battlePlayers
-      : [globalScene.activePlayerIndex]) as PlayerIndex[];
     setWinstrateVictoryRewards(battlePlayers);
     audioManager.playSound("se/item_fanfare");
     await showEncounterText(i18next.t("battle:rewardGain", { modifierName: modifierTypes.VOUCHER_PREMIUM().name }));
@@ -509,9 +587,13 @@ function endTrainerBattleAndShowDialogue(): Promise<void> {
       }
       playerField.forEach((_, p) => globalScene.phaseManager.unshiftNew("ReturnPhase", p));
 
-      const battlePlayers = (getWinstrateData().battlePlayers.length
-        ? getWinstrateData().battlePlayers
-        : [globalScene.activePlayerIndex]) as PlayerIndex[];
+      const battlePlayers = updateWinstrateBattlePlayersForUsablePokemon();
+      if (battlePlayers.length === 0) {
+        await spawnNextTrainerOrEndEncounter();
+        resolve();
+        return;
+      }
+
       for (const playerIndex of battlePlayers) {
         for (const pokemon of globalScene.getPlayerParty(playerIndex)) {
           // Only trigger form change when Eiscue is in Noice form
@@ -549,6 +631,8 @@ function endTrainerBattleAndShowDialogue(): Promise<void> {
             resolve();
           },
         });
+      } else {
+        resolve();
       }
     }
   });

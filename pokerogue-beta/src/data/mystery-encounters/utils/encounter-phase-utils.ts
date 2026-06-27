@@ -128,6 +128,7 @@ export interface EnemyPokemonConfig {
   aiType?: AiType;
   friendship?: number;
   fieldPosition?: FieldPosition;
+  trainerSlot?: TrainerSlot;
 }
 
 export interface EnemyPartyConfig {
@@ -185,6 +186,8 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
   const partnerTrainerConfig2 = partyConfig?.partnerTrainerConfig2;
   const partnerTrainerType = partyConfig?.partnerTrainerType ?? partnerTrainerConfig?.trainerType;
   const partnerTrainerType2 = partyConfig?.partnerTrainerType2 ?? partnerTrainerConfig2?.trainerType;
+  const hasNamedPartnerTrainer =
+    partnerTrainerType != null || !!partnerTrainerConfig || partnerTrainerType2 != null || !!partnerTrainerConfig2;
   let trainerConfig: TrainerConfig;
   if (trainerType != null || partyTrainerConfig) {
     globalScene.currentBattle.mysteryEncounter!.encounterMode = MysteryEncounterMode.TRAINER_BATTLE;
@@ -287,7 +290,8 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
           battle.enemyParty[e] = globalScene.addEnemyPokemon(
             enemySpecies,
             level,
-            TrainerSlot.TRAINER,
+            config.trainerSlot
+              ?? (hasNamedPartnerTrainer ? battle.trainer.getTrainerSlotForPartyIndex(e) : TrainerSlot.TRAINER),
             isBoss,
             false,
             dataSource,
@@ -949,9 +953,7 @@ export function leaveEncounterWithoutBattle(
  * @param doNotContinue - default `false`. If set to true, will not end the battle and continue to next wave
  */
 export function handleMysteryEncounterVictory(addHealPhase = false, doNotContinue = false): void {
-  const allowedPkm = globalScene.getPlayerParty().filter(pkm => pkm.isAllowedInBattle());
-
-  if (allowedPkm.length === 0) {
+  if (globalScene.areAllActivePlayersOutOfUsablePokemon()) {
     globalScene.phaseManager.clearPhaseQueue(true);
     globalScene.phaseManager.unshiftNew("GameOverPhase");
     return;
@@ -992,9 +994,7 @@ export function handleMysteryEncounterVictory(addHealPhase = false, doNotContinu
  * @param addHealPhase
  */
 export function handleMysteryEncounterBattleFailed(addHealPhase = false, doNotContinue = false): void {
-  const allowedPkm = globalScene.getPlayerParty().filter(pkm => pkm.isAllowedInBattle());
-
-  if (allowedPkm.length === 0) {
+  if (globalScene.areAllActivePlayersOutOfUsablePokemon()) {
     globalScene.phaseManager.clearPhaseQueue(true);
     globalScene.phaseManager.unshiftNew("GameOverPhase");
     return;

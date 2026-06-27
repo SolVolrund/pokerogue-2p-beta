@@ -2,6 +2,7 @@ import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { allMoves, modifierTypes } from "#data/data-lists";
+import { LearnMoveType } from "#enums/learn-move-type";
 import { ModifierTier } from "#enums/modifier-tier";
 import { MoveId } from "#enums/move-id";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
@@ -12,7 +13,6 @@ import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { TrainerSlot } from "#enums/trainer-slot";
 import { TrainerType } from "#enums/trainer-type";
-import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import type { PokemonHeldItemModifier } from "#modifiers/modifier";
 import {
@@ -25,6 +25,11 @@ import {
 import type { AttackTypeBoosterModifierType, ModifierTypeOption } from "#modifiers/modifier-type";
 import { PokemonMove } from "#moves/pokemon-move";
 import { getEncounterText, showEncounterDialogue, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import type { EnemyPartyConfig } from "#mystery-encounters/encounter-phase-utils";
 import {
   generateModifierType,
@@ -51,6 +56,14 @@ import { getRandomPartyMemberFunc, trainerConfigs } from "#trainers/trainer-conf
 import { TrainerPartyCompoundTemplate, TrainerPartyTemplate } from "#trainers/trainer-party-template";
 import type { OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
+import { updateWindowType } from "#ui/ui-theme";
+import { chooseComputerPartnerMoveLearningDecision } from "#utils/computer-partner-move-ai";
+import {
+  getComputerPartnerProfileWithRolePreferences,
+  isComputerPartnerAcePokemon,
+} from "#utils/computer-partner-profile";
+import { isHealingSupportMove } from "#utils/computer-partner-healing-support";
+import { getComputerPartnerTeamConfidence } from "#utils/computer-partner-team-confidence";
 import { randSeedInt, randSeedShuffle } from "#utils/common";
 import i18next from "i18next";
 
@@ -171,7 +184,15 @@ interface BugTypeSuperfanChoice {
 
 interface BugTypeSuperfanData {
   choices: BugTypeSuperfanChoice[];
+  computerPartnerChoices?: Partial<Record<PlayerIndex, BugTypeSuperfanChoice>>;
   skipSelectedDialogueOnce?: boolean;
+}
+
+interface ComputerPartnerBugMoveTutorTarget {
+  pokemonIndex: number;
+  moveOptionIndex: number;
+  improvementRatio: number;
+  replaceIndex: number;
 }
 
 class PlayerBugTypeSuperfanRequirement extends EncounterPokemonRequirement {
@@ -204,32 +225,9 @@ class PlayerBugTypeSuperfanRequirement extends EncounterPokemonRequirement {
       return this.requirement.queryParty(globalScene.getPlayerParty(this.playerIndex));
     }
 
-    return [
-      ...this.requirement.queryParty(globalScene.getPlayerParty(0)),
-      ...this.requirement.queryParty(globalScene.getPlayerParty(1)),
-    ];
-  }
-}
-
-class PlayerBugTypeRequirement extends EncounterPokemonRequirement {
-  private readonly requirement = new TypeRequirement(PokemonType.BUG, false, 1);
-
-  constructor(private readonly playerIndex: PlayerIndex) {
-    super();
-    this.minNumberOfPokemon = 1;
-    this.invertQuery = false;
-  }
-
-  override meetsRequirement(): boolean {
-    return this.queryParty([]).length >= this.minNumberOfPokemon;
-  }
-
-  override queryParty(_partyPokemon: PlayerPokemon[]): PlayerPokemon[] {
-    return this.requirement.queryParty(globalScene.getPlayerParty(this.playerIndex));
-  }
-
-  override getDialogueToken(pokemon?: PlayerPokemon): [string, string] {
-    return this.requirement.getDialogueToken(pokemon);
+    return getMysteryEncounterPlayerIndexes().flatMap(playerIndex =>
+      this.requirement.queryParty(globalScene.getPlayerParty(playerIndex)),
+    );
   }
 }
 
@@ -271,7 +269,7 @@ function getBugTypeSuperfanData(): BugTypeSuperfanData {
 }
 
 function getBugTypeSuperfanTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
-  return playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+  return globalScene.getPlayerTrainerBackSprite(playerIndex);
 }
 
 async function hideBugTypeSuperfanNonBattleTrainers(battlePlayers: PlayerIndex[]): Promise<void> {
@@ -281,7 +279,7 @@ async function hideBugTypeSuperfanNonBattleTrainers(battlePlayers: PlayerIndex[]
 
   const battlePlayerSet = new Set(battlePlayers);
   await Promise.all(
-    ([0, 1] as PlayerIndex[])
+    getMysteryEncounterPlayerIndexes()
       .filter(playerIndex => !battlePlayerSet.has(playerIndex))
       .map(
         playerIndex =>
@@ -308,36 +306,46 @@ async function hideBugTypeSuperfanNonBattleTrainers(battlePlayers: PlayerIndex[]
   );
 }
 
-function showBugTypeSuperfanPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.waitForPlayerInput(playerIndex);
-
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: i18next.t(`${namespace}:query`),
-      overrideOptions: buildBugTypeSuperfanPlayerOptions(playerIndex),
-      startingCursorIndex,
-    });
+async function promptNextBugTypeSuperfanPlayer(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildBugTypeSuperfanPlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerBugTypeSuperfanOption,
+      onOptionChosen: (_optionIndex, choicePlayerIndex) =>
+        collectComputerPartnerBugTypeSuperfanChoice(choicePlayerIndex),
+    },
   });
+  return result ?? false;
 }
 
-function storeBugTypeSuperfanChoice(choice: BugTypeSuperfanChoice, startingCursorIndex: number): boolean {
+async function storeBugTypeSuperfanChoice(choice: BugTypeSuperfanChoice, startingCursorIndex: number): Promise<boolean> {
   if (!globalScene.twoPlayerMode) {
     return true;
   }
+
+  globalScene.setActivePlayerIndex(choice.playerIndex);
+  updateWindowType(choice.playerIndex + 1);
 
   const data = getBugTypeSuperfanData();
   data.choices = data.choices.filter(existing => existing.playerIndex !== choice.playerIndex);
   data.choices.push(choice);
 
-  if (choice.playerIndex === 0) {
-    showBugTypeSuperfanPlayerMenu(1, startingCursorIndex);
-    return false;
+  if (globalScene.isComputerPartnerPlayer(choice.playerIndex)) {
+    queueComputerPartnerBugTypeSuperfanChoiceMessage(choice);
+  }
+
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(choice.playerIndex);
+  if (nextPlayerIndex != null) {
+    return promptNextBugTypeSuperfanPlayer(nextPlayerIndex, startingCursorIndex);
   }
 
   data.skipSelectedDialogueOnce = true;
-  globalScene.waitForPlayerInput(0);
+  globalScene.setActivePlayerIndex(0);
+  updateWindowType(1);
   return true;
 }
 
@@ -350,6 +358,117 @@ function createBugTypeMoveTutorOptions(): PokemonMove[] {
   ];
 }
 
+function getComputerPartnerProfileForSuperfan(playerIndex: PlayerIndex) {
+  return getComputerPartnerProfileWithRolePreferences(
+    globalScene.getComputerPartnerKey(playerIndex),
+    globalScene.getComputerPartnerRolePreferences(playerIndex),
+  );
+}
+
+function getBestComputerPartnerBugMoveTutorTarget(
+  playerIndex: PlayerIndex,
+  moveOptions: PokemonMove[],
+  requireDamagingMove = false,
+  requireHealingSupportMove = false,
+): ComputerPartnerBugMoveTutorTarget | undefined {
+  const party = globalScene.getPlayerParty(playerIndex);
+  const profile = getComputerPartnerProfileForSuperfan(playerIndex);
+  let bestTarget: ComputerPartnerBugMoveTutorTarget | undefined;
+
+  for (const [pokemonIndex, pokemon] of party.entries()) {
+    const currentMoveIds = pokemon.getMoveset().map(move => move.moveId);
+    const role = isComputerPartnerAcePokemon(pokemon, profile)
+      ? "ace"
+      : profile.roles[pokemonIndex] ?? "balanced";
+
+    for (const [moveOptionIndex, moveOption] of moveOptions.entries()) {
+      const move = allMoves[moveOption.moveId];
+      if (currentMoveIds.includes(moveOption.moveId)) {
+        continue;
+      }
+      if (requireDamagingMove && move.power <= 0) {
+        continue;
+      }
+      if (requireHealingSupportMove && !isHealingSupportMove(move)) {
+        continue;
+      }
+
+      const decision = chooseComputerPartnerMoveLearningDecision(
+        pokemon,
+        currentMoveIds,
+        move,
+        LearnMoveType.TM,
+        { profile, role },
+      );
+      if (!decision.shouldLearn) {
+        continue;
+      }
+
+      if (
+        !bestTarget
+        || decision.improvementRatio > bestTarget.improvementRatio
+        || (decision.improvementRatio === bestTarget.improvementRatio && decision.replaceIndex < bestTarget.replaceIndex)
+      ) {
+        bestTarget = {
+          pokemonIndex,
+          moveOptionIndex,
+          improvementRatio: decision.improvementRatio,
+          replaceIndex: decision.replaceIndex,
+        };
+      }
+    }
+  }
+
+  return bestTarget;
+}
+
+function chooseComputerPartnerBugTypeSuperfanChoice(playerIndex: PlayerIndex): BugTypeSuperfanChoice {
+  const confidence = getComputerPartnerTeamConfidence(globalScene.getPlayerParty(playerIndex));
+  if (confidence.level === "medium" || confidence.level === "high") {
+    const moveTutorOptions = createBugTypeMoveTutorOptions();
+    const profile = getComputerPartnerProfileForSuperfan(playerIndex);
+    const hasUsefulDamagingBugMove = !!getBestComputerPartnerBugMoveTutorTarget(playerIndex, moveTutorOptions, true);
+    const hasUsefulCherylHealingMove =
+      profile.key === "cheryl" && !!getBestComputerPartnerBugMoveTutorTarget(playerIndex, moveTutorOptions, false, true);
+
+    if (hasUsefulDamagingBugMove || hasUsefulCherylHealingMove) {
+      return {
+        playerIndex,
+        optionIndex: 1,
+        moveTutorOptions,
+      };
+    }
+  }
+
+  return {
+    playerIndex,
+    optionIndex: 2,
+  };
+}
+
+function chooseComputerPartnerBugTypeSuperfanOption(playerIndex: PlayerIndex): BugTypeSuperfanOptionIndex {
+  const data = getBugTypeSuperfanData();
+  const choice = chooseComputerPartnerBugTypeSuperfanChoice(playerIndex);
+  data.computerPartnerChoices = {
+    ...(data.computerPartnerChoices ?? {}),
+    [playerIndex]: choice,
+  };
+  return choice.optionIndex;
+}
+
+function queueComputerPartnerBugTypeSuperfanChoiceMessage(choice: BugTypeSuperfanChoice): void {
+  const profile = getComputerPartnerProfileForSuperfan(choice.playerIndex);
+  const optionLabel = i18next.t(`${namespace}:option.${choice.optionIndex}.label`);
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionLabel}.`, null, true);
+}
+
+function collectComputerPartnerBugTypeSuperfanChoice(playerIndex: PlayerIndex): Promise<boolean> {
+  const data = getBugTypeSuperfanData();
+  const choice = data.computerPartnerChoices?.[playerIndex] ?? chooseComputerPartnerBugTypeSuperfanChoice(playerIndex);
+  return storeBugTypeSuperfanChoice(choice, choice.optionIndex - 1);
+}
+
 async function storeBattleChoice(playerIndex: PlayerIndex): Promise<boolean> {
   const choice: BugTypeSuperfanChoice = {
     playerIndex,
@@ -359,7 +478,7 @@ async function storeBattleChoice(playerIndex: PlayerIndex): Promise<boolean> {
   return storeBugTypeSuperfanChoice(choice, 0);
 }
 
-function storeShowBugTypesChoice(playerIndex: PlayerIndex): boolean {
+function storeShowBugTypesChoice(playerIndex: PlayerIndex): Promise<boolean> {
   const choice: BugTypeSuperfanChoice = {
     playerIndex,
     optionIndex: 2,
@@ -438,7 +557,7 @@ function getShowBugTypesTextKey(numBugTypes: number): string {
 }
 
 function setShowBugTypesRewards(choice: BugTypeSuperfanChoice): void {
-  globalScene.waitForPlayerInput(choice.playerIndex);
+  globalScene.waitForPlayerInput(globalScene.isComputerPartnerPlayer(choice.playerIndex) ? 0 : choice.playerIndex);
 
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const numBugTypes = globalScene.getPlayerParty(choice.playerIndex).filter(p => p.isOfType(PokemonType.BUG)).length;
@@ -524,7 +643,7 @@ function setGiftBugItemRewards(choice: BugTypeSuperfanChoice): void {
     return;
   }
 
-  globalScene.waitForPlayerInput(choice.playerIndex);
+  globalScene.waitForPlayerInput(globalScene.isComputerPartnerPlayer(choice.playerIndex) ? 0 : choice.playerIndex);
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   encounter.setDialogueToken("selectedItem", choice.chosenModifier.type.name);
 
@@ -548,7 +667,7 @@ function setGiftBugItemRewards(choice: BugTypeSuperfanChoice): void {
 
 async function showBugTypeSuperfanSelectedDialogue(choice: BugTypeSuperfanChoice): Promise<void> {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
-  globalScene.waitForPlayerInput(choice.playerIndex);
+  globalScene.waitForPlayerInput(globalScene.isComputerPartnerPlayer(choice.playerIndex) ? 0 : choice.playerIndex);
 
   if (choice.optionIndex === 1) {
     await showEncounterDialogue(`${namespace}:option.1.selected`, `${namespace}:speaker`);
@@ -570,7 +689,7 @@ async function showBugTypeSuperfanSelectedDialogue(choice: BugTypeSuperfanChoice
   await showEncounterDialogue(`${namespace}:option.3.selectedDialogue`, `${namespace}:speaker`);
 }
 
-async function runTwoPlayerBugTypeSuperfanChoices(): Promise<boolean> {
+async function runMultiPlayerBugTypeSuperfanChoices(): Promise<boolean> {
   const choices = getBugTypeSuperfanData().choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
   const battleChoices = choices.filter(choice => choice.optionIndex === 1);
   const showChoices = choices.filter(choice => choice.optionIndex === 2);
@@ -624,6 +743,18 @@ function createBugTypeSuperfanBattleConfig(battleChoices: BugTypeSuperfanChoice[
     };
   }
 
+  if (battleChoices.length > 2) {
+    return {
+      trainerConfig,
+      partnerTrainerConfig: getTrainerConfigForWave(globalScene.currentBattle.waveIndex),
+      partnerTrainerConfig2: getTrainerConfigForWave(globalScene.currentBattle.waveIndex),
+      female: true,
+      partnerFemale: true,
+      partnerFemale2: true,
+      doubleBattle: true,
+    };
+  }
+
   return {
     trainerConfig,
     partnerTrainerConfig: getTrainerConfigForWave(globalScene.currentBattle.waveIndex),
@@ -647,14 +778,13 @@ function buildBattleOption(playerIndex: PlayerIndex): MysteryEncounterOption {
     })
     .withPreOptionPhase(async () => storeBattleChoice(playerIndex))
     .withOptionPhase(async () =>
-      globalScene.twoPlayerMode ? runTwoPlayerBugTypeSuperfanChoices() : runOnePlayerBattle(),
+      globalScene.twoPlayerMode ? runMultiPlayerBugTypeSuperfanChoices() : runOnePlayerBattle(),
     )
     .build();
 }
 
 function buildShowBugTypesOption(playerIndex: PlayerIndex): MysteryEncounterOption {
-  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT)
-    .withPrimaryPokemonRequirement(new PlayerBugTypeRequirement(playerIndex))
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
     .withDialogue({
       buttonLabel: `${namespace}:option.2.label`,
       buttonTooltip: `${namespace}:option.2.tooltip`,
@@ -664,7 +794,7 @@ function buildShowBugTypesOption(playerIndex: PlayerIndex): MysteryEncounterOpti
       globalScene.twoPlayerMode ? storeShowBugTypesChoice(playerIndex) : runOnePlayerShowBugTypesPreOption(),
     )
     .withOptionPhase(async () =>
-      globalScene.twoPlayerMode ? runTwoPlayerBugTypeSuperfanChoices() : leaveEncounterWithoutBattle(),
+      globalScene.twoPlayerMode ? runMultiPlayerBugTypeSuperfanChoices() : leaveEncounterWithoutBattle(),
     )
     .build();
 }
@@ -691,7 +821,7 @@ function buildGiftBugItemOption(playerIndex: PlayerIndex): MysteryEncounterOptio
       globalScene.twoPlayerMode ? storeGiftBugItemChoice(playerIndex) : runOnePlayerGiftBugItemPreOption(),
     )
     .withOptionPhase(async () =>
-      globalScene.twoPlayerMode ? runTwoPlayerBugTypeSuperfanChoices() : runOnePlayerGiftBugItem(),
+      globalScene.twoPlayerMode ? runMultiPlayerBugTypeSuperfanChoices() : runOnePlayerGiftBugItem(),
     )
     .build();
 }
@@ -1055,8 +1185,24 @@ function getTrainerConfigForWave(waveIndex: number) {
 function doBugTypeMoveTutor(playerIndex: PlayerIndex, moveOptions: PokemonMove[]): Promise<void> {
   // biome-ignore lint/suspicious/noAsyncPromiseExecutor: TODO explain
   return new Promise<void>(async resolve => {
-    globalScene.waitForPlayerInput(playerIndex);
+    globalScene.waitForPlayerInput(globalScene.isComputerPartnerPlayer(playerIndex) ? 0 : playerIndex);
     await showEncounterDialogue(`${namespace}:battleWon`, `${namespace}:speaker`);
+
+    if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+      const target = getBestComputerPartnerBugMoveTutorTarget(playerIndex, moveOptions);
+      if (target) {
+        globalScene.phaseManager.unshiftNew(
+          "LearnMovePhase",
+          target.pokemonIndex,
+          moveOptions[target.moveOptionIndex].moveId,
+          LearnMoveType.TM,
+          -1,
+          playerIndex,
+        );
+      }
+      resolve();
+      return;
+    }
 
     const moveInfoOverlay = new MoveInfoOverlay({
       delayVisibility: false,

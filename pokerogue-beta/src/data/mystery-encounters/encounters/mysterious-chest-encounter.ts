@@ -604,7 +604,7 @@ async function runOnePlayerChestOpen(): Promise<void> {
   await showEncounterText(`${namespace}:option.1.bad`);
 
   const allowedPokemon = globalScene.getPokemonAllowedInBattle();
-  if (allowedPokemon.length === 0) {
+  if (allowedPokemon.length === 0 && globalScene.areAllActivePlayersOutOfUsablePokemon()) {
     globalScene.phaseManager.clearPhaseQueue();
     globalScene.phaseManager.unshiftNew("GameOverPhase");
     return;
@@ -667,8 +667,10 @@ async function runMultiplayerMysteriousChestChoices(): Promise<boolean> {
     setEncounterRewards({ fillRemaining: true }, undefined, undefined, outcome.playerIndex);
   }
 
-  const fightingPlayers = [...new Set(trappedPlayers)] as PlayerIndex[];
-  if (fightingPlayers.some(playerIndex => globalScene.getPokemonAllowedInBattle(playerIndex).length === 0)) {
+  const fightingPlayers = ([...new Set(trappedPlayers)] as PlayerIndex[]).filter(
+    playerIndex => globalScene.getPokemonAllowedInBattle(playerIndex).length > 0,
+  );
+  if (trappedPlayers.length > 0 && globalScene.areAllActivePlayersOutOfUsablePokemon()) {
     globalScene.phaseManager.clearPhaseQueue();
     globalScene.phaseManager.unshiftNew("GameOverPhase");
     return true;
@@ -679,7 +681,7 @@ async function runMultiplayerMysteriousChestChoices(): Promise<boolean> {
     updateWindowType(playerIndex + 1);
   }
 
-  if (trappedPlayers.length === 0) {
+  if (trappedPlayers.length === 0 || fightingPlayers.length === 0) {
     for (const treasureReward of treasureRewards) {
       setEncounterRewards(
         {

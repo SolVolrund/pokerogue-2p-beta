@@ -1,5 +1,5 @@
 import { audioManager } from "#app/global-audio-manager";
-import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { modifierTypes } from "#data/data-lists";
@@ -18,13 +18,17 @@ import { MAX_POKEMON_TYPE } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { StatusEffect } from "#enums/status-effect";
 import { TrainerType } from "#enums/trainer-type";
-import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import type { PokemonHeldItemModifier } from "#modifiers/modifier";
 import { HiddenAbilityRateBoosterModifier, PokemonFormChangeItemModifier } from "#modifiers/modifier";
 import type { PokemonHeldItemModifierType } from "#modifiers/modifier-type";
 import { PokemonMove } from "#moves/pokemon-move";
 import { showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import type { EnemyPartyConfig, EnemyPokemonConfig } from "#mystery-encounters/encounter-phase-utils";
 import {
   generateModifierType,
@@ -48,6 +52,8 @@ import { TrainerPartyTemplate } from "#trainers/trainer-party-template";
 import type { HeldModifierConfig } from "#types/held-modifier-config";
 import { updateWindowType } from "#ui/ui-theme";
 import { NumberHolder, randSeedInt, randSeedShuffle } from "#utils/common";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import { getComputerPartnerTeamConfidence } from "#utils/computer-partner-team-confidence";
 import { getPokemonSpecies, getRandomRegularPokemonType } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -134,18 +140,14 @@ interface WeirdDreamChoice {
 
 interface WeirdDreamData {
   choices: WeirdDreamChoice[];
-  teamTransformationsByPlayer: Record<TwoPlayerIndex, PokemonTransformation[]>;
-  loadAssetsByPlayer: Record<TwoPlayerIndex, Promise<void>[]>;
+  teamTransformationsByPlayer: Record<PlayerIndex, PokemonTransformation[]>;
+  loadAssetsByPlayer: Record<PlayerIndex, Promise<void>[]>;
   skipSelectedDialogueOnce?: boolean;
 }
 
 class WeirdDreamSpawnRequirement extends EncounterSceneRequirement {
   override meetsRequirement(): boolean {
-    if (!globalScene.twoPlayerMode) {
-      return globalScene.getPlayerParty().length >= MIN_PARTY_SIZE_FOR_WEIRD_DREAM;
-    }
-
-    return ([0, 1] as PlayerIndex[]).every(
+    return getMysteryEncounterPlayerIndexes().every(
       playerIndex => globalScene.getPlayerParty(playerIndex).length >= MIN_PARTY_SIZE_FOR_WEIRD_DREAM,
     );
   }
@@ -153,6 +155,27 @@ class WeirdDreamSpawnRequirement extends EncounterSceneRequirement {
   override getDialogueToken(): [string, string] {
     return ["partySize", MIN_PARTY_SIZE_FOR_WEIRD_DREAM.toString()];
   }
+}
+
+function createWeirdDreamPlayerData(): Pick<
+  WeirdDreamData,
+  "teamTransformationsByPlayer" | "loadAssetsByPlayer"
+> {
+  const playerIndexes = getMysteryEncounterPlayerIndexes();
+  const teamTransformationsByPlayer = Object.fromEntries(
+    playerIndexes.map(playerIndex => [playerIndex, getTeamTransformations(playerIndex)]),
+  ) as Record<PlayerIndex, PokemonTransformation[]>;
+  const loadAssetsByPlayer = Object.fromEntries(
+    playerIndexes.map(playerIndex => [
+      playerIndex,
+      teamTransformationsByPlayer[playerIndex].map(t => (t.newPokemon as PlayerPokemon).loadAssets()),
+    ]),
+  ) as Record<PlayerIndex, Promise<void>[]>;
+
+  return {
+    teamTransformationsByPlayer,
+    loadAssetsByPlayer,
+  };
 }
 
 function getWeirdDreamData(): WeirdDreamData {
@@ -163,48 +186,54 @@ function getWeirdDreamData(): WeirdDreamData {
     || !encounter.misc.teamTransformationsByPlayer
     || !encounter.misc.loadAssetsByPlayer
   ) {
-    const teamTransformationsByPlayer = {
-      0: getTeamTransformations(0),
-      1: getTeamTransformations(1),
-    } satisfies Record<TwoPlayerIndex, PokemonTransformation[]>;
-
     encounter.misc = {
       ...(encounter.misc ?? {}),
       choices: [],
-      teamTransformationsByPlayer,
-      loadAssetsByPlayer: {
-        0: teamTransformationsByPlayer[0].map(t => (t.newPokemon as PlayerPokemon).loadAssets()),
-        1: teamTransformationsByPlayer[1].map(t => (t.newPokemon as PlayerPokemon).loadAssets()),
-      },
+      ...createWeirdDreamPlayerData(),
     } satisfies WeirdDreamData;
   }
 
   return encounter.misc as WeirdDreamData;
 }
 
-function showWeirdDreamPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
-
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: i18next.t(`${namespace}:query`),
-      overrideOptions: buildWeirdDreamPlayerOptions(playerIndex),
-      startingCursorIndex,
-    });
-  });
+function chooseComputerPartnerWeirdDreamOption(playerIndex: PlayerIndex): WeirdDreamOptionIndex {
+  const confidence = getComputerPartnerTeamConfidence(globalScene.getPlayerParty(playerIndex));
+  if (confidence.level === "high") {
+    return 2;
+  }
+  if (confidence.level === "medium" || confidence.level === "low") {
+    return 1;
+  }
+  return 3;
 }
 
-function storeWeirdDreamChoice(optionIndex: WeirdDreamOptionIndex, playerIndex: PlayerIndex): boolean {
-  if (!globalScene.twoPlayerMode) {
-    const data = getWeirdDreamData();
-    data.choices = [{ playerIndex, optionIndex }];
-    data.skipSelectedDialogueOnce = true;
-    return true;
-  }
+function queueComputerPartnerWeirdDreamChoiceMessage(
+  playerIndex: PlayerIndex,
+  optionIndex: WeirdDreamOptionIndex,
+): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const optionLabel = i18next.t(`${namespace}:option.${optionIndex}.label`);
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionLabel}.`, null, true);
+}
 
+async function promptNextWeirdDreamPlayer(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildWeirdDreamPlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerWeirdDreamOption,
+      onOptionChosen: (optionIndex, choicePlayerIndex) =>
+        storeWeirdDreamChoice(optionIndex as WeirdDreamOptionIndex, choicePlayerIndex),
+    },
+  });
+  return result ?? false;
+}
+
+async function storeWeirdDreamChoice(optionIndex: WeirdDreamOptionIndex, playerIndex: PlayerIndex): Promise<boolean> {
   globalScene.setActivePlayerIndex(playerIndex);
   updateWindowType(playerIndex + 1);
 
@@ -212,9 +241,15 @@ function storeWeirdDreamChoice(optionIndex: WeirdDreamOptionIndex, playerIndex: 
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
   data.choices.push({ playerIndex, optionIndex });
 
-  if (playerIndex === 0) {
-    showWeirdDreamPlayerMenu(1, optionIndex - 1);
-    return false;
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    queueComputerPartnerWeirdDreamChoiceMessage(playerIndex, optionIndex);
+  }
+
+  if (globalScene.twoPlayerMode) {
+    const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+    if (nextPlayerIndex != null) {
+      return promptNextWeirdDreamPlayer(nextPlayerIndex, optionIndex - 1);
+    }
   }
 
   globalScene.setActivePlayerIndex(0);
@@ -234,10 +269,6 @@ function healWeirdDreamPlayerParty(playerIndex: PlayerIndex): void {
   }
 }
 
-function getWeirdDreamTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
-  return playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
-}
-
 async function hideWeirdDreamNonBattleTrainers(battlePlayers: PlayerIndex[]): Promise<void> {
   if (!globalScene.twoPlayerMode) {
     return;
@@ -245,12 +276,12 @@ async function hideWeirdDreamNonBattleTrainers(battlePlayers: PlayerIndex[]): Pr
 
   const battlePlayerSet = new Set(battlePlayers);
   await Promise.all(
-    ([0, 1] as PlayerIndex[])
+    getMysteryEncounterPlayerIndexes()
       .filter(playerIndex => !battlePlayerSet.has(playerIndex))
       .map(
         playerIndex =>
           new Promise<void>(resolve => {
-            const trainerSprite = getWeirdDreamTrainerSprite(playerIndex);
+            const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
             globalScene.tweens.killTweensOf(trainerSprite);
 
             if (!trainerSprite.visible) {
@@ -277,14 +308,20 @@ function replacePlayerPartyWithTransformations(playerIndex: PlayerIndex, transfo
   updateWindowType(playerIndex + 1);
 
   for (const transformation of transformations) {
+    if (transformation.preservePokemon) {
+      continue;
+    }
+
     globalScene.removePokemonFromPlayerParty(transformation.previousPokemon, false);
     globalScene.getPlayerParty(playerIndex).push(transformation.newPokemon);
   }
 }
 
 async function showDreamTransformations(transformations: PokemonTransformation[]): Promise<void> {
-  if (transformations.length <= 3) {
-    for (const transformation of transformations) {
+  const visibleTransformations = transformations.filter(transformation => !transformation.preservePokemon);
+
+  if (visibleTransformations.length <= 3) {
+    for (const transformation of visibleTransformations) {
       await doPokemonTransformationSequence(
         transformation.previousPokemon,
         transformation.newPokemon,
@@ -294,7 +331,7 @@ async function showDreamTransformations(transformations: PokemonTransformation[]
     return;
   }
 
-  await doSideBySideTransformations(transformations);
+  await doSideBySideTransformations(visibleTransformations);
 }
 
 async function resolveDreamTransformChoice(playerIndex: PlayerIndex): Promise<void> {
@@ -397,13 +434,15 @@ async function createDreamEnemyPokemonConfigs(playerIndexes: PlayerIndex[]): Pro
       const newPokemon = transformation.newPokemon;
       const previousPokemon = transformation.previousPokemon;
 
-      await postProcessTransformedPokemon(
-        previousPokemon,
-        newPokemon,
-        newPokemon.species.getRootSpeciesId(),
-        playerIndex,
-        true,
-      );
+      if (!transformation.preservePokemon) {
+        await postProcessTransformedPokemon(
+          previousPokemon,
+          newPokemon,
+          newPokemon.species.getRootSpeciesId(),
+          playerIndex,
+          true,
+        );
+      }
 
       const dataSource = new PokemonData(newPokemon);
       dataSource.player = false;
@@ -416,7 +455,7 @@ async function createDreamEnemyPokemonConfigs(playerIndexes: PlayerIndex[]): Pro
           isTransferable: false,
         });
       }
-      if (shouldGetOldGateau(newPokemon)) {
+      if (!transformation.preservePokemon && shouldGetOldGateau(newPokemon)) {
         newPokemonHeldItemConfigs.push({
           modifier: generateModifierType(modifierTypes.MYSTERY_ENCOUNTER_OLD_GATEAU) as PokemonHeldItemModifierType,
           stackCount: 1,
@@ -448,23 +487,19 @@ function getAlternateTrainerConfig(playerIndex: PlayerIndex, partySize: number) 
 
 async function createDreamEnemyPartyConfig(playerIndexes: PlayerIndex[]): Promise<EnemyPartyConfig> {
   const enemyPokemonConfigs = await createDreamEnemyPokemonConfigs(playerIndexes);
-  const firstPlayerIndex = playerIndexes[0];
-  const secondPlayerIndex = playerIndexes[1];
-  const firstGender = globalScene.getTrainerGender(firstPlayerIndex);
-  const enemyPartyConfig: EnemyPartyConfig = {
-    trainerConfig: getAlternateTrainerConfig(firstPlayerIndex, enemyPokemonConfigs.length),
+  const configs = playerIndexes.map(playerIndex => getAlternateTrainerConfig(playerIndex, enemyPokemonConfigs.length));
+  const trainerGenders = playerIndexes.map(playerIndex => globalScene.getTrainerGender(playerIndex));
+
+  return {
+    trainerConfig: configs[0],
+    partnerTrainerConfig: configs[1],
+    partnerTrainerConfig2: configs[2],
     pokemonConfigs: enemyPokemonConfigs,
-    female: firstGender === PlayerGender.FEMALE,
+    female: trainerGenders[0] === PlayerGender.FEMALE,
+    partnerFemale: trainerGenders[1] === PlayerGender.FEMALE,
+    partnerFemale2: trainerGenders[2] === PlayerGender.FEMALE,
     doubleBattle: playerIndexes.length > 1,
   };
-
-  if (secondPlayerIndex !== undefined) {
-    const secondGender = globalScene.getTrainerGender(secondPlayerIndex);
-    enemyPartyConfig.partnerTrainerConfig = getAlternateTrainerConfig(secondPlayerIndex, enemyPokemonConfigs.length);
-    enemyPartyConfig.partnerFemale = secondGender === PlayerGender.FEMALE;
-  }
-
-  return enemyPartyConfig;
 }
 
 async function runWeirdDreamChoices(): Promise<boolean> {
@@ -597,18 +632,9 @@ export const WeirdDreamEncounter: MysteryEncounter = MysteryEncounterBuilder.wit
   .withDescription(`${namespace}:description`)
   .withQuery(`${namespace}:query`)
   .withOnInit(() => {
-    const teamTransformationsByPlayer = {
-      0: getTeamTransformations(0),
-      1: getTeamTransformations(1),
-    } satisfies Record<TwoPlayerIndex, PokemonTransformation[]>;
-
     globalScene.currentBattle.mysteryEncounter!.misc = {
       choices: [],
-      teamTransformationsByPlayer,
-      loadAssetsByPlayer: {
-        0: teamTransformationsByPlayer[0].map(t => (t.newPokemon as PlayerPokemon).loadAssets()),
-        1: teamTransformationsByPlayer[1].map(t => (t.newPokemon as PlayerPokemon).loadAssets()),
-      },
+      ...createWeirdDreamPlayerData(),
     } satisfies WeirdDreamData;
 
     return true;
@@ -627,6 +653,7 @@ interface PokemonTransformation {
   newSpecies: PokemonSpecies;
   newPokemon: PlayerPokemon;
   heldItems: PokemonHeldItemModifier[];
+  preservePokemon?: boolean;
 }
 
 function getTeamTransformations(playerIndex: PlayerIndex = globalScene.activePlayerIndex): PokemonTransformation[] {
@@ -654,6 +681,14 @@ function getTeamTransformations(playerIndex: PlayerIndex = globalScene.activePla
     pokemonTransformations[index].heldItems = removed
       .getHeldItems()
       .filter(m => !(m instanceof PokemonFormChangeItemModifier));
+
+    if (globalScene.isComputerPartnerPlayer(playerIndex) && removed.computerPartnerAce) {
+      pokemonTransformations[index].newSpecies = removed.species;
+      pokemonTransformations[index].newPokemon = removed;
+      pokemonTransformations[index].preservePokemon = true;
+      alreadyUsedSpecies.push(removed.species);
+      continue;
+    }
 
     const bst = removed.getSpeciesForm().getBaseStatTotal();
     let newBstRange: [number, number];
@@ -685,6 +720,10 @@ function getTeamTransformations(playerIndex: PlayerIndex = globalScene.activePla
   }
 
   for (const transformation of pokemonTransformations) {
+    if (transformation.preservePokemon) {
+      continue;
+    }
+
     const newAbilityIndex = randSeedInt(transformation.newSpecies.getAbilityCount());
     transformation.newPokemon = globalScene.addPlayerPokemon(
       transformation.newSpecies,
@@ -714,17 +753,22 @@ async function doNewTeamPostProcess(
     const newPokemon = transformation.newPokemon;
     const speciesRootForm = newPokemon.species.getRootSpeciesId();
 
-    if (await postProcessTransformedPokemon(previousPokemon, newPokemon, speciesRootForm, playerIndex)) {
+    if (
+      !transformation.preservePokemon
+      && (await postProcessTransformedPokemon(previousPokemon, newPokemon, speciesRootForm, playerIndex))
+    ) {
       atLeastOneNewStarter = true;
     }
 
     // Copy old items to new pokemon
-    for (const item of transformation.heldItems) {
-      item.pokemonId = newPokemon.id;
-      globalScene.addModifier(item, false, false, false, true, undefined, playerIndex);
+    if (!transformation.preservePokemon) {
+      for (const item of transformation.heldItems) {
+        item.pokemonId = newPokemon.id;
+        globalScene.addModifier(item, false, false, false, true, undefined, playerIndex);
+      }
     }
     // Any pokemon that is below 570 BST gets +20 permanent BST to 3 stats
-    if (shouldGetOldGateau(newPokemon)) {
+    if (!transformation.preservePokemon && shouldGetOldGateau(newPokemon)) {
       const modType = modifierTypes.MYSTERY_ENCOUNTER_OLD_GATEAU();
       const modifier = modType.withIdFromFunc(modifierTypes.MYSTERY_ENCOUNTER_OLD_GATEAU).newModifier(newPokemon);
       if (modifier) {
