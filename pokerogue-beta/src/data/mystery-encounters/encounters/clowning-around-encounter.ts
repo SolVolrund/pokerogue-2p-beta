@@ -2,6 +2,7 @@ import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { EncounterBattleAnim } from "#data/battle-anims";
+import { getTypeDamageMultiplier } from "#data/type";
 import { allAbilities, modifierTypes } from "#data/data-lists";
 import { CustomPokemonData } from "#data/pokemon-data";
 import { AbilityId } from "#enums/ability-id";
@@ -9,6 +10,7 @@ import { BattlerIndex } from "#enums/battler-index";
 import { BerryType } from "#enums/berry-type";
 import { Challenges } from "#enums/challenges";
 import { EncounterAnim } from "#enums/encounter-anims";
+import { FieldPosition } from "#enums/field-position";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import { ModifierTier } from "#enums/modifier-tier";
 import { MoveCategory } from "#enums/move-category";
@@ -18,7 +20,7 @@ import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { PartyMemberStrength } from "#enums/party-member-strength";
-import type { RegularPokemonType } from "#enums/pokemon-type";
+import { PokemonType, type RegularPokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { TrainerType } from "#enums/trainer-type";
 import { UiMode } from "#enums/ui-mode";
@@ -27,7 +29,7 @@ import { BerryModifier } from "#modifiers/modifier";
 import type { PokemonHeldItemModifierType } from "#modifiers/modifier-type";
 import { PokemonMove } from "#moves/pokemon-move";
 import { showEncounterDialogue, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
-import type { EnemyPartyConfig } from "#mystery-encounters/encounter-phase-utils";
+import type { EnemyPartyConfig, EnemyPokemonConfig } from "#mystery-encounters/encounter-phase-utils";
 import {
   generateModifierType,
   initBattleWithEnemyConfig,
@@ -37,6 +39,11 @@ import {
   setEncounterRewards,
   transitionMysteryEncounterIntroVisuals,
 } from "#mystery-encounters/encounter-phase-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import {
   applyAbilityOverrideToPokemon,
   applyModifierTypeToPlayerPokemon,
@@ -48,7 +55,10 @@ import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encou
 import { trainerConfigs } from "#trainers/trainer-config";
 import { TrainerPartyCompoundTemplate, TrainerPartyTemplate } from "#trainers/trainer-party-template";
 import type { OptionSelectConfig } from "#ui/abstract-option-select-ui-handler";
+import { updateWindowType } from "#ui/ui-theme";
 import { randSeedInt, randSeedShuffle } from "#utils/common";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import { getComputerPartnerTeamConfidence } from "#utils/computer-partner-team-confidence";
 import { getPokemonSpecies, getRandomRegularPokemonType } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -101,22 +111,41 @@ function getClowningAroundData(): ClowningAroundData {
   return encounter.misc as ClowningAroundData;
 }
 
-function showClowningAroundPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.waitForPlayerInput(playerIndex);
-
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: i18next.t(`${namespace}:query`),
-      overrideOptions: buildClowningAroundPlayerOptions(playerIndex),
-      startingCursorIndex,
-    });
-  });
+function chooseComputerPartnerClowningAroundOption(playerIndex: PlayerIndex): ClowningAroundOptionIndex {
+  const confidence = getComputerPartnerTeamConfidence(globalScene.getPlayerParty(playerIndex));
+  if (confidence.level === "medium" || confidence.level === "high") {
+    return 1;
+  }
+  if (confidence.level === "low") {
+    return 3;
+  }
+  return 2;
 }
 
-function getClowningAroundTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
-  return playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+function queueComputerPartnerClowningAroundChoiceMessage(
+  playerIndex: PlayerIndex,
+  optionIndex: ClowningAroundOptionIndex,
+): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const optionLabel = i18next.t(`${namespace}:option.${optionIndex}.label`);
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionLabel}.`, null, true);
+}
+
+async function promptNextClowningAroundPlayer(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildClowningAroundPlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerClowningAroundOption,
+      onOptionChosen: (optionIndex, choicePlayerIndex) =>
+        storeClowningAroundChoice(optionIndex as ClowningAroundOptionIndex, choicePlayerIndex),
+    },
+  });
+  return result ?? false;
 }
 
 async function hideClowningAroundNonBattleTrainers(battlePlayers: PlayerIndex[]): Promise<void> {
@@ -126,12 +155,12 @@ async function hideClowningAroundNonBattleTrainers(battlePlayers: PlayerIndex[])
 
   const battlePlayerSet = new Set(battlePlayers);
   await Promise.all(
-    ([0, 1] as PlayerIndex[])
+    getMysteryEncounterPlayerIndexes()
       .filter(playerIndex => !battlePlayerSet.has(playerIndex))
       .map(
         playerIndex =>
           new Promise<void>(resolve => {
-            const trainerSprite = getClowningAroundTrainerSprite(playerIndex);
+            const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
             globalScene.tweens.killTweensOf(trainerSprite);
 
             if (!trainerSprite.visible) {
@@ -153,24 +182,33 @@ async function hideClowningAroundNonBattleTrainers(battlePlayers: PlayerIndex[])
   );
 }
 
-function storeClowningAroundChoice(optionIndex: ClowningAroundOptionIndex, playerIndex: PlayerIndex): boolean {
+async function storeClowningAroundChoice(
+  optionIndex: ClowningAroundOptionIndex,
+  playerIndex: PlayerIndex,
+): Promise<boolean> {
   if (!globalScene.twoPlayerMode) {
     return true;
   }
 
-  globalScene.waitForPlayerInput(playerIndex);
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
 
   const data = getClowningAroundData();
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
   data.choices.push({ playerIndex, optionIndex });
 
-  if (playerIndex === 0) {
-    showClowningAroundPlayerMenu(1, optionIndex - 1);
-    return false;
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    queueComputerPartnerClowningAroundChoiceMessage(playerIndex, optionIndex);
+  }
+
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+  if (nextPlayerIndex != null) {
+    return promptNextClowningAroundPlayer(nextPlayerIndex, optionIndex - 1);
   }
 
   data.skipSelectedDialogueOnce = true;
-  globalScene.waitForPlayerInput(0);
+  globalScene.setActivePlayerIndex(0);
+  updateWindowType(1);
   return true;
 }
 
@@ -266,42 +304,203 @@ function applyClowningAroundTypeShuffle(playerIndex: PlayerIndex): void {
   }
 }
 
+function getPartyTypes(pokemon: PlayerPokemon): PokemonType[] {
+  return pokemon.getTypes({
+    includeTeraType: false,
+    bypassSummonData: true,
+    ignoreThirdType: true,
+  });
+}
+
+function hasPokemonType(pokemon: PlayerPokemon, type: PokemonType): boolean {
+  return getPartyTypes(pokemon).includes(type);
+}
+
+function isWeakToType(pokemon: PlayerPokemon, attackType: PokemonType): boolean {
+  return getPartyTypes(pokemon).reduce((multiplier, type) => multiplier * getTypeDamageMultiplier(attackType, type), 1) > 1;
+}
+
+function offensiveScore(pokemon: PlayerPokemon): number {
+  return Math.max(pokemon.getStat(Stat.ATK), pokemon.getStat(Stat.SPATK));
+}
+
+function bulkScore(pokemon: PlayerPokemon): number {
+  return pokemon.getStat(Stat.HP) + pokemon.getStat(Stat.DEF) + pokemon.getStat(Stat.SPDEF);
+}
+
+function getComputerPartnerAcePokemon(party: PlayerPokemon[]): PlayerPokemon | undefined {
+  return party.find(pokemon => pokemon.computerPartnerAce) ?? party[0];
+}
+
+function getHighestScoringPokemon(
+  party: PlayerPokemon[],
+  scorePokemon: (pokemon: PlayerPokemon) => number,
+): PlayerPokemon | undefined {
+  return party.toSorted((pokemon1, pokemon2) => scorePokemon(pokemon2) - scorePokemon(pokemon1))[0];
+}
+
+function getLowestScoringPokemon(
+  party: PlayerPokemon[],
+  scorePokemon: (pokemon: PlayerPokemon) => number,
+): PlayerPokemon | undefined {
+  return party.toSorted((pokemon1, pokemon2) => scorePokemon(pokemon1) - scorePokemon(pokemon2))[0];
+}
+
+function getBestTypedPokemon(
+  party: PlayerPokemon[],
+  type: PokemonType,
+  scorePokemon: (pokemon: PlayerPokemon) => number = offensiveScore,
+): PlayerPokemon | undefined {
+  return getHighestScoringPokemon(party.filter(pokemon => hasPokemonType(pokemon, type)), scorePokemon);
+}
+
+function hasSheerForceMove(pokemon: PlayerPokemon): boolean {
+  return pokemon.moveset.some(pokemonMove => {
+    const move = pokemonMove?.getMove();
+    return !!move && move.category !== MoveCategory.STATUS && move.power > 0 && move.chance > 0;
+  });
+}
+
+function sheerForceScore(pokemon: PlayerPokemon): number {
+  return pokemon.moveset.reduce((total, pokemonMove) => {
+    const move = pokemonMove?.getMove();
+    return total + (move && move.category !== MoveCategory.STATUS && move.power > 0 && move.chance > 0 ? move.power : 0);
+  }, 0);
+}
+
+function hasPranksterMove(pokemon: PlayerPokemon): boolean {
+  return pokemon.moveset.some(pokemonMove => pokemonMove?.getMove().category === MoveCategory.STATUS);
+}
+
+function chooseComputerPartnerAbilityPokemon(playerIndex: PlayerIndex): PlayerPokemon | undefined {
+  const party = globalScene.getPlayerParty(playerIndex);
+  const ability = getClowningAroundData().ability;
+  const acePokemon = getComputerPartnerAcePokemon(party);
+
+  switch (ability) {
+    case AbilityId.STURDY:
+      return party.toSorted(
+        (pokemon1, pokemon2) =>
+          pokemon1.getStat(Stat.HP) - pokemon2.getStat(Stat.HP)
+          || pokemon2.getStat(Stat.SPD) - pokemon1.getStat(Stat.SPD),
+      )[0];
+    case AbilityId.PICKUP:
+    case AbilityId.MAGICIAN:
+      return getComputerPartnerAcePokemon(party);
+    case AbilityId.INTIMIDATE:
+      return getLowestScoringPokemon(party, pokemon => pokemon.getStat(Stat.DEF));
+    case AbilityId.GUTS:
+      return getHighestScoringPokemon(
+        party.filter(pokemon => pokemon !== acePokemon),
+        pokemon => pokemon.getStat(Stat.ATK),
+      );
+    case AbilityId.DROUGHT:
+      return (
+        getBestTypedPokemon(party, PokemonType.FIRE)
+        ?? getHighestScoringPokemon(party.filter(pokemon => isWeakToType(pokemon, PokemonType.WATER)), offensiveScore)
+      );
+    case AbilityId.DRIZZLE:
+      return (
+        getBestTypedPokemon(party, PokemonType.WATER)
+        ?? getHighestScoringPokemon(party.filter(pokemon => isWeakToType(pokemon, PokemonType.FIRE)), offensiveScore)
+      );
+    case AbilityId.SNOW_WARNING:
+      return getLowestScoringPokemon(
+        party.filter(pokemon => hasPokemonType(pokemon, PokemonType.ICE)),
+        pokemon => pokemon.getStat(Stat.DEF),
+      );
+    case AbilityId.SAND_STREAM:
+      return (
+        getLowestScoringPokemon(
+          party.filter(pokemon => hasPokemonType(pokemon, PokemonType.ROCK)),
+          pokemon => pokemon.getStat(Stat.SPDEF),
+        )
+        ?? getHighestScoringPokemon(party.filter(pokemon => hasPokemonType(pokemon, PokemonType.GROUND)), bulkScore)
+      );
+    case AbilityId.ELECTRIC_SURGE:
+      return getBestTypedPokemon(party, PokemonType.ELECTRIC);
+    case AbilityId.PSYCHIC_SURGE:
+      return getBestTypedPokemon(party, PokemonType.PSYCHIC);
+    case AbilityId.GRASSY_SURGE:
+      return getBestTypedPokemon(party, PokemonType.GRASS, bulkScore) ?? getHighestScoringPokemon(party, bulkScore);
+    case AbilityId.MISTY_SURGE:
+      return getBestTypedPokemon(party, PokemonType.FAIRY) ?? getHighestScoringPokemon(party, bulkScore);
+    case AbilityId.SHEER_FORCE:
+      return getHighestScoringPokemon(party.filter(hasSheerForceMove), sheerForceScore);
+    case AbilityId.PRANKSTER:
+      return getHighestScoringPokemon(party.filter(hasPranksterMove), pokemon => pokemon.getStat(Stat.SPD));
+  }
+}
+
 function queueClowningAroundStartOfBattleEffects(battlePlayers: PlayerIndex[]): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const blacephalonBattlerIndex = battlePlayers.length > 2 ? BattlerIndex.ENEMY_3 : BattlerIndex.ENEMY_2;
   encounter.startOfBattleEffects.push(
     {
       sourceBattlerIndex: BattlerIndex.ENEMY,
-      targets: [BattlerIndex.ENEMY_2],
+      targets: [blacephalonBattlerIndex],
       move: new PokemonMove(MoveId.ROLE_PLAY),
       useMode: MoveUseMode.IGNORE_PP,
     },
     {
-      sourceBattlerIndex: BattlerIndex.ENEMY_2,
+      sourceBattlerIndex: blacephalonBattlerIndex,
       targets: [BattlerIndex.PLAYER],
       move: new PokemonMove(MoveId.TAUNT),
       useMode: MoveUseMode.IGNORE_PP,
     },
-    ...(!globalScene.twoPlayerMode || battlePlayers.length > 1
-      ? [
-          {
-            sourceBattlerIndex: BattlerIndex.ENEMY_2,
-            targets: [BattlerIndex.PLAYER_2],
-            move: new PokemonMove(MoveId.TAUNT),
-            useMode: MoveUseMode.IGNORE_PP,
-          },
-        ]
-      : []),
+    ...battlePlayers.slice(1).map((_playerIndex, fieldIndex) => ({
+      sourceBattlerIndex: blacephalonBattlerIndex,
+      targets: [globalScene.getPlayerBattlerIndex(fieldIndex + 1)],
+      move: new PokemonMove(MoveId.TAUNT),
+      useMode: MoveUseMode.IGNORE_PP,
+    })),
   );
 }
 
-async function runTwoPlayerClowningAroundChoices(): Promise<boolean> {
+function createMrMimeEnemyConfig(): EnemyPokemonConfig {
+  return {
+    species: getPokemonSpecies(SpeciesId.MR_MIME),
+    isBoss: true,
+    moveSet: [MoveId.TEETER_DANCE, MoveId.ALLY_SWITCH, MoveId.DAZZLING_GLEAM, MoveId.PSYCHIC],
+  };
+}
+
+function createClowningAroundBattleConfig(battlePlayers: PlayerIndex[]): EnemyPartyConfig {
+  const config = globalScene.currentBattle.mysteryEncounter!.enemyPartyConfigs[0];
+  if (battlePlayers.length <= 2) {
+    return config;
+  }
+
+  const [firstMrMimeConfig, blacephalonConfig] = config.pokemonConfigs ?? [];
+  if (!firstMrMimeConfig || !blacephalonConfig) {
+    return config;
+  }
+
+  return {
+    ...config,
+    pokemonConfigs: [
+      firstMrMimeConfig,
+      {
+        ...createMrMimeEnemyConfig(),
+        fieldPosition: FieldPosition.RIGHT,
+      },
+      {
+        ...blacephalonConfig,
+        fieldPosition: FieldPosition.CENTER,
+      },
+    ],
+  };
+}
+
+async function runMultiplayerClowningAroundChoices(): Promise<boolean> {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const data = getClowningAroundData();
   const choices = data.choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
   const battlePlayers: PlayerIndex[] = [];
 
   for (const choice of choices) {
-    globalScene.waitForPlayerInput(choice.playerIndex);
+    globalScene.setActivePlayerIndex(choice.playerIndex);
+    updateWindowType(choice.playerIndex + 1);
     await showEncounterDialogue(`${namespace}:option.${choice.optionIndex}.selected`, `${namespace}:speaker`);
 
     if (choice.optionIndex === 1) {
@@ -333,7 +532,7 @@ async function runTwoPlayerClowningAroundChoices(): Promise<boolean> {
   queueClowningAroundStartOfBattleEffects(battlePlayers);
   await transitionMysteryEncounterIntroVisuals();
   await hideClowningAroundNonBattleTrainers(battlePlayers);
-  await initBattleWithEnemyConfig(encounter.enemyPartyConfigs[0]);
+  await initBattleWithEnemyConfig(createClowningAroundBattleConfig(battlePlayers));
   return true;
 }
 
@@ -344,7 +543,7 @@ async function runOnePlayerClowningAroundBattle(): Promise<void> {
   queueClowningAroundStartOfBattleEffects([globalScene.activePlayerIndex]);
 
   await transitionMysteryEncounterIntroVisuals();
-  await initBattleWithEnemyConfig(encounter.enemyPartyConfigs[0]);
+  await initBattleWithEnemyConfig(createClowningAroundBattleConfig([globalScene.activePlayerIndex]));
 }
 
 function buildClowningAroundBattleOption(playerIndex: PlayerIndex): MysteryEncounterOption {
@@ -361,7 +560,7 @@ function buildClowningAroundBattleOption(playerIndex: PlayerIndex): MysteryEncou
     })
     .withPreOptionPhase(async () => storeClowningAroundChoice(1, playerIndex))
     .withOptionPhase(async () =>
-      globalScene.twoPlayerMode ? runTwoPlayerClowningAroundChoices() : runOnePlayerClowningAroundBattle(),
+      globalScene.twoPlayerMode ? runMultiplayerClowningAroundChoices() : runOnePlayerClowningAroundBattle(),
     )
     .withPostOptionPhase(runClowningAroundPostOptionPhase)
     .build();
@@ -395,7 +594,7 @@ function buildClowningAroundItemShuffleOption(playerIndex: PlayerIndex): Mystery
       return true;
     })
     .withOptionPhase(async () =>
-      globalScene.twoPlayerMode ? runTwoPlayerClowningAroundChoices() : leaveEncounterWithoutBattle(true),
+      globalScene.twoPlayerMode ? runMultiplayerClowningAroundChoices() : leaveEncounterWithoutBattle(true),
     )
     .withPostOptionPhase(runClowningAroundPostOptionPhase)
     .build();
@@ -429,7 +628,7 @@ function buildClowningAroundTypeShuffleOption(playerIndex: PlayerIndex): Mystery
       return true;
     })
     .withOptionPhase(async () =>
-      globalScene.twoPlayerMode ? runTwoPlayerClowningAroundChoices() : leaveEncounterWithoutBattle(true),
+      globalScene.twoPlayerMode ? runMultiplayerClowningAroundChoices() : leaveEncounterWithoutBattle(true),
     )
     .withPostOptionPhase(runClowningAroundPostOptionPhase)
     .build();
@@ -528,11 +727,7 @@ export const ClowningAroundEncounter: MysteryEncounter = MysteryEncounterBuilder
       trainerConfig: clownConfig,
       pokemonConfigs: [
         // Overrides first 2 pokemon to be Mr. Mime and Blacephalon
-        {
-          species: getPokemonSpecies(SpeciesId.MR_MIME),
-          isBoss: true,
-          moveSet: [MoveId.TEETER_DANCE, MoveId.ALLY_SWITCH, MoveId.DAZZLING_GLEAM, MoveId.PSYCHIC],
-        },
+        createMrMimeEnemyConfig(),
         {
           // Blacephalon has the random ability from pool, and 2 entirely random types to fit with the theme of the encounter
           species: getPokemonSpecies(SpeciesId.BLACEPHALON),
@@ -605,6 +800,10 @@ async function runClowningAroundPostOptionPhase(): Promise<boolean> {
 }
 
 async function handleSwapAbility(playerIndex: PlayerIndex) {
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    return handleComputerPartnerSwapAbility(playerIndex);
+  }
+
   // biome-ignore lint/suspicious/noAsyncPromiseExecutor: TODO: Consider refactoring to avoid async promise executor
   return new Promise<boolean>(async resolve => {
     globalScene.waitForPlayerInput(playerIndex);
@@ -615,6 +814,22 @@ async function handleSwapAbility(playerIndex: PlayerIndex) {
       displayYesNoOptions(resolve, playerIndex);
     });
   });
+}
+
+async function handleComputerPartnerSwapAbility(playerIndex: PlayerIndex): Promise<boolean> {
+  globalScene.waitForPlayerInput(0);
+  await showEncounterDialogue(`${namespace}:option.1.applyAbilityDialogue`, `${namespace}:speaker`);
+
+  const chosenPokemon = chooseComputerPartnerAbilityPokemon(playerIndex);
+  if (!chosenPokemon) {
+    const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+    globalScene.phaseManager.queueMessage(`${profile.name}: Passed on ${allAbilities[getClowningAroundData().ability].name}.`, null, true);
+    return false;
+  }
+
+  applyAbilityOverrideToPokemon(chosenPokemon, getClowningAroundData().ability);
+  globalScene.currentBattle.mysteryEncounter!.setDialogueToken("chosenPokemon", chosenPokemon.getNameToRender());
+  return true;
 }
 
 function displayYesNoOptions(resolve: (value: boolean) => void, playerIndex: PlayerIndex) {

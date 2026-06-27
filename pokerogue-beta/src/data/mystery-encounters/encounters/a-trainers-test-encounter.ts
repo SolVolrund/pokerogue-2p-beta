@@ -1,5 +1,5 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
-import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { modifierTypes } from "#data/data-lists";
 import type { IEggOptions } from "#data/egg";
@@ -11,7 +11,6 @@ import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { SpeciesId } from "#enums/species-id";
 import { TrainerType } from "#enums/trainer-type";
-import { UiMode } from "#enums/ui-mode";
 import type { EnemyPartyConfig } from "#mystery-encounters/encounter-phase-utils";
 import {
   initBattleWithEnemyConfig,
@@ -21,13 +20,21 @@ import {
 } from "#mystery-encounters/encounter-phase-utils";
 import { getSpriteKeysFromSpecies } from "#mystery-encounters/encounter-pokemon-utils";
 import { showEncounterDialogue, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import type { TrainerConfig } from "#trainers/trainer-config";
 import { trainerConfigs } from "#trainers/trainer-config";
+import { updateWindowType } from "#ui/ui-theme";
 import { randSeedInt } from "#utils/common";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import { getComputerPartnerTeamConfidence } from "#utils/computer-partner-team-confidence";
 import i18next from "i18next";
 
 /** the i18n namespace for the encounter */
@@ -48,7 +55,7 @@ interface ATrainersTestChoice {
 
 interface ATrainersTestData {
   choices: ATrainersTestChoice[];
-  trainerInfos: Record<TwoPlayerIndex, StatTrainerInfo>;
+  trainerInfos: Partial<Record<PlayerIndex, StatTrainerInfo>>;
   skipSelectedDialogueOnce?: boolean;
 }
 
@@ -85,13 +92,19 @@ function rollStatTrainer(excludedTrainerTypes: TrainerType[] = []): StatTrainerI
   return candidates[randSeedInt(candidates.length)];
 }
 
-function rollTrainerInfos(): Record<TwoPlayerIndex, StatTrainerInfo> {
-  const firstTrainer = rollStatTrainer();
-  const secondTrainer = rollStatTrainer([firstTrainer.trainerType]);
-  return {
-    0: firstTrainer,
-    1: secondTrainer,
-  };
+function rollTrainerInfos(
+  playerIndexes: PlayerIndex[] = getMysteryEncounterPlayerIndexes(),
+): Partial<Record<PlayerIndex, StatTrainerInfo>> {
+  const trainerInfos: Partial<Record<PlayerIndex, StatTrainerInfo>> = {};
+  const excludedTrainerTypes: TrainerType[] = [];
+
+  for (const playerIndex of playerIndexes) {
+    const trainerInfo = rollStatTrainer(excludedTrainerTypes);
+    trainerInfos[playerIndex] = trainerInfo;
+    excludedTrainerTypes.push(trainerInfo.trainerType);
+  }
+
+  return trainerInfos;
 }
 
 function getATrainersTestData(): ATrainersTestData {
@@ -128,6 +141,19 @@ function getTrainerConfig(info: StatTrainerInfo): TrainerConfig {
   return trainerConfigs[info.trainerType].clone();
 }
 
+function getTrainerInfoForPlayer(playerIndex: PlayerIndex): StatTrainerInfo {
+  const data = getATrainersTestData();
+  return data.trainerInfos[playerIndex] ?? data.trainerInfos[0]!;
+}
+
+function formatTrainerNameList(trainerNames: string[]): string {
+  if (trainerNames.length <= 2) {
+    return trainerNames.join(" and ");
+  }
+
+  return `${trainerNames.slice(0, -1).join(", ")} and ${trainerNames.at(-1)}`;
+}
+
 function setSinglePlayerTrainerDialogue(info: StatTrainerInfo): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   encounter.dialogue.intro = [
@@ -157,27 +183,29 @@ function setSinglePlayerTrainerDialogue(info: StatTrainerInfo): void {
   };
 }
 
-function setTwoPlayerTrainerDialogue(trainerInfos: Record<TwoPlayerIndex, StatTrainerInfo>): void {
+function setMultiPlayerTrainerDialogue(
+  playerIndexes: PlayerIndex[],
+  trainerInfos: Partial<Record<PlayerIndex, StatTrainerInfo>>,
+): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
-  encounter.dialogue.intro = ([0, 1] as PlayerIndex[]).map(playerIndex => {
-    const info = trainerInfos[playerIndex];
+  encounter.dialogue.intro = playerIndexes.map(playerIndex => {
+    const info = trainerInfos[playerIndex]!;
     return {
       speaker: `trainerNames:${info.trainerNameKey}`,
       text: `${namespace}:${info.trainerNameKey}.introDialogue`,
     };
   });
   encounter.dialogue.outro = [];
-  encounter.setDialogueToken(
-    "statTrainerName",
-    ([0, 1] as PlayerIndex[]).map(playerIndex => getTrainerDisplayName(trainerInfos[playerIndex])).join(" and "),
-  );
+  const trainerNames = playerIndexes.map(playerIndex => getTrainerDisplayName(trainerInfos[playerIndex]!));
+  encounter.setDialogueToken("statTrainerName", formatTrainerNameList(trainerNames));
 }
 
 function buildIntroSpriteConfigs(trainerInfos: StatTrainerInfo[]) {
   return trainerInfos.flatMap((info, index) => {
     const spriteKeys = getSpriteKeysFromSpecies(info.partnerSpecies);
     const trainerSpriteKey = getTrainerConfig(info).getSpriteKey();
-    const xOffset = trainerInfos.length > 1 ? (index === 0 ? -34 : 32) : 0;
+    const xOffsets = trainerInfos.length === 1 ? [0] : trainerInfos.length === 2 ? [-34, 32] : [-58, 0, 58];
+    const xOffset = xOffsets[index] ?? 0;
 
     return [
       {
@@ -203,22 +231,35 @@ function buildIntroSpriteConfigs(trainerInfos: StatTrainerInfo[]) {
   });
 }
 
-function showATrainersTestPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.waitForPlayerInput(playerIndex);
-
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: i18next.t(`${namespace}:query`),
-      overrideOptions: buildATrainersTestPlayerOptions(playerIndex),
-      startingCursorIndex,
-    });
-  });
+function chooseComputerPartnerATrainersTestOption(playerIndex: PlayerIndex): ATrainersTestOptionIndex {
+  const confidence = getComputerPartnerTeamConfidence(globalScene.getPlayerParty(playerIndex));
+  return confidence.level === "medium" || confidence.level === "high" ? 1 : 2;
 }
 
-function getATrainersTestTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
-  return playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+function queueComputerPartnerATrainersTestChoiceMessage(
+  playerIndex: PlayerIndex,
+  optionIndex: ATrainersTestOptionIndex,
+): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const optionLabel = i18next.t(`${namespace}:option.${optionIndex}.label`);
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionLabel}.`, null, true);
+}
+
+async function promptNextATrainersTestPlayer(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildATrainersTestPlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerATrainersTestOption,
+      onOptionChosen: (optionIndex, choicePlayerIndex) =>
+        storeATrainersTestChoice(optionIndex as ATrainersTestOptionIndex, choicePlayerIndex),
+    },
+  });
+  return result ?? false;
 }
 
 async function hideATrainersTestNonBattleTrainers(battlePlayers: PlayerIndex[]): Promise<void> {
@@ -228,12 +269,12 @@ async function hideATrainersTestNonBattleTrainers(battlePlayers: PlayerIndex[]):
 
   const battlePlayerSet = new Set(battlePlayers);
   await Promise.all(
-    ([0, 1] as PlayerIndex[])
+    getMysteryEncounterPlayerIndexes()
       .filter(playerIndex => !battlePlayerSet.has(playerIndex))
       .map(
         playerIndex =>
           new Promise<void>(resolve => {
-            const trainerSprite = getATrainersTestTrainerSprite(playerIndex);
+            const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
             globalScene.tweens.killTweensOf(trainerSprite);
 
             if (!trainerSprite.visible) {
@@ -255,32 +296,41 @@ async function hideATrainersTestNonBattleTrainers(battlePlayers: PlayerIndex[]):
   );
 }
 
-function storeATrainersTestChoice(optionIndex: ATrainersTestOptionIndex, playerIndex: PlayerIndex): boolean {
+async function storeATrainersTestChoice(
+  optionIndex: ATrainersTestOptionIndex,
+  playerIndex: PlayerIndex,
+): Promise<boolean> {
   if (!globalScene.twoPlayerMode) {
     return true;
   }
 
-  globalScene.waitForPlayerInput(playerIndex);
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
 
   const data = getATrainersTestData();
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
   data.choices.push({ playerIndex, optionIndex });
 
-  if (playerIndex === 0) {
-    showATrainersTestPlayerMenu(1, optionIndex - 1);
-    return false;
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    queueComputerPartnerATrainersTestChoiceMessage(playerIndex, optionIndex);
+  }
+
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+  if (nextPlayerIndex != null) {
+    return promptNextATrainersTestPlayer(nextPlayerIndex, optionIndex - 1);
   }
 
   data.skipSelectedDialogueOnce = true;
-  globalScene.waitForPlayerInput(0);
+  globalScene.setActivePlayerIndex(0);
+  updateWindowType(1);
   return true;
 }
 
 async function showATrainersTestSelectedDialogue(choice: ATrainersTestChoice): Promise<void> {
-  const data = getATrainersTestData();
-  const info = data.trainerInfos[choice.playerIndex];
+  const info = getTrainerInfoForPlayer(choice.playerIndex);
 
-  globalScene.waitForPlayerInput(choice.playerIndex);
+  globalScene.setActivePlayerIndex(choice.playerIndex);
+  updateWindowType(choice.playerIndex + 1);
   await showEncounterDialogue(
     `${namespace}:${info.trainerNameKey}.${choice.optionIndex === 1 ? "accept" : "decline"}`,
     `trainerNames:${info.trainerNameKey}`,
@@ -288,8 +338,7 @@ async function showATrainersTestSelectedDialogue(choice: ATrainersTestChoice): P
 }
 
 function setATrainersTestBattleRewards(choice: ATrainersTestChoice): void {
-  const data = getATrainersTestData();
-  const info = data.trainerInfos[choice.playerIndex];
+  const info = getTrainerInfoForPlayer(choice.playerIndex);
   const eggOptions = createEggOptions(info, EggTier.EPIC);
 
   setEncounterRewards(
@@ -305,8 +354,7 @@ function setATrainersTestBattleRewards(choice: ATrainersTestChoice): void {
 }
 
 function setATrainersTestRefuseRewards(choice: ATrainersTestChoice): void {
-  const data = getATrainersTestData();
-  const info = data.trainerInfos[choice.playerIndex];
+  const info = getTrainerInfoForPlayer(choice.playerIndex);
   const eggOptions = createEggOptions(info, EggTier.RARE);
 
   globalScene.phaseManager.unshiftNew("PartyHealPhase", true, choice.playerIndex);
@@ -314,8 +362,7 @@ function setATrainersTestRefuseRewards(choice: ATrainersTestChoice): void {
 }
 
 function createATrainersTestBattleConfig(acceptChoices: ATrainersTestChoice[]): EnemyPartyConfig {
-  const data = getATrainersTestData();
-  const acceptedInfos = acceptChoices.map(choice => data.trainerInfos[choice.playerIndex]);
+  const acceptedInfos = acceptChoices.map(choice => getTrainerInfoForPlayer(choice.playerIndex));
 
   if (acceptedInfos.length === 1) {
     return {
@@ -329,6 +376,7 @@ function createATrainersTestBattleConfig(acceptChoices: ATrainersTestChoice[]): 
     doubleBattle: true,
     trainerConfig: getTrainerConfig(acceptedInfos[0]),
     partnerTrainerConfig: getTrainerConfig(acceptedInfos[1]),
+    partnerTrainerConfig2: acceptedInfos[2] ? getTrainerConfig(acceptedInfos[2]) : undefined,
   };
 }
 
@@ -339,7 +387,7 @@ function setATrainersTestRewardMessages(choices: ATrainersTestChoice[]): void {
   encounter.onRewards = async () => {
     for (const choice of choices.toSorted((a, b) => a.playerIndex - b.playerIndex)) {
       globalScene.waitForPlayerInput(choice.playerIndex);
-      const info = data.trainerInfos[choice.playerIndex];
+      const info = data.trainerInfos[choice.playerIndex]!;
       const trainerName = getTrainerDisplayName(info);
       const eggType = i18next.t(
         `${namespace}:eggTypes.${choice.optionIndex === 1 ? "epic" : "rare"}`,
@@ -351,7 +399,7 @@ function setATrainersTestRewardMessages(choices: ATrainersTestChoice[]): void {
 
 async function runOnePlayerAcceptChallenge(): Promise<void> {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
-  const info = getATrainersTestData().trainerInfos[0];
+  const info = getTrainerInfoForPlayer(0);
   const config: EnemyPartyConfig = encounter.enemyPartyConfigs[0];
 
   await transitionMysteryEncounterIntroVisuals();
@@ -371,7 +419,7 @@ async function runOnePlayerAcceptChallenge(): Promise<void> {
 
 async function runOnePlayerRefuseChallenge(): Promise<void> {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
-  const info = getATrainersTestData().trainerInfos[0];
+  const info = getTrainerInfoForPlayer(0);
 
   globalScene.phaseManager.unshiftNew("PartyHealPhase", true);
 
@@ -381,7 +429,7 @@ async function runOnePlayerRefuseChallenge(): Promise<void> {
   leaveEncounterWithoutBattle();
 }
 
-async function runTwoPlayerATrainersTestChoices(): Promise<boolean> {
+async function runMultiPlayerATrainersTestChoices(): Promise<boolean> {
   const choices = getATrainersTestData().choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
   const acceptChoices = choices.filter(choice => choice.optionIndex === 1);
   const refuseChoices = choices.filter(choice => choice.optionIndex === 2);
@@ -422,7 +470,7 @@ function buildAcceptChallengeOption(playerIndex: PlayerIndex): MysteryEncounterO
     })
     .withPreOptionPhase(async () => storeATrainersTestChoice(1, playerIndex))
     .withOptionPhase(async () =>
-      globalScene.twoPlayerMode ? runTwoPlayerATrainersTestChoices() : runOnePlayerAcceptChallenge(),
+      globalScene.twoPlayerMode ? runMultiPlayerATrainersTestChoices() : runOnePlayerAcceptChallenge(),
     )
     .build();
 }
@@ -436,7 +484,7 @@ function buildRefuseChallengeOption(playerIndex: PlayerIndex): MysteryEncounterO
     })
     .withPreOptionPhase(async () => storeATrainersTestChoice(2, playerIndex))
     .withOptionPhase(async () =>
-      globalScene.twoPlayerMode ? runTwoPlayerATrainersTestChoices() : runOnePlayerRefuseChallenge(),
+      globalScene.twoPlayerMode ? runMultiPlayerATrainersTestChoices() : runOnePlayerRefuseChallenge(),
     )
     .build();
 }
@@ -464,8 +512,9 @@ export const ATrainersTestEncounter: MysteryEncounter = MysteryEncounterBuilder.
   .withAutoHideIntroVisuals(false)
   .withOnInit(() => {
     const encounter = globalScene.currentBattle.mysteryEncounter!;
-    const trainerInfos = rollTrainerInfos();
-    const activeTrainerInfo = trainerInfos[0];
+    const playerIndexes = getMysteryEncounterPlayerIndexes();
+    const trainerInfos = rollTrainerInfos(playerIndexes);
+    const activeTrainerInfo = trainerInfos[0] ?? trainerInfos[playerIndexes[0]]!;
 
     encounter.misc = {
       choices: [],
@@ -473,8 +522,8 @@ export const ATrainersTestEncounter: MysteryEncounter = MysteryEncounterBuilder.
     } satisfies ATrainersTestData;
 
     if (globalScene.twoPlayerMode) {
-      setTwoPlayerTrainerDialogue(trainerInfos);
-      encounter.spriteConfigs = buildIntroSpriteConfigs([trainerInfos[0], trainerInfos[1]]);
+      setMultiPlayerTrainerDialogue(playerIndexes, trainerInfos);
+      encounter.spriteConfigs = buildIntroSpriteConfigs(playerIndexes.map(playerIndex => trainerInfos[playerIndex]!));
     } else {
       setSinglePlayerTrainerDialogue(activeTrainerInfo);
       encounter.spriteConfigs = buildIntroSpriteConfigs([activeTrainerInfo]);

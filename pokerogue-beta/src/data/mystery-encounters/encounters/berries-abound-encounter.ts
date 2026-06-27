@@ -1,21 +1,25 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
-import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { modifierTypes } from "#data/data-lists";
+import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BerryType } from "#enums/berry-type";
+import { FieldPosition } from "#enums/field-position";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
+import { MoveId } from "#enums/move-id";
+import { MoveUseMode } from "#enums/move-use-mode";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { PERMANENT_STATS, Stat } from "#enums/stat";
-import { UiMode } from "#enums/ui-mode";
-import type { PlayerPokemon, Pokemon } from "#field/pokemon";
+import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
 import { BerryModifier } from "#modifiers/modifier";
 import type { BerryModifierType, ModifierTypeOption } from "#modifiers/modifier-type";
 import { regenerateModifierPoolThresholds } from "#modifiers/modifier-type";
+import { PokemonMove } from "#moves/pokemon-move";
 import { queueEncounterMessage, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
 import type { EnemyPartyConfig } from "#mystery-encounters/encounter-phase-utils";
 import {
@@ -24,9 +28,15 @@ import {
   getRandomEncounterPokemon,
   initBattleWithEnemyConfig,
   leaveEncounterWithoutBattle,
+  loadCustomMovesForEncounter,
   setEncounterExp,
   setEncounterRewards,
 } from "#mystery-encounters/encounter-phase-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import {
   applyModifierTypeToPlayerPokemon,
   getEncounterPokemonLevelForWave,
@@ -38,6 +48,13 @@ import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { PokemonData } from "#system/pokemon-data";
+import { updateWindowType } from "#ui/ui-theme";
+import {
+  getBestComputerPartnerReplacementSlot,
+  getComputerPartnerProfile,
+  getComputerPartnerProfileWithRolePreferences,
+} from "#utils/computer-partner-profile";
+import { getComputerPartnerTeamConfidence } from "#utils/computer-partner-team-confidence";
 import { randSeedItem } from "#utils/common";
 import { getEnumValues } from "#utils/enums";
 import i18next from "i18next";
@@ -54,7 +71,7 @@ interface BerriesAboundChoice {
 
 interface BerriesAboundData {
   choices: BerriesAboundChoice[];
-  fastestPokemonByPlayer: Record<TwoPlayerIndex, PlayerPokemon>;
+  fastestPokemonByPlayer: Partial<Record<PlayerIndex, PlayerPokemon>>;
   enemySpeed: number;
   numBerries: number;
   skipSelectedDialogueOnce?: boolean;
@@ -85,36 +102,53 @@ function getFastestPokemonForPlayer(playerIndex: PlayerIndex): PlayerPokemon {
   );
 }
 
-function buildFastestPokemonByPlayer(): Record<TwoPlayerIndex, PlayerPokemon> {
-  return {
-    0: getFastestPokemonForPlayer(0),
-    1: getFastestPokemonForPlayer(1),
-  };
+function buildFastestPokemonByPlayer(): Partial<Record<PlayerIndex, PlayerPokemon>> {
+  return Object.fromEntries(
+    getMysteryEncounterPlayerIndexes().map(playerIndex => [playerIndex, getFastestPokemonForPlayer(playerIndex)]),
+  ) as Partial<Record<PlayerIndex, PlayerPokemon>>;
 }
 
 function setBerriesAboundPlayerTokens(playerIndex: PlayerIndex): void {
   const data = getBerriesAboundData();
-  const fastestPokemon = data.fastestPokemonByPlayer[playerIndex];
+  const fastestPokemon = data.fastestPokemonByPlayer[playerIndex] ?? getFastestPokemonForPlayer(playerIndex);
   globalScene.currentBattle.mysteryEncounter!.setDialogueToken("fastestPokemon", fastestPokemon.getNameToRender());
 }
 
-function showBerriesAboundPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.waitForPlayerInput(playerIndex);
-  setBerriesAboundPlayerTokens(playerIndex);
+function chooseComputerPartnerBerriesAboundOption(playerIndex: PlayerIndex): BerriesAboundOptionIndex {
+  const confidence = getComputerPartnerTeamConfidence(globalScene.getPlayerParty(playerIndex));
+  if (confidence.level === "medium" || confidence.level === "high") {
+    return 1;
+  }
 
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: i18next.t(`${namespace}:query`),
-      overrideOptions: buildBerriesAboundPlayerOptions(playerIndex),
-      startingCursorIndex,
-    });
-  });
+  return getRaceResult(playerIndex).speedDiff >= 1 ? 2 : 3;
 }
 
-function getBerriesAboundTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
-  return playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+function queueComputerPartnerBerriesAboundChoiceMessage(
+  playerIndex: PlayerIndex,
+  optionIndex: BerriesAboundOptionIndex,
+): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const optionLabel = i18next.t(`${namespace}:option.${optionIndex}.label`);
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionLabel}.`, null, true);
+}
+
+async function promptNextBerriesAboundPlayer(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  setBerriesAboundPlayerTokens(playerIndex);
+
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildBerriesAboundPlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerBerriesAboundOption,
+      onOptionChosen: (optionIndex, choicePlayerIndex) =>
+        storeBerriesAboundChoice(optionIndex as BerriesAboundOptionIndex, choicePlayerIndex),
+    },
+  });
+  return result ?? false;
 }
 
 async function hideBerriesAboundNonBattleTrainers(battlePlayers: PlayerIndex[]): Promise<void> {
@@ -124,12 +158,12 @@ async function hideBerriesAboundNonBattleTrainers(battlePlayers: PlayerIndex[]):
 
   const battlePlayerSet = new Set(battlePlayers);
   await Promise.all(
-    ([0, 1] as PlayerIndex[])
+    getMysteryEncounterPlayerIndexes()
       .filter(playerIndex => !battlePlayerSet.has(playerIndex))
       .map(
         playerIndex =>
           new Promise<void>(resolve => {
-            const trainerSprite = getBerriesAboundTrainerSprite(playerIndex);
+            const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
             globalScene.tweens.killTweensOf(trainerSprite);
 
             if (!trainerSprite.visible) {
@@ -151,25 +185,34 @@ async function hideBerriesAboundNonBattleTrainers(battlePlayers: PlayerIndex[]):
   );
 }
 
-function storeBerriesAboundChoice(optionIndex: BerriesAboundOptionIndex, playerIndex: PlayerIndex): boolean {
+async function storeBerriesAboundChoice(
+  optionIndex: BerriesAboundOptionIndex,
+  playerIndex: PlayerIndex,
+): Promise<boolean> {
   if (!globalScene.twoPlayerMode) {
     return true;
   }
 
-  globalScene.waitForPlayerInput(playerIndex);
+  globalScene.setActivePlayerIndex(playerIndex);
+  updateWindowType(playerIndex + 1);
   setBerriesAboundPlayerTokens(playerIndex);
 
   const data = getBerriesAboundData();
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
   data.choices.push({ playerIndex, optionIndex });
 
-  if (playerIndex === 0) {
-    showBerriesAboundPlayerMenu(1, optionIndex - 1);
-    return false;
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    queueComputerPartnerBerriesAboundChoiceMessage(playerIndex, optionIndex);
+  }
+
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+  if (nextPlayerIndex != null) {
+    return promptNextBerriesAboundPlayer(nextPlayerIndex, optionIndex - 1);
   }
 
   data.skipSelectedDialogueOnce = true;
-  globalScene.waitForPlayerInput(0);
+  globalScene.setActivePlayerIndex(0);
+  updateWindowType(1);
   return true;
 }
 
@@ -220,7 +263,7 @@ function getRaceResult(playerIndex: PlayerIndex): {
   berryCount: number;
 } {
   const data = getBerriesAboundData();
-  const fastestPokemon = data.fastestPokemonByPlayer[playerIndex];
+  const fastestPokemon = data.fastestPokemonByPlayer[playerIndex] ?? getFastestPokemonForPlayer(playerIndex);
   const speedDiff = fastestPokemon.getStat(Stat.SPD) / (data.enemySpeed * 1.1);
   const berryCount = Math.max(Math.min(Math.round((speedDiff - 1) / 0.08), data.numBerries), 2);
   return { fastestPokemon, speedDiff, berryCount };
@@ -258,11 +301,73 @@ function createBerriesAboundBattleConfig(battlePlayers: PlayerIndex[], enraged: 
   const baseConfig = enraged
     ? configureEnragedBoss()
     : globalScene.currentBattle.mysteryEncounter!.enemyPartyConfigs[0];
+  const fieldPosition = battlePlayers.length > 2 ? FieldPosition.CENTER : undefined;
 
   return {
     ...baseConfig,
     doubleBattle: battlePlayers.length > 1,
+    pokemonConfigs: baseConfig.pokemonConfigs?.map((config, index) =>
+      index === 0 && fieldPosition != null ? { ...config, fieldPosition } : config,
+    ),
   };
+}
+
+function queueBerriesAboundStartOfBattleEffects(battlePlayers: PlayerIndex[]): void {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const bossBattlerIndex = BattlerIndex.ENEMY;
+  encounter.startOfBattleEffects.push(
+    ...battlePlayers.map(() => ({
+      sourceBattlerIndex: bossBattlerIndex,
+      targets: [bossBattlerIndex],
+      move: new PokemonMove(MoveId.STOCKPILE),
+      useMode: MoveUseMode.IGNORE_PP,
+    })),
+  );
+}
+
+function registerBerriesAboundCaptureClaims(battlePlayers: PlayerIndex[]): void {
+  const boss = globalScene.getEnemyParty()[0];
+  if (!boss) {
+    globalScene.currentBattle.computerPartnerCaptureClaims = [];
+    globalScene.currentBattle.computerPartnerReservedCaptureTargetIds = [];
+    globalScene.currentBattle.computerPartnerReservedCaptureTargetId = undefined;
+    return;
+  }
+
+  const captureClaim = battlePlayers
+    .map((playerIndex): { playerIndex: PlayerIndex; targetId: number; target: EnemyPokemon } | undefined => {
+      if (!globalScene.isComputerPartnerPlayer(playerIndex)) {
+        return undefined;
+      }
+
+      const profile = getComputerPartnerProfileWithRolePreferences(
+        globalScene.getComputerPartnerKey(playerIndex),
+        globalScene.getComputerPartnerRolePreferences(playerIndex),
+      );
+      const replacementScore = getBestComputerPartnerReplacementSlot(
+        profile,
+        globalScene.getPlayerParty(playerIndex),
+        boss,
+      );
+      return replacementScore ? { playerIndex, targetId: boss.id, target: boss } : undefined;
+    })
+    .find((claim): claim is { playerIndex: PlayerIndex; targetId: number; target: EnemyPokemon } => !!claim);
+
+  globalScene.currentBattle.computerPartnerCaptureClaims = captureClaim
+    ? [{ playerIndex: captureClaim.playerIndex, targetId: captureClaim.targetId }]
+    : [];
+  globalScene.currentBattle.computerPartnerReservedCaptureTargetIds = captureClaim ? [captureClaim.targetId] : [];
+  globalScene.currentBattle.computerPartnerReservedCaptureTargetId = captureClaim?.targetId;
+
+  if (captureClaim) {
+    const claim = captureClaim;
+    const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(claim.playerIndex));
+    globalScene.phaseManager.queueMessage(
+      `${profile.name} is interested in catching ${claim.target.getNameToRender()}.`,
+      null,
+      true,
+    );
+  }
 }
 
 async function startBerriesAboundBattle(battlePlayers: PlayerIndex[], enraged: boolean): Promise<void> {
@@ -270,11 +375,13 @@ async function startBerriesAboundBattle(battlePlayers: PlayerIndex[], enraged: b
   globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
   await hideBerriesAboundNonBattleTrainers(battlePlayers);
   await initBattleWithEnemyConfig(createBerriesAboundBattleConfig(battlePlayers, enraged));
+  registerBerriesAboundCaptureClaims(battlePlayers);
 }
 
 async function runOnePlayerBattlePokemon(): Promise<void> {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   setBerryRewards(globalScene.activePlayerIndex, encounter.misc.numBerries);
+  queueBerriesAboundStartOfBattleEffects([globalScene.activePlayerIndex]);
   await initBattleWithEnemyConfig(encounter.enemyPartyConfigs[0]);
 }
 
@@ -286,6 +393,7 @@ async function runOnePlayerRaceToBush(): Promise<void> {
   if (speedDiff < 1) {
     setBerryRewards(playerIndex, encounter.misc.numBerries);
     await showEncounterText(`${namespace}:option.2.selectedBad`);
+    queueBerriesAboundStartOfBattleEffects([playerIndex]);
     await initBattleWithEnemyConfig(configureEnragedBoss());
     return;
   }
@@ -297,7 +405,7 @@ async function runOnePlayerRaceToBush(): Promise<void> {
   leaveEncounterWithoutBattle();
 }
 
-async function runTwoPlayerBerriesAboundChoices(): Promise<boolean> {
+async function runMultiplayerBerriesAboundChoices(): Promise<boolean> {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const data = getBerriesAboundData();
   const choices = data.choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
@@ -306,7 +414,8 @@ async function runTwoPlayerBerriesAboundChoices(): Promise<boolean> {
   let hasRewards = false;
 
   for (const choice of choices) {
-    globalScene.waitForPlayerInput(choice.playerIndex);
+    globalScene.setActivePlayerIndex(choice.playerIndex);
+    updateWindowType(choice.playerIndex + 1);
     setBerriesAboundPlayerTokens(choice.playerIndex);
 
     if (choice.optionIndex === 1) {
@@ -349,6 +458,7 @@ async function runTwoPlayerBerriesAboundChoices(): Promise<boolean> {
     return true;
   }
 
+  queueBerriesAboundStartOfBattleEffects(battlePlayers);
   await startBerriesAboundBattle(battlePlayers, bossEnraged);
   return true;
 }
@@ -366,7 +476,7 @@ function buildBattlePokemonOption(playerIndex: PlayerIndex): MysteryEncounterOpt
     })
     .withPreOptionPhase(async () => storeBerriesAboundChoice(1, playerIndex))
     .withOptionPhase(async () =>
-      globalScene.twoPlayerMode ? runTwoPlayerBerriesAboundChoices() : runOnePlayerBattlePokemon(),
+      globalScene.twoPlayerMode ? runMultiplayerBerriesAboundChoices() : runOnePlayerBattlePokemon(),
     )
     .build();
 }
@@ -379,7 +489,7 @@ function buildRaceToBushOption(playerIndex: PlayerIndex): MysteryEncounterOption
     })
     .withPreOptionPhase(async () => storeBerriesAboundChoice(2, playerIndex))
     .withOptionPhase(async () =>
-      globalScene.twoPlayerMode ? runTwoPlayerBerriesAboundChoices() : runOnePlayerRaceToBush(),
+      globalScene.twoPlayerMode ? runMultiplayerBerriesAboundChoices() : runOnePlayerRaceToBush(),
     )
     .build();
 }
@@ -398,7 +508,7 @@ function buildLeaveOption(playerIndex: PlayerIndex): MysteryEncounterOption {
     .withPreOptionPhase(async () => storeBerriesAboundChoice(3, playerIndex))
     .withOptionPhase(async () =>
       globalScene.twoPlayerMode
-        ? runTwoPlayerBerriesAboundChoices()
+        ? runMultiplayerBerriesAboundChoices()
         : (leaveEncounterWithoutBattle(true), true),
     )
     .build();
@@ -450,6 +560,7 @@ export const BerriesAboundEncounter: MysteryEncounter = MysteryEncounterBuilder.
       ],
     };
     encounter.enemyPartyConfigs = [config];
+    loadCustomMovesForEncounter([MoveId.STOCKPILE]);
 
     // Calculate the number of extra berries that player receives
     // 10-40: 2, 40-120: 4, 120-160: 5, 160-180: 7
@@ -494,7 +605,8 @@ export const BerriesAboundEncounter: MysteryEncounter = MysteryEncounterBuilder.
       enemySpeed: bossPokemon.getStat(Stat.SPD),
       numBerries,
     } satisfies BerriesAboundData;
-    const fastestPokemon = fastestPokemonByPlayer[globalScene.activePlayerIndex];
+    const fastestPokemon =
+      fastestPokemonByPlayer[globalScene.activePlayerIndex] ?? getFastestPokemonForPlayer(globalScene.activePlayerIndex);
     encounter.setDialogueToken("fastestPokemon", fastestPokemon.getNameToRender());
 
     return true;

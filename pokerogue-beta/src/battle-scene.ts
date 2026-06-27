@@ -228,7 +228,7 @@ const TWO_PLAYER_SYNC_SETTING_KEYS = [
   SettingKeys.Command_Cursor_Memory,
 ] as const;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = 2;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.AN_OFFER_YOU_CANT_REFUSE;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.DANCING_LESSONS;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = true;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_PLAYER_MONEY: number | null = 1000;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
@@ -280,8 +280,14 @@ const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] 
   MysteryEncounterType.THE_STRONG_STUFF,
   MysteryEncounterType.THE_POKEMON_SALESMAN,
   MysteryEncounterType.AN_OFFER_YOU_CANT_REFUSE,
+  MysteryEncounterType.ABSOLUTE_AVARICE,
+  MysteryEncounterType.A_TRAINERS_TEST,
   MysteryEncounterType.DELIBIRDY,
   MysteryEncounterType.TRASH_TO_TREASURE,
+  MysteryEncounterType.BERRIES_ABOUND,
+  MysteryEncounterType.CLOWNING_AROUND,
+  MysteryEncounterType.PART_TIMER,
+  MysteryEncounterType.DANCING_LESSONS,
 ];
 
 export interface PlayerRunState {

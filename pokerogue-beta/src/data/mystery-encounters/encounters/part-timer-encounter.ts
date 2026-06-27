@@ -9,9 +9,12 @@ import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { Stat } from "#enums/stat";
-import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import { showEncounterDialogue, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
+import {
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import {
   leaveEncounterWithoutBattle,
   selectPokemonForOption,
@@ -27,6 +30,7 @@ import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encou
 import { EncounterPokemonRequirement, MoveRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import { CHARMING_MOVES } from "#mystery-encounters/requirement-groups";
 import { updateWindowType } from "#ui/ui-theme";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
 import i18next from "i18next";
 
 /** the i18n namespace for the encounter */
@@ -122,6 +126,74 @@ function getPartTimerMoneyMultiplier(optionIndex: PartTimerOptionIndex, pokemon:
   return 2.5;
 }
 
+function getPartTimerPokemonSelectableFilter(): (pokemon: Pokemon) => string | null {
+  return (pokemon: Pokemon) => {
+    return isPokemonValidForEncounterOptionSelection(pokemon, `${namespace}:invalidSelection`);
+  };
+}
+
+function getPartTimerWorkCandidates(playerIndex: PlayerIndex): PlayerPokemon[] {
+  const selectableFilter = getPartTimerPokemonSelectableFilter();
+  return globalScene.getPlayerParty(playerIndex).filter(pokemon => !selectableFilter(pokemon));
+}
+
+function getBestComputerPartnerWorkChoice(
+  optionIndex: 1 | 2,
+  playerIndex: PlayerIndex,
+): PartTimerChoice | undefined {
+  const pokemon = getPartTimerWorkCandidates(playerIndex).toSorted(
+    (pokemon1, pokemon2) =>
+      getPartTimerMoneyMultiplier(optionIndex, pokemon2) - getPartTimerMoneyMultiplier(optionIndex, pokemon1),
+  )[0];
+
+  return pokemon
+    ? {
+        playerIndex,
+        optionIndex,
+        pokemon,
+        moneyMultiplier: getPartTimerMoneyMultiplier(optionIndex, pokemon),
+      }
+    : undefined;
+}
+
+function chooseComputerPartnerPartTimerChoice(playerIndex: PlayerIndex): PartTimerChoice | undefined {
+  const salesPokemon = getSalesPokemon(playerIndex);
+  if (salesPokemon) {
+    return {
+      playerIndex,
+      optionIndex: 3,
+      pokemon: salesPokemon,
+      moneyMultiplier: 2.5,
+    };
+  }
+
+  const deliveryChoice = getBestComputerPartnerWorkChoice(1, playerIndex);
+  const warehouseChoice = getBestComputerPartnerWorkChoice(2, playerIndex);
+  if (!deliveryChoice) {
+    return warehouseChoice;
+  }
+  if (!warehouseChoice) {
+    return deliveryChoice;
+  }
+
+  return warehouseChoice.moneyMultiplier > deliveryChoice.moneyMultiplier ? warehouseChoice : deliveryChoice;
+}
+
+function chooseComputerPartnerPartTimerOption(playerIndex: PlayerIndex): PartTimerOptionIndex {
+  return chooseComputerPartnerPartTimerChoice(playerIndex)?.optionIndex ?? 1;
+}
+
+function queueComputerPartnerPartTimerChoiceMessage(choice: PartTimerChoice): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(choice.playerIndex));
+  const optionLabel = i18next.t(`${namespace}:option.${choice.optionIndex}.label`);
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(
+    `${profile.name}: Chose ${optionLabel} with ${choice.pokemon.getNameToRender()}.`,
+    null,
+    true,
+  );
+}
+
 function setPartTimerChoiceTokens(choice: PartTimerChoice): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   encounter.setDialogueToken("selectedPokemon", choice.pokemon.getNameToRender());
@@ -148,14 +220,22 @@ function storePartTimerChoice(choice: PartTimerChoice): void {
   setPartTimerChoiceTokens(choice);
 }
 
-function finishPartTimerChoiceCollection(playerIndex: PlayerIndex, startingCursorIndex: number): boolean {
+async function storePartTimerChoiceAndAdvance(choice: PartTimerChoice): Promise<boolean> {
+  globalScene.setActivePlayerIndex(choice.playerIndex);
+  updateWindowType(choice.playerIndex + 1);
+  storePartTimerChoice(choice);
+
+  if (globalScene.isComputerPartnerPlayer(choice.playerIndex)) {
+    queueComputerPartnerPartTimerChoiceMessage(choice);
+  }
+
   if (!globalScene.twoPlayerMode) {
     return true;
   }
 
-  if (playerIndex === 0) {
-    showPartTimerPlayerMenu(1, startingCursorIndex);
-    return false;
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(choice.playerIndex);
+  if (nextPlayerIndex != null) {
+    return promptNextPartTimerPlayer(nextPlayerIndex, choice.optionIndex - 1);
   }
 
   const data = getPartTimerData();
@@ -165,20 +245,25 @@ function finishPartTimerChoiceCollection(playerIndex: PlayerIndex, startingCurso
   return true;
 }
 
-function showPartTimerPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
-  setPartTimerPlayerOptionTokens(playerIndex);
+async function collectComputerPartnerPartTimerChoice(playerIndex: PlayerIndex): Promise<boolean> {
+  const choice = chooseComputerPartnerPartTimerChoice(playerIndex);
+  return choice ? storePartTimerChoiceAndAdvance(choice) : false;
+}
 
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: i18next.t(`${namespace}:query`),
-      overrideOptions: buildPartTimerPlayerOptions(playerIndex),
-      startingCursorIndex,
-    });
+async function promptNextPartTimerPlayer(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  setPartTimerPlayerOptionTokens(playerIndex);
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildPartTimerPlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerPartTimerOption,
+      onOptionChosen: (_optionIndex, choicePlayerIndex) => collectComputerPartnerPartTimerChoice(choicePlayerIndex),
+    },
   });
+  return result ?? false;
 }
 
 function applyPartTimerWorkEffects(choice: PartTimerChoice): void {
@@ -229,11 +314,7 @@ async function collectPartTimerPokemonChoice(
     storePartTimerChoice(selectedChoice);
   };
 
-  const selectableFilter = (pokemon: Pokemon) => {
-    return isPokemonValidForEncounterOptionSelection(pokemon, `${namespace}:invalidSelection`);
-  };
-
-  const selected = await selectPokemonForOption(onPokemonSelected, undefined, selectableFilter);
+  const selected = await selectPokemonForOption(onPokemonSelected, undefined, getPartTimerPokemonSelectableFilter());
   if (!selected || !selectedChoice) {
     return false;
   }
@@ -242,10 +323,10 @@ async function collectPartTimerPokemonChoice(
     applyPartTimerWorkEffects(selectedChoice);
   }
 
-  return finishPartTimerChoiceCollection(playerIndex, optionIndex - 1);
+  return storePartTimerChoiceAndAdvance(selectedChoice);
 }
 
-function collectPartTimerSalesChoice(playerIndex: PlayerIndex): boolean {
+async function collectPartTimerSalesChoice(playerIndex: PlayerIndex): Promise<boolean> {
   globalScene.setActivePlayerIndex(playerIndex);
   updateWindowType(playerIndex + 1);
 
@@ -266,7 +347,7 @@ function collectPartTimerSalesChoice(playerIndex: PlayerIndex): boolean {
     applyPartTimerWorkEffects(choice);
   }
 
-  return finishPartTimerChoiceCollection(playerIndex, 2);
+  return storePartTimerChoiceAndAdvance(choice);
 }
 
 async function runPartTimerChoices(): Promise<boolean> {

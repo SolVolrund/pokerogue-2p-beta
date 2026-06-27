@@ -1,13 +1,13 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
-import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { EncounterBattleAnim } from "#data/battle-anims";
-import { modifierTypes } from "#data/data-lists";
-import { BattlerIndex } from "#enums/battler-index";
+import { allMoves, modifierTypes } from "#data/data-lists";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BiomeId } from "#enums/biome-id";
 import { EncounterAnim } from "#enums/encounter-anims";
 import { FieldPosition } from "#enums/field-position";
+import { MoveCategory } from "#enums/move-category";
 import { MoveId } from "#enums/move-id";
 import { MoveUseMode } from "#enums/move-use-mode";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
@@ -17,11 +17,15 @@ import { PokeballType } from "#enums/pokeball";
 import { SpeciesId } from "#enums/species-id";
 import { Stat, type BattleStat } from "#enums/stat";
 import { TrainerSlot } from "#enums/trainer-slot";
-import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import { EnemyPokemon } from "#field/pokemon";
 import { PokemonMove } from "#moves/pokemon-move";
 import { getEncounterText, queueEncounterMessage, showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import type { EnemyPartyConfig, EnemyPokemonConfig } from "#mystery-encounters/encounter-phase-utils";
 import {
   initBattleWithEnemyConfig,
@@ -44,6 +48,8 @@ import { PokemonData } from "#system/pokemon-data";
 import type { OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { updateWindowType } from "#ui/ui-theme";
 import { randSeedInt } from "#utils/common";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import { getComputerPartnerTeamConfidence } from "#utils/computer-partner-team-confidence";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -105,7 +111,7 @@ interface DancingLessonsChoice {
 
 interface DancingLessonsData {
   choices: DancingLessonsChoice[];
-  oricorioDataByPlayer: Record<TwoPlayerIndex, PokemonData>;
+  oricorioDataByPlayer: Record<PlayerIndex, PokemonData>;
   skipSelectedDialogueOnce?: boolean;
 }
 
@@ -152,6 +158,7 @@ function getDancingLessonsData(): DancingLessonsData {
       oricorioDataByPlayer: encounter.misc?.oricorioDataByPlayer ?? {
         0: encounter.misc?.oricorioData,
         1: encounter.misc?.oricorioData,
+        2: encounter.misc?.oricorioData,
       },
     } satisfies DancingLessonsData;
   }
@@ -176,9 +183,27 @@ function getBiomeOricorioFormIndex(): number {
   return 0;
 }
 
-function getAlternateOricorioFormIndex(primaryFormIndex: number): number {
+function getOricorioFormIndexes(count: number): number[] {
+  const primaryFormIndex = getBiomeOricorioFormIndex();
   const alternateForms = [0, 1, 2, 3].filter(formIndex => formIndex !== primaryFormIndex);
-  return alternateForms[randSeedInt(alternateForms.length)];
+  const formIndexes = [primaryFormIndex];
+
+  while (formIndexes.length < count && alternateForms.length > 0) {
+    const alternateIndex = randSeedInt(alternateForms.length);
+    formIndexes.push(alternateForms.splice(alternateIndex, 1)[0]);
+  }
+
+  return formIndexes;
+}
+
+function getDancingLessonsFieldPosition(slotIndex: number, totalSlots: number): FieldPosition {
+  if (totalSlots <= 1) {
+    return FieldPosition.CENTER;
+  }
+  if (totalSlots === 2) {
+    return slotIndex === 0 ? FieldPosition.LEFT : FieldPosition.RIGHT;
+  }
+  return slotIndex === 2 ? FieldPosition.CENTER : slotIndex === 0 ? FieldPosition.LEFT : FieldPosition.RIGHT;
 }
 
 function ensureRevelationDance(pokemon: EnemyPokemon): void {
@@ -204,10 +229,7 @@ function addVisualOricorio(data: PokemonData, slotIndex: number, totalSlots: num
   const species = getPokemonSpecies(SpeciesId.ORICORIO);
   const level = getEncounterPokemonLevelForWave(STANDARD_ENCOUNTER_BOOSTED_LEVEL_MODIFIER);
   const oricorio = globalScene.addEnemyPokemon(species, level, TrainerSlot.NONE, false, false, data);
-  oricorio.setFieldPosition(
-    totalSlots > 1 ? (slotIndex === 0 ? FieldPosition.LEFT : FieldPosition.RIGHT) : FieldPosition.CENTER,
-    0,
-  );
+  oricorio.setFieldPosition(getDancingLessonsFieldPosition(slotIndex, totalSlots), 0);
   const [fieldOffsetX, fieldOffsetY] = oricorio.getFieldPositionOffset();
   oricorio.setPosition(236 + fieldOffsetX - 300, 84 + fieldOffsetY);
   globalScene.field.add(oricorio);
@@ -233,13 +255,9 @@ function setDancingLessonsChoiceTokens(choice: DancingLessonsChoice): void {
 }
 
 function focusDancingLessonsPlayer(playerIndex: PlayerIndex): void {
-  if (globalScene.twoPlayerMode) {
-    globalScene.waitForPlayerInput(playerIndex);
-    return;
-  }
-
   globalScene.setActivePlayerIndex(playerIndex);
   updateWindowType(playerIndex + 1);
+  globalScene.waitForPlayerInput(globalScene.isComputerPartnerPlayer(playerIndex) ? 0 : playerIndex);
 }
 
 function setDancingLessonsPlayerOptionTokens(playerIndex: PlayerIndex): void {
@@ -250,42 +268,154 @@ function setDancingLessonsPlayerOptionTokens(playerIndex: PlayerIndex): void {
   encounter.setDialogueToken("option3PrimaryMove", move?.getName() ?? "");
 }
 
-function showDancingLessonsPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.waitForPlayerInput(playerIndex);
-  setDancingLessonsPlayerOptionTokens(playerIndex);
-
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: i18next.t(`${namespace}:query`),
-      overrideOptions: buildDancingLessonsPlayerOptions(playerIndex),
-      startingCursorIndex,
+function getComputerPartnerDanceMoveChoice(
+  playerIndex: PlayerIndex,
+): Pick<DancingLessonsChoice, "selectedPokemon" | "selectedMove"> | undefined {
+  const candidates = new MoveRequirement(DANCING_MOVES, true).queryParty(globalScene.getPlayerParty(playerIndex));
+  const rankedChoices = candidates
+    .flatMap(pokemon =>
+      pokemon.moveset
+        .filter((move): move is PokemonMove => !!move && DANCING_MOVES.includes(move.getMove().id))
+        .map(move => ({ selectedPokemon: pokemon, selectedMove: move })),
+    )
+    .toSorted((choice1, choice2) => {
+      const move1 = choice1.selectedMove!.getMove();
+      const move2 = choice2.selectedMove!.getMove();
+      return (move2.power ?? 0) - (move1.power ?? 0);
     });
-  });
+
+  return rankedChoices[0];
 }
 
-function finishDancingLessonsChoiceCollection(playerIndex: PlayerIndex, startingCursorIndex: number): boolean {
+function getPrimaryStabMovePower(pokemon: PlayerPokemon): number {
+  const primaryType = pokemon.getTypes({
+    includeTeraType: false,
+    ignoreThirdType: true,
+  })[0];
+  if (primaryType == null) {
+    return 0;
+  }
+
+  return pokemon.moveset.reduce((bestPower, pokemonMove) => {
+    const move = pokemonMove?.getMove();
+    if (!move || move.category === MoveCategory.STATUS) {
+      return bestPower;
+    }
+    if (move.id === MoveId.REVELATION_DANCE || move.type === primaryType) {
+      return Math.max(bestPower, move.power ?? 0);
+    }
+    return bestPower;
+  }, 0);
+}
+
+function getComputerPartnerLearnDancePokemon(playerIndex: PlayerIndex): PlayerPokemon | undefined {
+  const revelationDancePower = allMoves[MoveId.REVELATION_DANCE].power ?? 90;
+  return globalScene
+    .getPlayerParty(playerIndex)
+    .toSorted((pokemon1, pokemon2) => {
+      const pokemon1Power = getPrimaryStabMovePower(pokemon1);
+      const pokemon2Power = getPrimaryStabMovePower(pokemon2);
+      const pokemon1NeedsMove = pokemon1Power < revelationDancePower ? 0 : 1;
+      const pokemon2NeedsMove = pokemon2Power < revelationDancePower ? 0 : 1;
+      return pokemon1NeedsMove - pokemon2NeedsMove || pokemon1Power - pokemon2Power;
+    })[0];
+}
+
+function chooseComputerPartnerDancingLessonsChoice(playerIndex: PlayerIndex): DancingLessonsChoice {
+  const danceMoveChoice = getComputerPartnerDanceMoveChoice(playerIndex);
+  if (danceMoveChoice?.selectedPokemon && danceMoveChoice.selectedMove) {
+    return {
+      playerIndex,
+      optionIndex: 3,
+      selectedPokemon: danceMoveChoice.selectedPokemon,
+      selectedMove: danceMoveChoice.selectedMove,
+    };
+  }
+
+  const confidence = getComputerPartnerTeamConfidence(globalScene.getPlayerParty(playerIndex));
+  if (confidence.level === "high") {
+    return { playerIndex, optionIndex: 1 };
+  }
+
+  return {
+    playerIndex,
+    optionIndex: 2,
+    selectedPokemon: getComputerPartnerLearnDancePokemon(playerIndex),
+  };
+}
+
+function chooseComputerPartnerDancingLessonsOption(playerIndex: PlayerIndex): DancingLessonsOptionIndex {
+  return chooseComputerPartnerDancingLessonsChoice(playerIndex).optionIndex;
+}
+
+function queueComputerPartnerDancingLessonsChoiceMessage(choice: DancingLessonsChoice): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(choice.playerIndex));
+  const optionLabel = i18next.t(`${namespace}:option.${choice.optionIndex}.label`);
+  const pokemonText = choice.selectedPokemon ? ` with ${choice.selectedPokemon.getNameToRender()}` : "";
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionLabel}${pokemonText}.`, null, true);
+}
+
+async function storeDancingLessonsChoiceAndAdvance(
+  choice: DancingLessonsChoice,
+  startingCursorIndex: number,
+): Promise<boolean> {
+  focusDancingLessonsPlayer(choice.playerIndex);
+  setDancingLessonsChoice(choice);
+
+  if (globalScene.isComputerPartnerPlayer(choice.playerIndex)) {
+    queueComputerPartnerDancingLessonsChoiceMessage(choice);
+  }
+
   if (!globalScene.twoPlayerMode) {
     return true;
   }
 
-  if (playerIndex === 0) {
-    showDancingLessonsPlayerMenu(1, startingCursorIndex);
-    return false;
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(choice.playerIndex);
+  if (nextPlayerIndex != null) {
+    return promptNextDancingLessonsPlayer(nextPlayerIndex, startingCursorIndex);
   }
 
   const data = getDancingLessonsData();
   data.skipSelectedDialogueOnce = true;
+  globalScene.setActivePlayerIndex(0);
+  updateWindowType(1);
   globalScene.waitForPlayerInput(0);
   return true;
 }
 
-function getDancingLessonsOricorioConfig(playerIndex: PlayerIndex): EnemyPokemonConfig {
+function collectComputerPartnerDancingLessonsChoice(playerIndex: PlayerIndex): Promise<boolean> {
+  const choice = chooseComputerPartnerDancingLessonsChoice(playerIndex);
+  return storeDancingLessonsChoiceAndAdvance(choice, choice.optionIndex - 1);
+}
+
+async function promptNextDancingLessonsPlayer(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  setDancingLessonsPlayerOptionTokens(playerIndex);
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildDancingLessonsPlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerDancingLessonsOption,
+      onOptionChosen: (_optionIndex, choicePlayerIndex) =>
+        collectComputerPartnerDancingLessonsChoice(choicePlayerIndex),
+    },
+  });
+  return result ?? false;
+}
+
+function getDancingLessonsOricorioConfig(
+  playerIndex: PlayerIndex,
+  fieldIndex: number,
+  totalEnemies: number,
+): EnemyPokemonConfig {
   const data = getDancingLessonsData();
   return {
     species: getPokemonSpecies(SpeciesId.ORICORIO),
     dataSource: data.oricorioDataByPlayer[playerIndex],
+    fieldPosition: getDancingLessonsFieldPosition(fieldIndex, totalEnemies),
     isBoss: true,
     tags: [BattlerTagType.MYSTERY_ENCOUNTER_POST_SUMMON],
     mysteryEncounterBattleEffects: (pokemon: Pokemon) => {
@@ -302,7 +432,9 @@ function getDancingLessonsOricorioConfig(playerIndex: PlayerIndex): EnemyPokemon
 function buildDancingLessonsBattleConfig(enemyOwnerIndexes: PlayerIndex[]): EnemyPartyConfig {
   return {
     doubleBattle: enemyOwnerIndexes.length > 1,
-    pokemonConfigs: enemyOwnerIndexes.map(playerIndex => getDancingLessonsOricorioConfig(playerIndex)),
+    pokemonConfigs: enemyOwnerIndexes.map((playerIndex, fieldIndex) =>
+      getDancingLessonsOricorioConfig(playerIndex, fieldIndex, enemyOwnerIndexes.length),
+    ),
   };
 }
 
@@ -313,16 +445,46 @@ function queueDancingLessonsStartOfBattleEffects(
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   for (const [enemyIndex] of enemyOwnerIndexes.entries()) {
     encounter.startOfBattleEffects.push({
-      sourceBattlerIndex: enemyIndex === 0 ? BattlerIndex.ENEMY : BattlerIndex.ENEMY_2,
-      targets: [
-        battlePlayers.length > 1 && enemyIndex === 1
-          ? BattlerIndex.PLAYER_2
-          : BattlerIndex.PLAYER,
-      ],
+      sourceBattlerIndex: globalScene.getEnemyBattlerIndex(enemyIndex),
+      targets: [globalScene.getPlayerBattlerIndex(Math.min(enemyIndex, Math.max(battlePlayers.length - 1, 0)))],
       move: new PokemonMove(MoveId.REVELATION_DANCE),
       useMode: MoveUseMode.IGNORE_PP,
     });
   }
+}
+
+async function hideDancingLessonsNonBattleTrainers(battlePlayers: PlayerIndex[]): Promise<void> {
+  if (!globalScene.twoPlayerMode) {
+    return;
+  }
+
+  const battlePlayerSet = new Set(battlePlayers);
+  await Promise.all(
+    getMysteryEncounterPlayerIndexes()
+      .filter(playerIndex => !battlePlayerSet.has(playerIndex))
+      .map(
+        playerIndex =>
+          new Promise<void>(resolve => {
+            const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
+            globalScene.tweens.killTweensOf(trainerSprite);
+
+            if (!trainerSprite.visible) {
+              resolve();
+              return;
+            }
+
+            globalScene.tweens.add({
+              targets: trainerSprite,
+              x: -36,
+              duration: 500,
+              onComplete: () => {
+                trainerSprite.setVisible(false);
+                resolve();
+              },
+            });
+          }),
+      ),
+  );
 }
 
 function playDancingLessonsAnim(source: Pokemon | undefined, target: Pokemon | undefined): Promise<void> {
@@ -416,7 +578,7 @@ async function runDancingLessonsChoices(): Promise<boolean> {
   }
 
   const recruitedPlayerSet = new Set(recruitChoices.map(choice => choice.playerIndex));
-  const enemyOwnerIndexes = ([0, 1] as PlayerIndex[]).filter(playerIndex => !recruitedPlayerSet.has(playerIndex));
+  const enemyOwnerIndexes = battlePlayers.filter(playerIndex => !recruitedPlayerSet.has(playerIndex));
   for (const playerIndex of battlePlayers) {
     setEncounterRewards(
       {
@@ -432,7 +594,8 @@ async function runDancingLessonsChoices(): Promise<boolean> {
   focusDancingLessonsPlayer(battlePlayers[0]);
   globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
   queueDancingLessonsStartOfBattleEffects(battlePlayers, enemyOwnerIndexes);
-  await hideOricorioPokemon(enemyOwnerIndexes);
+  await hideDancingLessonsNonBattleTrainers(battlePlayers);
+  await hideOricorioPokemon();
   await initBattleWithEnemyConfig(buildDancingLessonsBattleConfig(enemyOwnerIndexes));
   return true;
 }
@@ -448,10 +611,7 @@ function buildDancingLessonsBattleOption(playerIndex: PlayerIndex): MysteryEncou
         },
       ],
     })
-    .withPreOptionPhase(async () => {
-      setDancingLessonsChoice({ playerIndex, optionIndex: 1 });
-      return finishDancingLessonsChoiceCollection(playerIndex, 0);
-    })
+    .withPreOptionPhase(async () => storeDancingLessonsChoiceAndAdvance({ playerIndex, optionIndex: 1 }, 0))
     .withOptionPhase(runDancingLessonsChoices)
     .build();
 }
@@ -472,14 +632,13 @@ function buildDancingLessonsLearnOption(playerIndex: PlayerIndex): MysteryEncoun
       let selectedPokemon: PlayerPokemon | undefined;
       const selected = await selectPokemonForOption(pokemon => {
         selectedPokemon = pokemon;
-        setDancingLessonsChoice({ playerIndex, optionIndex: 2, selectedPokemon });
       });
 
       if (!selected || !selectedPokemon) {
         return false;
       }
 
-      return finishDancingLessonsChoiceCollection(playerIndex, 1);
+      return storeDancingLessonsChoiceAndAdvance({ playerIndex, optionIndex: 2, selectedPokemon }, 1);
     })
     .withOptionPhase(runDancingLessonsChoices)
     .build();
@@ -514,7 +673,6 @@ function buildDancingLessonsRecruitOption(playerIndex: PlayerIndex): MysteryEnco
               handler: () => {
                 selectedPokemon = pokemon;
                 selectedMove = move;
-                setDancingLessonsChoice({ playerIndex, optionIndex: 3, selectedPokemon, selectedMove });
                 return true;
               },
             };
@@ -543,7 +701,7 @@ function buildDancingLessonsRecruitOption(playerIndex: PlayerIndex): MysteryEnco
         return false;
       }
 
-      return finishDancingLessonsChoiceCollection(playerIndex, 2);
+      return storeDancingLessonsChoiceAndAdvance({ playerIndex, optionIndex: 3, selectedPokemon, selectedMove }, 2);
     })
     .withOptionPhase(runDancingLessonsChoices)
     .build();
@@ -596,13 +754,17 @@ export const DancingLessonsEncounter: MysteryEncounter = MysteryEncounterBuilder
   .withOnInit(() => {
     const encounter = globalScene.currentBattle.mysteryEncounter!;
     const species = getPokemonSpecies(SpeciesId.ORICORIO);
-    const primaryFormIndex = getBiomeOricorioFormIndex();
-    const secondaryFormIndex = getAlternateOricorioFormIndex(primaryFormIndex);
-    const oricorioDataByPlayer: Record<TwoPlayerIndex, PokemonData> = {
-      0: createOricorioData(primaryFormIndex),
-      1: createOricorioData(secondaryFormIndex),
+    const visualPlayerIndexes = getMysteryEncounterPlayerIndexes();
+    const formIndexes = getOricorioFormIndexes(visualPlayerIndexes.length);
+    const fallbackFormIndex = formIndexes[0] ?? getBiomeOricorioFormIndex();
+    const oricorioDataByPlayer: Record<PlayerIndex, PokemonData> = {
+      0: createOricorioData(fallbackFormIndex),
+      1: createOricorioData(fallbackFormIndex),
+      2: createOricorioData(fallbackFormIndex),
     };
-    const visualPlayerIndexes = globalScene.twoPlayerMode ? ([0, 1] as PlayerIndex[]) : ([0] as PlayerIndex[]);
+    for (const [slotIndex, playerIndex] of visualPlayerIndexes.entries()) {
+      oricorioDataByPlayer[playerIndex] = createOricorioData(formIndexes[slotIndex] ?? fallbackFormIndex);
+    }
 
     encounter.dialogue.intro = [
       {
@@ -642,7 +804,7 @@ export const DancingLessonsEncounter: MysteryEncounter = MysteryEncounterBuilder
   .build();
 
 function hideOricorioPokemon(playerIndexes?: PlayerIndex[]) {
-  const visualOricorio = (playerIndexes ?? ([0, 1] as PlayerIndex[]))
+  const visualOricorio = (playerIndexes ?? getMysteryEncounterPlayerIndexes())
     .map(playerIndex => globalScene.getEnemyParty()[playerIndex])
     .filter((pokemon): pokemon is EnemyPokemon => !!pokemon);
 

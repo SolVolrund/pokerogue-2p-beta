@@ -1,9 +1,9 @@
+import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
-import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { modifierTypes } from "#data/data-lists";
 import { Gender } from "#data/gender";
-import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BerryType } from "#enums/berry-type";
 import { MoveId } from "#enums/move-id";
@@ -15,7 +15,6 @@ import { PokeballType } from "#enums/pokeball";
 import { SpeciesId } from "#enums/species-id";
 import { Stat } from "#enums/stat";
 import { TrainerSlot } from "#enums/trainer-slot";
-import { UiMode } from "#enums/ui-mode";
 import type { Pokemon } from "#field/pokemon";
 import { EnemyPokemon } from "#field/pokemon";
 import { BerryModifier, PokemonInstantReviveModifier } from "#modifiers/modifier";
@@ -35,12 +34,23 @@ import {
   catchPokemon,
   getHighestLevelPlayerPokemon,
 } from "#mystery-encounters/encounter-pokemon-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { PersistentModifierRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import type { HeldModifierConfig } from "#types/held-modifier-config";
+import {
+  getBestComputerPartnerReplacementSlot,
+  getComputerPartnerProfile,
+  getComputerPartnerProfileWithRolePreferences,
+} from "#utils/computer-partner-profile";
+import { getComputerPartnerTeamConfidence } from "#utils/computer-partner-team-confidence";
 import { randInt } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
@@ -57,7 +67,7 @@ interface AbsoluteAvariceChoice {
 
 interface AbsoluteAvariceData {
   choices: AbsoluteAvariceChoice[];
-  berryItemsByPlayer: Record<TwoPlayerIndex, Map<number, BerryModifier[]>>;
+  berryItemsByPlayer: Partial<Record<PlayerIndex, Map<number, BerryModifier[]>>>;
   berryItemsMap: Map<number, BerryModifier[]>;
   skipSelectedDialogueOnce?: boolean;
 }
@@ -68,7 +78,9 @@ class TwoPlayerAnyPlayerBerryRequirement extends PersistentModifierRequirement {
       return super.meetsRequirement();
     }
 
-    return ([0, 1] as PlayerIndex[]).some(playerIndex => getPlayerBerryCount(playerIndex) >= this.minNumberOfItems);
+    return getMysteryEncounterPlayerIndexes().some(
+      playerIndex => getPlayerBerryCount(playerIndex) >= this.minNumberOfItems,
+    );
   }
 }
 
@@ -87,7 +99,7 @@ function getAbsoluteAvariceData(): AbsoluteAvariceData {
 }
 
 function getAvaricePlayerIndexes(): PlayerIndex[] {
-  return globalScene.twoPlayerMode ? ([0, 1] as PlayerIndex[]) : [globalScene.activePlayerIndex];
+  return getMysteryEncounterPlayerIndexes();
 }
 
 function getPlayerBerryItems(playerIndex: PlayerIndex): BerryModifier[] {
@@ -110,11 +122,10 @@ function buildBerryItemsMap(playerIndex: PlayerIndex): Map<number, BerryModifier
   return berryItemsMap;
 }
 
-function buildBerryItemsByPlayer(): Record<TwoPlayerIndex, Map<number, BerryModifier[]>> {
-  return {
-    0: buildBerryItemsMap(0),
-    1: buildBerryItemsMap(1),
-  };
+function buildBerryItemsByPlayer(): Partial<Record<PlayerIndex, Map<number, BerryModifier[]>>> {
+  return Object.fromEntries(
+    getAvaricePlayerIndexes().map(playerIndex => [playerIndex, buildBerryItemsMap(playerIndex)]),
+  ) as Partial<Record<PlayerIndex, Map<number, BerryModifier[]>>>;
 }
 
 function seedAbsoluteAvariceTestBerries(): void {
@@ -123,7 +134,7 @@ function seedAbsoluteAvariceTestBerries(): void {
   }
 
   const berryTypes = [BerryType.SITRUS, BerryType.LUM, BerryType.ENIGMA, BerryType.LIECHI, BerryType.GANLON, BerryType.PETAYA];
-  for (const playerIndex of [0, 1] as PlayerIndex[]) {
+  for (const playerIndex of getAvaricePlayerIndexes()) {
     const party = globalScene.getPlayerParty(playerIndex);
     if (party.length === 0 || getPlayerBerryCount(playerIndex) >= 6) {
       continue;
@@ -190,27 +201,19 @@ function createGreedentEnemyPartyConfig(playerIndexes: PlayerIndex[]): EnemyPart
   };
 }
 
-function queueGreedentStartOfBattleEffects(greedentCount: 1 | 2): void {
+function queueGreedentStartOfBattleEffects(greedentCount: 1 | 2 | 3): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
-  encounter.startOfBattleEffects.push({
-    sourceBattlerIndex: BattlerIndex.ENEMY,
-    targets: [BattlerIndex.ENEMY],
-    move: new PokemonMove(MoveId.STUFF_CHEEKS),
-    useMode: MoveUseMode.IGNORE_PP,
-  });
-
-  if (greedentCount > 1) {
-    encounter.startOfBattleEffects.push({
-      sourceBattlerIndex: BattlerIndex.ENEMY_2,
-      targets: [BattlerIndex.ENEMY_2],
-      move: new PokemonMove(MoveId.STUFF_CHEEKS),
-      useMode: MoveUseMode.IGNORE_PP,
-    });
-  }
-}
-
-function getAbsoluteAvariceTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
-  return playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+  encounter.startOfBattleEffects.push(
+    ...Array.from({ length: greedentCount }, (_unused, fieldIndex) => {
+      const greedentBattlerIndex = globalScene.getEnemyBattlerIndex(fieldIndex);
+      return {
+        sourceBattlerIndex: greedentBattlerIndex,
+        targets: [greedentBattlerIndex],
+        move: new PokemonMove(MoveId.STUFF_CHEEKS),
+        useMode: MoveUseMode.IGNORE_PP,
+      };
+    }),
+  );
 }
 
 async function hideAbsoluteAvariceNonBattleTrainers(battlePlayers: PlayerIndex[]): Promise<void> {
@@ -220,12 +223,12 @@ async function hideAbsoluteAvariceNonBattleTrainers(battlePlayers: PlayerIndex[]
 
   const battlePlayerSet = new Set(battlePlayers);
   await Promise.all(
-    ([0, 1] as PlayerIndex[])
+    getAvaricePlayerIndexes()
       .filter(playerIndex => !battlePlayerSet.has(playerIndex))
       .map(
         playerIndex =>
           new Promise<void>(resolve => {
-            const trainerSprite = getAbsoluteAvariceTrainerSprite(playerIndex);
+            const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
             globalScene.tweens.killTweensOf(trainerSprite);
 
             if (!trainerSprite.visible) {
@@ -247,21 +250,64 @@ async function hideAbsoluteAvariceNonBattleTrainers(battlePlayers: PlayerIndex[]
   );
 }
 
-function showAbsoluteAvaricePlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.waitForPlayerInput(playerIndex);
+function doesGreedentImproveComputerPartnerTeam(playerIndex: PlayerIndex): boolean {
+  if (!globalScene.isComputerPartnerPlayer(playerIndex)) {
+    return false;
+  }
 
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
-      overrideQuery: i18next.t(`${namespace}:query`),
-      overrideOptions: buildAbsoluteAvaricePlayerOptions(playerIndex),
-      startingCursorIndex,
-    });
-  });
+  const profile = getComputerPartnerProfileWithRolePreferences(
+    globalScene.getComputerPartnerKey(playerIndex),
+    globalScene.getComputerPartnerRolePreferences(playerIndex),
+  );
+  return !!getBestComputerPartnerReplacementSlot(
+    profile,
+    globalScene.getPlayerParty(playerIndex),
+    getPokemonSpecies(SpeciesId.GREEDENT),
+  );
 }
 
-function storeAbsoluteAvariceChoice(optionIndex: AbsoluteAvariceOptionIndex, playerIndex: PlayerIndex): boolean {
+function chooseComputerPartnerAbsoluteAvariceOption(playerIndex: PlayerIndex): AbsoluteAvariceOptionIndex {
+  if (doesGreedentImproveComputerPartnerTeam(playerIndex)) {
+    return 3;
+  }
+
+  const confidence = getComputerPartnerTeamConfidence(globalScene.getPlayerParty(playerIndex));
+  return confidence.level === "medium" || confidence.level === "high" ? 1 : 2;
+}
+
+function queueComputerPartnerAbsoluteAvariceChoiceMessage(
+  playerIndex: PlayerIndex,
+  optionIndex: AbsoluteAvariceOptionIndex,
+): void {
+  const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+  const optionLabel = i18next.t(`${namespace}:option.${optionIndex}.label`);
+  globalScene.waitForPlayerInput(0);
+  globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionLabel}.`, null, true);
+}
+
+async function promptNextAbsoluteAvaricePlayer(
+  playerIndex: PlayerIndex,
+  startingCursorIndex = 0,
+): Promise<boolean> {
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildAbsoluteAvaricePlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerAbsoluteAvariceOption,
+      onOptionChosen: (optionIndex, choicePlayerIndex) =>
+        storeAbsoluteAvariceChoice(optionIndex as AbsoluteAvariceOptionIndex, choicePlayerIndex),
+    },
+  });
+  return result ?? false;
+}
+
+function storeAbsoluteAvariceChoice(
+  optionIndex: AbsoluteAvariceOptionIndex,
+  playerIndex: PlayerIndex,
+): boolean | Promise<boolean> {
   if (!globalScene.twoPlayerMode) {
     return true;
   }
@@ -272,9 +318,13 @@ function storeAbsoluteAvariceChoice(optionIndex: AbsoluteAvariceOptionIndex, pla
   data.choices = data.choices.filter(choice => choice.playerIndex !== playerIndex);
   data.choices.push({ playerIndex, optionIndex });
 
-  if (playerIndex === 0) {
-    showAbsoluteAvaricePlayerMenu(1, optionIndex - 1);
-    return false;
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    queueComputerPartnerAbsoluteAvariceChoiceMessage(playerIndex, optionIndex);
+  }
+
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+  if (nextPlayerIndex != null) {
+    return promptNextAbsoluteAvaricePlayer(nextPlayerIndex, optionIndex - 1);
   }
 
   data.skipSelectedDialogueOnce = true;
@@ -301,6 +351,12 @@ function returnSomeBerries(playerIndex: PlayerIndex): void {
         applyModifierTypeToPlayerPokemon(pokemon, berryModType);
       }
     }
+  });
+}
+
+function showAbsoluteAvariceMessage(message: string): Promise<void> {
+  return new Promise(resolve => {
+    globalScene.ui.showText(message, null, () => resolve(), 0, true);
   });
 }
 
@@ -335,6 +391,46 @@ async function giveGreedentToPlayer(playerIndex: PlayerIndex): Promise<void> {
     new PokemonMove(MoveId.SLACK_OFF),
   ];
   greedent.passive = true;
+
+  const addGreedentToParty = async (slotIndex?: number): Promise<void> => {
+    const addedGreedent = greedent.addToParty(PokeballType.POKEBALL, slotIndex, playerIndex);
+    await globalScene.getPlayerGameData(playerIndex).setPokemonCaught(greedent);
+    void globalScene.savePlayerSystemSave(playerIndex);
+    if (addedGreedent) {
+      await addedGreedent.loadAssets();
+    }
+  };
+
+  const party = globalScene.getPlayerParty(playerIndex);
+  if (party.length < PLAYER_PARTY_MAX_SIZE) {
+    await addGreedentToParty();
+    return;
+  }
+
+  if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+    const profile = getComputerPartnerProfileWithRolePreferences(
+      globalScene.getComputerPartnerKey(playerIndex),
+      globalScene.getComputerPartnerRolePreferences(playerIndex),
+    );
+    const replacementScore = getBestComputerPartnerReplacementSlot(profile, party, greedent);
+    const replacedPokemonIndex = replacementScore?.replacedPokemonIndex;
+    const replacedPokemon = replacedPokemonIndex === undefined ? undefined : party[replacedPokemonIndex];
+
+    if (replacedPokemonIndex === undefined || !replacedPokemon || replacedPokemon.computerPartnerAce) {
+      await showAbsoluteAvariceMessage(`${profile.name} decided not to keep ${greedent.getNameToRender()}.`);
+      greedent.destroy();
+      return;
+    }
+
+    await showAbsoluteAvariceMessage(
+      `${profile.name} added ${greedent.getNameToRender()} to their team and released ${replacedPokemon.getNameToRender()}.`,
+    );
+    await globalScene.removePartyMemberModifiers(replacedPokemonIndex, playerIndex);
+    const releasedPokemon = party.splice(replacedPokemonIndex, 1)[0];
+    releasedPokemon?.destroy();
+    await addGreedentToParty(replacedPokemonIndex);
+    return;
+  }
 
   await catchPokemon(greedent, null, PokeballType.POKEBALL, false, true, playerIndex);
 }
@@ -412,7 +508,7 @@ async function runOnePlayerBattleGreedent(): Promise<void> {
 
 async function runOnePlayerReasonWithGreedent(): Promise<boolean> {
   returnSomeBerries(globalScene.activePlayerIndex);
-  await globalScene.updateModifiers(true);
+  await globalScene.updateModifiers(true, undefined, globalScene.activePlayerIndex);
 
   await transitionMysteryEncounterIntroVisuals(true, true, 500);
   leaveEncounterWithoutBattle(true);
@@ -442,9 +538,7 @@ async function runTwoPlayerAbsoluteAvariceChoices(): Promise<boolean> {
 
   for (const choice of reasonChoices) {
     returnSomeBerries(choice.playerIndex);
-  }
-  if (reasonChoices.length > 0) {
-    await globalScene.updateModifiers(true);
+    await globalScene.updateModifiers(true, undefined, choice.playerIndex);
   }
 
   if (feedChoices.length > 0 && battleChoices.length === 0) {
@@ -483,7 +577,7 @@ async function runTwoPlayerAbsoluteAvariceChoices(): Promise<boolean> {
     };
   }
 
-  const greedentCount = battlePlayers.length > 1 ? 2 : 1;
+  const greedentCount = battlePlayers.length as 1 | 2 | 3;
   globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
   queueGreedentStartOfBattleEffects(greedentCount);
   await transitionMysteryEncounterIntroVisuals(true, true, 500);
