@@ -218,6 +218,11 @@ export class AttemptCapturePhase extends PokemonPhase {
     return !!globalScene.getPlayerPokeballCounts(this.playerIndex)[this.pokeballType];
   }
 
+  private getCapturingPlayerFieldIndex(): number {
+    const fieldIndex = globalScene.getPlayerFieldOwners().indexOf(this.playerIndex);
+    return fieldIndex > -1 ? fieldIndex : this.playerIndex;
+  }
+
   failCatch(_shakeCount: number) {
     const pokemon = this.getPokemon();
 
@@ -444,7 +449,7 @@ export class AttemptCapturePhase extends PokemonPhase {
                       globalScene.ui.setMode(
                         UiMode.PARTY,
                         PartyUiMode.RELEASE,
-                        this.fieldIndex,
+                        this.getCapturingPlayerFieldIndex(),
                         (slotIndex: number, _option: PartyOption) => {
                           globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
                             if (slotIndex < 6) {
