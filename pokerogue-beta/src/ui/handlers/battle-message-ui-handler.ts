@@ -1,4 +1,5 @@
 import { globalScene } from "#app/global-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import { Button } from "#enums/buttons";
 import { getStatKey, PERMANENT_STATS } from "#enums/stat";
 import { TextStyle } from "#enums/text-style";
@@ -203,12 +204,17 @@ export class BattleMessageUiHandler extends MessageUiHandler {
     super.showDialogue(text, name, delay, callback, callbackDelay, prompt, promptDelay);
   }
 
-  promptLevelUpStats(partyMemberIndex: number, prevStats: number[], showTotals: boolean): Promise<void> {
+  promptLevelUpStats(
+    partyMemberIndex: number,
+    prevStats: number[],
+    showTotals: boolean,
+    playerIndex: PlayerIndex = globalScene.activePlayerIndex,
+  ): Promise<void> {
     return new Promise(resolve => {
       if (!globalScene.showLevelUpStats) {
         return resolve();
       }
-      const newStats = globalScene.getPlayerParty()[partyMemberIndex].stats;
+      const newStats = globalScene.getPlayerParty(playerIndex)[partyMemberIndex].stats;
       let levelUpStatsValuesText = "";
       for (const s of PERMANENT_STATS) {
         levelUpStatsValuesText += `${showTotals ? newStats[s] : newStats[s] - prevStats[s]}\n`;
@@ -219,7 +225,7 @@ export class BattleMessageUiHandler extends MessageUiHandler {
       this.awaitingActionInput = true;
       this.onActionInput = () => {
         if (!showTotals) {
-          return this.promptLevelUpStats(partyMemberIndex, [], true).then(() => resolve());
+          return this.promptLevelUpStats(partyMemberIndex, [], true, playerIndex).then(() => resolve());
         }
         this.levelUpStatsContainer.setVisible(false);
         resolve();

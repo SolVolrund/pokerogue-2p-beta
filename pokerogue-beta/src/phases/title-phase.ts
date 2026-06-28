@@ -52,6 +52,7 @@ export class TitlePhase extends Phase {
   public readonly phaseName = "TitlePhase";
   private loaded = false;
   private remoteTitleStartApplied = false;
+  private profileStartupAnnounceInterval: ReturnType<typeof globalThis.setInterval> | undefined;
   // TODO: Make `end` take a `GameModes` as a parameter rather than storing it on the class itself
   public gameMode: GameModes;
 
@@ -928,9 +929,11 @@ export class TitlePhase extends Phase {
     console.info("[PokeRogue 2P] Broadcasting multiplayer run start", titleStart);
     globalScene.uiInputs?.broadcastTwoPlayerTitleStart(titleStart);
     globalScene.uiInputs?.broadcastTwoPlayerRunBootstrap(runSeed);
+    this.announceTwoPlayerProfileForStartup();
     this.waitForTwoPlayerProfilesBeforeRun(() => {
       globalScene.uiInputs?.broadcastTwoPlayerTitleStart(titleStart);
       globalScene.uiInputs?.broadcastTwoPlayerRunBootstrap(runSeed);
+      this.announceTwoPlayerProfileForStartup();
       this.setModeAndEnd(gameMode);
     });
   }
@@ -978,6 +981,12 @@ export class TitlePhase extends Phase {
       return false;
     }
 
+    if (this.remoteTitleStartApplied) {
+      globalScene.clearPendingTwoPlayerTitleStart(titleStart);
+      console.info("[PokeRogue 2P] Ignoring duplicate multiplayer run start", titleStart);
+      return true;
+    }
+
     this.remoteTitleStartApplied = true;
     globalScene.clearPendingTwoPlayerTitleStart(titleStart);
     console.info("[PokeRogue 2P] Received multiplayer run start", titleStart);
@@ -992,6 +1001,7 @@ export class TitlePhase extends Phase {
       }
 
       globalScene.configureTwoPlayerMode(true, titleStart.partySize ?? 6, false, titleStart.playerCount ?? 2);
+      this.announceTwoPlayerProfileForStartup();
       this.waitForTwoPlayerProfilesBeforeRun(() => this.setModeAndEnd(gameMode));
       return true;
     }
@@ -1002,6 +1012,35 @@ export class TitlePhase extends Phase {
     }
 
     return false;
+  }
+
+  private announceTwoPlayerProfileForStartup(attempts = 8, intervalMs = 500): void {
+    if (!globalScene.twoPlayerMode) {
+      return;
+    }
+
+    if (this.profileStartupAnnounceInterval !== undefined) {
+      globalThis.clearInterval(this.profileStartupAnnounceInterval);
+      this.profileStartupAnnounceInterval = undefined;
+    }
+
+    let sentCount = 0;
+    const announce = () => {
+      if (!globalScene.twoPlayerMode || sentCount >= attempts) {
+        if (this.profileStartupAnnounceInterval !== undefined) {
+          globalThis.clearInterval(this.profileStartupAnnounceInterval);
+          this.profileStartupAnnounceInterval = undefined;
+        }
+        return;
+      }
+
+      sentCount++;
+      globalScene.uiInputs?.broadcastTwoPlayerProfileSnapshot();
+      globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("profile-startup");
+    };
+
+    announce();
+    this.profileStartupAnnounceInterval = globalThis.setInterval(announce, intervalMs);
   }
 
   private waitForTwoPlayerProfilesBeforeRun(onReady: () => void): void {
@@ -1015,7 +1054,16 @@ export class TitlePhase extends Phase {
       const waitingMessage =
         globalScene.multiplayerPlayerCount > 2 ? "Waiting for all player profiles..." : "Waiting for both player profiles...";
       globalScene.ui.showText(waitingMessage, null, null, null, false);
+      globalScene.uiInputs?.broadcastTwoPlayerProfileSnapshot();
+      const profileRetryInterval = globalThis.setInterval(() => {
+        if (globalScene.isTwoPlayerProfileExchangeComplete()) {
+          globalThis.clearInterval(profileRetryInterval);
+          return;
+        }
+        globalScene.uiInputs?.broadcastTwoPlayerProfileSnapshot();
+      }, 1000);
       globalScene.waitForTwoPlayerProfileExchange().then(ready => {
+        globalThis.clearInterval(profileRetryInterval);
         if (ready) {
           globalScene.ui.clearText();
           onReady();
@@ -1173,6 +1221,10 @@ export class TitlePhase extends Phase {
   // TODO: Refactor this
   end(): void {
     globalScene.setTwoPlayerTitleStartHandler(undefined);
+    if (this.profileStartupAnnounceInterval !== undefined) {
+      globalThis.clearInterval(this.profileStartupAnnounceInterval);
+      this.profileStartupAnnounceInterval = undefined;
+    }
 
     if (!this.loaded && !globalScene.gameMode.isDaily) {
       globalScene.gameMode = getGameMode(this.gameMode);

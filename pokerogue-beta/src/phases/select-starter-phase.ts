@@ -3,11 +3,12 @@ import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { activeOverrides } from "#app/overrides";
 import { Phase } from "#app/phase";
+import { modifierTypes } from "#data/data-lists";
 import { SpeciesFormChangeMoveLearnedTrigger } from "#data/form-change-triggers";
 import { Gender } from "#data/gender";
 import { ChallengeType } from "#enums/challenge-type";
 import { UiMode } from "#enums/ui-mode";
-import { overrideHeldItems, overrideModifiers } from "#modifiers/modifier";
+import { overrideHeldItems, overrideModifiers, PersistentModifier } from "#modifiers/modifier";
 import type { Starter } from "#types/save-data";
 import { SaveSlotUiMode } from "#ui/handlers/save-slot-select-ui-handler";
 import { applyChallenges } from "#utils/challenge-utils";
@@ -216,8 +217,23 @@ export class SelectStarterPhase extends Phase {
       loadPokemonAssets.push(starterPokemon.loadAssets());
     });
     overrideModifiers();
+    this.applyThreePlayerExpCharmBonus(playerIndex);
     overrideHeldItems(party[0]);
     return Promise.all(loadPokemonAssets).then(() => undefined);
+  }
+
+  private applyThreePlayerExpCharmBonus(playerIndex: PlayerIndex): void {
+    if (!globalScene.twoPlayerMode || globalScene.multiplayerPlayerCount < 3) {
+      return;
+    }
+
+    const expCharm = modifierTypes.EXP_CHARM().withIdFromFunc(modifierTypes.EXP_CHARM).newModifier();
+    if (!(expCharm instanceof PersistentModifier)) {
+      return;
+    }
+
+    expCharm.stackCount = 2;
+    globalScene.addModifier(expCharm, true, false, false, true, undefined, playerIndex);
   }
 
   private initComputerPartnerStarters(playerIndex: PlayerIndex): Promise<void> {
@@ -237,7 +253,16 @@ export class SelectStarterPhase extends Phase {
       const waitingMessage =
         globalScene.multiplayerPlayerCount > 2 ? "Waiting for all player profiles..." : "Waiting for both player profiles...";
       globalScene.ui.showText(waitingMessage, null, null, null, false);
+      globalScene.uiInputs?.broadcastTwoPlayerProfileSnapshot();
+      const profileRetryInterval = globalThis.setInterval(() => {
+        if (globalScene.isTwoPlayerProfileExchangeComplete()) {
+          globalThis.clearInterval(profileRetryInterval);
+          return;
+        }
+        globalScene.uiInputs?.broadcastTwoPlayerProfileSnapshot();
+      }, 1000);
       globalScene.waitForTwoPlayerProfileExchange().then(ready => {
+        globalThis.clearInterval(profileRetryInterval);
         if (ready) {
           globalScene.ui.clearText();
           onReady();

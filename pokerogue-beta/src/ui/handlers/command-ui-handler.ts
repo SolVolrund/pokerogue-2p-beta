@@ -31,6 +31,15 @@ export class CommandUiHandler extends UiHandler {
     super(UiMode.COMMAND);
   }
 
+  private getCommandPhase(): CommandPhase {
+    const currentPhase = globalScene.phaseManager.getCurrentPhase();
+    if (currentPhase.is("CommandPhase")) {
+      return currentPhase;
+    }
+
+    return globalScene.phaseManager.getStandbyPhase() as CommandPhase;
+  }
+
   setup() {
     const ui = this.getUi();
     const commands = [
@@ -86,21 +95,15 @@ export class CommandUiHandler extends UiHandler {
   show(args: any[]): boolean {
     super.show(args);
 
-    this.fieldIndex = args.length > 0 ? (args[0] as number) : 0;
+    const commandPhase = this.getCommandPhase();
+    this.fieldIndex = args.length > 0 ? (args[0] as number) : commandPhase.getFieldIndex();
     const activePokemon = this.getActivePokemon();
     if (activePokemon) {
       this.fieldIndex = activePokemon.getFieldIndex();
     }
+    this.fieldIndex = commandPhase.getFieldIndex();
 
     this.commandsContainer.setVisible(true);
-
-    let commandPhase: CommandPhase;
-    const currentPhase = globalScene.phaseManager.getCurrentPhase();
-    if (currentPhase.is("CommandPhase")) {
-      commandPhase = currentPhase;
-    } else {
-      commandPhase = globalScene.phaseManager.getStandbyPhase() as CommandPhase;
-    }
 
     if (this.canTera()) {
       this.teraButton.setVisible(true);
@@ -143,10 +146,11 @@ export class CommandUiHandler extends UiHandler {
 
     if (button === Button.CANCEL || button === Button.ACTION) {
       if (button === Button.ACTION) {
+        const commandPhase = this.getCommandPhase();
         switch (cursor) {
           // Fight
           case Command.FIGHT:
-            ui.setMode(UiMode.FIGHT, (globalScene.phaseManager.getCurrentPhase() as CommandPhase).getFieldIndex());
+            ui.setMode(UiMode.FIGHT, commandPhase.getFieldIndex());
             success = true;
             break;
           // Ball
@@ -156,18 +160,18 @@ export class CommandUiHandler extends UiHandler {
             break;
           // Pokemon
           case Command.POKEMON:
-            this.openPokemonCommandMenu(globalScene.phaseManager.getCurrentPhase() as CommandPhase);
+            this.openPokemonCommandMenu(commandPhase);
             success = true;
             break;
           // Run
           case Command.RUN:
-            (globalScene.phaseManager.getCurrentPhase() as CommandPhase).handleCommand(Command.RUN, 0);
+            commandPhase.handleCommand(Command.RUN, 0);
             success = true;
             break;
           case Command.TERA:
             ui.setMode(
               UiMode.FIGHT,
-              (globalScene.phaseManager.getCurrentPhase() as CommandPhase).getFieldIndex(),
+              commandPhase.getFieldIndex(),
               Command.TERA,
             );
             success = true;
@@ -252,7 +256,7 @@ export class CommandUiHandler extends UiHandler {
     globalScene.ui.setMode(
       UiMode.PARTY,
       PartyUiMode.SWITCH,
-      commandPhase.getPokemon().getFieldIndex(),
+      commandPhase.getFieldIndex(),
       null,
       PartyUiHandler.FilterNonFainted,
     );

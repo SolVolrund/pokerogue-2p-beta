@@ -313,6 +313,7 @@ export class TwoPlayerInputTransport {
   private sequence = 0;
   private authoritySequence = 0;
   private latestRemoteCheckpoint: TwoPlayerStateCheckpoint | undefined;
+  private latestHostCheckpoint: TwoPlayerStateCheckpoint | undefined;
   private pendingRunBootstrap: TwoPlayerRunBootstrap | undefined;
   private pendingTitleStart: TwoPlayerTitleStart | undefined;
   private pendingSettingsSnapshot: TwoPlayerSettingsSnapshot | undefined;
@@ -408,19 +409,24 @@ export class TwoPlayerInputTransport {
       return "local-checkpoint-unavailable";
     }
 
-    if (!this.latestRemoteCheckpoint) {
+    const remoteCheckpoint = this.getReadinessCheckpoint();
+    if (!remoteCheckpoint) {
       return "remote-checkpoint-unavailable";
     }
 
-    if (checkpoint.summary.phase !== this.latestRemoteCheckpoint.summary.phase) {
+    if (checkpoint.summary.phase !== remoteCheckpoint.summary.phase) {
       return "remote-checkpoint-phase-mismatch";
     }
 
-    if (checkpoint.summary.uiMode !== this.latestRemoteCheckpoint.summary.uiMode) {
+    if (checkpoint.summary.uiMode !== remoteCheckpoint.summary.uiMode) {
       return "remote-checkpoint-ui-mode-mismatch";
     }
 
     return undefined;
+  }
+
+  private getReadinessCheckpoint(): TwoPlayerStateCheckpoint | undefined {
+    return this.networkRole === "guest" ? this.latestHostCheckpoint : this.latestRemoteCheckpoint;
   }
 
   public requestInput(button: Button, pressed: boolean, checkpoint = this.getInputCheckpoint()): boolean {
@@ -622,6 +628,7 @@ export class TwoPlayerInputTransport {
       kind: "state-checkpoint",
       sessionId: this.sessionId,
       senderId: this.senderId,
+      senderRole: this.networkRole,
       sequence: ++this.sequence,
       ...(triggerMessage.authoritySequence === undefined
         ? {}
@@ -718,6 +725,7 @@ export class TwoPlayerInputTransport {
     });
     this.webSocket.addEventListener("close", () => {
       this.latestRemoteCheckpoint = undefined;
+      this.latestHostCheckpoint = undefined;
       this.logDebug?.({
         action: "disconnected",
         source: "transport",
@@ -728,6 +736,7 @@ export class TwoPlayerInputTransport {
     });
     this.webSocket.addEventListener("error", () => {
       this.latestRemoteCheckpoint = undefined;
+      this.latestHostCheckpoint = undefined;
       this.logDebug?.({
         action: "error",
         source: "transport",
@@ -782,6 +791,9 @@ export class TwoPlayerInputTransport {
 
     if (message.checkpoint) {
       this.latestRemoteCheckpoint = message.checkpoint;
+      if (message.senderRole === "host") {
+        this.latestHostCheckpoint = message.checkpoint;
+      }
     }
 
     if (message.kind === "input-request") {

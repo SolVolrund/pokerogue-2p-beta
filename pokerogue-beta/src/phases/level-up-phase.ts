@@ -51,7 +51,7 @@ export class LevelUpPhase extends PlayerPartyMemberPokemonPhase {
         this.setLevelUpInputOwner();
         globalScene.ui
           .getMessageHandler()
-          .promptLevelUpStats(this.partyMemberIndex, prevStats, false)
+          .promptLevelUpStats(this.partyMemberIndex, prevStats, false, this.playerIndex)
           .then(() => this.end());
         return;
       case ExpNotification.SKIP:
@@ -75,7 +75,7 @@ export class LevelUpPhase extends PlayerPartyMemberPokemonPhase {
       () =>
         globalScene.ui
           .getMessageHandler()
-          .promptLevelUpStats(this.partyMemberIndex, prevStats, false)
+          .promptLevelUpStats(this.partyMemberIndex, prevStats, false, this.playerIndex)
           .then(() => resolve()),
       null,
       true,
