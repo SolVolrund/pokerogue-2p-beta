@@ -241,6 +241,10 @@ export class CommandUiHandler extends UiHandler {
         },
       },
       {
+        label: "Pass",
+        handler: () => commandPhase.passTurn(),
+      },
+      {
         label: i18next.t("menu:cancel"),
         handler: () => {
           globalScene.ui.setMode(UiMode.COMMAND, commandPhase.getFieldIndex());

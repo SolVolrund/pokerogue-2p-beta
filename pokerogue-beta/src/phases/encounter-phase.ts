@@ -61,8 +61,6 @@ interface ComputerPartnerCaptureAnnouncement {
   decisions: ComputerPartnerCaptureDecision[];
 }
 
-const CAPTURE_CLAIM_TIE_MARGIN = 0.5;
-
 export class EncounterPhase extends BattlePhase {
   // Union type is necessary as this is subclassed, and typescript will otherwise complain
   public readonly phaseName: "EncounterPhase" | "NextEncounterPhase" | "NewBiomeEncounterPhase" = "EncounterPhase";
@@ -511,14 +509,20 @@ export class EncounterPhase extends BattlePhase {
       });
     }
 
-    return enemyField.length === 1
-      ? i18next.t("battle:singleWildAppeared", {
-          pokemonName: enemyField[0].getNameToRender(),
-        })
-      : i18next.t("battle:multiWildAppeared", {
-          pokemonName1: enemyField[0].getNameToRender(),
-          pokemonName2: enemyField[1].getNameToRender(),
-        });
+    if (enemyField.length === 1) {
+      return i18next.t("battle:singleWildAppeared", {
+        pokemonName: enemyField[0].getNameToRender(),
+      });
+    }
+
+    if (enemyField.length > 2) {
+      return `${enemyField[0].getNameToRender()}, ${enemyField[2].getNameToRender()} and ${enemyField[1].getNameToRender()} appeared!`;
+    }
+
+    return i18next.t("battle:multiWildAppeared", {
+      pokemonName1: enemyField[0].getNameToRender(),
+      pokemonName2: enemyField[1].getNameToRender(),
+    });
   }
 
   getComputerPartnerCaptureAnnouncement(): ComputerPartnerCaptureAnnouncement | undefined {
@@ -575,20 +579,8 @@ export class EncounterPhase extends BattlePhase {
       });
     }
 
-    if (!callouts.length) {
-      return {
-        message: capturableTargets.length === 1
-          ? `Do you want to capture ${capturableTargets[0].getNameToRender()}?`
-          : "Do you want to capture any of these Pokemon?",
-        callouts,
-        decisions: [],
-      };
-    }
-
     return {
-      message: callouts
-        .map(callout => `${callout.partnerName} wants to capture ${this.getCaptureTargetText(callout.decisions)}.`)
-        .join("\n"),
+      message: this.getComputerPartnerCapturePromptMessage(),
       callouts,
       decisions: this.getUniqueCaptureDecisions(callouts.flatMap(callout => callout.decisions)),
     };
@@ -610,14 +602,14 @@ export class EncounterPhase extends BattlePhase {
       ];
       globalScene.currentBattle.computerPartnerReservedCaptureTargetId = targetId;
       globalScene.currentBattle.computerPartnerReservedCaptureTargetIds = targetId === undefined ? [] : [targetId];
-      onComplete();
+      this.showComputerPartnerCaptureClaimMessage(partnerClaims, announcement.callouts, onComplete);
       return true;
     };
     const options: OptionSelectItem[] = announcement.decisions.map(decision => {
       const targetName = decision.target.getNameToRender();
       const sideLabel = this.getEnemyCapturePositionLabel(decision.targetIndex, enemyField);
       return {
-        label: `Can I take ${sideLabel}${targetName}?`,
+        label: `Reserve ${sideLabel}${targetName}`,
         handler: () => setCaptureClaims(decision.target.id),
       };
     });
@@ -633,7 +625,7 @@ export class EncounterPhase extends BattlePhase {
         const targetName = pokemon.getNameToRender();
         const sideLabel = this.getEnemyCapturePositionLabel(targetIndex, enemyField);
         options.push({
-          label: `Okay, I'll take ${sideLabel}${targetName}.`,
+          label: `Reserve ${sideLabel}${targetName}`,
           handler: () => setCaptureClaims(pokemon.id),
         });
       });
@@ -654,13 +646,55 @@ export class EncounterPhase extends BattlePhase {
     }, 0, true);
   }
 
-  private getCaptureTargetText(decisions: ComputerPartnerCaptureDecision[]): string {
-    const targetNames = this.getUniqueCaptureDecisions(decisions).map(decision => decision.target.getNameToRender());
-    if (targetNames.length === 1) {
-      return targetNames[0];
+  private getComputerPartnerCapturePromptMessage(): string {
+    const partnerNames = globalScene
+      .getActivePlayerIndexes()
+      .filter(playerIndex => globalScene.isComputerPartnerPlayer(playerIndex))
+      .map(playerIndex => getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex)).name);
+    if (partnerNames.length === 1) {
+      return `${partnerNames[0]} follows your lead.`;
+    }
+    if (partnerNames.length > 1) {
+      return `${partnerNames.slice(0, -1).join(", ")} and ${partnerNames[partnerNames.length - 1]} follow your lead.`;
     }
 
-    return `${targetNames.slice(0, -1).join(", ")} and ${targetNames[targetNames.length - 1]}`;
+    const capturableTargets = globalScene.getEnemyField().filter(pokemon =>
+      pokemon.isActive(true) && !pokemon.isFainted() && !pokemon.isBoss(),
+    );
+    return capturableTargets.length === 1
+      ? `Do you want to capture ${capturableTargets[0].getNameToRender()}?`
+      : "Do you want to capture any of these Pokemon?";
+  }
+
+  private showComputerPartnerCaptureClaimMessage(
+    partnerClaims: Array<{ playerIndex: PlayerIndex; targetId: number }>,
+    callouts: ComputerPartnerCaptureCallout[],
+    onComplete: () => void,
+  ): void {
+    if (!partnerClaims.length) {
+      onComplete();
+      return;
+    }
+
+    const enemyField = globalScene.getEnemyField();
+    const messages = partnerClaims
+      .map(claim => {
+        const callout = callouts.find(entry => entry.playerIndex === claim.playerIndex);
+        const target = enemyField.find(pokemon => pokemon.id === claim.targetId);
+        if (!callout || !target) {
+          return undefined;
+        }
+        return `${callout.partnerName} wants to catch ${target.getNameToRender()}.`;
+      })
+      .filter((message): message is string => !!message);
+    if (!messages.length) {
+      onComplete();
+      return;
+    }
+
+    globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+      globalScene.ui.showText(messages.join("\n"), null, onComplete, null, true);
+    });
   }
 
   private getUniqueCaptureDecisions(decisions: ComputerPartnerCaptureDecision[]): ComputerPartnerCaptureDecision[] {
@@ -710,38 +744,41 @@ export class EncounterPhase extends BattlePhase {
     callouts: ComputerPartnerCaptureCallout[],
     excludedTargetId?: number,
   ): Array<{ playerIndex: PlayerIndex; targetId: number }> {
-    const claimsByTarget = new Map<number, Array<{ playerIndex: PlayerIndex; decision: ComputerPartnerCaptureDecision }>>();
-    for (const callout of callouts) {
-      for (const decision of callout.decisions) {
-        if (decision.target.id === excludedTargetId) {
-          continue;
-        }
-
-        const claims = claimsByTarget.get(decision.target.id) ?? [];
-        claims.push({ playerIndex: callout.playerIndex, decision });
-        claimsByTarget.set(decision.target.id, claims);
-      }
+    const calloutsWithAvailableTargets = callouts.filter(callout =>
+      callout.decisions.some(decision => decision.target.id !== excludedTargetId),
+    );
+    if (!calloutsWithAvailableTargets.length) {
+      return [];
     }
 
-    return [...claimsByTarget.entries()].map(([targetId, claims]) => {
-      if (claims.length === 1) {
-        return { playerIndex: claims[0].playerIndex, targetId };
+    const startingPlayerIndex =
+      calloutsWithAvailableTargets.length > 1
+        ? globalScene.resolveAIReservationTieBreak(calloutsWithAvailableTargets.map(callout => callout.playerIndex))
+        : calloutsWithAvailableTargets[0].playerIndex;
+    const startingCalloutIndex = calloutsWithAvailableTargets.findIndex(
+      callout => callout.playerIndex === startingPlayerIndex,
+    );
+    const reservationOrder =
+      startingCalloutIndex < 0
+        ? calloutsWithAvailableTargets
+        : [
+          ...calloutsWithAvailableTargets.slice(startingCalloutIndex),
+          ...calloutsWithAvailableTargets.slice(0, startingCalloutIndex),
+        ];
+    const claimedTargetIds = new Set<number>(excludedTargetId === undefined ? [] : [excludedTargetId]);
+    const claims: Array<{ playerIndex: PlayerIndex; targetId: number }> = [];
+
+    for (const callout of reservationOrder) {
+      const decision = callout.decisions.find(candidate => !claimedTargetIds.has(candidate.target.id));
+      if (!decision) {
+        continue;
       }
 
-      const bestImprovement = Math.max(...claims.map(claim => this.getCaptureDecisionImprovement(claim.decision)));
-      const contenders = claims.filter(claim =>
-        bestImprovement - this.getCaptureDecisionImprovement(claim.decision) <= CAPTURE_CLAIM_TIE_MARGIN,
-      );
-      const playerIndex =
-        contenders.length === 1
-          ? contenders[0].playerIndex
-          : globalScene.resolvePlayerTieBreak(contenders.map(contender => contender.playerIndex));
-      return { playerIndex, targetId };
-    });
-  }
+      claimedTargetIds.add(decision.target.id);
+      claims.push({ playerIndex: callout.playerIndex, targetId: decision.target.id });
+    }
 
-  private getCaptureDecisionImprovement(decision: ComputerPartnerCaptureDecision): number {
-    return decision.replacementScore.candidateTeamScore - decision.replacementScore.currentTeamScore;
+    return claims;
   }
 
   doEncounterCommon(showEncounterMessage = true) {

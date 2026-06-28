@@ -588,6 +588,7 @@ export class BattleScene extends SceneBase {
   public threePlayerGuestTrainerSprite: PlayerTrainerSprite = PlayerTrainerSprite.BASE_BOY;
   public twoPlayerMysteryDecisionPriority: PlayerIndex = 0;
   public playerDecisionTieBreakPriorities: Partial<Record<string, PlayerIndex>> = {};
+  public aiReservationTieBreakPriorities: Partial<Record<string, PlayerIndex>> = {};
   public twoPlayerProfileSlotsReady: boolean[] = [false, false, false];
   public readonly fieldSlotOwners: PlayerIndex[] = [0, 1, 2];
   public players: PlayerRunState[] = createPlayerRunStates();
@@ -1571,6 +1572,31 @@ export class BattleScene extends SceneBase {
     if (tieBreakKey === "0-1") {
       this.twoPlayerMysteryDecisionPriority = this.playerDecisionTieBreakPriorities[tieBreakKey] ?? 0;
     }
+
+    return winningPlayerIndex;
+  }
+
+  public resolveAIReservationTieBreak(playerIndexes: PlayerIndex[]): PlayerIndex {
+    const participants = [...new Set(playerIndexes)]
+      .filter(playerIndex =>
+        this.getActivePlayerIndexes().includes(playerIndex) && this.isComputerPartnerPlayer(playerIndex),
+      )
+      .sort((a, b) => a - b);
+    if (participants.length === 0) {
+      return 0;
+    }
+    if (participants.length === 1) {
+      return participants[0];
+    }
+
+    const tieBreakKey = participants.join("-");
+    const currentPriority = this.aiReservationTieBreakPriorities[tieBreakKey];
+    const winningPlayerIndex =
+      currentPriority !== undefined && participants.includes(currentPriority)
+        ? currentPriority
+        : participants[0];
+    const nextPriorityIndex = (participants.indexOf(winningPlayerIndex) + 1) % participants.length;
+    this.aiReservationTieBreakPriorities[tieBreakKey] = participants[nextPriorityIndex];
 
     return winningPlayerIndex;
   }

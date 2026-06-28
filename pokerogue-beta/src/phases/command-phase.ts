@@ -1078,6 +1078,16 @@ export class CommandPhase extends FieldPhase {
     return success;
   }
 
+  public passTurn(): boolean {
+    this.setTurnCommand({
+      command: Command.FIGHT,
+      move: { move: MoveId.NONE, targets: [], useMode: MoveUseMode.NORMAL },
+      skip: true,
+    });
+    this.end();
+    return true;
+  }
+
   cancel() {
     if (this.fieldIndex) {
       for (let fieldIndex = 0; fieldIndex <= this.fieldIndex; fieldIndex++) {
