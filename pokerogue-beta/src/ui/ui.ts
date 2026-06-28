@@ -299,6 +299,11 @@ export class UI extends Phaser.GameObjects.Container {
     prompt?: boolean | null,
     promptDelay?: number | null,
   ): void {
+    const handler = this.getHandler();
+    if (handler instanceof CommandUiHandler) {
+      handler.hideCommandControls();
+    }
+
     const pokename: string[] = [];
     const repname = ["#POKEMON1", "#POKEMON2", "#POKEMON3"];
     for (let p = 0; p < globalScene.getPlayerField().length; p++) {
@@ -317,7 +322,6 @@ export class UI extends Phaser.GameObjects.Container {
       }
       showMessageAndCallback();
     } else {
-      const handler = this.getHandler();
       for (let p = 0; p < globalScene.getPlayerField().length; p++) {
         text = text.split(repname[p]).join(pokename[p]);
       }

@@ -368,9 +368,14 @@ export class CommandUiHandler extends UiHandler {
 
   clear(): void {
     super.clear();
+    this.hideCommandControls();
+    this.getUi().getMessageHandler().clearText();
+  }
+
+  hideCommandControls(): void {
     this.getUi().getMessageHandler().commandWindow.setVisible(false);
     this.commandsContainer.setVisible(false);
-    this.getUi().getMessageHandler().clearText();
+    this.teraButton.setVisible(false);
     this.eraseCursor();
   }
 

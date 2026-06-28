@@ -97,7 +97,6 @@ import {
   ExpBalanceModifier,
   ExpShareModifier,
   FusePokemonModifier,
-  GammaRayBurstModifier,
   HealingBoosterModifier,
   ModifierBar,
   MultipleParticipantExpBonusModifier,
@@ -1739,6 +1738,7 @@ export class BattleScene extends SceneBase {
         modifiers: this.getPlayerModifiers(playerIndex).map(modifier => this.getTwoPlayerDebugModifierState(modifier)),
       })),
       enemies: this.getEnemyParty().map(pokemon => this.getTwoPlayerDebugPokemonState(pokemon)),
+      enemyModifiers: this.enemyModifiers.map(modifier => this.getTwoPlayerDebugModifierState(modifier)),
     };
 
     return {
@@ -3980,12 +3980,6 @@ export class BattleScene extends SceneBase {
             modifier.apply(pokemon, true);
           }
         }
-        if (modifier instanceof GammaRayBurstModifier && !ignoreUpdate) {
-          const pokemon = this.getPokemonById(modifier.pokemonId);
-          if (pokemon) {
-            modifier.applyInitialBurst(pokemon);
-          }
-        }
         for (const rm of modifiersToRemove) {
           this.removeModifier(rm, true);
         }
@@ -4822,6 +4816,11 @@ export class BattleScene extends SceneBase {
             this.phaseManager.shiftPhase();
             return;
           }
+          const finalBossMBH = getModifierType(modifierTypes.MINI_BLACK_HOLE).newModifier(
+            pokemon,
+          ) as TurnHeldItemTransferModifier;
+          finalBossMBH.setTransferrableFalse();
+          this.addEnemyModifier(finalBossMBH, false, true);
           pokemon.getStatStages().fill(0);
           pokemon.generateAndPopulateMoveset(false, ultraFormIndex);
           this.setFieldScale(0.75);

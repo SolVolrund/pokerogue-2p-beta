@@ -912,28 +912,18 @@ export class GammaRayBurstModifier extends PokemonHeldItemModifier {
   }
 
   shouldApply(pokemon?: Pokemon, ...args: unknown[]): boolean {
-    return super.shouldApply(pokemon, ...args) && this.canEmpower(pokemon);
-  }
-
-  applyInitialBurst(pokemon: Pokemon): boolean {
-    if (!this.canEmpower(pokemon)) {
-      return false;
-    }
-
-    GAMMA_RAY_BURST_VITAMIN_STATS.forEach(stat => this.addVitaminStack(pokemon, stat));
-    globalScene.updateModifiers(false, true);
-    return true;
+    return super.shouldApply(pokemon, ...args) && this.canApplyBurst(pokemon);
   }
 
   override apply(pokemon: Pokemon): boolean {
-    if (!this.canEmpower(pokemon)) {
+    if (!this.canApplyBurst(pokemon) || !this.consumeSacrificeItem(pokemon)) {
       return false;
     }
 
     let applied = false;
-    const livingPlayerPokemonCount = getLivingPlayerSidePokemonCount();
+    const rollCount = pokemon.isPlayer() ? 1 : getLivingPlayerSidePokemonCount();
 
-    for (let i = 0; i < livingPlayerPokemonCount; i++) {
+    for (let i = 0; i < rollCount; i++) {
       const roll = pokemon.randBattleSeedInt(GAMMA_RAY_BURST_ROLL_SIDES);
       const stat = GAMMA_RAY_BURST_VITAMIN_STATS[roll];
 
@@ -944,15 +934,45 @@ export class GammaRayBurstModifier extends PokemonHeldItemModifier {
       applied = this.addVitaminStack(pokemon, stat) || applied;
     }
 
-    if (applied) {
-      globalScene.updateModifiers(false, true);
-    }
+    const playerIndex = pokemon.isPlayer() ? globalScene.getPlayerIndexForPokemon(pokemon) : undefined;
+    globalScene.updateModifiers(pokemon.isPlayer(), true, playerIndex);
 
     return applied;
   }
 
-  private canEmpower(pokemon?: Pokemon): pokemon is Pokemon {
-    return !!pokemon && !pokemon.isPlayer() && pokemon.hasSpecies(SpeciesId.NECROZMA, "ultra") && !pokemon.isFainted();
+  private canApplyBurst(pokemon?: Pokemon): pokemon is Pokemon {
+    return (
+      !!pokemon
+      && !pokemon.isFainted()
+      && (pokemon.isPlayer() || pokemon.hasSpecies(SpeciesId.NECROZMA, "ultra"))
+    );
+  }
+
+  private consumeSacrificeItem(pokemon: Pokemon): boolean {
+    const sacrificeItems = globalScene.findModifiersForPokemon(
+      m =>
+        m instanceof PokemonHeldItemModifier
+        && m.pokemonId === pokemon.id
+        && m.isTransferable
+        && !(m instanceof GammaRayBurstModifier)
+        && !(m instanceof TurnHeldItemTransferModifier)
+        && !(m instanceof BaseStatModifier),
+      pokemon,
+    ) as PokemonHeldItemModifier[];
+
+    if (sacrificeItems.length === 0) {
+      return false;
+    }
+
+    const item = sacrificeItems[pokemon.randBattleSeedInt(sacrificeItems.length)];
+    item.stackCount--;
+    if (item.stackCount <= 0) {
+      const playerIndex = pokemon.isPlayer() ? globalScene.getPlayerIndexForPokemon(pokemon) : undefined;
+      globalScene.removeModifier(item, pokemon.isEnemy(), playerIndex);
+    }
+
+    applyAbAttrs("PostItemLostAbAttr", { pokemon });
+    return true;
   }
 
   private addVitaminStack(pokemon: Pokemon, stat: PermanentStat): boolean {
@@ -966,7 +986,23 @@ export class GammaRayBurstModifier extends PokemonHeldItemModifier {
       return false;
     }
 
-    void globalScene.addEnemyModifier(vitamin, true, true);
+    const existingVitamin = globalScene.findModifierForPokemon(
+      m => m instanceof BaseStatModifier && m.pokemonId === pokemon.id && m.matchType(vitamin),
+      pokemon,
+    ) as BaseStatModifier | undefined;
+    if (existingVitamin && existingVitamin.getStackCount() >= existingVitamin.getMaxStackCount()) {
+      return false;
+    }
+    if (!existingVitamin && vitamin.getMaxStackCount() <= 0) {
+      return false;
+    }
+
+    if (pokemon.isPlayer()) {
+      const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.activePlayerIndex;
+      globalScene.addModifier(vitamin, true, true, false, true, undefined, playerIndex);
+    } else {
+      void globalScene.addEnemyModifier(vitamin, true, true);
+    }
     return true;
   }
 }

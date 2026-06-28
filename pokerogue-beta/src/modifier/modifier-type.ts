@@ -595,6 +595,8 @@ export class PokemonReviveModifierType extends PokemonHpRestoreModifierType {
   }
 }
 
+export class PartnerPokemonReviveModifierType extends PokemonReviveModifierType {}
+
 export class PokemonStatusHealModifierType extends PokemonModifierType {
   constructor(localeKey: string, iconImage: string) {
     super(
@@ -1934,6 +1936,10 @@ const modifierTypeInitObj = Object.freeze({
 
   REVIVE: () => new PokemonReviveModifierType("modifierType:ModifierType.REVIVE", "revive", 50),
   MAX_REVIVE: () => new PokemonReviveModifierType("modifierType:ModifierType.MAX_REVIVE", "max_revive", 100),
+  PARTNER_REVIVE: () =>
+    new PartnerPokemonReviveModifierType("modifierType:ModifierType.PARTNER_REVIVE", "partner_revive", 50),
+  PARTNER_MAX_REVIVE: () =>
+    new PartnerPokemonReviveModifierType("modifierType:ModifierType.PARTNER_MAX_REVIVE", "partner_max_revive", 100),
 
   FULL_HEAL: () => new PokemonStatusHealModifierType("modifierType:ModifierType.FULL_HEAL", "full_heal"),
 
@@ -2717,6 +2723,9 @@ export function getPlayerShopModifierTypeOptionsForWave(waveIndex: number, baseC
       new ModifierTypeOption(modifierTypeInitObj.POTION(), 0, baseCost * 0.2),
       new ModifierTypeOption(modifierTypeInitObj.ETHER(), 0, baseCost * 0.4),
       new ModifierTypeOption(modifierTypeInitObj.REVIVE(), 0, baseCost * 2),
+      ...(globalScene.twoPlayerMode
+        ? [new ModifierTypeOption(modifierTypeInitObj.PARTNER_REVIVE(), 0, baseCost * 3)]
+        : []),
     ],
     [
       new ModifierTypeOption(modifierTypeInitObj.SUPER_POTION(), 0, baseCost * 0.45),
@@ -2729,6 +2738,9 @@ export function getPlayerShopModifierTypeOptionsForWave(waveIndex: number, baseC
     [
       new ModifierTypeOption(modifierTypeInitObj.HYPER_POTION(), 0, baseCost * 0.8),
       new ModifierTypeOption(modifierTypeInitObj.MAX_REVIVE(), 0, baseCost * 2.75),
+      ...(globalScene.twoPlayerMode
+        ? [new ModifierTypeOption(modifierTypeInitObj.PARTNER_MAX_REVIVE(), 0, baseCost * 4.125)]
+        : []),
       new ModifierTypeOption(modifierTypeInitObj.MEMORY_MUSHROOM(), 0, baseCost * 4),
     ],
     [

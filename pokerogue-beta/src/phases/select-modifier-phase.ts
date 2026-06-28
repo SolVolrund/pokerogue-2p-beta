@@ -21,6 +21,7 @@ import {
   getPlayerModifierTypeOptions,
   getPlayerShopModifierTypeOptionsForWave,
   ModifierTypeOption,
+  PartnerPokemonReviveModifierType,
   PokemonModifierType,
   PokemonMoveModifierType,
   PokemonPpRestoreModifierType,
@@ -364,6 +365,9 @@ export class SelectModifierPhase extends BattlePhase {
     modifierSelectCallback: ModifierSelectCallback,
   ): boolean {
     if (modifierType instanceof PokemonModifierType) {
+      if (modifierType instanceof PartnerPokemonReviveModifierType) {
+        return this.openPartnerReviveMenu(modifierType, cost, modifierSelectCallback);
+      }
       if (modifierType instanceof FusePokemonModifierType) {
         this.openFusionMenu(modifierType, cost, modifierSelectCallback);
       } else {
@@ -587,8 +591,97 @@ export class SelectModifierPhase extends BattlePhase {
     });
   }
 
+  private openPartnerReviveMenu(
+    modifierType: PartnerPokemonReviveModifierType,
+    cost: number,
+    modifierSelectCallback: ModifierSelectCallback,
+  ): boolean {
+    if (!globalScene.twoPlayerMode) {
+      globalScene.ui.playError();
+      return false;
+    }
+
+    const restoreRewardScreen = () => this.resetModifierSelect(modifierSelectCallback);
+    const partnerPlayerIndexes = this.getAvailablePartnerReviveTargetPlayerIndexes(this.playerIndex, modifierType);
+    if (partnerPlayerIndexes.length === 0) {
+      globalScene.ui.playError();
+      return false;
+    }
+
+    const options: OptionSelectItem[] = partnerPlayerIndexes.map(partnerPlayerIndex => ({
+      label: `Use on ${this.getPlayerDisplayName(partnerPlayerIndex)}'s team`,
+      handler: () => {
+        this.openPartnerReviveParty(modifierType, cost, partnerPlayerIndex, restoreRewardScreen);
+        return true;
+      },
+    }) satisfies OptionSelectItem);
+    options.push({
+      label: i18next.t("menu:cancel"),
+      handler: () => {
+        restoreRewardScreen();
+        return true;
+      },
+    });
+
+    this.showRewardOptionSelect({ options, noCancel: true });
+    return true;
+  }
+
+  private openPartnerReviveParty(
+    modifierType: PartnerPokemonReviveModifierType,
+    cost: number,
+    targetPlayerIndex: PlayerIndex,
+    restoreRewardScreen: () => void,
+  ): void {
+    const targetParty = globalScene.getPlayerParty(targetPlayerIndex);
+    const showPartySelect = () => {
+      globalScene.ui
+        .setModeWithoutClear(
+          UiMode.PARTY,
+          PartyUiMode.MODIFIER,
+          this.getFieldSlotForPlayer(targetPlayerIndex),
+          (slotIndex: number, option: PartyOption) => {
+            if (option === PartyOption.CANCEL) {
+              restoreRewardScreen();
+              return;
+            }
+            if (option !== PartyOption.APPLY || !this.isValidPartyIndex(targetPlayerIndex, slotIndex)) {
+              globalScene.ui.playError();
+              restoreRewardScreen();
+              return;
+            }
+
+            globalScene.ui.setMode(UiMode.MODIFIER_SELECT, this.isPlayer()).then(() => {
+              const modifier = modifierType.newModifier(targetParty[slotIndex]);
+              this.applyPartnerModifier(modifier!, cost, targetPlayerIndex);
+            });
+          },
+          modifierType.selectFilter,
+        )
+        .then(() => globalScene.waitForPlayerInput(this.playerIndex));
+    };
+
+    if (globalScene.ui.getMode() === UiMode.PARTY) {
+      globalScene.ui.setMode(UiMode.MESSAGE).then(showPartySelect);
+    } else {
+      showPartySelect();
+    }
+  }
+
   private showRewardOptionSelect(config: OptionSelectConfig): void {
     globalScene.ui.setModeWithoutClear(UiMode.OPTION_SELECT, config, null, true);
+  }
+
+  private getAvailablePartnerReviveTargetPlayerIndexes(
+    sourcePlayerIndex: PlayerIndex,
+    modifierType: PartnerPokemonReviveModifierType,
+  ): PlayerIndex[] {
+    return globalScene
+      .getActivePlayerIndexes()
+      .filter(playerIndex => playerIndex !== sourcePlayerIndex)
+      .filter(playerIndex =>
+        globalScene.getPlayerParty(playerIndex).some(pokemon => (modifierType.selectFilter?.(pokemon) ?? null) === null),
+      );
   }
 
   private getAvailableTradeTargetPlayerIndexes(sourcePlayerIndex: PlayerIndex): PlayerIndex[] {
@@ -718,6 +811,30 @@ export class SelectModifierPhase extends BattlePhase {
     }
 
     if (cost !== -1 && !(modifier.type instanceof RememberMoveModifierType)) {
+      if (result) {
+        if (!activeOverrides.WAIVE_ROLL_FEE_OVERRIDE) {
+          globalScene.setPlayerMoney(globalScene.getPlayerMoney(this.playerIndex) - cost, this.playerIndex);
+          globalScene.updateMoneyText();
+          globalScene.animateMoneyChanged(false);
+        }
+        audioManager.playSound("se/buy");
+        (globalScene.ui.getHandler() as ModifierSelectUiHandler).updateCostText();
+        globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("shop-purchased");
+      } else {
+        globalScene.ui.playError();
+      }
+    } else {
+      globalScene.ui.clearText();
+      globalScene.ui.setMode(UiMode.MESSAGE);
+      globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("reward-picked");
+      super.end();
+    }
+  }
+
+  private applyPartnerModifier(modifier: Modifier, cost: number, targetPlayerIndex: PlayerIndex): void {
+    const result = globalScene.addModifier(modifier, false, true, undefined, undefined, cost, targetPlayerIndex);
+
+    if (cost !== -1) {
       if (result) {
         if (!activeOverrides.WAIVE_ROLL_FEE_OVERRIDE) {
           globalScene.setPlayerMoney(globalScene.getPlayerMoney(this.playerIndex) - cost, this.playerIndex);

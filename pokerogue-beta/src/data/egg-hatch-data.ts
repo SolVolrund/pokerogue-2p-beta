@@ -1,5 +1,6 @@
 import { globalScene } from "#app/global-scene";
 import type { PlayerPokemon } from "#field/pokemon";
+import type { GameData } from "#system/game-data";
 import type { DexEntry } from "#types/dex-data";
 import type { StarterDataEntry } from "#types/save-data";
 
@@ -38,9 +39,9 @@ export class EggHatchData {
    * Stores a copy of the current DexEntry of the pokemon and StarterDataEntry of its starter
    * Used before updating the dex, so comparing the pokemon to these entries will show the new attributes
    */
-  setDex() {
-    const currDexEntry = globalScene.gameData.dexData[this.pokemon.species.speciesId];
-    const currStarterDataEntry = globalScene.gameData.starterData[this.pokemon.species.getRootSpeciesId()];
+  setDex(gameData: GameData = globalScene.gameData) {
+    const currDexEntry = gameData.dexData[this.pokemon.species.speciesId];
+    const currStarterDataEntry = gameData.starterData[this.pokemon.species.getRootSpeciesId()];
     this.dexEntryBeforeUpdate = {
       seenAttr: currDexEntry.seenAttr,
       caughtAttr: currDexEntry.caughtAttr,
@@ -85,11 +86,11 @@ export class EggHatchData {
    * @param showMessage boolean to show messages for the new catches and egg moves (false by default)
    * @returns
    */
-  updatePokemon(showMessage = false) {
+  updatePokemon(showMessage = false, gameData: GameData = globalScene.gameData) {
     return new Promise<void>(resolve => {
-      globalScene.gameData.setPokemonCaught(this.pokemon, true, true, showMessage).then(() => {
-        globalScene.gameData.updateSpeciesDexIvs(this.pokemon.species.speciesId, this.pokemon.ivs);
-        globalScene.gameData.setEggMoveUnlocked(this.pokemon.species, this.eggMoveIndex, showMessage).then(value => {
+      gameData.setPokemonCaught(this.pokemon, true, true, showMessage).then(() => {
+        gameData.updateSpeciesDexIvs(this.pokemon.species.speciesId, this.pokemon.ivs);
+        gameData.setEggMoveUnlocked(this.pokemon.species, this.eggMoveIndex, showMessage).then(value => {
           this.setEggMoveUnlocked(value);
           resolve();
         });

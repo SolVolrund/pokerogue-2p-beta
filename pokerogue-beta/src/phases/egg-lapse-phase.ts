@@ -21,7 +21,7 @@ interface OwnedEgg {
  */
 export class EggLapsePhase extends Phase {
   public readonly phaseName = "EggLapsePhase";
-  private eggHatchData: EggHatchData[] = [];
+  private eggHatchDataByPlayer: Map<PlayerIndex, EggHatchData[]> = new Map();
   private readonly minEggsToSkip: number = 2;
   private restorePlayerIndex: PlayerIndex = 0;
 
@@ -30,7 +30,7 @@ export class EggLapsePhase extends Phase {
     this.restorePlayerIndex = globalScene.activePlayerIndex;
     const eggsToHatch = this.getEggsToHatch();
     const eggsToHatchCount: number = eggsToHatch.length;
-    this.eggHatchData = [];
+    this.eggHatchDataByPlayer = new Map();
 
     if (eggsToHatchCount > 0) {
       if (eggsToHatchCount >= this.minEggsToSkip && globalScene.eggSkipPreference === 1) {
@@ -136,7 +136,15 @@ export class EggLapsePhase extends Phase {
   }
 
   showSummary() {
-    globalScene.phaseManager.unshiftNew("EggSummaryPhase", this.eggHatchData);
+    const playerIndexes = globalScene.twoPlayerMode
+      ? globalScene.getActivePlayerIndexes()
+      : [globalScene.activePlayerIndex];
+    for (const playerIndex of playerIndexes) {
+      const eggHatchData = this.eggHatchDataByPlayer.get(playerIndex);
+      if (eggHatchData?.length) {
+        globalScene.phaseManager.unshiftNew("EggSummaryPhase", eggHatchData, playerIndex);
+      }
+    }
     this.end();
   }
 
@@ -157,7 +165,7 @@ export class EggLapsePhase extends Phase {
     }
     gameData.eggs.splice(eggIndex, 1);
 
-    const data = this.generatePokemon(egg);
+    const data = this.generatePokemon(egg, playerIndex);
     const pokemon = data.pokemon;
     if (pokemon.fusionSpecies) {
       pokemon.clearFusionSpecies();
@@ -183,7 +191,7 @@ export class EggLapsePhase extends Phase {
    * @param egg the egg to hatch
    * @returns the hatched PlayerPokemon
    */
-  generatePokemon(egg: Egg): EggHatchData {
+  generatePokemon(egg: Egg, playerIndex: PlayerIndex = globalScene.activePlayerIndex): EggHatchData {
     let ret: PlayerPokemon;
     let newHatchData: EggHatchData;
     globalScene.executeWithSeedOffset(
@@ -191,7 +199,9 @@ export class EggLapsePhase extends Phase {
         ret = egg.generatePlayerPokemon();
         newHatchData = new EggHatchData(ret, egg.eggMoveIndex);
         newHatchData.setDex();
-        this.eggHatchData.push(newHatchData);
+        const playerEggHatchData = this.eggHatchDataByPlayer.get(playerIndex) ?? [];
+        playerEggHatchData.push(newHatchData);
+        this.eggHatchDataByPlayer.set(playerIndex, playerEggHatchData);
       },
       egg.id,
       EGG_SEED.toString(),

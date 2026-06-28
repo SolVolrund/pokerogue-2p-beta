@@ -486,9 +486,9 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
     }
 
     const compactLayouts = [
-      { x: 75, y: -168 },
-      { x: 145, y: -168 },
-      { x: 110, y: -146 },
+      { x: 75, y: -156 },
+      { x: 145, y: -156 },
+      { x: 110, y: -134 },
     ];
     const layout = compactLayouts[fieldIndex];
     if (!layout) {

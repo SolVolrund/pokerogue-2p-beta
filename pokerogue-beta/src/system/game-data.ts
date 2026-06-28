@@ -1159,6 +1159,11 @@ export class GameData {
       globalScene.updateModifiers(true);
     }
 
+    if (globalScene.findModifiers(() => true, false).length > 0) {
+      console.warn("Existing enemy modifiers not cleared on session load, deleting...");
+      globalScene.clearEnemyModifiers();
+    }
+
     for (const enemyModifierData of fromSession.enemyModifiers) {
       const modifier = enemyModifierData.toModifier(Modifier[enemyModifierData.className]);
       if (modifier) {
