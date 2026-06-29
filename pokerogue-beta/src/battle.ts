@@ -109,6 +109,7 @@ export class Battle {
   public computerPartnerReservedCaptureTargetId: number | undefined;
   public computerPartnerCaptureInterests: Array<{ playerIndex: PlayerIndex; interests: ComputerPartnerCaptureInterest[] }> = [];
   public computerPartnerWildCaptureDisabled = false;
+  public classicFinalBossSpeciesId: SpeciesId | undefined;
 
   /**
    * Tracker for whether the last run attempt failed.

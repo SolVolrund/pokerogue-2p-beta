@@ -10,6 +10,7 @@ import type { PokemonSpecies } from "#data/pokemon-species";
 import { BattleType } from "#enums/battle-type";
 import { Challenges } from "#enums/challenges";
 import { PlayerGender } from "#enums/player-gender";
+import { SpeciesId } from "#enums/species-id";
 import { TrainerType } from "#enums/trainer-type";
 import { UiMode } from "#enums/ui-mode";
 import { Unlockables } from "#enums/unlockables";
@@ -320,6 +321,7 @@ export class GameOverPhase extends BattlePhase {
 
   handleUnlocks(): void {
     if (this.isVictory && globalScene.gameMode.isClassic) {
+      const classicFinalBossSpeciesId = globalScene.currentBattle.classicFinalBossSpeciesId;
       if (!globalScene.gameData.unlocks[Unlockables.ENDLESS_MODE]) {
         globalScene.phaseManager.unshiftNew("UnlockPhase", Unlockables.ENDLESS_MODE);
       }
@@ -329,8 +331,17 @@ export class GameOverPhase extends BattlePhase {
       ) {
         globalScene.phaseManager.unshiftNew("UnlockPhase", Unlockables.SPLICED_ENDLESS_MODE);
       }
-      if (!globalScene.gameData.unlocks[Unlockables.MINI_BLACK_HOLE]) {
+      if (
+        classicFinalBossSpeciesId === SpeciesId.ETERNATUS
+        && !globalScene.gameData.unlocks[Unlockables.MINI_BLACK_HOLE]
+      ) {
         globalScene.phaseManager.unshiftNew("UnlockPhase", Unlockables.MINI_BLACK_HOLE);
+      }
+      if (
+        classicFinalBossSpeciesId === SpeciesId.NECROZMA
+        && !globalScene.gameData.unlocks[Unlockables.GAMMA_RAY_BURST]
+      ) {
+        globalScene.phaseManager.unshiftNew("UnlockPhase", Unlockables.GAMMA_RAY_BURST);
       }
       if (
         !globalScene.gameData.unlocks[Unlockables.EVIOLITE]

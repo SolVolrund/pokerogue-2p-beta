@@ -5332,16 +5332,29 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   // #region Sprite and Animation Methods
 
   setFrameRate(frameRate: number) {
-    globalScene.anims.get(this.getBattleSpriteKey()).frameRate = frameRate;
+    const battleSpriteKey = this.getBattleSpriteKey();
+    const animation = globalScene.anims.get(battleSpriteKey);
+    if (!animation) {
+      void this.loadAssets(false)
+        .then(() => {
+          const loadedAnimation = globalScene.anims.get(battleSpriteKey);
+          if (loadedAnimation) {
+            loadedAnimation.frameRate = frameRate;
+          }
+        })
+        .catch(err => console.error(`Failed to reload animation for ${battleSpriteKey}`, err));
+      return;
+    }
+    animation.frameRate = frameRate;
     try {
-      this.getSprite().play(this.getBattleSpriteKey());
+      this.getSprite().play(battleSpriteKey);
     } catch (err: unknown) {
-      console.error(`Failed to play animation for ${this.getBattleSpriteKey()}`, err);
+      console.error(`Failed to play animation for ${battleSpriteKey}`, err);
     }
     try {
-      this.getTintSprite()?.play(this.getBattleSpriteKey());
+      this.getTintSprite()?.play(battleSpriteKey);
     } catch (err: unknown) {
-      console.error(`Failed to play animation for ${this.getBattleSpriteKey()}`, err);
+      console.error(`Failed to play animation for ${battleSpriteKey}`, err);
     }
   }
 

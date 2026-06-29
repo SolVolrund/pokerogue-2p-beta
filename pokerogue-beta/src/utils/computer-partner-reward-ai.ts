@@ -137,12 +137,13 @@ const ICON_TO_RECOVERY_ITEM_ID: Partial<Record<string, ComputerPartnerRecoveryIt
 
 const REWARD_PRIORITY: Partial<Record<ComputerPartnerRecoveryItemId | string, number>> = {
   MINI_BLACK_HOLE: 1,
-  SHINY_CHARM: 2,
-  MULTI_LENS: 3,
-  HEALING_CHARM: 4,
-  SHINY_BADGE: 5,
-  MASTER_BALL: 6,
-  LINKING_CORD_GOLD: 7,
+  GAMMA_RAY_BURST: 2,
+  SHINY_CHARM: 3,
+  MULTI_LENS: 4,
+  HEALING_CHARM: 5,
+  SHINY_BADGE: 6,
+  MASTER_BALL: 7,
+  LINKING_CORD_GOLD: 8,
 
   LEFTOVERS: 1,
   DYNAMAX_BAND: 2,

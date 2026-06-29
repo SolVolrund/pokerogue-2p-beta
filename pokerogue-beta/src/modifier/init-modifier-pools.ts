@@ -640,9 +640,17 @@ function initMasterModifierPool() {
     new WeightedModifierType(
       modifierTypes.MINI_BLACK_HOLE,
       () =>
-        globalScene.gameMode.isDaily
-        || (!globalScene.gameMode.isFreshStartChallenge()
-          && globalScene.gameData.isUnlocked(Unlockables.MINI_BLACK_HOLE))
+        !globalScene.gameMode.isFreshStartChallenge()
+        && globalScene.gameData.isUnlocked(Unlockables.MINI_BLACK_HOLE)
+          ? 1
+          : 0,
+      1,
+    ),
+    new WeightedModifierType(
+      modifierTypes.GAMMA_RAY_BURST,
+      () =>
+        !globalScene.gameMode.isFreshStartChallenge()
+        && globalScene.gameData.isUnlocked(Unlockables.GAMMA_RAY_BURST)
           ? 1
           : 0,
       1,

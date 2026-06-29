@@ -4770,7 +4770,10 @@ export class BattleScene extends SceneBase {
    */
   getActiveKeys(): string[] {
     const keys: string[] = [];
-    let activePokemon: (PlayerPokemon | EnemyPokemon)[] = this.getPlayerParty();
+    const playerPokemon: PlayerPokemon[] = this.twoPlayerMode
+      ? this.getActivePlayerIndexes().flatMap(playerIndex => this.getPlayerParty(playerIndex))
+      : this.getPlayerParty();
+    let activePokemon: (PlayerPokemon | EnemyPokemon)[] = playerPokemon;
     activePokemon = activePokemon.concat(this.getEnemyParty());
     for (const p of activePokemon) {
       keys.push(p.getSpriteKey(true));

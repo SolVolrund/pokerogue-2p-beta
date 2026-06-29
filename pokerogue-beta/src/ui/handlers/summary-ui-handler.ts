@@ -1,4 +1,5 @@
 import type { Ability } from "#abilities/ability";
+import type { PlayerIndex } from "#app/battle-scene";
 import { loggedInUser } from "#app/account";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
@@ -78,6 +79,7 @@ export class SummaryUiHandler extends UiHandler {
   private candyOverlay: Phaser.GameObjects.Sprite;
   private candyCountText: Phaser.GameObjects.Text;
   private championRibbon: Phaser.GameObjects.Image;
+  private playerIndex: PlayerIndex;
   private statusContainer: Phaser.GameObjects.Container;
   private status: Phaser.GameObjects.Image;
   /** The pixel button prompt indicating a passive is unlocked */
@@ -366,6 +368,7 @@ export class SummaryUiHandler extends UiHandler {
      * args[4] : optional boolean used to determine if the Pokemon is part of the player's party or not (defaults to true, necessary for PR #2921 to display all relevant information)
      */
     this.pokemon = args[0] as PlayerPokemon;
+    this.playerIndex = globalScene.getPlayerIndexForPokemon(this.pokemon) ?? globalScene.activePlayerIndex;
     this.summaryUiMode = (args[1] as SummaryUiMode) ?? SummaryUiMode.DEFAULT;
     this.playerParty = args[4] ?? true;
     globalScene.ui.bringToTop(this.summaryContainer);
@@ -385,11 +388,7 @@ export class SummaryUiHandler extends UiHandler {
       getTextColor(this.pokemon.isShiny() ? TextStyle.SUMMARY_GOLD : TextStyle.SUMMARY, true),
     );
     const spriteKey = this.pokemon.getSpriteKey(true);
-    try {
-      this.pokemonSprite.play(spriteKey);
-    } catch (err: unknown) {
-      console.error(`Failed to play animation for ${spriteKey}`, err);
-    }
+    this.playSummaryPokemonSprite(this.pokemon, spriteKey);
     this.pokemonSprite
       .setPipelineData("teraColor", getTypeRgb(this.pokemon.getTeraType()))
       .setPipelineData("isTerastallized", this.pokemon.isTerastallized)
@@ -659,7 +658,7 @@ export class SummaryUiHandler extends UiHandler {
             break;
           }
           const isDown = button === Button.DOWN;
-          const party = globalScene.getPlayerParty();
+          const party = globalScene.getPlayerParty(this.playerIndex);
           const partyMemberIndex = this.pokemon ? party.indexOf(this.pokemon) : -1;
           if ((isDown && partyMemberIndex < party.length - 1) || (!isDown && partyMemberIndex)) {
             const page = this.cursor;
@@ -691,6 +690,34 @@ export class SummaryUiHandler extends UiHandler {
     }
 
     return success || error;
+  }
+
+  private playSummaryPokemonSprite(pokemon: PlayerPokemon, spriteKey: string): void {
+    const playSprite = () => {
+      if (this.pokemon !== pokemon || !this.summaryContainer.visible) {
+        return;
+      }
+      try {
+        this.pokemonSprite.play(spriteKey);
+        this.pokemonSprite.setVisible(true);
+      } catch (err: unknown) {
+        this.pokemonSprite.stop();
+        this.pokemonSprite.setVisible(false);
+        console.error(`Failed to play animation for ${spriteKey}`, err);
+      }
+    };
+
+    this.pokemonSprite.stop();
+    this.pokemonSprite.setVisible(false);
+    if (globalScene.anims.exists(spriteKey)) {
+      playSprite();
+      return;
+    }
+
+    void pokemon
+      .loadAssets(false)
+      .then(playSprite)
+      .catch(err => console.error(`Failed to load summary sprite for ${spriteKey}`, err));
   }
 
   setCursor(cursor: number, overrideChanged = false): boolean {

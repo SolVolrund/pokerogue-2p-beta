@@ -128,6 +128,8 @@ export class VictoryPhase extends PokemonPhase {
 
         globalScene.phaseManager.pushNew("NewBattlePhase");
       } else {
+        const defeatedFinalBoss = globalScene.getEnemyParty().find(pokemon => pokemon.isBoss());
+        globalScene.currentBattle.classicFinalBossSpeciesId = defeatedFinalBoss?.species.speciesId;
         globalScene.currentBattle.battleType = BattleType.CLEAR;
         globalScene.score += gameMode.getClearScoreBonus();
         globalScene.updateScoreText();

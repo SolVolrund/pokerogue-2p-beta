@@ -13,5 +13,7 @@ export function getUnlockableName(unlockable: Unlockables) {
       return i18next.t("gameMode:mode", { mode: GameMode.getModeName(GameModes.SPLICED_ENDLESS) });
     case Unlockables.EVIOLITE:
       return i18next.t("modifierType:ModifierType.EVIOLITE.name");
+    case Unlockables.GAMMA_RAY_BURST:
+      return i18next.t("modifierType:ModifierType.GAMMA_RAY_BURST.name");
   }
 }

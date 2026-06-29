@@ -624,7 +624,7 @@ export class SelectModifierPhase extends BattlePhase {
     });
 
     this.showRewardOptionSelect({ options, noCancel: true });
-    return true;
+    return cost === -1;
   }
 
   private openPartnerReviveParty(

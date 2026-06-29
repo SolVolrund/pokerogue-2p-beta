@@ -173,6 +173,7 @@ export class GameData {
       [Unlockables.MINI_BLACK_HOLE]: false,
       [Unlockables.SPLICED_ENDLESS_MODE]: false,
       [Unlockables.EVIOLITE]: false,
+      [Unlockables.GAMMA_RAY_BURST]: false,
     };
     this.achvUnlocks = {};
     this.voucherUnlocks = {};

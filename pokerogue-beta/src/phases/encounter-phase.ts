@@ -331,8 +331,10 @@ export class EncounterPhase extends BattlePhase {
       );
     } else {
       const overridedBossSegments = activeOverrides.ENEMY_HEALTH_SEGMENTS_OVERRIDE > 1;
-      // for double battles, reduce the health segments for boss Pokemon unless there is an override
-      if (!overridedBossSegments && battle.enemyParty.filter(p => p.isBoss()).length > 1) {
+      // In base single-player double battles, multiple bosses share one player's party resources,
+      // so their health segments are scaled down. In multiplayer, each boss is effectively facing
+      // its own full player party, so keep the solo boss segment count for each one.
+      if (!overridedBossSegments && !globalScene.twoPlayerMode && battle.enemyParty.filter(p => p.isBoss()).length > 1) {
         for (const enemyPokemon of battle.enemyParty) {
           // If the enemy pokemon is a boss and wasn't populated from data source, then update the number of segments
           if (enemyPokemon.isBoss() && !enemyPokemon.isPopulatedFromDataSource) {
