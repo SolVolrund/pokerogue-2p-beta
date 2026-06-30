@@ -184,7 +184,7 @@ export function willTerastallize(pokemon: Pokemon): boolean {
  * @returns Whether
  */
 export function canSpeciesTera(pokemon: Pokemon): boolean {
-  const hasTeraMod = globalScene.findModifier(modifier => modifier.is("TerastallizeAccessModifier")) != null;
+  const hasTeraMod = globalScene.findModifierForPokemon(modifier => modifier.is("TerastallizeAccessModifier"), pokemon) != null;
   const isBlockedForm = pokemon.isMega() || pokemon.isMax() || pokemon.hasSpecies(SpeciesId.NECROZMA, "ultra");
   return hasTeraMod && !isBlockedForm;
 }
@@ -198,7 +198,8 @@ export function canSpeciesTera(pokemon: Pokemon): boolean {
  * @returns Whether the Pokémon can Terastallize
  */
 export function canTerastallize(pokemon: PlayerPokemon): boolean {
-  const hasAvailableTeras = globalScene.arena.playerTerasUsed < MAX_TERAS_PER_ARENA;
+  const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon) ?? 0;
+  const hasAvailableTeras = globalScene.arena.getPlayerTerasUsed(playerIndex) < MAX_TERAS_PER_ARENA;
   return hasAvailableTeras && canSpeciesTera(pokemon);
 }
 

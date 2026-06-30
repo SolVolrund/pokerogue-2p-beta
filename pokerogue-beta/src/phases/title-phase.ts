@@ -379,7 +379,7 @@ export class TitlePhase extends Phase {
   }
 
   private hostMultiplayerLobby(playerCount: MultiplayerLobbyPlayerCount): void {
-    if (this.isLoopbackHost(window.location.hostname)) {
+    if (this.isLocalJoinHost(window.location.hostname)) {
       globalScene.ui.setMode(UiMode.LOBBY_IP_FORM, {
         buttonActions: [
           (lanAddress: string) => {
@@ -429,8 +429,8 @@ export class TitlePhase extends Phase {
   private joinMultiplayerLobby(guestSeat: MultiplayerGuestSeat): void {
     globalScene.ui.setMode(UiMode.LOBBY_JOIN_FORM, {
       buttonActions: [
-        (input: string) => {
-          const lobbyUrl = this.getJoinLobbyUrl(input, guestSeat);
+        (input: string, hostAddress: string) => {
+          const lobbyUrl = this.getJoinLobbyUrl(input, guestSeat, hostAddress);
           if (!lobbyUrl) {
             void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showMultiplayerSelect());
             return;
@@ -483,7 +483,7 @@ export class TitlePhase extends Phase {
     }
   }
 
-  private getJoinLobbyUrl(input: string, guestSeat: MultiplayerGuestSeat): string {
+  private getJoinLobbyUrl(input: string, guestSeat: MultiplayerGuestSeat, hostAddress?: string): string {
     const trimmedInput = input.trim();
     if (!trimmedInput) {
       return "";
@@ -506,7 +506,16 @@ export class TitlePhase extends Phase {
     }
 
     const lobbyCode = this.parseLobbyCode(trimmedInput);
-    return lobbyCode ? this.getMultiplayerLobbyUrl(lobbyCode, "guest", undefined, undefined, guestSeat) : "";
+    if (!lobbyCode) {
+      return "";
+    }
+
+    const normalizedHostAddress = this.normalizeLobbyLanAddress(hostAddress ?? "");
+    if (!normalizedHostAddress && this.isLocalJoinHost(window.location.hostname)) {
+      return "";
+    }
+
+    return this.getMultiplayerLobbyUrl(lobbyCode, "guest", normalizedHostAddress, undefined, guestSeat);
   }
 
   private parseLobbyUrl(input: string): URL | undefined {
@@ -594,8 +603,8 @@ export class TitlePhase extends Phase {
     return trimmedAddress || undefined;
   }
 
-  private isLoopbackHost(hostname: string): boolean {
-    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  private isLocalJoinHost(hostname: string): boolean {
+    return !hostname || hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
   }
 
   private applyLobbyHostAddress(url: URL, lanAddress?: string): void {

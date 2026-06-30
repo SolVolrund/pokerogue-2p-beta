@@ -73,6 +73,7 @@ export class Arena {
   public ignoringEffectSource: BattlerIndex | null;
 
   public playerTerasUsed = 0;
+  public playerTerasUsedByPlayer = [0, 0, 0];
   /**
    * Saves the number of times a party pokemon faints during a arena encounter. \
    * {@linkcode globalScene.currentBattle.enemyFaints} is the corresponding faint counter for the enemy (this resets every wave).
@@ -116,6 +117,33 @@ export class Arena {
    */
   public get trainerChance(): number {
     return allBiomes.get(this.biomeId).trainerChance;
+  }
+
+  public getPlayerTerasUsed(playerIndex = 0): number {
+    return this.playerTerasUsedByPlayer[playerIndex] ?? 0;
+  }
+
+  public incrementPlayerTerasUsed(playerIndex = 0): void {
+    this.playerTerasUsedByPlayer[playerIndex] = this.getPlayerTerasUsed(playerIndex) + 1;
+    this.playerTerasUsed = Math.max(this.playerTerasUsed, this.playerTerasUsedByPlayer[playerIndex]);
+  }
+
+  public restorePlayerTerasUsed(playerTerasUsed: number, playerTerasUsedByPlayer?: number[]): void {
+    this.playerTerasUsedByPlayer = playerTerasUsedByPlayer?.length
+      ? [0, 1, 2].map(playerIndex => playerTerasUsedByPlayer[playerIndex] ?? 0)
+      : [playerTerasUsed, 0, 0];
+    this.playerTerasUsed = Math.max(playerTerasUsed, ...this.playerTerasUsedByPlayer);
+  }
+
+  public resetPlayerTerasUsed(playerIndex?: number): void {
+    if (playerIndex === undefined) {
+      this.playerTerasUsedByPlayer = [0, 0, 0];
+      this.playerTerasUsed = 0;
+      return;
+    }
+
+    this.playerTerasUsedByPlayer[playerIndex] = 0;
+    this.playerTerasUsed = Math.max(...this.playerTerasUsedByPlayer);
   }
 
   /** A float representing the loop point of the current biome's bgm in seconds */

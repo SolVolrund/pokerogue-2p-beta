@@ -54,7 +54,7 @@ export class PartyHealPhase extends BattlePhase {
         healSound.onEnd(() => this.end());
       }
     });
-    globalScene.arena.playerTerasUsed = 0;
+    globalScene.arena.resetPlayerTerasUsed();
   }
 
   public override end() {

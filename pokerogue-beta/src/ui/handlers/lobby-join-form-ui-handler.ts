@@ -7,7 +7,7 @@ export class LobbyJoinFormUiHandler extends FormModalUiHandler {
   }
 
   getWidth(_config?: ModalConfig): number {
-    return 220;
+    return 240;
   }
 
   getMargin(_config?: ModalConfig): [number, number, number, number] {
@@ -19,7 +19,10 @@ export class LobbyJoinFormUiHandler extends FormModalUiHandler {
   }
 
   override getInputFieldConfigs(): InputFieldConfig[] {
-    return [{ label: "Lobby ID or Link", maxLength: 512 }];
+    return [
+      { label: "Lobby ID or Link", maxLength: 512 },
+      { label: "Host/Hamachi IP", maxLength: 64 },
+    ];
   }
 
   show(args: any[]): boolean {
@@ -29,9 +32,10 @@ export class LobbyJoinFormUiHandler extends FormModalUiHandler {
 
     const config = args[0] as ModalConfig;
     this.inputs[0].text = "";
+    this.inputs[1].text = "";
     this.submitAction = () => {
       this.sanitizeInputs();
-      config.buttonActions[0](this.inputs[0].text);
+      config.buttonActions[0](this.inputs[0].text, this.inputs[1].text);
       return true;
     };
     return true;

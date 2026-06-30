@@ -3022,7 +3022,7 @@ export class BattleScene extends SceneBase {
         applyAbAttrs("PostBattleInitAbAttr", { pokemon });
         // Terapagos resets tera on each fight
         if (pokemon.hasSpecies(SpeciesId.TERAPAGOS)) {
-          this.arena.playerTerasUsed = 0;
+          this.arena.resetPlayerTerasUsed(this.getPlayerIndexForPokemon(pokemon) ?? 0);
         }
       }
 

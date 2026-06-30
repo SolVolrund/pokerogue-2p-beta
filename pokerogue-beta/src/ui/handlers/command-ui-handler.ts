@@ -309,15 +309,21 @@ export class CommandUiHandler extends UiHandler {
 
   canTera(): boolean {
     const activePokemon = this.getActivePokemon();
-    const currentTeras = globalScene.arena.playerTerasUsed;
     if (!activePokemon) {
       return false;
     }
 
+    const playerIndex = globalScene.getPlayerIndexForPokemon(activePokemon) ?? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
+    const currentTeras = globalScene.arena.getPlayerTerasUsed(playerIndex);
     const canTera = canTerastallize(activePokemon);
-    const plannedTera = +(
-      globalScene.currentBattle.preTurnCommands[0]?.command === Command.TERA && this.fieldIndex > 0
-    );
+    const plannedTera = globalScene.getPlayerFieldOwners().reduce<number>((count, owner, fieldSlot) => {
+      if (owner !== playerIndex || fieldSlot === this.fieldIndex) {
+        return count;
+      }
+
+      const battlerIndex = globalScene.getPlayerBattlerIndex(fieldSlot);
+      return count + +(globalScene.currentBattle.preTurnCommands[battlerIndex]?.command === Command.TERA);
+    }, 0);
     return canTera && currentTeras + plannedTera < MAX_TERAS_PER_ARENA;
   }
 

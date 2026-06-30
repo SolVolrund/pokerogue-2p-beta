@@ -15,6 +15,7 @@ export interface SerializedArenaData {
   tags?: ArenaTagData[];
   positionalTags: SerializedPositionalTag[];
   playerTerasUsed?: number;
+  playerTerasUsedByPlayer?: number[];
 }
 
 export class ArenaData {
@@ -24,6 +25,7 @@ export class ArenaData {
   public tags: ArenaTag[];
   public positionalTags: SerializedPositionalTag[] = [];
   public playerTerasUsed: number;
+  public playerTerasUsedByPlayer: number[];
 
   constructor(source: Arena | SerializedArenaData) {
     // Exclude any unserializable tags from the serialized data (such as ones only lasting 1 turn).
@@ -35,6 +37,9 @@ export class ArenaData {
         ?.filter((tag): tag is SerializableArenaTag => tag instanceof SerializableArenaTag) ?? [];
 
     this.playerTerasUsed = source.playerTerasUsed ?? 0;
+    this.playerTerasUsedByPlayer = source.playerTerasUsedByPlayer?.length
+      ? [0, 1, 2].map(playerIndex => source.playerTerasUsedByPlayer?.[playerIndex] ?? 0)
+      : [this.playerTerasUsed, 0, 0];
 
     if (source instanceof Arena) {
       this.biome = source.biomeId;

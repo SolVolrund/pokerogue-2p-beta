@@ -1095,7 +1095,7 @@ export class GameData {
     });
 
     // #region Arena stuff
-    const { weather, terrain, playerTerasUsed, tags, positionalTags } = fromSession.arena;
+    const { weather, terrain, playerTerasUsed, playerTerasUsedByPlayer, tags, positionalTags } = fromSession.arena;
 
     if (weather) {
       globalScene.arena.weather = weather;
@@ -1111,7 +1111,7 @@ export class GameData {
       );
     }
 
-    globalScene.arena.playerTerasUsed = playerTerasUsed;
+    globalScene.arena.restorePlayerTerasUsed(playerTerasUsed ?? 0, playerTerasUsedByPlayer);
 
     globalScene.arena.tags = tags;
     for (const tag of tags) {
