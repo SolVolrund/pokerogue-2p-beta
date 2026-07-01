@@ -13,7 +13,7 @@ import { achvs } from "#system/achv";
 import { EggCounterContainer } from "#ui/egg-counter-container";
 import type { EggHatchSceneUiHandler } from "#ui/egg-hatch-scene-ui-handler";
 import { PokemonInfoContainer } from "#ui/pokemon-info-container";
-import { fixedInt, getFrameMs, randInt } from "#utils/common";
+import { fixedInt, getFrameMs, randSeedInt } from "#utils/common";
 import i18next from "i18next";
 
 /**
@@ -453,7 +453,7 @@ export class EggHatchPhase extends Phase {
       repeat: intensity,
       duration: getFrameMs(1),
       onRepeat: () => {
-        this.doSprayParticle(randInt(8), offsetY || 0);
+        this.doSprayParticle(randSeedInt(8), offsetY || 0);
       },
     });
   }
@@ -472,8 +472,8 @@ export class EggHatchPhase extends Phase {
 
     let f = 0;
     let yOffset = 0;
-    const speed = 3 - randInt(8);
-    const amp = 24 + randInt(32);
+    const speed = 3 - randSeedInt(8);
+    const amp = 24 + randSeedInt(32);
 
     const particleTimer = globalScene.tweens.addCounter({
       repeat: -1,

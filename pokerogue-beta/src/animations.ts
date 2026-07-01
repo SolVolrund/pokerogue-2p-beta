@@ -3,7 +3,7 @@ import { globalScene } from "#app/global-scene";
 import type { BattleAnim } from "#data/battle-anims";
 import { PokeballType } from "#enums/pokeball";
 import type { Variant } from "#sprites/variant";
-import { type BooleanHolder, getFrameMs, randGauss, randInt } from "#utils/common";
+import { type BooleanHolder, getFrameMs, randGauss, randSeedInt } from "#utils/common";
 
 /**
  * Class for handling general animations such as particle effects.
@@ -166,7 +166,7 @@ export class Animation {
             this.doSprayParticle(i, transformationBaseBg, transformationContainer);
           }
         } else if (f < 50) {
-          this.doSprayParticle(randInt(8), transformationBaseBg, transformationContainer);
+          this.doSprayParticle(randSeedInt(8), transformationBaseBg, transformationContainer);
         }
         f++;
       },
@@ -413,8 +413,8 @@ export class Animation {
 
     let f = 0;
     let yOffset = 0;
-    const speed = 3 - randInt(8);
-    const amp = 48 + randInt(64);
+    const speed = 3 - randSeedInt(8);
+    const amp = 48 + randSeedInt(64);
 
     const particleTimer = globalScene.tweens.addCounter({
       repeat: -1,
