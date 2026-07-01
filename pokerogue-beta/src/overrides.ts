@@ -51,14 +51,14 @@ import type { IntClosedRange, TupleOf } from "type-fest";
  * }
  * ```
  */
-//const overrides = {} satisfies Partial<InstanceType<OverridesType>>;
-
+const overrides = {} satisfies Partial<InstanceType<OverridesType>>;
+/*
 const overrides = {
   STARTING_WAVE_OVERRIDE: 200,
   ENEMY_SPECIES_OVERRIDE: SpeciesId.MEW,
   ENEMY_LEVEL_OVERRIDE: 1,
 } satisfies Partial<InstanceType<OverridesType>>;
-
+*/
 /**
  * If you need to add Overrides values for local testing do that inside {@linkcode overrides}
  * ---
