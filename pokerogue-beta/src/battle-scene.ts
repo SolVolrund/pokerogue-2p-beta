@@ -42,7 +42,7 @@ import { SpeciesFormChangeManualTrigger, SpeciesFormChangeTimeOfDayTrigger } fro
 import { Gender } from "#data/gender";
 import { SpeciesFormChange } from "#data/pokemon-forms";
 import type { PokemonSpecies, PokemonSpeciesFilter } from "#data/pokemon-species";
-import { getTypeRgb } from "#data/type";
+import { getTypeDamageMultiplier, getTypeRgb } from "#data/type";
 import { BattleStyle } from "#enums/battle-style";
 import { BattleType } from "#enums/battle-type";
 import { BattlerIndex } from "#enums/battler-index";
@@ -4788,16 +4788,94 @@ export class BattleScene extends SceneBase {
     return keys;
   }
 
+  private getMewGauntletNextSpeciesId(activePlayerPokemon: Pokemon[], usedSpeciesIds: SpeciesId[]): SpeciesId {
+
+    const MEW_GAUNTLET_OPTIONS = [
+      SpeciesId.MEWTWO,
+      SpeciesId.LUGIA,
+      SpeciesId.HO_OH,
+      SpeciesId.KYOGRE,
+      SpeciesId.GROUDON,
+      SpeciesId.RAYQUAZA,
+      SpeciesId.DIALGA,
+      SpeciesId.PALKIA,
+      SpeciesId.GIRATINA,
+      SpeciesId.RESHIRAM,
+      SpeciesId.ZEKROM,
+      SpeciesId.KYUREM,
+      SpeciesId.XERNEAS,
+      SpeciesId.YVELTAL,
+      SpeciesId.ZYGARDE,
+      SpeciesId.SOLGALEO,
+      SpeciesId.LUNALA,
+      SpeciesId.ZACIAN,
+      SpeciesId.ZAMAZENTA,
+      SpeciesId.CALYREX,
+      SpeciesId.KORAIDON,
+      SpeciesId.MIRAIDON,
+      SpeciesId.TERAPAGOS,
+      SpeciesId.MARSHADOW,
+    ];
+
+    const usedSpeciesIdSet = new Set(usedSpeciesIds);
+    const availableOptions = MEW_GAUNTLET_OPTIONS.filter(speciesId => !usedSpeciesIdSet.has(speciesId),);
+
+    if (!availableOptions.length) {
+      return SpeciesId.MEWTWO;
+    }
+    const scoredOptions = availableOptions.map(speciesId => {
+      const species = speciesDataRegistry.getSpecies(speciesId);
+      const types = [species.type1, species.type2].filter(type => type !== null);
+
+      const score = activePlayerPokemon.reduce((total, playerPokemon) => {
+        const playerTypes = playerPokemon.getTypes({
+          includeTeraType: false,
+          returnOriginalTypesIfStellar: true,
+          ignoreThirdType: true,
+        });
+        const bestMultiplier = Math.max(
+          ...types.map(type =>
+            playerTypes.reduce(
+              (multiplier, playerType) => multiplier * getTypeDamageMultiplier(type, playerType),
+              1,
+            ),
+          ),
+        );
+        return total + bestMultiplier;
+      }, 0);
+      return {speciesId, score};
+      });
+      const bestScore = Math.max(...scoredOptions.map(option => option.score));
+      const bestOptions = scoredOptions.filter(option => option.score === bestScore);
+
+      return bestOptions[randSeedInt(bestOptions.length)].speciesId;
+    }
+    //return availableOptions[randSeedInt(availableOptions.length)];
   /**
    * Initialized the 2nd phase of the final boss (e.g. form-change for Eternatus)
    * @param pokemon The (enemy) pokemon
    */
   initFinalBossPhaseTwo(pokemon: Pokemon): void {
-    if (!pokemon.isEnemy() || !pokemon.isBoss() || isClassicFinalBossPhaseTwo(pokemon) || pokemon.bossSegmentIndex >= 1) {
+    if (!this.currentBattle.isClassicFinalBoss 
+      || !pokemon.isEnemy() 
+      || !pokemon.isBoss() 
+      || pokemon.bossSegmentIndex >= 1
+    ) {
       this.phaseManager.shiftPhase();
       return;
     }
 
+      const mewGauntletState = this.currentBattle.mewGauntletState;
+      if ( mewGauntletState?.pokemonId === pokemon.id){
+        this.initMewGauntletNextPhase(pokemon);
+        return;
+      }
+      if (isClassicFinalBossPhaseTwo(pokemon)){
+        this.phaseManager.shiftPhase();
+        return;
+      }
+
+    
     audioManager.fadeOutBgm(2000, true);
     this.ui.showDialogue(getClassicFinalBossDialogue(pokemon.species.speciesId).firstStageWin, pokemon.species.name, undefined, () => {
       switch (pokemon.species.speciesId) {
@@ -4881,7 +4959,30 @@ export class BattleScene extends SceneBase {
       this.phaseManager.shiftPhase();
     });
   }
+  private initMewGauntletNextPhase(pokemon: Pokemon): void {
+    const mewGauntletState = this.currentBattle.mewGauntletState;
+    if (!mewGauntletState || mewGauntletState.pokemonId !== pokemon.id) {
+      this.phaseManager.shiftPhase();
+      return;
+    }
+    if (mewGauntletState.phase >= 7){
+      this.phaseManager.shiftPhase();
+      return;
+    }
 
+    const activePlayerPokemon = this.getPlayerField().filter(pokemon => pokemon && !pokemon.isFainted());
+
+    const nextSpeciesId = mewGauntletState.phase === 6
+    ? SpeciesId.MEW
+    : this.getMewGauntletNextSpeciesId(activePlayerPokemon, mewGauntletState.usedSpeciesIds,);
+
+    mewGauntletState.phase++;
+    mewGauntletState.usedSpeciesIds.push(nextSpeciesId);
+    this.phaseManager.unshiftNew("QuietSpeciesChangePhase", pokemon, nextSpeciesId);
+    this.phaseManager.shiftPhase();
+  }
+
+  
   /**
    * Updates Exp and level values for Player's party, adding new level up phases as required
    * @param expValue raw value of exp to split among participants, OR the base multiplier to use with waveIndex

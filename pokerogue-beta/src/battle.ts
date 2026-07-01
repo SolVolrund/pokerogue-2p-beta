@@ -110,6 +110,11 @@ export class Battle {
   public computerPartnerCaptureInterests: Array<{ playerIndex: PlayerIndex; interests: ComputerPartnerCaptureInterest[] }> = [];
   public computerPartnerWildCaptureDisabled = false;
   public classicFinalBossSpeciesId: SpeciesId | undefined;
+  public mewGauntletState?: {
+    pokemonId: number;
+    phase: number;
+    usedSpeciesIds: SpeciesId[];
+  };
 
   /**
    * Tracker for whether the last run attempt failed.

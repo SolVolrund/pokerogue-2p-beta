@@ -1939,12 +1939,20 @@ export const arceusFinalBossDialogue = {
   secondStageWin: "battleSpecDialogue:arceusSecondStageWin",
 };
 
+export const mewFinalBossDialogue = {
+  encounter: "battleSpecDialogue:mewEncounter",
+  firstStageWin: "battleSpecDialogue:mewFirstStageWin",
+  secondStageWin: "battleSpecDialogue:mewSecondStageWin",
+};
+
 export function getClassicFinalBossDialogue(speciesId?: SpeciesId) {
   switch (speciesId) {
     case SpeciesId.NECROZMA:
       return necrozmaFinalBossDialogue;
     case SpeciesId.ARCEUS:
       return arceusFinalBossDialogue;
+    case SpeciesId.MEW:
+     return mewFinalBossDialogue;
     default:
       return classicFinalBossDialogue;
   }

@@ -22,6 +22,7 @@ import { PokemonPhase } from "#phases/pokemon-phase";
 import { isClassicFinalBossPhaseTwo } from "#utils/classic-final-boss-utils";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import i18next from "i18next";
+import { SpeciesId } from "#enums/species-id";
 
 export class FaintPhase extends PokemonPhase {
   public readonly phaseName = "FaintPhase";
@@ -273,6 +274,17 @@ export class FaintPhase extends PokemonPhase {
       this.end();
       return;
     }
+
+  const mewGauntletState = globalScene.currentBattle.mewGauntletState;
+  if (mewGauntletState?.pokemonId === enemy.id && mewGauntletState.phase >= 7) {
+    ui.showDialogue(
+      getClassicFinalBossDialogue(enemy.species.speciesId).secondStageWin,
+      enemy.species.name,
+      null,
+      () => this.doFaint(),
+    );
+    return;
+  }
 
     if (isClassicFinalBossPhaseTwo(enemy)) {
       ui.showDialogue(

@@ -266,6 +266,15 @@ export class EncounterPhase extends BattlePhase {
         }
         enemyPokemon.setBoss();
       }
+      if (enemyPokemon.species.speciesId === SpeciesId.MEW && battle.isClassicFinalBoss){
+        battle.mewGauntletState = {
+          pokemonId: enemyPokemon.id,
+          phase: 1,
+          usedSpeciesIds: [SpeciesId.MEW],
+        };
+        enemyPokemon.setBoss();
+      }
+
 
       totalBst += enemyPokemon.getSpeciesForm().baseTotal;
 
