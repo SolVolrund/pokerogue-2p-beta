@@ -10,7 +10,9 @@ import { BattlePhase } from "#phases/battle-phase";
 import { playTween } from "#utils/anim-utils";
 import { CLASSIC_FINAL_BOSS_SEGMENTS } from "#utils/classic-final-boss-utils";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
-
+import type { BattlerIndex } from "#enums/battler-index";
+import { randSeedItem } from "#utils/common";
+import { groupStatChange } from "#utils/stat-change";
 import { TerrainType } from "#data/terrain";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import { ArenaTagType } from "#enums/arena-tag-type";
@@ -93,31 +95,33 @@ export class QuietSpeciesChangePhase extends BattlePhase {
    */
 private applyMewEntryEffect(): void {
 
-  globalScene.phaseManager.pushNew("MovePhase", this.pokemon, [this.pokemon.getBattlerIndex()], new PokemonMove(MoveId), MoveUseMode.IGNORE_PP,);
+  globalScene.phaseManager.pushNew("MovePhase", this.pokemon, [this.pokemon.getBattlerIndex()], new PokemonMove(MoveId.HAZE), MoveUseMode.IGNORE_PP,);
 
   switch (this.pokemon.species.speciesId) {
      case SpeciesId.MEWTWO:
+      globalScene.phaseManager.pushNew("MovePhase", this.pokemon, [this.pokemon.getBattlerIndex()], new PokemonMove(MoveId.REFLECT), MoveUseMode.IGNORE_PP,);
+      globalScene.phaseManager.pushNew("MovePhase", this.pokemon, [this.pokemon.getBattlerIndex()], new PokemonMove(MoveId.LIGHT_SCREEN), MoveUseMode.IGNORE_PP,);
       globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
       globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
       break;
     case SpeciesId.LUGIA:
-      globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
-      globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
+      globalScene.arena.trySetWeather(WeatherType.RAIN, this.pokemon);
+      globalScene.arena.trySetTerrain(TerrainType.PSYCHIC, false, this.pokemon);
       break;
     case SpeciesId.HO_OH:
-      globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
+      globalScene.arena.trySetWeather(WeatherType.SUNNY, this.pokemon);
       globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
       break;
     case SpeciesId.KYOGRE:
-      globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
+      globalScene.arena.trySetWeather(WeatherType.RAIN, this.pokemon);
       globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
       break;
     case SpeciesId.GROUDON:
-      globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
+      globalScene.arena.trySetWeather(WeatherType.SUNNY, this.pokemon);
       globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
       break;
     case SpeciesId.RAYQUAZA:
-      globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
+      globalScene.arena.trySetWeather(WeatherType.STRONG_WINDS, this.pokemon);
       globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
       break;
     case SpeciesId.DIALGA:
@@ -125,7 +129,7 @@ private applyMewEntryEffect(): void {
       globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
       break;
     case SpeciesId.PALKIA:
-      globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
+      globalScene.arena.trySetWeather(WeatherType.RAIN, this.pokemon);
       globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
       break;
     case SpeciesId.GIRATINA:
@@ -145,7 +149,7 @@ private applyMewEntryEffect(): void {
       break;
     case SpeciesId.XERNEAS:
       globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
-      globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
+      globalScene.arena.trySetTerrain(TerrainType.MISTY, false, this.pokemon);
       break;
     case SpeciesId.YVELTAL:
       globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
@@ -156,7 +160,7 @@ private applyMewEntryEffect(): void {
       globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
       break;
     case SpeciesId.SOLGALEO:
-      globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
+      globalScene.arena.trySetWeather(WeatherType.SUNNY, this.pokemon);
       globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
       break;
     case SpeciesId.LUNALA:
@@ -168,41 +172,59 @@ private applyMewEntryEffect(): void {
       globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
       break;
     case SpeciesId.ZACIAN:
-      globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
-      globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
+      globalScene.arena.trySetWeather(WeatherType.FOG, this.pokemon);
+      globalScene.arena.trySetTerrain(TerrainType.MISTY, false, this.pokemon);
       break;
     case SpeciesId.ZAMAZENTA:
-      globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
-      globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
+      globalScene.arena.trySetWeather(WeatherType.FOG, this.pokemon);
+      globalScene.arena.trySetTerrain(TerrainType.MISTY, false, this.pokemon);
       break;
     case SpeciesId.CALYREX:
-      globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
-      globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
+      globalScene.arena.trySetWeather(WeatherType.FOG, this.pokemon);
+      globalScene.arena.trySetTerrain(TerrainType.GRASSY, false, this.pokemon);
       break;
     case SpeciesId.KORAIDON:
-      globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
+      globalScene.arena.trySetWeather(WeatherType.SUNNY, this.pokemon);
       globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
       break;
     case SpeciesId.MIRAIDON:
       globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
-      globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
+      globalScene.arena.trySetTerrain(TerrainType.ELECTRIC, false, this.pokemon);
       break;
     case SpeciesId.TERAPAGOS:
       globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
       globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
       break;
     case SpeciesId.MARSHADOW:
-      globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
+      globalScene.arena.trySetWeather(WeatherType.FOG, this.pokemon);
       globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
       break;
     case SpeciesId.MEW:
+      globalScene.arena.trySetWeather(WeatherType.FOG, this.pokemon);
+      globalScene.arena.trySetTerrain(TerrainType.PSYCHIC, false, this.pokemon);
+      globalScene.phaseManager.pushNew("StatStageChangePhase", {battlerIndex: this.pokemon.getBattlerIndex(),changes: groupStatChange([Stat.ATK, Stat.DEF, Stat.SPATK, Stat.SPDEF, Stat.SPD], 1),sourcePokemon: this.pokemon,});
+      break;
+    case SpeciesId.JIRACHI:
+      globalScene.phaseManager.pushNew("MovePhase", this.pokemon, [this.pokemon.getBattlerIndex()], new PokemonMove(MoveId.WISH), MoveUseMode.IGNORE_PP);
+      const doomDesireTarget = this.getRandomActivePlayerBattlerIndex();
+      if (doomDesireTarget !== undefined) {globalScene.phaseManager.pushNew("MovePhase",this.pokemon,[doomDesireTarget],new PokemonMove(MoveId.DOOM_DESIRE),MoveUseMode.IGNORE_PP,);}
       globalScene.arena.trySetWeather(WeatherType.NONE, this.pokemon);
-      globalScene.arena.trySetTerrain(TerrainType.NONE, false, this.pokemon);
+      globalScene.arena.trySetTerrain(TerrainType.PSYCHIC, false, this.pokemon);
       break;
     default:
 
   }
 }
+
+private getRandomActivePlayerBattlerIndex(exclude?: BattlerIndex): BattlerIndex | undefined {
+  const targets = globalScene
+    .getPlayerField(true)
+    .map(pokemon => pokemon.getBattlerIndex())
+    .filter(battlerIndex => battlerIndex !== exclude);
+
+  return targets.length ? randSeedItem(targets) : undefined;
+}
+
 
 private showSpeciesChangeTextAndEnd(): void {
   const { ui } = globalScene;
@@ -261,6 +283,8 @@ private showSpeciesChangeTextAndEnd(): void {
       return "I prefer bubbles to crystals, but ill make this work!";
     case SpeciesId.MARSHADOW:
       return "... what? I just like Marshadow, hes cool.";
+    case SpeciesId.JIRACHI:
+      return "I *Wish* you would crack a smile!";
     case SpeciesId.MEW:
       return "Alright. Its time for momma to put the grouchy kid to bed!";
     default:
@@ -291,6 +315,7 @@ private async doChangeSpecies(): Promise<void> {
   this.pokemon.formIndex = 0;
   this.pokemon.generateName();
   this.pokemon.generateAndPopulateMoveset(false);
+  this.applyMewGauntletMoveset();
   this.pokemon.setScale(this.pokemon.getSpriteScale());
 
   await this.pokemon.loadAssets();
@@ -300,6 +325,79 @@ private async doChangeSpecies(): Promise<void> {
     this.pokemon.updateInfo(this.pokemon.isFainted()),
     globalScene.updateFieldScale(),
   ]);
+}
+
+private applyMewGauntletMoveset(): void {
+  const moveIds = this.getMewGauntletMoveIds();
+
+  if (!moveIds) {
+    return;
+  }
+  const moves = moveIds.map(moveId => new PokemonMove(moveId));
+  this.pokemon.moveset = moves;
+  this.pokemon.summonData.moveset = moves;
+}
+
+private getMewGauntletMoveIds(): MoveId[] | undefined{
+  switch (this.pokemon.species.speciesId) {
+    case SpeciesId.MEWTWO:
+      return [MoveId.PSYSTRIKE, MoveId.ICE_BEAM, MoveId.FIRE_BLAST, MoveId.CALM_MIND];
+    case SpeciesId.LUGIA:
+      return [MoveId.AEROBLAST, MoveId.PSYCHIC, MoveId.ROOST, MoveId.ICE_BEAM];
+    case SpeciesId.HO_OH:
+      return [MoveId.SACRED_FIRE, MoveId.BRAVE_BIRD, MoveId.RECOVER, MoveId.EARTHQUAKE];
+    case SpeciesId.KYOGRE:
+      return [MoveId.ORIGIN_PULSE, MoveId.CALM_MIND, MoveId.ICE_BEAM, MoveId.THUNDER]; 
+    case SpeciesId.GROUDON:
+      return [MoveId.PRECIPICE_BLADES, MoveId.SWORDS_DANCE, MoveId.STEALTH_ROCK, MoveId.STONE_EDGE];
+    case SpeciesId.RAYQUAZA:
+      return [MoveId.DRAGON_ASCENT, MoveId.DRAGON_DANCE, MoveId.V_CREATE, MoveId.EARTHQUAKE];
+    case SpeciesId.DIALGA:
+      return [MoveId.ROAR_OF_TIME, MoveId.FIRE_BLAST, MoveId.THUNDER, MoveId.ANCIENT_POWER];
+    case SpeciesId.PALKIA:
+      return [MoveId.SPACIAL_REND, MoveId.HYDRO_PUMP, MoveId.THUNDER, MoveId.FIRE_BLAST];
+    case SpeciesId.GIRATINA:
+      return [MoveId.SHADOW_FORCE, MoveId.REST, MoveId.TOXIC, MoveId.WILL_O_WISP];
+    case SpeciesId.RESHIRAM:
+      return [MoveId.BLUE_FLARE, MoveId.DRACO_METEOR, MoveId.ROOST, MoveId.TOXIC];
+    case SpeciesId.ZEKROM:
+      return [MoveId.BOLT_STRIKE, MoveId.HONE_CLAWS, MoveId.OUTRAGE, MoveId.SUBSTITUTE];
+    case SpeciesId.KYUREM:
+      return [MoveId.GLACIATE, MoveId.EARTH_POWER, MoveId.ROOST, MoveId.SUBSTITUTE];
+    case SpeciesId.XERNEAS:
+      return [MoveId.GEOMANCY, MoveId.FOCUS_BLAST, MoveId.THUNDER, MoveId.MOONBLAST];
+    case SpeciesId.YVELTAL:
+      return [MoveId.OBLIVION_WING, MoveId.DARK_PULSE, MoveId.TAUNT, MoveId.SUCKER_PUNCH];
+    case SpeciesId.ZYGARDE:
+      return [MoveId.THOUSAND_ARROWS, MoveId.DRAGON_DANCE, MoveId.SUBSTITUTE, MoveId.GLARE];
+    case SpeciesId.SOLGALEO:
+      return [MoveId.SUNSTEEL_STRIKE, MoveId.FIRE_BLAST, MoveId.MORNING_SUN, MoveId.SOLAR_BEAM];
+    case SpeciesId.LUNALA:
+      return [MoveId.MOONGEIST_BEAM, MoveId.PSYSHOCK, MoveId.FOCUS_BLAST, MoveId.MOONBLAST];
+    case SpeciesId.NECROZMA:
+      return [MoveId.PHOTON_GEYSER, MoveId.DRAGON_DANCE, MoveId.EARTHQUAKE, MoveId.X_SCISSOR];
+    case SpeciesId.ZACIAN:
+      return [MoveId.BEHEMOTH_BLADE, MoveId.PLAY_ROUGH, MoveId.CRUNCH, MoveId.CLOSE_COMBAT];
+    case SpeciesId.ZAMAZENTA:
+      return [MoveId.BEHEMOTH_BASH, MoveId.BODY_PRESS, MoveId.CRUNCH, MoveId.HEAVY_SLAM];
+    case SpeciesId.CALYREX:
+      return [MoveId.STORED_POWER, MoveId.LEECH_SEED, MoveId.GROWTH, MoveId.GIGA_DRAIN];
+    case SpeciesId.KORAIDON:
+      return [MoveId.COLLISION_COURSE, MoveId.SWORDS_DANCE, MoveId.FLARE_BLITZ, MoveId.SCALE_SHOT];
+    case SpeciesId.MIRAIDON:
+      return [MoveId.ELECTRO_DRIFT, MoveId.DRACO_METEOR, MoveId.CALM_MIND, MoveId.SOLAR_BEAM];
+    case SpeciesId.TERAPAGOS:
+      return [MoveId.TERA_STARSTORM, MoveId.RAPID_SPIN, MoveId.TOXIC, MoveId.ANCIENT_POWER];
+    case SpeciesId.MARSHADOW:
+      return [MoveId.SPECTRAL_THIEF, MoveId.ICE_PUNCH, MoveId.THUNDER_PUNCH, MoveId.SHADOW_SNEAK];
+    case SpeciesId.JIRACHI:
+      return [MoveId.WISH, MoveId.DOOM_DESIRE, MoveId.BODY_SLAM, MoveId.IRON_HEAD];
+    case SpeciesId.MEW:
+      return [MoveId.EXPANDING_FORCE, MoveId.COSMIC_POWER, MoveId.POWER_TRIP, MoveId.GROWTH];
+    default:
+      return [MoveId.METRONOME, MoveId.METRONOME, MoveId.METRONOME, MoveId.METRONOME];
+
+  }
 }
 
   private async playFormChangeTween(): Promise<void> {
@@ -430,55 +528,8 @@ private async doChangeSpecies(): Promise<void> {
       this.pokemon.bossSegmentIndex = CLASSIC_FINAL_BOSS_SEGMENTS - 1;
       this.pokemon.initBattleInfo();
       this.pokemon.cry();
-
+      this.applyMewEntryEffect();
       globalScene.phaseManager.cancelMove(p => p.pokemon === this.pokemon);
-/*
-      if (
-        this.pokemon.species.speciesId === SpeciesId.NECROZMA
-        && isClassicFinalBossPhaseTwo(this.pokemon)
-        && !globalScene.findModifier(
-          m => m instanceof GammaRayBurstModifier && m.pokemonId === this.pokemon.id,
-          false,
-        )
-      ) {
-        const gammaRayBurst = getModifierType(modifierTypes.GAMMA_RAY_BURST).newModifier(
-          this.pokemon,
-        ) as GammaRayBurstModifier;
-        globalScene.addEnemyModifier(gammaRayBurst, false, true);
-      }
-
-      if (this.pokemon.species.speciesId === SpeciesId.ARCEUS && isClassicFinalBossPhaseTwo(this.pokemon)) {
-        if (
-          !globalScene.findModifier(
-            m =>
-              m instanceof PokemonFormChangeItemModifier
-              && m.pokemonId === this.pokemon.id
-              && m.formChangeItem === FormChangeItem.LEGEND_PLATE,
-            false,
-          )
-        ) {
-          const legendPlate = new FormChangeItemModifierType(FormChangeItem.LEGEND_PLATE).newModifier(
-            this.pokemon,
-          ) as PokemonFormChangeItemModifier;
-          globalScene.addEnemyModifier(legendPlate, false, true);
-        }
-
-        this.pokemon.addTag(BattlerTagType.AQUA_RING, 1, MoveId.AQUA_RING, this.pokemon.id);
-        this.pokemon.addTag(BattlerTagType.INGRAIN, 1, MoveId.INGRAIN, this.pokemon.id);
-        globalScene.arena.addTag(
-          ArenaTagType.STEALTH_ROCK,
-          0,
-          MoveId.STEALTH_ROCK,
-          this.pokemon.id,
-          ArenaTagSide.PLAYER,
-        );
-        globalScene.phaseManager.unshiftNew("StatStageChangePhase", {
-          battlerIndex: this.pokemon.getBattlerIndex(),
-          changes: groupStatChange([Stat.ATK, Stat.DEF, Stat.SPATK, Stat.SPDEF, Stat.SPD], 1),
-          sourcePokemon: this.pokemon,
-        });
-      }
-        */
     }
     super.end();
   }
