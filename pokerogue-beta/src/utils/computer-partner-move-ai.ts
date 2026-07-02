@@ -8,6 +8,7 @@ import { Stat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
 import type { Pokemon } from "#field/pokemon";
 import type { Move } from "#moves/move";
+import { getDawnStrategyMoveCapabilities } from "#utils/computer-partner-hazard-support";
 import { getHealingSupportMoveCapabilities } from "#utils/computer-partner-healing-support";
 import type { ComputerPartnerProfile, ComputerPartnerRole } from "#utils/computer-partner-profile";
 
@@ -121,6 +122,7 @@ function scoreMoveset(
     + scoreOffensiveCoverage(moves)
     + scoreStabOptions(pokemon, moves)
     + scoreCherylHealingSupportMoveset(moves, context)
+    + scoreDawnStrategyMoveset(moves, context)
     - scoreRedundancy(moves, context)
   );
 }
@@ -336,6 +338,7 @@ function scoreRedundancy(
   }
 
   penalty += scoreCherylHealingRedundancy(moves, context);
+  penalty += scoreDawnStrategyRedundancy(moves, context);
 
   const physicalCount = moves.filter(move => move.category === MoveCategory.PHYSICAL).length;
   const specialCount = moves.filter(move => move.category === MoveCategory.SPECIAL).length;
@@ -405,6 +408,84 @@ function getCherylHealingPreferenceScale(context: ComputerPartnerMoveLearningCon
     default:
       return 0.3;
   }
+}
+
+function scoreDawnStrategyMoveset(
+  moves: readonly Move[],
+  context: ComputerPartnerMoveLearningContext,
+): number {
+  const preference = getDawnStrategyPreference(context);
+  if (!preference) {
+    return 0;
+  }
+
+  const capabilities = moves.map(move => getDawnStrategyMoveCapabilities(move));
+  const hasEntryHazard = capabilities.some(capability => capability.entryHazard);
+  const hasOffensiveSetup = capabilities.some(capability => capability.offensiveSetup);
+  const hasDefensiveSetup = capabilities.some(capability => capability.defensiveSetup);
+
+  return (
+    (hasEntryHazard ? 38 * preference.entryHazard : 0)
+    + (hasOffensiveSetup ? 32 * preference.offensiveSetup : 0)
+    + (hasDefensiveSetup ? 30 * preference.defensiveSetup : 0)
+  );
+}
+
+function scoreDawnStrategyRedundancy(
+  moves: readonly Move[],
+  context: ComputerPartnerMoveLearningContext,
+): number {
+  const preference = getDawnStrategyPreference(context);
+  if (!preference) {
+    return 0;
+  }
+
+  const counts = moves
+    .map(move => getDawnStrategyMoveCapabilities(move))
+    .reduce(
+      (total, capability) => ({
+        entryHazard: total.entryHazard + (capability.entryHazard ? 1 : 0),
+        offensiveSetup: total.offensiveSetup + (capability.offensiveSetup ? 1 : 0),
+        defensiveSetup: total.defensiveSetup + (capability.defensiveSetup ? 1 : 0),
+      }),
+      { entryHazard: 0, offensiveSetup: 0, defensiveSetup: 0 },
+    );
+
+  return (
+    Math.max(counts.entryHazard - 1, 0) * 36 * preference.entryHazard
+    + Math.max(counts.offensiveSetup - 1, 0) * 28 * preference.offensiveSetup
+    + Math.max(counts.defensiveSetup - 1, 0) * 26 * preference.defensiveSetup
+  );
+}
+
+function getDawnStrategyPreference(
+  context: ComputerPartnerMoveLearningContext,
+): DawnStrategyPreference | undefined {
+  if (context.profile?.key !== "dawn_zorua") {
+    return undefined;
+  }
+
+  switch (context.role) {
+    case "speed":
+      return { entryHazard: 1.25, offensiveSetup: 0.45, defensiveSetup: 0.15 };
+    case "ace":
+    case "physical":
+    case "special":
+      return { entryHazard: 0.45, offensiveSetup: 1.1, defensiveSetup: 0.2 };
+    case "bulk":
+    case "hpBulk":
+    case "defense":
+    case "specialDefense":
+      return { entryHazard: 0.45, offensiveSetup: 0.15, defensiveSetup: 1.1 };
+    default:
+      return { entryHazard: 0.7, offensiveSetup: 0.55, defensiveSetup: 0.45 };
+  }
+}
+
+interface DawnStrategyPreference {
+  entryHazard: number;
+  offensiveSetup: number;
+  defensiveSetup: number;
 }
 
 function averageCoreStat(pokemon: Pokemon): number {

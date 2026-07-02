@@ -12,10 +12,11 @@ import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import type { PokemonSpecies } from "#data/pokemon-species";
 import type { Starter, StarterMoveset } from "#types/save-data";
 import { randSeedShuffle } from "#utils/common";
+import { getSpeciesEntryHazardAccessScore } from "#utils/computer-partner-hazard-support";
 import { getSpeciesHealingSupportAccessScore } from "#utils/computer-partner-healing-support";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 
-export type ComputerPartnerKey = "alex" | "cheryl" | "riley" | "mira" | "buck" | "marley";
+export type ComputerPartnerKey = "alex" | "cheryl" | "riley" | "mira" | "buck" | "marley" | "dawn_zorua";
 
 export type ComputerPartnerRole =
   | "ace"
@@ -42,6 +43,8 @@ export interface ComputerPartnerProfile {
   usesPlayerSelectedStarters?: boolean;
   starterMoveset?: Starter["moveset"];
   startingStarters?: ComputerPartnerStarterConfig[];
+  aceStarterSpeciesIds?: SpeciesId[];
+  requiresUnlock?: boolean;
 }
 
 export interface ComputerPartnerStarterConfig {
@@ -210,12 +213,36 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
       { speciesId: SpeciesId.ZUBAT, points: 3 },
     ],
   },
+  dawn_zorua: {
+    key: "dawn_zorua",
+    name: "Dawn?",
+    starterSpeciesId: SpeciesId.ZORUA,
+    starterNature: Nature.HASTY,
+    trainerSprite: PlayerTrainerSprite.DAWN_ZORUA,
+    trainerGender: PlayerGender.FEMALE,
+    roles: ["ace", "ace", "physical", "special", "bulk", "speed"],
+    personalityTypes: [PokemonType.DARK, PokemonType.GHOST, PokemonType.POISON, PokemonType.BUG, PokemonType.ROCK],
+    aceStarterSpeciesIds: [SpeciesId.ZORUA, SpeciesId.HISUI_ZORUA],
+    requiresUnlock: true,
+    startingStarters: [
+      { speciesId: SpeciesId.ZORUA, points: 0, nature: Nature.HASTY },
+      { speciesId: SpeciesId.HISUI_ZORUA, points: 0, nature: Nature.TIMID },
+    ],
+  },
 };
 
 export const COMPUTER_PARTNER_KEYS = Object.keys(COMPUTER_PARTNER_PROFILES) as ComputerPartnerKey[];
 
 export function getComputerPartnerProfile(key: ComputerPartnerKey): ComputerPartnerProfile {
   return COMPUTER_PARTNER_PROFILES[key] ?? COMPUTER_PARTNER_PROFILES.alex;
+}
+
+export function isComputerPartnerKey(key: unknown): key is ComputerPartnerKey {
+  return typeof key === "string" && (COMPUTER_PARTNER_KEYS as readonly string[]).includes(key);
+}
+
+export function isComputerPartnerLockedByDefault(key: ComputerPartnerKey): boolean {
+  return !!getComputerPartnerProfile(key).requiresUnlock;
 }
 
 export function getComputerPartnerProfileWithRolePreferences(
@@ -253,6 +280,14 @@ export function createComputerPartnerStarter(profile: ComputerPartnerProfile): S
     pokerus: false,
     ivs: [...DEFAULT_PARTNER_IVS],
   }));
+}
+
+export function isComputerPartnerStarterAce(
+  profile: ComputerPartnerProfile,
+  starter: Pick<Starter, "speciesId">,
+  starterIndex: number,
+): boolean {
+  return starterIndex === 0 || !!profile.aceStarterSpeciesIds?.includes(starter.speciesId);
 }
 
 function getComputerPartnerStartingStarters(profile: ComputerPartnerProfile): ComputerPartnerStarterConfig[] {
@@ -378,10 +413,10 @@ export function isComputerPartnerAcePokemon(
   }
 
   return (
-    !!profile.starterSpeciesId
+    (!!profile.starterSpeciesId || !!profile.aceStarterSpeciesIds?.length)
     && "metBiome" in pokemon
     && pokemon.metBiome === -1
-    && pokemon.metSpecies === profile.starterSpeciesId
+    && (pokemon.metSpecies === profile.starterSpeciesId || !!profile.aceStarterSpeciesIds?.includes(pokemon.metSpecies))
   );
 }
 
@@ -447,6 +482,7 @@ export function scorePokemonForPartnerSlot(
     + getDefensiveCoveragePatchValue(projectedPokemon.species, projectedComparisonParty)
     + getPersonalityTypeBonus(profile, projectedPokemon.species)
     + getCherylHealingSupportSpeciesBonus(profile, role, projectedPokemon.species)
+    + getDawnHazardSupportSpeciesBonus(profile, role, projectedPokemon.species)
     - getSharedWeaknessPenalty(projectedPokemon.species, projectedComparisonParty)
     - projectedPokemon.growthCost
     - getProjectOverloadPenalty(profile, projectedPokemon.growthCost, comparisonParty)
@@ -672,6 +708,38 @@ function getCherylHealingSupportSpeciesBonus(
       return accessScore * 0.7;
     default:
       return accessScore * 0.45;
+  }
+}
+
+function getDawnHazardSupportSpeciesBonus(
+  profile: ComputerPartnerProfile,
+  role: ComputerPartnerRole,
+  species: PokemonSpecies,
+): number {
+  if (profile.key !== "dawn_zorua") {
+    return 0;
+  }
+
+  const accessScore = getSpeciesEntryHazardAccessScore(species);
+  if (!accessScore) {
+    return 0;
+  }
+
+  switch (role) {
+    case "speed":
+      return accessScore * 1.35;
+    case "physical":
+    case "special":
+      return accessScore * 0.85;
+    case "ace":
+      return accessScore * 0.75;
+    case "bulk":
+    case "defense":
+    case "specialDefense":
+    case "hpBulk":
+      return accessScore * 0.55;
+    default:
+      return accessScore * 0.7;
   }
 }
 

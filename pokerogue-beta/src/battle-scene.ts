@@ -1822,6 +1822,11 @@ export class BattleScene extends SceneBase {
     return baseY + getPlayerTrainerSpriteYOffset(this.getTrainerSprite(playerIndex));
   }
 
+  public getTrainerBackPokeballSpriteY(playerIndex: PlayerIndex = 0, baseY = 186): number {
+    return this.getTrainerBackSpriteY(playerIndex, baseY)
+      + (this.getTrainerSprite(playerIndex) === PlayerTrainerSprite.DAWN_ZORUA ? 6 : 0);
+  }
+
   public getTrainerBackSpriteX(playerIndex: PlayerIndex = 0, hasPartnerTrainer = false): number {
     if (!hasPartnerTrainer) {
       return TRAINER_BACK_CENTER_X;

@@ -197,6 +197,15 @@ describe("Abilities - Illusion", () => {
     expect(zoroark.summonData.illusion?.name).toBe("Koffing");
   });
 
+  it("does not activate when no non-illusion party member is available", async () => {
+    game.override.enemyMoveset(MoveId.SPLASH);
+    await game.classicMode.startBattle(SpeciesId.ZOROARK, SpeciesId.ZORUA, SpeciesId.HISUI_ZORUA);
+
+    const zoroark = game.field.getPlayerPokemon();
+
+    expect(zoroark.summonData.illusion).toBeNull();
+  });
+
   it("breaks after a direct move reveals an impossible immunity", async () => {
     game.override.moveset(MoveId.SPLASH).enemyMoveset(MoveId.PSYCHIC);
     await game.classicMode.startBattle(SpeciesId.ZOROARK, SpeciesId.BULBASAUR);

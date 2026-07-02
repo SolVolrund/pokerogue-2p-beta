@@ -6,6 +6,7 @@ import type { Starter } from "#types/save-data";
 import {
   createComputerPartnerStarter,
   getComputerPartnerProfile,
+  isComputerPartnerStarterAce,
   type ComputerPartnerKey,
 } from "#utils/computer-partner-profile";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
@@ -45,7 +46,7 @@ export async function inviteComputerPartnerToRun(key: ComputerPartnerKey): Promi
   party.splice(0, party.length);
 
   const loadPokemonAssets = starters.map((starter, index) => {
-    const starterPokemon = createPartnerPokemon(starter, index === 0);
+    const starterPokemon = createPartnerPokemon(starter, isComputerPartnerStarterAce(profile, starter, index));
     party.push(starterPokemon);
     return starterPokemon.loadAssets();
   });

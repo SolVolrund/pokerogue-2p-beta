@@ -502,7 +502,7 @@ export abstract class PokemonSpeciesForm {
       );
     }
     if (this.speciesId === SpeciesId.ARCEUS && formSpriteKey === "legend") {
-      formSpriteKey = "unknown";
+      formSpriteKey = "normal";
     }
     if (formSpriteKey) {
       switch (this.speciesId) {

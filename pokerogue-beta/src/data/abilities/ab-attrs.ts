@@ -5462,7 +5462,12 @@ function isIllusionSpecies(pokemon: Pokemon): boolean {
 }
 
 function getIllusionParty(pokemon: Pokemon): Pokemon[] {
-  return (pokemon.isPlayer() ? globalScene.getPlayerParty() : globalScene.getEnemyParty()).filter(p =>
+  if (!pokemon.isPlayer()) {
+    return globalScene.getEnemyParty().filter(p => p.isAllowedInBattle());
+  }
+
+  const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon);
+  return (playerIndex === undefined ? [] : globalScene.getPlayerParty(playerIndex)).filter(p =>
     p.isAllowedInBattle(),
   );
 }

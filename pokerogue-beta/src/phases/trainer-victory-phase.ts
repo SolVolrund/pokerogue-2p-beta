@@ -61,6 +61,10 @@ export class TrainerVictoryPhase extends BattlePhase {
       globalScene.validateAchv(achvs.BREEDERS_IN_SPACE);
     }
 
+    if (trainerType === TrainerType.DAWN_ZORUA) {
+      this.unlockDawnZoruaComputerPartner();
+    }
+
     globalScene.ui.showText(
       i18next.t("battle:trainerDefeated", {
         trainerName: globalScene.currentBattle.trainer?.getName(TrainerSlot.NONE, true),
@@ -127,6 +131,19 @@ export class TrainerVictoryPhase extends BattlePhase {
     }
 
     globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypeFunc);
+  }
+
+  private unlockDawnZoruaComputerPartner(): void {
+    const playerIndexes = globalScene.twoPlayerMode
+      ? globalScene.getActivePlayerIndexes().filter(playerIndex => !globalScene.isComputerPartnerPlayer(playerIndex))
+      : ([0] as PlayerIndex[]);
+
+    playerIndexes.forEach(playerIndex => {
+      const gameData = globalScene.getPlayerGameData(playerIndex);
+      if (gameData.unlockComputerPartner("dawn_zorua")) {
+        globalScene.savePlayerSystemSaveLocal(playerIndex);
+      }
+    });
   }
 
   private unshiftModifierRewardForPlayer(modifierTypeFunc: ModifierTypeFunc, playerIndex: PlayerIndex): void {

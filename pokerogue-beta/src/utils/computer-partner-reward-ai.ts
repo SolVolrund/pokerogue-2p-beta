@@ -19,6 +19,7 @@ import {
   type ModifierTypeOption,
 } from "#modifiers/modifier-type";
 import type { PokemonMove } from "#moves/pokemon-move";
+import { getDawnStrategyMoveCapabilities } from "#utils/computer-partner-hazard-support";
 import { chooseComputerPartnerMoveLearningDecision } from "#utils/computer-partner-move-ai";
 import {
   isComputerPartnerAcePokemon,
@@ -478,28 +479,29 @@ function chooseTmTarget(
   type: TmModifierType,
   party: PlayerPokemon[],
   profile?: ComputerPartnerProfile,
-): { targetPokemonIndex: number } | undefined {
+): RewardTarget | undefined {
   const move = allMoves[type.moveId];
-  let bestTarget: { targetPokemonIndex: number; improvementRatio: number; replaceIndex: number } | undefined;
+  let bestTarget:
+    | { targetPokemonIndex: number; improvementRatio: number; replaceIndex: number; targetScore: number }
+    | undefined;
 
   for (const [targetPokemonIndex, pokemon] of party.entries()) {
     if (type.selectFilter && type.selectFilter(pokemon) !== null) {
       continue;
     }
 
+    const role = profile
+      ? isComputerPartnerAcePokemon(pokemon, profile)
+        ? "ace"
+        : profile.roles[targetPokemonIndex] ?? "balanced"
+      : undefined;
+    const moveLearningContext = profile ? { profile, role: role ?? "balanced" } : {};
     const decision = chooseComputerPartnerMoveLearningDecision(
       pokemon,
       pokemon.getMoveset().map(pokemonMove => pokemonMove.moveId),
       move,
       LearnMoveType.TM,
-      {
-        profile,
-        role: profile
-          ? isComputerPartnerAcePokemon(pokemon, profile)
-            ? "ace"
-            : profile.roles[targetPokemonIndex] ?? "balanced"
-          : undefined,
-      },
+      moveLearningContext,
     );
 
     if (!decision.shouldLearn) {
@@ -509,17 +511,60 @@ function chooseTmTarget(
     if (
       !bestTarget
       || decision.improvementRatio > bestTarget.improvementRatio
+      || (
+        decision.improvementRatio === bestTarget.improvementRatio
+        && getDawnTmPreferenceScore(profile, role, move) > bestTarget.targetScore
+      )
       || (decision.improvementRatio === bestTarget.improvementRatio && decision.replaceIndex < bestTarget.replaceIndex)
     ) {
       bestTarget = {
         targetPokemonIndex,
         improvementRatio: decision.improvementRatio,
         replaceIndex: decision.replaceIndex,
+        targetScore: getTmTargetScore(decision.improvementRatio) + getDawnTmPreferenceScore(profile, role, move),
       };
     }
   }
 
-  return bestTarget ? { targetPokemonIndex: bestTarget.targetPokemonIndex } : undefined;
+  return bestTarget
+    ? { targetPokemonIndex: bestTarget.targetPokemonIndex, targetScore: bestTarget.targetScore }
+    : undefined;
+}
+
+function getTmTargetScore(improvementRatio: number): number {
+  if (!Number.isFinite(improvementRatio)) {
+    return 80;
+  }
+
+  return Math.max(0, Math.min(80, (improvementRatio - 1) * 180));
+}
+
+function getDawnTmPreferenceScore(
+  profile: ComputerPartnerProfile | undefined,
+  role: ComputerPartnerRole | undefined,
+  move: typeof allMoves[number],
+): number {
+  if (profile?.key !== "dawn_zorua") {
+    return 0;
+  }
+
+  const capabilities = getDawnStrategyMoveCapabilities(move);
+  let score = 0;
+
+  if (capabilities.entryHazard) {
+    score += role === "speed" ? 180 : 95;
+  }
+  if (capabilities.offensiveSetup && (role === "ace" || role === "physical" || role === "special")) {
+    score += 115;
+  }
+  if (
+    capabilities.defensiveSetup
+    && (role === "bulk" || role === "hpBulk" || role === "defense" || role === "specialDefense")
+  ) {
+    score += 110;
+  }
+
+  return score;
 }
 
 function hasUsefulOrbTarget(itemId: string, type: PokemonModifierType, party: PlayerPokemon[]): boolean {

@@ -35,7 +35,11 @@ import { UiMode } from "#enums/ui-mode";
 import { Unlockables } from "#enums/unlockables";
 import { ArenaTagAddedEvent, TerrainChangedEvent, WeatherChangedEvent } from "#events/arena";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
-import type { ComputerPartnerRole, ComputerPartnerRolePreferences } from "#utils/computer-partner-profile";
+import type {
+  ComputerPartnerKey,
+  ComputerPartnerRole,
+  ComputerPartnerRolePreferences,
+} from "#utils/computer-partner-profile";
 // biome-ignore lint/performance/noNamespaceImport: Something weird is going on here and I don't want to touch it
 import * as Modifier from "#modifiers/modifier";
 import { MysteryEncounterSaveData } from "#mystery-encounters/mystery-encounter-save-data";
@@ -77,7 +81,9 @@ import type {
 import { RUN_HISTORY_LIMIT } from "#ui/run-history-ui-handler";
 import { applyChallenges } from "#utils/challenge-utils";
 import {
-  type ComputerPartnerKey,
+  COMPUTER_PARTNER_KEYS,
+  isComputerPartnerKey as isKnownComputerPartnerKey,
+  isComputerPartnerLockedByDefault,
 } from "#utils/computer-partner-profile";
 import { fixedInt, NumberHolder, randInt, randSeedItem } from "#utils/common";
 import { decrypt, encrypt } from "#utils/data";
@@ -146,6 +152,7 @@ export class GameData {
   public achvUnlocks: AchvUnlocks;
 
   public voucherUnlocks: VoucherUnlocks;
+  public computerPartnerUnlocks: Partial<Record<ComputerPartnerKey, number>>;
   public voucherCounts: VoucherCounts;
   public eggs: Egg[];
   public eggPity: number[];
@@ -178,6 +185,7 @@ export class GameData {
     };
     this.achvUnlocks = {};
     this.voucherUnlocks = {};
+    this.computerPartnerUnlocks = {};
     this.voucherCounts = {
       [VoucherType.REGULAR]: 0,
       [VoucherType.PLUS]: 0,
@@ -202,6 +210,7 @@ export class GameData {
       unlocks: this.unlocks,
       achvUnlocks: this.achvUnlocks,
       voucherUnlocks: this.voucherUnlocks,
+      computerPartnerUnlocks: this.computerPartnerUnlocks,
       voucherCounts: this.voucherCounts,
       eggs: this.eggs.map(e => new EggData(e)),
       gameVersion: globalScene.game.config.gameVersion,
@@ -237,6 +246,19 @@ export class GameData {
       return true;
     }
     return this.unlocks[unlockable];
+  }
+
+  public isComputerPartnerUnlocked(key: ComputerPartnerKey): boolean {
+    return !isComputerPartnerLockedByDefault(key) || Object.hasOwn(this.computerPartnerUnlocks, key);
+  }
+
+  public unlockComputerPartner(key: ComputerPartnerKey): boolean {
+    if (!isComputerPartnerLockedByDefault(key) || this.isComputerPartnerUnlocked(key)) {
+      return false;
+    }
+
+    this.computerPartnerUnlocks[key] = Date.now();
+    return true;
   }
 
   public async saveSystem(): Promise<boolean> {
@@ -385,6 +407,17 @@ export class GameData {
       for (const v of Object.keys(systemData.voucherUnlocks)) {
         if (Object.hasOwn(vouchers, v)) {
           this.voucherUnlocks[v] = systemData.voucherUnlocks[v];
+        }
+      }
+    }
+
+    if (systemData.computerPartnerUnlocks) {
+      for (const key of COMPUTER_PARTNER_KEYS) {
+        if (Object.hasOwn(systemData.computerPartnerUnlocks, key)) {
+          const unlockTimestamp = systemData.computerPartnerUnlocks[key];
+          if (unlockTimestamp !== undefined) {
+            this.computerPartnerUnlocks[key] = unlockTimestamp;
+          }
         }
       }
     }
@@ -1277,13 +1310,18 @@ export class GameData {
       case SpeciesId.HISUI_GROWLITHE:
       case SpeciesId.HISUI_ARCANINE:
         return "marley";
+      case SpeciesId.ZORUA:
+      case SpeciesId.ZOROARK:
+      case SpeciesId.HISUI_ZORUA:
+      case SpeciesId.HISUI_ZOROARK:
+        return "dawn_zorua";
       default:
         return fromSession.twoPlayerComputerPartner ? "alex" : undefined;
     }
   }
 
   private isComputerPartnerKey(key: unknown): key is ComputerPartnerKey {
-    return key === "alex" || key === "cheryl" || key === "riley" || key === "mira" || key === "buck" || key === "marley";
+    return isKnownComputerPartnerKey(key);
   }
 
   private getSessionComputerPartnerRolePreferences(

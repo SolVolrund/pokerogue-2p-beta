@@ -23,6 +23,7 @@ export class SwitchSummonPhase extends SummonPhase {
   private readonly doReturn: boolean;
 
   private lastPokemon: Pokemon;
+  private switchCompleted = false;
 
   /**
    * Constructor for creating a new SwitchSummonPhase
@@ -135,6 +136,16 @@ export class SwitchSummonPhase extends SummonPhase {
     const switchedInPokemon: Pokemon | undefined = party[this.slotIndex];
     this.lastPokemon = this.getPokemon();
     this.inheritedFieldPosition = this.lastPokemon.fieldPosition;
+    if (!switchedInPokemon) {
+      if (!this.player) {
+        if (globalScene.currentBattle.trainer) {
+          this.hideEnemyTrainer();
+        }
+        globalScene.pbTrayEnemy.hide();
+      }
+      this.end();
+      return;
+    }
 
     // Defensive programming: Overcome the bug where the summon data has somehow not been reset
     // prior to switching in a new Pokemon.
@@ -154,10 +165,6 @@ export class SwitchSummonPhase extends SummonPhase {
     }
 
     applyAbAttrs("PreSwitchOutAbAttr", { pokemon: this.lastPokemon });
-    if (!switchedInPokemon) {
-      this.end();
-      return;
-    }
 
     if (this.switchType === SwitchType.BATON_PASS) {
       // If switching via baton pass, update opposing tags coming from the prior pokemon
@@ -195,6 +202,7 @@ export class SwitchSummonPhase extends SummonPhase {
 
     party[this.slotIndex] = this.lastPokemon;
     party[this.getActivePartyIndex()] = switchedInPokemon;
+    this.switchCompleted = true;
     if (this.player && globalScene.twoPlayerMode) {
       this.removeDuplicatePartyReferences(party);
     }
@@ -231,6 +239,10 @@ export class SwitchSummonPhase extends SummonPhase {
   }
 
   onEnd(): void {
+    if (!this.switchCompleted) {
+      return;
+    }
+
     super.onEnd();
 
     const pokemon = this.getPokemon();

@@ -31,6 +31,7 @@ export interface SystemSaveData {
   unlocks: Unlocks;
   achvUnlocks: AchvUnlocks;
   voucherUnlocks: VoucherUnlocks;
+  computerPartnerUnlocks?: Partial<Record<ComputerPartnerKey, number>>;
   voucherCounts: VoucherCounts;
   eggs: EggData[];
   gameVersion: string;

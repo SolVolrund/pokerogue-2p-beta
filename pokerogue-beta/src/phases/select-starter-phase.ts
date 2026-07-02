@@ -1,5 +1,5 @@
-import { audioManager } from "#app/global-audio-manager";
 import type { PlayerIndex } from "#app/battle-scene";
+import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { activeOverrides } from "#app/overrides";
 import { Phase } from "#app/phase";
@@ -12,7 +12,11 @@ import { overrideHeldItems, overrideModifiers, PersistentModifier } from "#modif
 import type { Starter } from "#types/save-data";
 import { SaveSlotUiMode } from "#ui/handlers/save-slot-select-ui-handler";
 import { applyChallenges } from "#utils/challenge-utils";
-import { createComputerPartnerStarter, getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import {
+  createComputerPartnerStarter,
+  getComputerPartnerProfile,
+  isComputerPartnerStarterAce,
+} from "#utils/computer-partner-profile";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -46,13 +50,16 @@ export class SelectStarterPhase extends Phase {
           const nextPlayerIndex = playerIndexes[currentPlayerOffset + 1];
           if (nextPlayerIndex !== undefined) {
             this.waitForTwoPlayerProfilesBeforeAction(() => {
-              const computerPartnerProfile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(nextPlayerIndex));
+              const computerPartnerProfile = getComputerPartnerProfile(
+                globalScene.getComputerPartnerKey(nextPlayerIndex),
+              );
               if (
                 globalScene.isComputerPartnerPlayer(nextPlayerIndex)
                 && !computerPartnerProfile.usesPlayerSelectedStarters
               ) {
-                this.initComputerPartnerStarters(nextPlayerIndex)
-                  .then(() => this.advanceAfterStarterSelection(nextPlayerIndex));
+                this.initComputerPartnerStarters(nextPlayerIndex).then(() =>
+                  this.advanceAfterStarterSelection(nextPlayerIndex),
+                );
                 return;
               }
 
@@ -178,8 +185,9 @@ export class SelectStarterPhase extends Phase {
         starter.ivs,
         starter.nature,
       );
-      if (globalScene.isComputerPartnerPlayer(playerIndex) && i === 0) {
-        starterPokemon.computerPartnerAce = true;
+      if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+        const computerPartnerProfile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+        starterPokemon.computerPartnerAce = isComputerPartnerStarterAce(computerPartnerProfile, starter, i);
       }
       if (starter.moveset) {
         starterPokemon.tryPopulateMoveset(starter.moveset);
@@ -251,7 +259,9 @@ export class SelectStarterPhase extends Phase {
     globalScene.waitForSharedInput();
     globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
       const waitingMessage =
-        globalScene.multiplayerPlayerCount > 2 ? "Waiting for all player profiles..." : "Waiting for both player profiles...";
+        globalScene.multiplayerPlayerCount > 2
+          ? "Waiting for all player profiles..."
+          : "Waiting for both player profiles...";
       globalScene.ui.showText(waitingMessage, null, null, null, false);
       globalScene.uiInputs?.broadcastTwoPlayerProfileSnapshot();
       const profileRetryInterval = globalThis.setInterval(() => {
@@ -273,9 +283,7 @@ export class SelectStarterPhase extends Phase {
           globalScene.multiplayerPlayerCount > 2
             ? "Still waiting for the other player profiles."
             : "Still waiting for the other player profile.";
-        globalScene.ui.showText(retryMessage, null, () =>
-          this.waitForTwoPlayerProfilesBeforeAction(onReady),
-        );
+        globalScene.ui.showText(retryMessage, null, () => this.waitForTwoPlayerProfilesBeforeAction(onReady));
       });
     });
   }
