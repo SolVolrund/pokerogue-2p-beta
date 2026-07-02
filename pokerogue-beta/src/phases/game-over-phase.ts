@@ -344,6 +344,12 @@ export class GameOverPhase extends BattlePhase {
         globalScene.phaseManager.unshiftNew("UnlockPhase", Unlockables.GAMMA_RAY_BURST);
       }
       if (
+        classicFinalBossSpeciesId === SpeciesId.MEW
+        && !globalScene.gameData.unlocks[Unlockables.OLD_SEA_MAP]
+      ) {
+        globalScene.phaseManager.unshiftNew("UnlockPhase", Unlockables.OLD_SEA_MAP);
+      }
+      if (
         !globalScene.gameData.unlocks[Unlockables.EVIOLITE]
         && globalScene.getPlayerParty().some(p => speciesDataRegistry.hasEvolutions(p.getSpeciesForm(true).speciesId))
       ) {

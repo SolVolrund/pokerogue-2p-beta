@@ -4,7 +4,7 @@ import { allBiomes } from "#data/data-lists";
 import { BiomeId } from "#enums/biome-id";
 import { ChallengeType } from "#enums/challenge-type";
 import { UiMode } from "#enums/ui-mode";
-import { MapModifier, MoneyInterestModifier } from "#modifiers/modifier";
+import { MapModifier, MoneyInterestModifier, OldSeaMapModifier } from "#modifiers/modifier";
 import { BattlePhase } from "#phases/battle-phase";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { applyChallenges } from "#utils/challenge-utils";
@@ -40,9 +40,10 @@ export class SelectBiomePhase extends BattlePhase {
 
     const { biomeLinks } = allBiomes.get(currentBiome);
     if (biomeLinks.length > 1) {
-      const biomes: BiomeId[] = biomeLinks
+      const baseBiomes: BiomeId[] = biomeLinks
         .filter(b => !Array.isArray(b) || !randSeedInt(b[1]))
         .map(b => (Array.isArray(b) ? b[0] : b));
+      const biomes = this.withOldSeaMapBiomeOptions(currentBiome, baseBiomes);
 
       if (biomes.length > 1 && this.shouldShowMapSelect()) {
         this.showMapSelect(biomes);
@@ -71,13 +72,32 @@ export class SelectBiomePhase extends BattlePhase {
     this.setNextBiomeAndEnd(this.generateNextBiome(nextWaveIndex));
   }
 
+  private withOldSeaMapBiomeOptions(currentBiome: BiomeId, biomes: BiomeId[]): BiomeId[] {
+    if (currentBiome !== BiomeId.SEA || !this.shouldShowOldSeaMapOption()) {
+    return biomes;
+    }
+    return biomes.includes(BiomeId.FARAWAY_ISLAND)
+    ? biomes
+    : [...biomes, BiomeId.FARAWAY_ISLAND];
+  }
+
+  private shouldShowOldSeaMapOption(): boolean {
+  if (!globalScene.twoPlayerMode) {
+    return !!globalScene.findModifier(m => m instanceof OldSeaMapModifier);
+  }
+
+  return globalScene.getActivePlayerIndexes().some(playerIndex =>
+    globalScene.findModifierForPlayer(modifier => modifier instanceof OldSeaMapModifier, playerIndex),
+  );
+}
+
   private generateNextBiome(waveIndex: number): BiomeId {
     return waveIndex % 50 === 0 ? BiomeId.END : globalScene.generateRandomBiome(waveIndex);
   }
 
   private shouldShowMapSelect(): boolean {
     if (!globalScene.twoPlayerMode) {
-      return !!globalScene.findModifier(m => m instanceof MapModifier);
+      return !!globalScene.findModifier(m => m instanceof MapModifier || m instanceof OldSeaMapModifier);
     }
 
     return this.getMapPlayerIndexes().length > 0;
@@ -85,7 +105,7 @@ export class SelectBiomePhase extends BattlePhase {
 
   private getMapPlayerIndexes(): PlayerIndex[] {
     return globalScene.getActivePlayerIndexes().filter(playerIndex =>
-      globalScene.findModifierForPlayer(modifier => modifier instanceof MapModifier, playerIndex),
+      globalScene.findModifierForPlayer(modifier => modifier instanceof MapModifier || modifier instanceof OldSeaMapModifier, playerIndex),
     );
   }
 

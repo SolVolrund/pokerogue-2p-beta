@@ -3812,7 +3812,9 @@ export class BattleScene extends SceneBase {
 
   generateRandomBiome(waveIndex: number): BiomeId {
     const relWave = waveIndex % 250;
-    const biomes = Object.values(BiomeId).filter(b => b !== BiomeId.TOWN && b !== BiomeId.END);
+    const biomes = Object.values(BiomeId).filter(
+      b => b !== BiomeId.TOWN && b !== BiomeId.END && b !== BiomeId.FARAWAY_ISLAND,
+    );
     const maxDepth = biomeDepths[BiomeId.END][0] - 2;
     const depthWeights = new Array(maxDepth + 1)
       .fill(null)
@@ -4815,6 +4817,7 @@ export class BattleScene extends SceneBase {
       SpeciesId.MIRAIDON,
       SpeciesId.TERAPAGOS,
       SpeciesId.MARSHADOW,
+      SpeciesId.JIRACHI
     ];
 
     const usedSpeciesIdSet = new Set(usedSpeciesIds);

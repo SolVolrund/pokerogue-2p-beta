@@ -8209,6 +8209,8 @@ export class NaturePowerAttr extends CallMoveAttr {
         return MoveId.CHARGE_BEAM;
       case BiomeId.END:
         return MoveId.ETERNABEAM;
+      case BiomeId.FARAWAY_ISLAND:
+        return MoveId.CELEBRATE;
     }
 
     biome satisfies never;

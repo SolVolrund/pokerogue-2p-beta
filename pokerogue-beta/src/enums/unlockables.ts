@@ -4,4 +4,5 @@ export enum Unlockables {
   SPLICED_ENDLESS_MODE,
   EVIOLITE,
   GAMMA_RAY_BURST,
+  OLD_SEA_MAP,
 }

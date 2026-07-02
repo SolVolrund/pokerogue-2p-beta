@@ -1061,6 +1061,7 @@ export function getBiomeHasProps(biomeId: BiomeId): boolean {
     case BiomeId.TEMPLE:
     case BiomeId.SNOWY_FOREST:
     case BiomeId.ISLAND:
+    case BiomeId.FARAWAY_ISLAND:
     case BiomeId.LABORATORY:
     case BiomeId.END:
       return true;

@@ -23,6 +23,7 @@ import { plainsBiome } from "#biomes/plains";
 import { powerPlantBiome } from "#biomes/power-plant";
 import { ruinsBiome } from "#biomes/ruins";
 import { seaBiome } from "#biomes/sea";
+import { farawayIslandBiome } from "#biomes/faraway-island";
 import { seabedBiome } from "#biomes/seabed";
 import { slumBiome } from "#biomes/slum";
 import { snowyForestBiome } from "#biomes/snowy-forest";
@@ -45,6 +46,7 @@ export function initBiomes(): void {
     metropolisBiome,
     forestBiome,
     seaBiome,
+    farawayIslandBiome,
     swampBiome,
     beachBiome,
     lakeBiome,

@@ -73,6 +73,7 @@ import {
   LinkingCordGoldModifier,
   LockModifierTiersModifier,
   MapModifier,
+  OldSeaMapModifier,
   MegaEvolutionAccessModifier,
   type Modifier,
   MoneyInterestModifier,
@@ -1918,6 +1919,9 @@ const modifierTypeInitObj = Object.freeze({
     ),
 
   MAP: () => new ModifierType("modifierType:ModifierType.MAP", "map", (type, _args) => new MapModifier(type)),
+
+  OLD_SEA_MAP: () => new ModifierType("modifierType:ModifierType.OLD_SEA_MAP", "old_sea_map", (type, _args) => new OldSeaMapModifier(type)),
+
   LINKING_CORD_GOLD: () =>
     new ModifierType(
       "modifierType:ModifierType.LINKING_CORD_GOLD",

@@ -174,6 +174,7 @@ export class GameData {
       [Unlockables.SPLICED_ENDLESS_MODE]: false,
       [Unlockables.EVIOLITE]: false,
       [Unlockables.GAMMA_RAY_BURST]: false,
+      [Unlockables.OLD_SEA_MAP]: false,
     };
     this.achvUnlocks = {};
     this.voucherUnlocks = {};

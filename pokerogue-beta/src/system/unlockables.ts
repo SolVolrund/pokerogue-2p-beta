@@ -15,5 +15,7 @@ export function getUnlockableName(unlockable: Unlockables) {
       return i18next.t("modifierType:ModifierType.EVIOLITE.name");
     case Unlockables.GAMMA_RAY_BURST:
       return i18next.t("modifierType:ModifierType.GAMMA_RAY_BURST.name");
+    case Unlockables.OLD_SEA_MAP:
+      return i18next.t("modifierType:ModifierType.OLD_SEA_MAP.name");
   }
 }

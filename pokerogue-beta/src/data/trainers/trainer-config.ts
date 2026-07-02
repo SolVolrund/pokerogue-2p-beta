@@ -5488,6 +5488,29 @@ export const trainerConfigs: TrainerConfigs = {
       return modifiers;
     })
     .setInstantTera(5), // Tera Fighting Hydrapple
+  [TrainerType.DAWN_ZORUA]: new TrainerConfig(++t)
+    .setName("Dawn")
+    .setPartyTemplates(trainerPartyTemplates.TWO_AVG, trainerPartyTemplates.THREE_AVG)
+    .setBattleBgm("battle_trainer")
+    .setMixedBattleBgm("battle_trainer")
+    .setPartyMemberFunc(
+      0,
+      getRandomPartyMemberFunc([SpeciesId.ZOROARK], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      1,
+      getRandomPartyMemberFunc([SpeciesId.HISUI_ZOROARK], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      2,
+      getRandomPartyMemberFunc([SpeciesId.ZORUA, SpeciesId.HISUI_ZORUA], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    ),
 
   [TrainerType.RIVAL]: new TrainerConfig((t = TrainerType.RIVAL))
     .setName("Finn")

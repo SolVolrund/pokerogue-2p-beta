@@ -17,6 +17,7 @@ import {
   DoubleBattleChanceBoosterModifier,
   SpeciesCritBoosterModifier,
   TurnStatusEffectModifier,
+  OldSeaMapModifier,
 } from "#modifiers/modifier";
 import {
   dailyStarterModifierPool,
@@ -285,9 +286,15 @@ function initGreatModifierPool() {
     ),
     new WeightedModifierType(
       modifierTypes.MAP,
-      () => (globalScene.gameMode.isClassic && globalScene.currentBattle.waveIndex < 180 ? 2 : 0),
+      () => 
+        globalScene.gameMode.isClassic 
+        && globalScene.currentBattle.waveIndex < 180 
+        && !globalScene.findModifier(m => m instanceof OldSeaMapModifier) 
+        ? 2 
+        : 0,
       2,
     ),
+    
     new WeightedModifierType(modifierTypes.SOOTHE_BELL, 2),
     new WeightedModifierType(modifierTypes.TM_GREAT, 3),
     new WeightedModifierType(
@@ -360,6 +367,17 @@ function initUltraModifierPool() {
       24,
     ),
     new WeightedModifierType(modifierTypes.AMULET_COIN, skipInLastClassicWaveOrDefault(3)),
+    new WeightedModifierType(
+      modifierTypes.OLD_SEA_MAP,
+      () =>
+        globalScene.gameMode.isClassic
+        && globalScene.currentBattle.waveIndex < 180
+        && !globalScene.gameMode.isFreshStartChallenge()
+        && globalScene.gameData.isUnlocked(Unlockables.OLD_SEA_MAP)
+          ? 3
+          : 0,
+      3,
+    ),
     new WeightedModifierType(modifierTypes.EVIOLITE, (party: Pokemon[]) => {
       const { gameMode, gameData } = globalScene;
       if (gameMode.isDaily || (!gameMode.isFreshStartChallenge() && gameData.isUnlocked(Unlockables.EVIOLITE))) {

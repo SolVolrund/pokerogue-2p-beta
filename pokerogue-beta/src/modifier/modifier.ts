@@ -613,6 +613,20 @@ export class MapModifier extends PersistentModifier {
   }
 }
 
+export class OldSeaMapModifier extends PersistentModifier {
+  clone(): OldSeaMapModifier {
+    return new OldSeaMapModifier(this.type, this.stackCount);
+  }
+
+  override apply(..._args: unknown[]): boolean {
+    return true;
+  }
+
+  getMaxStackCount(): number {
+    return 1;
+  }
+}
+
 export class LinkingCordGoldModifier extends PersistentModifier {
   clone(): LinkingCordGoldModifier {
     return new LinkingCordGoldModifier(this.type, this.stackCount);
@@ -4169,6 +4183,7 @@ const ModifierClassMap = Object.freeze({
   TempStatStageBoosterModifier,
   TempCritBoosterModifier,
   MapModifier,
+  OldSeaMapModifier,
   LinkingCordGoldModifier,
   MegaEvolutionAccessModifier,
   GigantamaxAccessModifier,
