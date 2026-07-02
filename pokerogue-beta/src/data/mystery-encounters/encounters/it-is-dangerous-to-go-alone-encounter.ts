@@ -2,11 +2,12 @@ import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import { globalScene } from "#app/global-scene";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
-import { getPlayerTrainerSpriteBackTextureKey } from "#enums/player-trainer-sprite";
+import { TrainerType } from "#enums/trainer-type";
 import { leaveEncounterWithoutBattle } from "#mystery-encounters/encounter-phase-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
+import { trainerConfigs } from "#trainers/trainer-config";
 import {
   COMPUTER_PARTNER_KEYS,
   getComputerPartnerProfile,
@@ -18,7 +19,17 @@ import { randSeedShuffle } from "#utils/common";
 const namespace = "mysteryEncounters/itIsDangerousToGoAlone";
 const PARTNER_OPTIONS = 3;
 const PARTNER_SPRITE_X = [-32, 0, 32];
-const ELIGIBLE_PARTNER_KEYS = COMPUTER_PARTNER_KEYS.filter(key => key !== "alex");
+const PARTNER_TRAINER_TYPES: Partial<Record<ComputerPartnerKey, TrainerType>> = {
+  buck: TrainerType.BUCK,
+  cheryl: TrainerType.CHERYL,
+  marley: TrainerType.MARLEY,
+  mira: TrainerType.MIRA,
+  riley: TrainerType.RILEY,
+  dawn_zorua: TrainerType.DAWN_ZORUA,
+};
+const ELIGIBLE_PARTNER_KEYS = COMPUTER_PARTNER_KEYS.filter(
+  key => key !== "alex" && PARTNER_TRAINER_TYPES[key] !== undefined,
+);
 
 class SoloPartnerOfferRequirement extends EncounterSceneRequirement {
   override meetsRequirement(): boolean {
@@ -50,7 +61,9 @@ export const ItIsDangerousToGoAloneEncounter: MysteryEncounter = MysteryEncounte
       .filter(playerIndex => globalScene.isComputerPartnerPlayer(playerIndex))
       .map(playerIndex => globalScene.getComputerPartnerKey(playerIndex));
     const partnerKeys = randSeedShuffle(
-      ELIGIBLE_PARTNER_KEYS.filter(key => !existingPartnerKeys.includes(key)),
+      ELIGIBLE_PARTNER_KEYS.filter(
+        key => !existingPartnerKeys.includes(key) && globalScene.gameData.isComputerPartnerUnlocked(key),
+      ),
     ).slice(0, PARTNER_OPTIONS);
 
     encounter.misc = { partnerKeys };
@@ -59,9 +72,9 @@ export const ItIsDangerousToGoAloneEncounter: MysteryEncounter = MysteryEncounte
       encounter.setDialogueToken(`partner${index + 1}`, profile.name);
     });
     encounter.spriteConfigs = partnerKeys.map((key, index) => {
-      const profile = getComputerPartnerProfile(key);
+      const trainerType = PARTNER_TRAINER_TYPES[key]!;
       return {
-        spriteKey: getPlayerTrainerSpriteBackTextureKey(profile.trainerSprite!),
+        spriteKey: trainerConfigs[trainerType].getSpriteKey(),
         fileRoot: "trainer",
         hasShadow: true,
         x: PARTNER_SPRITE_X[index],

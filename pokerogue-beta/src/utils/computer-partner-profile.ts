@@ -209,7 +209,7 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
       { speciesId: SpeciesId.GROWLITHE, points: 4 },
       { speciesId: SpeciesId.SNEASEL, points: 4 },
       { speciesId: SpeciesId.NINCADA, points: 4 },
-      { speciesId: SpeciesId.ELECTRODE, points: 2 },
+      { speciesId: SpeciesId.VOLTORB, points: 2 },
       { speciesId: SpeciesId.ZUBAT, points: 3 },
     ],
   },
