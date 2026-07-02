@@ -694,6 +694,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
         formIndex: pokemon.formIndex,
         gender: pokemon.gender,
         pokeball: pokemon.pokeball,
+        hp: pokemon.hp,
+        maxHp: pokemon.getMaxHp(),
         fusionFormIndex: pokemon.fusionFormIndex,
         fusionSpecies: pokemon.fusionSpecies || undefined,
         fusionGender: pokemon.fusionGender,
@@ -735,15 +737,23 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
         formIndex: pokemon.formIndex,
         gender,
         pokeball: this.pokeball,
+        hp: this.hp,
+        maxHp: this.getMaxHp(),
       };
 
       if (this.shiny || this.fusionShiny) {
         this.initShinySparkle();
       }
     }
-    this.loadAssets(false, true).then(() => this.playAnim());
+    this.refreshIllusionSprite();
     this.updateInfo();
     return true;
+  }
+
+  refreshIllusionSprite(): void {
+    if (this.summonData.illusion) {
+      this.loadAssets(false, true).then(() => this.playAnim());
+    }
   }
 
   /**
@@ -1742,8 +1752,14 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   // TODO: Convert this into a getter
-  getMaxHp(): number {
-    return this.getStat(Stat.HP);
+  getHp(useIllusion = false): number {
+    return useIllusion ? (this.summonData.illusion?.hp ?? this.hp) : this.hp;
+  }
+
+  getMaxHp(useIllusion = false): number {
+    return useIllusion
+      ? (this.summonData.illusion?.maxHp ?? this.getStat(Stat.HP))
+      : this.getStat(Stat.HP);
   }
 
   /** Returns the amount of hp currently missing from this {@linkcode Pokemon} (max - current) */
@@ -1756,8 +1772,10 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * @param precise - Whether to return the exact HP ratio (e.g. `0.54321`), or one rounded to the nearest %; default `false`
    * @returns The current HP ratio
    */
-  getHpRatio(precise = false): number {
-    return precise ? this.hp / this.getMaxHp() : Math.round((this.hp / this.getMaxHp()) * 100) / 100;
+  getHpRatio(precise = false, useIllusion = false): number {
+    const hp = this.getHp(useIllusion);
+    const maxHp = this.getMaxHp(useIllusion);
+    return precise ? hp / maxHp : Math.round((hp / maxHp) * 100) / 100;
   }
 
   /**
@@ -2829,7 +2847,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
      * however, the final ratio cannot be higher than 1.
      */
     const hpRatio = this.getHpRatio();
-    const oppHpRatio = opponent.getHpRatio();
+    const oppHpRatio = opponent.getHpRatio(false, true);
     // TODO: use better logic for predicting whether the pokemon "is dying"
     // E.g., perhaps check if it would faint if the opponent were to use the same move it just used
     // (twice if the user is slower)

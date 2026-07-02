@@ -387,11 +387,11 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
       this.fusionShinyIcon.setTint(getVariantTint(pokemon.fusionVariant));
     }
 
-    this.hpBar.setScale(pokemon.getHpRatio(true), 1);
+    this.hpBar.setScale(pokemon.getHpRatio(true, true), 1);
     this.lastHpFrame = this.hpBar.scaleX > 0.5 ? "high" : this.hpBar.scaleX > 0.25 ? "medium" : "low";
     this.hpBar.setFrame(this.lastHpFrame);
-    this.lastHp = pokemon.hp;
-    this.lastMaxHp = pokemon.getMaxHp();
+    this.lastHp = pokemon.getHp(true);
+    this.lastMaxHp = pokemon.getMaxHp(true);
 
     this.setLevelDisplay(pokemon.level);
 
@@ -624,7 +624,7 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
 
   /** Update the pokemonHp bar */
   protected updatePokemonHp(pokemon: Pokemon, resolve: (r: void | PromiseLike<void>) => void, instant?: boolean): void {
-    let duration = instant ? 0 : Phaser.Math.Clamp(Math.abs(this.lastHp - pokemon.hp) * 5, 250, 5000);
+    let duration = instant ? 0 : Phaser.Math.Clamp(Math.abs(this.lastHp - pokemon.getHp(true)) * 5, 250, 5000);
     const speed = globalScene.hpBarSpeed;
     if (speed) {
       duration = speed >= 3 ? 0 : duration / Math.pow(2, speed);
@@ -632,7 +632,7 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
     globalScene.tweens.add({
       targets: this.hpBar,
       ease: "Sine.easeOut",
-      scaleX: pokemon.getHpRatio(true),
+      scaleX: pokemon.getHpRatio(true, true),
       duration,
       onUpdate: () => {
         this.onHpTweenUpdate(pokemon);
@@ -642,7 +642,7 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
         resolve();
       },
     });
-    this.lastMaxHp = pokemon.getMaxHp();
+    this.lastMaxHp = pokemon.getMaxHp(true);
   }
 
   // #endregion HP Bar Display handling
@@ -672,7 +672,7 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
 
     this.setTypes(pokemon.getTypes({ useIllusion: true }));
 
-    if (this.lastHp !== pokemon.hp || this.lastMaxHp !== pokemon.getMaxHp()) {
+    if (this.lastHp !== pokemon.getHp(true) || this.lastMaxHp !== pokemon.getMaxHp(true)) {
       this.updatePokemonHp(pokemon, resolve, instant);
     }
 

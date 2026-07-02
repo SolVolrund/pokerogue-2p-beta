@@ -24,6 +24,10 @@ export interface IllusionData {
   gender: Gender;
   /** The pokeball of the illusion */
   pokeball: PokeballType;
+  /** The current HP shown while the illusion is active */
+  hp: number;
+  /** The maximum HP shown while the illusion is active */
+  maxHp: number;
   /** The fusion species of the illusion if it's a fusion */
   fusionSpecies?: PokemonSpecies | undefined;
   /** The fusionFormIndex of the illusion */

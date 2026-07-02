@@ -7,8 +7,7 @@ import { GameManager } from "#test/framework/game-manager";
 import Phaser from "phaser";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-// TODO: Rework and re-enable once Illusion is implemented again, however that may be
-describe.todo("Abilities - Illusion", () => {
+describe("Abilities - Illusion", () => {
   let phaserGame: Phaser.Game;
   let game: GameManager;
 
@@ -142,6 +141,88 @@ describe.todo("Abilities - Illusion", () => {
     expect(zoroark.getGender(false, true)).toBe(Gender.FEMALE);
     expect(zoroark.isShiny(true)).toBe(true);
     expect(zoroark.getPokeball(true)).toBe(PokeballType.GREAT_BALL);
+  });
+
+  it("copies the HP display values from the illusion source", async () => {
+    game.override.enemyMoveset(MoveId.SPLASH);
+    await game.classicMode.startBattle(SpeciesId.ABRA, SpeciesId.ZOROARK, SpeciesId.AXEW);
+
+    const axew = game.scene.getPlayerParty().at(2)!;
+    axew.hp = Math.floor(axew.getMaxHp() / 2);
+
+    game.doSwitchPokemon(1);
+
+    await game.phaseInterceptor.to("TurnEndPhase");
+
+    const zoroark = game.field.getPlayerPokemon();
+
+    expect(zoroark.summonData.illusion?.hp).toBe(axew.hp);
+    expect(zoroark.summonData.illusion?.maxHp).toBe(axew.getMaxHp());
+    expect(zoroark.getHp(true)).toBe(axew.hp);
+    expect(zoroark.getMaxHp(true)).toBe(axew.getMaxHp());
+  });
+
+  it("refreshes the illusion each time the pokemon is sent out", async () => {
+    game.override.enemyMoveset(MoveId.SPLASH);
+    await game.classicMode.startBattle(SpeciesId.ABRA, SpeciesId.ZOROARK, SpeciesId.AXEW);
+
+    const zoroark = game.scene.getPlayerParty().at(1)!;
+    const axew = game.scene.getPlayerParty().at(2)!;
+
+    game.doSwitchPokemon(1);
+    await game.phaseInterceptor.to("TurnEndPhase");
+
+    expect(zoroark.summonData.illusion?.hp).toBe(axew.hp);
+
+    game.doSwitchPokemon(0);
+    await game.phaseInterceptor.to("TurnEndPhase");
+
+    axew.hp = Math.floor(axew.getMaxHp() / 2);
+
+    game.doSwitchPokemon(1);
+    await game.phaseInterceptor.to("TurnEndPhase");
+
+    expect(zoroark.summonData.illusion?.hp).toBe(axew.hp);
+  });
+
+  it("skips illusion-family pokemon when choosing the illusion source", async () => {
+    game.override.enemyMoveset(MoveId.SPLASH);
+    await game.classicMode.startBattle(SpeciesId.ABRA, SpeciesId.ZOROARK, SpeciesId.KOFFING, SpeciesId.ZORUA);
+
+    game.doSwitchPokemon(1);
+    await game.phaseInterceptor.to("TurnEndPhase");
+
+    const zoroark = game.field.getPlayerPokemon();
+
+    expect(zoroark.summonData.illusion?.name).toBe("Koffing");
+  });
+
+  it("breaks after a direct move reveals an impossible immunity", async () => {
+    game.override.moveset(MoveId.SPLASH).enemyMoveset(MoveId.PSYCHIC);
+    await game.classicMode.startBattle(SpeciesId.ZOROARK, SpeciesId.BULBASAUR);
+
+    const zoroark = game.field.getPlayerPokemon();
+    expect(zoroark.summonData.illusion?.name).toBe("Bulbasaur");
+
+    game.move.select(MoveId.SPLASH);
+    await game.phaseInterceptor.to("TurnEndPhase");
+
+    expect(zoroark.summonData.illusion).toBeNull();
+    expect(zoroark.isFullHp()).toBe(true);
+  });
+
+  it("does not break when the illusion source would also be immune", async () => {
+    game.override.moveset(MoveId.SPLASH).enemyMoveset(MoveId.SHADOW_SNEAK);
+    await game.classicMode.startBattle(SpeciesId.HISUI_ZOROARK, SpeciesId.PATRAT);
+
+    const zoroark = game.field.getPlayerPokemon();
+    expect(zoroark.summonData.illusion?.name).toBe("Patrat");
+
+    game.move.select(MoveId.SPLASH);
+    await game.phaseInterceptor.to("TurnEndPhase");
+
+    expect(zoroark.summonData.illusion?.name).toBe("Patrat");
+    expect(zoroark.isFullHp()).toBe(true);
   });
 
   it("breaks when suppressed", async () => {

@@ -20,7 +20,7 @@ const pokemonPool: BiomePokemonPools = {
     [TimeOfDay.DAY]: [SpeciesId.ANORITH],
     [TimeOfDay.DUSK]: [SpeciesId.OMANYTE],
     [TimeOfDay.NIGHT]: [SpeciesId.LILEEP],
-    [TimeOfDay.ALL]: [],
+    [TimeOfDay.ALL]: [SpeciesId.DITTO],
   },
   [BiomePoolTier.RARE]: {
     [TimeOfDay.DAWN]: [SpeciesId.SHIELDON],
@@ -76,8 +76,8 @@ const pokemonPool: BiomePokemonPools = {
 const trainerPool: TrainerPools = {
   [BiomePoolTier.COMMON]: [TrainerType.DAWN_ZORUA],
   [BiomePoolTier.UNCOMMON]: [TrainerType.DAWN_ZORUA],
-  [BiomePoolTier.RARE]: [TrainerType.DAWN_ZORUA],
-  [BiomePoolTier.SUPER_RARE]: [],
+  [BiomePoolTier.RARE]: [TrainerType.DAWN_ZORUA, TrainerType.DUPLICA_DITTO],
+  [BiomePoolTier.SUPER_RARE]: [TrainerType.DUPLICA_DITTO],
   [BiomePoolTier.ULTRA_RARE]: [],
   [BiomePoolTier.BOSS]: [],
   [BiomePoolTier.BOSS_RARE]: [],

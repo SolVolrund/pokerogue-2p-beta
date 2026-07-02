@@ -330,6 +330,6 @@ export class EnemyBattleInfo extends BattleInfo {
     instant?: boolean,
   ): void {
     super.updatePokemonHp(pokemon, resolve, instant);
-    this.lastHp = pokemon.hp;
+    this.lastHp = pokemon.getHp(true);
   }
 }

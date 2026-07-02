@@ -138,9 +138,8 @@ export class SwitchSummonPhase extends SummonPhase {
 
     // Defensive programming: Overcome the bug where the summon data has somehow not been reset
     // prior to switching in a new Pokemon.
-    // Force the switch to occur and load the assets for the new pokemon, ignoring override.
+    // Force the switch to occur. Assets are loaded during summon after PreSummon effects are applied.
     switchedInPokemon.resetSummonData();
-    switchedInPokemon.loadAssets(true);
 
     // Even more defensive programming: Some callers will or will not make their users leave the field
     // before this phase starts.
@@ -154,7 +153,6 @@ export class SwitchSummonPhase extends SummonPhase {
       this.lastPokemon.leaveField(this.switchType === SwitchType.SWITCH);
     }
 
-    applyAbAttrs("PreSummonAbAttr", { pokemon: switchedInPokemon });
     applyAbAttrs("PreSwitchOutAbAttr", { pokemon: this.lastPokemon });
     if (!switchedInPokemon) {
       this.end();
@@ -201,8 +199,6 @@ export class SwitchSummonPhase extends SummonPhase {
       this.removeDuplicatePartyReferences(party);
     }
     const showTextAndSummon = () => {
-      this.setPlayerWindowTypeForField();
-      globalScene.ui.showText(this.getSendOutText(switchedInPokemon));
       /**
        * If this switch is passing a Substitute, make the switched Pokemon matches the returned Pokemon's state as it left.
        * Otherwise, clear any persisting tags on the returned Pokemon.
@@ -217,6 +213,9 @@ export class SwitchSummonPhase extends SummonPhase {
       } else {
         switchedInPokemon.fieldSetup(true);
       }
+      applyAbAttrs("PreSummonAbAttr", { pokemon: switchedInPokemon });
+      this.setPlayerWindowTypeForField();
+      globalScene.ui.showText(this.getSendOutText(switchedInPokemon));
       this.summon();
     };
 
@@ -276,6 +275,7 @@ export class SwitchSummonPhase extends SummonPhase {
     globalScene.triggerPokemonFormChange(pokemon, SpeciesFormChangeActiveTrigger, true);
     // Reverts to weather-based forms when weather suppressors (Cloud Nine/Air Lock) are switched out
     globalScene.arena.triggerWeatherBasedFormChanges(pokemon);
+    pokemon.refreshIllusionSprite();
   }
 
   queuePostSummon(): void {

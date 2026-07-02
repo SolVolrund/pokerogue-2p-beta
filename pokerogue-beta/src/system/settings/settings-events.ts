@@ -52,6 +52,7 @@ const EVENT_TITLE_KEYS: Record<MysteryEncounterType, string> = {
   [MysteryEncounterType.SHINY_BADGE]: "mysteryEncounters/shinyBadge:title",
   [MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE]: "mysteryEncounters/itIsDangerousToGoAlone:title",
   [MysteryEncounterType.LEGENDARY_CONFLICT]: "mysteryEncounters/legendaryConflict:title",
+  [MysteryEncounterType.FARAWAY_ISLAND_TREASURE]: "mysteryEncounters/farawayIslandTreasure:title",
 };
 
 export function getMysteryEncounterSettingKey(encounterType: MysteryEncounterType): string {

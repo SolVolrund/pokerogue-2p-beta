@@ -5450,6 +5450,29 @@ export class PreSummonAbAttr extends AbAttr {
   }
 }
 
+const ILLUSION_SPECIES_IDS: ReadonlySet<SpeciesId> = new Set([
+  SpeciesId.ZORUA,
+  SpeciesId.ZOROARK,
+  SpeciesId.HISUI_ZORUA,
+  SpeciesId.HISUI_ZOROARK,
+]);
+
+function isIllusionSpecies(pokemon: Pokemon): boolean {
+  return Array.from(ILLUSION_SPECIES_IDS).some(speciesId => pokemon.hasSpecies(speciesId));
+}
+
+function getIllusionParty(pokemon: Pokemon): Pokemon[] {
+  return (pokemon.isPlayer() ? globalScene.getPlayerParty() : globalScene.getEnemyParty()).filter(p =>
+    p.isAllowedInBattle(),
+  );
+}
+
+function getLastIllusionTarget(pokemon: Pokemon): Pokemon | undefined {
+  return getIllusionParty(pokemon)
+    .filter(p => p !== pokemon && !isIllusionSpecies(p))
+    .at(-1);
+}
+
 /** @sealed */
 export class IllusionPreSummonAbAttr extends PreSummonAbAttr {
   /**
@@ -5458,12 +5481,9 @@ export class IllusionPreSummonAbAttr extends PreSummonAbAttr {
    * @param pokemon - The Pokémon with the Illusion ability.
    */
   override apply({ pokemon }: AbAttrBaseParams): void {
-    const party: Pokemon[] = (pokemon.isPlayer() ? globalScene.getPlayerParty() : globalScene.getEnemyParty()).filter(
-      p => p.isAllowedInBattle(),
-    );
     let illusionPokemon: Pokemon | PokemonSpecies;
     if (pokemon.hasTrainer()) {
-      illusionPokemon = party.filter(p => p !== pokemon).at(-1) || pokemon;
+      illusionPokemon = getLastIllusionTarget(pokemon) || pokemon;
     } else {
       illusionPokemon = globalScene.arena.randomSpecies(globalScene.currentBattle.waveIndex, pokemon.level);
     }
@@ -5473,29 +5493,32 @@ export class IllusionPreSummonAbAttr extends PreSummonAbAttr {
   /** @returns Whether the illusion can be applied. */
   override canApply({ pokemon }: AbAttrBaseParams): boolean {
     if (pokemon.hasTrainer()) {
-      const party: Pokemon[] = (pokemon.isPlayer() ? globalScene.getPlayerParty() : globalScene.getEnemyParty()).filter(
-        p => p.isAllowedInBattle(),
-      );
-      const lastPokemon: Pokemon = party.filter(p => p !== pokemon).at(-1) || pokemon;
+      const lastPokemon = getLastIllusionTarget(pokemon);
+      if (!lastPokemon) {
+        return false;
+      }
       const speciesId = lastPokemon.species.speciesId;
 
       // If the last conscious Pokémon in the party is a Terastallized Ogerpon or Terapagos, Illusion will not activate.
       // Illusion will also not activate if the Pokémon with Illusion is Terastallized and the last Pokémon in the party is Ogerpon or Terapagos.
       if (
-        lastPokemon === pokemon
-        || ((speciesId === SpeciesId.OGERPON || speciesId === SpeciesId.TERAPAGOS)
-          && (lastPokemon.isTerastallized || pokemon.isTerastallized))
+        (speciesId === SpeciesId.OGERPON || speciesId === SpeciesId.TERAPAGOS)
+        && (lastPokemon.isTerastallized || pokemon.isTerastallized)
       ) {
         return false;
       }
     }
-    return pokemon.summonData.illusion != null;
+    return true;
   }
 }
 
 /** @sealed */
 export class IllusionBreakAbAttr extends AbAttr {
   private declare readonly _: never;
+  constructor() {
+    super(false);
+  }
+
   // TODO: Consider adding a `canApply` method that checks if the pokemon has an active illusion
   override apply({ pokemon }: AbAttrBaseParams): void {
     pokemon.breakIllusion();
@@ -5508,7 +5531,11 @@ export class PostDefendIllusionBreakAbAttr extends PostDefendAbAttr {
     pokemon.breakIllusion();
   }
 
-  override canApply({ pokemon, hitResult }: PostMoveInteractionAbAttrParams): boolean {
+  override canApply({ pokemon, opponent, move, hitResult }: PostMoveInteractionAbAttrParams): boolean {
+    if (pokemon.summonData.illusion == null) {
+      return false;
+    }
+
     // TODO: I remember this or a derivative being declared elsewhere - merge the 2 into 1
     // and store it somewhere globally accessible
     const damagingHitResults: ReadonlySet<HitResult> = new Set([
@@ -5519,7 +5546,24 @@ export class PostDefendIllusionBreakAbAttr extends PostDefendAbAttr {
       HitResult.MOSTLY_INEFFECTIVE,
       HitResult.ONE_HIT_KO,
     ]);
-    return damagingHitResults.has(hitResult) && pokemon.summonData.illusion != null;
+    if (damagingHitResults.has(hitResult)) {
+      return true;
+    }
+
+    if (hitResult !== HitResult.NO_EFFECT && hitResult !== HitResult.IMMUNE) {
+      return false;
+    }
+
+    const moveType = opponent.getMoveType(move, true, pokemon);
+    const illusionEffectiveness = pokemon.getAttackTypeEffectiveness(moveType, {
+      source: opponent,
+      simulated: true,
+      move,
+      useIllusion: true,
+    });
+    const illusionTypes = pokemon.getTypes({ returnOriginalTypesIfStellar: true, useIllusion: true });
+
+    return illusionEffectiveness > 0 && !illusionTypes.some(type => move.isTypeImmune(opponent, pokemon, type));
   }
 }
 

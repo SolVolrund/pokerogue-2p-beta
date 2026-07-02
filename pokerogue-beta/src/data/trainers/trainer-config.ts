@@ -1015,6 +1015,52 @@ export function getRandomPartyMemberFunc(
   };
 }
 
+function getDawnIllusionPairLeadIsZorua(): boolean {
+  let ret = false;
+
+  globalScene.executeWithSeedOffset(
+    () => {
+      ret = randSeedInt(2) === 0;
+    },
+    globalScene.currentBattle.waveIndex + (TrainerType.DAWN_ZORUA << 10) + (99 << 8),
+  );
+
+  return ret;
+}
+
+function getDawnIllusionPairMemberFunc(isLeadSlot: boolean): PartyMemberFunc {
+  return (level: number, _strength: PartyMemberStrength) => {
+    const leadIsZorua = getDawnIllusionPairLeadIsZorua();
+
+    const species = isLeadSlot
+      ? leadIsZorua
+        ? SpeciesId.HISUI_ZORUA
+        : SpeciesId.BLOODMOON_URSALUNA
+      : leadIsZorua
+        ? SpeciesId.BLOODMOON_URSALUNA
+        : SpeciesId.HISUI_ZORUA;
+
+    return globalScene.addEnemyPokemon(
+      getPokemonSpecies(species),
+      level,
+      TrainerSlot.TRAINER,
+      false,
+      false,
+      undefined,
+      p => {
+        p.generateAndPopulateMoveset();
+      },
+    );
+  };
+}
+
+function getDuplicaDittoPartyMemberFunc(): PartyMemberFunc {
+  return getRandomPartyMemberFunc([SpeciesId.DITTO], TrainerSlot.TRAINER, true, p => {
+    p.abilityIndex = 2; // Imposter
+    p.generateAndPopulateMoveset();
+  });
+}
+
 // biome-ignore lint/correctness/noUnusedVariables: potentially useful
 function getSpeciesFilterRandomPartyMemberFunc(
   originalSpeciesFilter: PokemonSpeciesFilter,
@@ -5488,29 +5534,62 @@ export const trainerConfigs: TrainerConfigs = {
       return modifiers;
     })
     .setInstantTera(5), // Tera Fighting Hydrapple
+
   [TrainerType.DAWN_ZORUA]: new TrainerConfig(++t)
     .setName("Dawn")
-    .setPartyTemplates(trainerPartyTemplates.TWO_AVG, trainerPartyTemplates.THREE_AVG)
+    .setPartyTemplates(trainerPartyTemplates.SIX_WEAK_BALANCED, trainerPartyTemplates.TWO_AVG_ONE_STRONG)
     .setBattleBgm("battle_trainer")
     .setMixedBattleBgm("battle_trainer")
-    .setPartyMemberFunc(
-      0,
-      getRandomPartyMemberFunc([SpeciesId.ZOROARK], TrainerSlot.TRAINER, true, p => {
-        p.generateAndPopulateMoveset();
-      }),
-    )
+    .setPartyMemberFunc(0, getDawnIllusionPairMemberFunc(true))
     .setPartyMemberFunc(
       1,
-      getRandomPartyMemberFunc([SpeciesId.HISUI_ZOROARK], TrainerSlot.TRAINER, true, p => {
+      getRandomPartyMemberFunc([SpeciesId.CYNDAQUIL, SpeciesId.LITTEN, SpeciesId.ZORUA], TrainerSlot.TRAINER, true, p => {
         p.generateAndPopulateMoveset();
       }),
     )
     .setPartyMemberFunc(
       2,
-      getRandomPartyMemberFunc([SpeciesId.ZORUA, SpeciesId.HISUI_ZORUA], TrainerSlot.TRAINER, true, p => {
+      getRandomPartyMemberFunc([SpeciesId.PIPLUP, SpeciesId.DRATINI], TrainerSlot.TRAINER, true, p => {
         p.generateAndPopulateMoveset();
       }),
-    ),
+    )
+    .setPartyMemberFunc(
+      3,
+      getRandomPartyMemberFunc([SpeciesId.BUNEARY, SpeciesId.GIMMIGHOUL], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      4,
+      getRandomPartyMemberFunc([SpeciesId.TOGEPI, SpeciesId.WHIMSICOTT], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(5, getDawnIllusionPairMemberFunc(false)),
+
+  [TrainerType.DUPLICA_DITTO]: new TrainerConfig(++t)
+    .setName("Duplica")
+    .setPartyTemplates(trainerPartyTemplates.SIX_WEAK_BALANCED)
+    .setBattleBgm("battle_trainer")
+    .setMixedBattleBgm("battle_trainer")
+    .setPartyMemberFunc(0, getDuplicaDittoPartyMemberFunc())
+    .setPartyMemberFunc(1, getDuplicaDittoPartyMemberFunc())
+    .setPartyMemberFunc(2, getDuplicaDittoPartyMemberFunc())
+    .setPartyMemberFunc(3, getDuplicaDittoPartyMemberFunc())
+    .setPartyMemberFunc(4, getDuplicaDittoPartyMemberFunc())
+    .setPartyMemberFunc(5, getDuplicaDittoPartyMemberFunc()),
+
+  [TrainerType.DUPLICA]: new TrainerConfig(++t)
+    .setName("Duplica")
+    .setPartyTemplates(trainerPartyTemplates.SIX_WEAK_BALANCED)
+    .setBattleBgm("battle_trainer")
+    .setMixedBattleBgm("battle_trainer")
+    .setPartyMemberFunc(0, getDuplicaDittoPartyMemberFunc())
+    .setPartyMemberFunc(1, getDuplicaDittoPartyMemberFunc())
+    .setPartyMemberFunc(2, getDuplicaDittoPartyMemberFunc())
+    .setPartyMemberFunc(3, getDuplicaDittoPartyMemberFunc())
+    .setPartyMemberFunc(4, getDuplicaDittoPartyMemberFunc())
+    .setPartyMemberFunc(5, getDuplicaDittoPartyMemberFunc()),
 
   [TrainerType.RIVAL]: new TrainerConfig((t = TrainerType.RIVAL))
     .setName("Finn")

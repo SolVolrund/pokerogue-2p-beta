@@ -78,7 +78,7 @@ export class PlayerBattleInfo extends BattleInfo {
 
   override initInfo(pokemon: PlayerPokemon): void {
     super.initInfo(pokemon);
-    this.setHpNumbers(pokemon.hp, pokemon.getMaxHp());
+    this.setHpNumbers(pokemon.getHp(true), pokemon.getMaxHp(true));
     this.expMaskRect.x =
       (pokemon.levelExp / getLevelTotalExp(pokemon.level, pokemon.species.growthRate)) * EXP_BAR_WIDTH;
 
@@ -129,8 +129,8 @@ export class PlayerBattleInfo extends BattleInfo {
    * @param pokemon - The Pokemon the health bar belongs to.
    */
   protected override onHpTweenUpdate(pokemon: PlayerPokemon): void {
-    const tweenHp = Math.ceil(this.hpBar.scaleX * pokemon.getMaxHp());
-    this.setHpNumbers(tweenHp, pokemon.getMaxHp());
+    const tweenHp = Math.ceil(this.hpBar.scaleX * pokemon.getMaxHp(true));
+    this.setHpNumbers(tweenHp, pokemon.getMaxHp(true));
     this.lastHp = tweenHp;
     this.updateHpFrame();
   }

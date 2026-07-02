@@ -265,6 +265,7 @@ const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.SHINY_BADGE,
   MysteryEncounterType.LEGENDARY_CONFLICT,
   MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE,
+  MysteryEncounterType.FARAWAY_ISLAND_TREASURE,
 ];
 const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] = [
   MysteryEncounterType.MYSTERIOUS_CHEST,
@@ -298,6 +299,7 @@ const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] 
   MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
   MysteryEncounterType.SHINY_BADGE,
   MysteryEncounterType.LEGENDARY_CONFLICT,
+  MysteryEncounterType.FARAWAY_ISLAND_TREASURE,
 ];
 
 export interface PlayerRunState {
@@ -5224,6 +5226,7 @@ export class BattleScene extends SceneBase {
       && !this.gameMode.isBoss(waveIndex)
       && waveIndex % 10 !== 1
       && isBetween(waveIndex, lowestMysteryEncounterWave, highestMysteryEncounterWave)
+      && this.isFarawayIslandTreasureAvailable()
     );
   }
 
@@ -5235,6 +5238,23 @@ export class BattleScene extends SceneBase {
 
   private isMysteryEncounterAllowedInMultiplayer(encounterType: MysteryEncounterType): boolean {
     return !this.twoPlayerMode || this.getMultiplayerMysteryEncounterAllowlist().includes(encounterType);
+  }
+
+  private isFarawayIslandTreasureAvailable(): boolean {
+    if (this.arena.biomeId !== BiomeId.FARAWAY_ISLAND) {
+      return true;
+    }
+
+    const encounterType = MysteryEncounterType.FARAWAY_ISLAND_TREASURE;
+    const encounter = allMysteryEncounters[encounterType];
+    if (!encounter || !this.isMysteryEncounterEnabled(encounterType)) {
+      return false;
+    }
+
+    const previousTreasureEncounters = this.mysteryEncounterSaveData.encounteredEvents.filter(
+      event => event.type === encounterType,
+    ).length;
+    return previousTreasureEncounters < (encounter.maxAllowedEncounters ?? 0);
   }
 
   private isMysteryEncounterEnabled(encounterType: MysteryEncounterType, canBypass = false): boolean {

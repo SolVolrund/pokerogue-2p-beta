@@ -10,6 +10,7 @@ import { DancingLessonsEncounter } from "#mystery-encounters/dancing-lessons-enc
 import { DarkDealEncounter } from "#mystery-encounters/dark-deal-encounter";
 import { DelibirdyEncounter } from "#mystery-encounters/delibirdy-encounter";
 import { DepartmentStoreSaleEncounter } from "#mystery-encounters/department-store-sale-encounter";
+import { FarawayIslandTreasureEncounter } from "#mystery-encounters/faraway-island-treasure-encounter";
 import { FieldTripEncounter } from "#mystery-encounters/field-trip-encounter";
 import { FieryFalloutEncounter } from "#mystery-encounters/fiery-fallout-encounter";
 import { FightOrFlightEncounter } from "#mystery-encounters/fight-or-flight-encounter";
@@ -230,6 +231,7 @@ export const mysteryEncountersByBiome = new Map<BiomeId, MysteryEncounterType[]>
   [BiomeId.SLUM, []],
   [BiomeId.SNOWY_FOREST, []],
   [BiomeId.ISLAND, []],
+  [BiomeId.FARAWAY_ISLAND, [MysteryEncounterType.FARAWAY_ISLAND_TREASURE]],
   [BiomeId.LABORATORY, []],
 ]);
 
@@ -269,6 +271,7 @@ export function initMysteryEncounters() {
   allMysteryEncounters[MysteryEncounterType.SHINY_BADGE] = ShinyBadgeEncounter;
   allMysteryEncounters[MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE] = ItIsDangerousToGoAloneEncounter;
   allMysteryEncounters[MysteryEncounterType.LEGENDARY_CONFLICT] = LegendaryConflictEncounter;
+  allMysteryEncounters[MysteryEncounterType.FARAWAY_ISLAND_TREASURE] = FarawayIslandTreasureEncounter;
 
   // Add extreme encounters to biome map
   extremeBiomeEncounters.forEach(encounter => {
@@ -310,11 +313,13 @@ export function initMysteryEncounters() {
   // Add ANY biome encounters to biome map
   let _encounterBiomeTableLog = "";
   mysteryEncountersByBiome.forEach((biomeEncounters, biome) => {
-    anyBiomeEncounters.forEach(encounter => {
-      if (!biomeEncounters.includes(encounter)) {
-        biomeEncounters.push(encounter);
-      }
-    });
+    if (biome !== BiomeId.FARAWAY_ISLAND) {
+      anyBiomeEncounters.forEach(encounter => {
+        if (!biomeEncounters.includes(encounter)) {
+          biomeEncounters.push(encounter);
+        }
+      });
+    }
 
     _encounterBiomeTableLog += `${getBiomeName(biome).toUpperCase()}: [${biomeEncounters
       .map(type => MysteryEncounterType[type].toString().toLowerCase())

@@ -52,13 +52,16 @@ import type { IntClosedRange, TupleOf } from "type-fest";
  * ```
  */
 const overrides = {} satisfies Partial<InstanceType<OverridesType>>;
-/*
-const overrides = {
-  STARTING_WAVE_OVERRIDE: 200,
-  ENEMY_SPECIES_OVERRIDE: SpeciesId.MEW,
-  ENEMY_LEVEL_OVERRIDE: 1,
-} satisfies Partial<InstanceType<OverridesType>>;
-*/
+
+//const overrides = {
+//  STARTING_WAVE_OVERRIDE: 163,
+//  STARTING_BIOME_OVERRIDE: BiomeId.FARAWAY_ISLAND,
+//  BATTLE_TYPE_OVERRIDE: BattleType.TRAINER,
+//  RANDOM_TRAINER_OVERRIDE: {trainerType: TrainerType.DAWN_ZORUA},
+//  ENEMY_SPECIES_OVERRIDE: SpeciesId.ZORUA,
+//  ENEMY_LEVEL_OVERRIDE: 1,
+//} satisfies Partial<InstanceType<OverridesType>>;
+
 /**
  * If you need to add Overrides values for local testing do that inside {@linkcode overrides}
  * ---

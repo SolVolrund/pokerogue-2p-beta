@@ -55,6 +55,9 @@ import {
   IgnoreProtectOnContactAbAttr,
   IgnoreTypeImmunityAbAttr,
   IgnoreTypeStatusEffectImmunityAbAttr,
+  IllusionBreakAbAttr,
+  IllusionPostBattleAbAttr,
+  IllusionPreSummonAbAttr,
   IncreasePpAbAttr,
   InfiltratorAbAttr,
   IntimidateImmunityAbAttr,
@@ -93,6 +96,7 @@ import {
   PostDefendContactApplyTagChanceAbAttr,
   PostDefendContactDamageAbAttr,
   PostDefendHpGatedStatStageChangeAbAttr,
+  PostDefendIllusionBreakAbAttr,
   PostDefendMoveDisableAbAttr,
   PostDefendPerishSongAbAttr,
   PostDefendStatStageChangeAbAttr,
@@ -1019,18 +1023,16 @@ export function initAbilities() {
       })
       .build(),
     new AbBuilder(AbilityId.ILLUSION, 5) //
-      // // The Pokemon generate an illusion if it's available
-      // .attr(IllusionPreSummonAbAttr, false)
-      // .attr(IllusionBreakAbAttr)
-      // // The Pokemon loses its illusion when damaged by a move
-      // .attr(PostDefendIllusionBreakAbAttr, true)
-      // // Disable Illusion in fusions
-      // .attr(NoFusionAbilityAbAttr)
-      // // Illusion is available again after a battle
-      // .conditionalAttr((pokemon) => pokemon.isAllowedInBattle(), IllusionPostBattleAbAttr, false)
+      // The Pokemon generates an illusion if it's available.
+      .attr(IllusionPreSummonAbAttr, false)
+      .attr(IllusionBreakAbAttr)
+      // The illusion breaks when the Pokemon takes direct move damage or reveals an impossible immunity.
+      .attr(PostDefendIllusionBreakAbAttr, true)
+      // Disable Illusion in fusions.
+      .attr(NoFusionAbilityAbAttr)
+      // Illusion is available again after a battle.
+      .conditionalAttr((pokemon) => pokemon.isAllowedInBattle(), IllusionPostBattleAbAttr, false)
       .uncopiable()
-      // .bypassFaint()
-      .unimplemented() // TODO: reimplement Illusion properly
       .build(),
     new AbBuilder(AbilityId.IMPOSTER, 5) //
       .attr(PostSummonTransformAbAttr)
