@@ -5196,13 +5196,15 @@ export class BattleScene extends SceneBase {
       DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE != null
       && DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE != null
       && waveIndex === DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE
-      && this.twoPlayerMode
       && this.gameMode.hasMysteryEncounters
       && battleType === BattleType.WILD
       && !this.gameMode.isBoss(waveIndex)
       && !this.gameMode.isFixedBattle(waveIndex)
       && !this.gameMode.isWaveFinal(waveIndex)
-      && this.isMysteryEncounterEnabled(DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE)
+      && this.isMysteryEncounterEnabled(
+        DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE,
+        DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS,
+      )
       && !this.mysteryEncounterSaveData.encounteredEvents.some(
         event => event.type === DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE,
       )

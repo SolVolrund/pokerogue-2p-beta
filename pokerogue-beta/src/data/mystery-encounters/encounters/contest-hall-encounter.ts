@@ -1,7 +1,7 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import { globalScene } from "#app/global-scene";
-import { ContestState, createContestParticipant } from "#data/contests/contest-state";
-import { ContestType } from "#data/contests/contest-type";
+import { createNormalRankContestState } from "#data/contests/contest-setup";
+import type { ContestState } from "#data/contests/contest-state";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import type { PlayerPokemon } from "#field/pokemon";
@@ -21,15 +21,7 @@ function getContestPlayerPokemon(): PlayerPokemon | undefined {
 function createInitialContestState(): ContestState {
   const playerPokemon = getContestPlayerPokemon();
 
-  return new ContestState({
-    contestType: ContestType.COOL,
-    contestants: [
-      createContestParticipant("player", "Player", playerPokemon),
-      createContestParticipant("contestant_2", "Lila"),
-      createContestParticipant("contestant_3", "Rafe"),
-      createContestParticipant("contestant_4", "Mina"),
-    ],
-  });
+  return createNormalRankContestState(playerPokemon);
 }
 
 async function enterContest(): Promise<boolean> {

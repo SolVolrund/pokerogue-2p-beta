@@ -117,9 +117,11 @@ import type { PhaseConditionFunc, PhaseMap, PhaseString } from "#types/phase-typ
 import type { NonEmptyTuple } from "type-fest";
 import { ContestAppealPhase } from "./phases/contests/contest-appeal-phase";
 import { ContestAppealResultPhase } from "./phases/contests/contest-appeal-result-phase";
+import { ContestCleanupPhase } from "./phases/contests/contest-cleanup-phase";
 import { ContestCommandPhase } from "./phases/contests/contest-command-phase";
 import { ContestEndPhase } from "./phases/contests/contest-end-phase";
 import { ContestIntroScorePhase } from "./phases/contests/contest-intro-score-phase";
+import { ContestMessagePhase } from "./phases/contests/contest-message-phase";
 import { ContestRoundEndPhase } from "./phases/contests/contest-round-end-phase";
 import { ContestRoundScoringPhase } from "./phases/contests/contest-round-scoring-phase";
 import { ContestRoundStartPhase } from "./phases/contests/contest-round-start-phase";
@@ -146,9 +148,11 @@ const PHASES = Object.freeze({
   CommonAnimPhase,
   ContestAppealPhase,
   ContestAppealResultPhase,
+  ContestCleanupPhase,
   ContestCommandPhase,
   ContestEndPhase,
   ContestIntroScorePhase,
+  ContestMessagePhase,
   ContestRoundEndPhase,
   ContestRoundScoringPhase,
   ContestRoundStartPhase,

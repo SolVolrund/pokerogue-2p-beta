@@ -7,6 +7,7 @@ export class ContestRoundEndPhase extends ContestPhase {
   start(): void {
     super.start();
 
+    this.showContestUi();
     if (this.contestState.isComplete()) {
       globalScene.phaseManager.unshiftNew("ContestEndPhase", this.contestState);
     } else {

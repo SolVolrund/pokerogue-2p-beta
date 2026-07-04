@@ -14,6 +14,7 @@ export class ContestAppealPhase extends ContestPhase {
   start(): void {
     super.start();
 
+    this.showContestUi();
     globalScene.phaseManager.unshiftNew("ContestAppealResultPhase", this.contestState, this.contestantId);
     this.end();
   }

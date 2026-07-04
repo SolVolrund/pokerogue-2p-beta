@@ -1,3 +1,5 @@
+import { globalScene } from "#app/global-scene";
+import { formatContestIntroScoreMessage } from "#data/contests/contest-debug-text";
 import { ContestPhase } from "./contest-phase";
 
 export class ContestIntroScorePhase extends ContestPhase {
@@ -6,7 +8,9 @@ export class ContestIntroScorePhase extends ContestPhase {
   start(): void {
     super.start();
 
-    // Placeholder for primary judging / intro score calculation.
+    this.contestState.sortTurnOrderByPrimaryJudgingScore();
+    this.showContestUi();
+    globalScene.phaseManager.unshiftNew("ContestMessagePhase", this.contestState, this.phaseName, formatContestIntroScoreMessage(this.contestState));
     this.end();
   }
 }
