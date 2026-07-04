@@ -146,6 +146,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
       trainerSprite
         .setVisible(true)
         .setTexture(globalScene.getTrainerBackTextureKey(playerIndex, true))
+        .setY(globalScene.getTrainerBackSpriteY(playerIndex))
         .setX(trainerStartX);
       globalScene.time.delayedCall(562, () => {
         trainerSprite.setFrame("2");

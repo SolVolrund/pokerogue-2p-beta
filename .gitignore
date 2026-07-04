@@ -27,6 +27,7 @@ coverage/
 *.log
 .cache/
 .vite/
+screen caps of pokerogue/
 
 # OS/editor noise
 .DS_Store

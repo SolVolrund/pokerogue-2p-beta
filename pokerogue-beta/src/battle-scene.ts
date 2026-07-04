@@ -227,7 +227,7 @@ const TWO_PLAYER_SYNC_SETTING_KEYS = [
   SettingKeys.Command_Cursor_Memory,
 ] as const;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = 2;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = null;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.CONTEST_HALL;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = true;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_PLAYER_MONEY: number | null = 1000;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
@@ -266,6 +266,7 @@ const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.LEGENDARY_CONFLICT,
   MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE,
   MysteryEncounterType.FARAWAY_ISLAND_TREASURE,
+  MysteryEncounterType.CONTEST_HALL,
 ];
 const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] = [
   MysteryEncounterType.MYSTERIOUS_CHEST,
@@ -300,6 +301,7 @@ const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] 
   MysteryEncounterType.SHINY_BADGE,
   MysteryEncounterType.LEGENDARY_CONFLICT,
   MysteryEncounterType.FARAWAY_ISLAND_TREASURE,
+  MysteryEncounterType.CONTEST_HALL,
 ];
 
 export interface PlayerRunState {
@@ -1875,6 +1877,13 @@ export class BattleScene extends SceneBase {
     } else if (playerIndex === 2) {
       this.threePlayerGuestGender = profile.trainerGender ?? fallbackGender;
       this.threePlayerGuestTrainerSprite = profile.trainerSprite ?? fallbackSprite;
+    }
+
+    const trainerSprite =
+      playerIndex === 1 ? this.trainerPartner : playerIndex === 2 ? this.trainerGuest2 : this.trainer;
+    if (trainerSprite) {
+      trainerSprite.setTexture(this.getTrainerBackTextureKey(playerIndex));
+      this.setTrainerBackSpritePosition(trainerSprite, playerIndex, trainerSprite.x);
     }
   }
 

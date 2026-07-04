@@ -4,6 +4,7 @@ import { globalScene } from "#app/global-scene";
 import { Phase } from "#app/phase";
 import { handleTutorial, Tutorial } from "#app/tutorial";
 import { bypassLogin } from "#constants/app-constants";
+import { PlayerGender } from "#enums/player-gender";
 import { UiMode } from "#enums/ui-mode";
 import { executeIf, sessionIdKey } from "#utils/common";
 import { getCookie, removeCookie } from "#utils/cookies";
@@ -44,6 +45,7 @@ export class LoginPhase extends Phase {
     }
 
     await gameData.loadSystem();
+    this.ensureMultiplayerOnboardingDefaults();
     globalScene.markLocalPlayerSystemSaveLoaded();
     if (success || bypassLogin) {
       await this.end();
@@ -56,12 +58,21 @@ export class LoginPhase extends Phase {
   public override async end(): Promise<void> {
     globalScene.ui.setMode(UiMode.MESSAGE);
 
+    this.ensureMultiplayerOnboardingDefaults();
     if (!globalScene.gameData.gender) {
       globalScene.phaseManager.unshiftNew("SelectGenderPhase");
     }
 
     await handleTutorial(Tutorial.INTRO);
     super.end();
+  }
+
+  private ensureMultiplayerOnboardingDefaults(): void {
+    if (!globalScene.twoPlayerMode || globalScene.gameData.gender) {
+      return;
+    }
+
+    globalScene.gameData.gender = PlayerGender.MALE;
   }
 
   private checkStatus(statusCode: number | null): void {
@@ -125,6 +136,7 @@ export class LoginPhase extends Phase {
         return;
       }
       await gameData.loadSystem();
+      this.ensureMultiplayerOnboardingDefaults();
       globalScene.markLocalPlayerSystemSaveLoaded();
       this.end();
     };
@@ -146,6 +158,7 @@ export class LoginPhase extends Phase {
       if (!success) {
         return;
       }
+      this.ensureMultiplayerOnboardingDefaults();
       globalScene.markLocalPlayerSystemSaveLoaded();
       this.end();
     };

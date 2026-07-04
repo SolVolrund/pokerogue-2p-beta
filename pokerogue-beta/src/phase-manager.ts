@@ -80,8 +80,8 @@ import { PostSummonPhase } from "#phases/post-summon-phase";
 import { PostTurnStatusEffectPhase } from "#phases/post-turn-status-effect-phase";
 import { QuietFormChangePhase } from "#phases/quiet-form-change-phase";
 import { QuietSpeciesChangePhase } from "#phases/quiet-Species-change-phase";
-import { ResetStatusPhase } from "#phases/reset-status-phase";
 import { RepositionPhase } from "#phases/reposition-phase";
+import { ResetStatusPhase } from "#phases/reset-status-phase";
 import { ReturnPhase } from "#phases/return-phase";
 import { RevivalBlessingPhase } from "#phases/revival-blessing-phase";
 import { RibbonModifierRewardPhase } from "#phases/ribbon-modifier-reward-phase";
@@ -115,6 +115,15 @@ import { VictoryPhase } from "#phases/victory-phase";
 import { WeatherEffectPhase } from "#phases/weather-effect-phase";
 import type { PhaseConditionFunc, PhaseMap, PhaseString } from "#types/phase-types";
 import type { NonEmptyTuple } from "type-fest";
+import { ContestAppealPhase } from "./phases/contests/contest-appeal-phase";
+import { ContestAppealResultPhase } from "./phases/contests/contest-appeal-result-phase";
+import { ContestCommandPhase } from "./phases/contests/contest-command-phase";
+import { ContestEndPhase } from "./phases/contests/contest-end-phase";
+import { ContestIntroScorePhase } from "./phases/contests/contest-intro-score-phase";
+import { ContestRoundEndPhase } from "./phases/contests/contest-round-end-phase";
+import { ContestRoundScoringPhase } from "./phases/contests/contest-round-scoring-phase";
+import { ContestRoundStartPhase } from "./phases/contests/contest-round-start-phase";
+import { ContestStartPhase } from "./phases/contests/contest-start-phase";
 
 /**
  * Object that holds all of the phase constructors.
@@ -135,6 +144,15 @@ const PHASES = Object.freeze({
   CheckSwitchPhase,
   CommandPhase,
   CommonAnimPhase,
+  ContestAppealPhase,
+  ContestAppealResultPhase,
+  ContestCommandPhase,
+  ContestEndPhase,
+  ContestIntroScorePhase,
+  ContestRoundEndPhase,
+  ContestRoundScoringPhase,
+  ContestRoundStartPhase,
+  ContestStartPhase,
   DamageAnimPhase,
   DynamicPhaseMarker,
   EggHatchPhase,

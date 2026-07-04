@@ -43,6 +43,9 @@ src/data/battle-anim-data.ts
 
 coverage
 
+# Local tools
+/tools/
+
 # Local Documentation
 /typedoc
 /dependency-graph.svg

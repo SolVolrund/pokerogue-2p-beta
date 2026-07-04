@@ -460,22 +460,36 @@ export class EncounterPhase extends BattlePhase {
     const playerTrainerSprites = playerIndexes.map(playerIndex => globalScene.getPlayerTrainerBackSprite(playerIndex));
     if (hasPartnerTrainer) {
       playerIndexes.forEach(playerIndex => {
-        globalScene.getPlayerTrainerBackSprite(playerIndex)
+        const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
+        trainerSprite
           .setVisible(true)
           .setTexture(globalScene.getTrainerBackTextureKey(playerIndex))
           .setFrame(0)
-          .setX(globalScene.getTrainerBackSpriteX(playerIndex, true) + 300);
+          .setPosition(
+            globalScene.getTrainerBackSpriteX(playerIndex, true) + 300,
+            globalScene.getTrainerBackSpriteY(playerIndex),
+          );
       });
     }
+
+    const enemyTransitionTargets = [
+      globalScene.arenaEnemy,
+      globalScene.currentBattle.trainer,
+      enemyField,
+    ].flat().filter(target => target !== null);
+    const playerTransitionTargets = [
+      globalScene.arenaPlayer,
+      playerTrainerSprites,
+    ].flat().filter(target => target !== null);
+
     globalScene.tweens.add({
-      targets: [
-        globalScene.arenaEnemy,
-        globalScene.currentBattle.trainer,
-        enemyField,
-        globalScene.arenaPlayer,
-        playerTrainerSprites,
-      ].flat().filter(target => target !== null),
-      x: (_target, _key, value, fieldIndex: number) => (fieldIndex < 2 + enemyField.length ? value + 300 : value - 300),
+      targets: enemyTransitionTargets,
+      x: (_target, _key, value) => value + 300,
+      duration: 2000,
+    });
+    globalScene.tweens.add({
+      targets: playerTransitionTargets,
+      x: (_target, _key, value) => value - 300,
       duration: 2000,
       onComplete: () => {
         if (globalScene.currentBattle.isClassicFinalBoss) {

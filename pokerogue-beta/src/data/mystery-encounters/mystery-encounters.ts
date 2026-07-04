@@ -6,6 +6,7 @@ import { AnOfferYouCantRefuseEncounter } from "#mystery-encounters/an-offer-you-
 import { BerriesAboundEncounter } from "#mystery-encounters/berries-abound-encounter";
 import { BugTypeSuperfanEncounter } from "#mystery-encounters/bug-type-superfan-encounter";
 import { ClowningAroundEncounter } from "#mystery-encounters/clowning-around-encounter";
+import { ContestHallEncounter } from "#mystery-encounters/contest-hall-encounter";
 import { DancingLessonsEncounter } from "#mystery-encounters/dancing-lessons-encounter";
 import { DarkDealEncounter } from "#mystery-encounters/dark-deal-encounter";
 import { DelibirdyEncounter } from "#mystery-encounters/delibirdy-encounter";
@@ -166,6 +167,7 @@ const civilizationBiomeEncounters: MysteryEncounterType[] = [
   MysteryEncounterType.PART_TIMER,
   MysteryEncounterType.FUN_AND_GAMES,
   MysteryEncounterType.GLOBAL_TRADE_SYSTEM,
+  MysteryEncounterType.CONTEST_HALL,
 ];
 
 /**
@@ -272,6 +274,7 @@ export function initMysteryEncounters() {
   allMysteryEncounters[MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE] = ItIsDangerousToGoAloneEncounter;
   allMysteryEncounters[MysteryEncounterType.LEGENDARY_CONFLICT] = LegendaryConflictEncounter;
   allMysteryEncounters[MysteryEncounterType.FARAWAY_ISLAND_TREASURE] = FarawayIslandTreasureEncounter;
+  allMysteryEncounters[MysteryEncounterType.CONTEST_HALL] = ContestHallEncounter;
 
   // Add extreme encounters to biome map
   extremeBiomeEncounters.forEach(encounter => {

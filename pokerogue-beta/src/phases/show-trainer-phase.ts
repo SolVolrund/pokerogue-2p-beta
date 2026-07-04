@@ -15,7 +15,8 @@ export class ShowTrainerPhase extends BattlePhase {
       trainerSprite
         .setVisible(playerIndexes.includes(playerIndex))
         .setTexture(globalScene.getTrainerBackTextureKey(playerIndex))
-        .setFrame(0);
+        .setFrame(0)
+        .setY(globalScene.getTrainerBackSpriteY(playerIndex));
     });
 
     playerIndexes.forEach(playerIndex => {
