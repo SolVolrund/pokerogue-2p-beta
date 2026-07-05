@@ -78,7 +78,7 @@ export function getComputerPartnerImprovedSwitchIndex(
   scoreMultiplier = 3,
 ): number | undefined {
   const playerIndex = globalScene.getPlayerIndexForFieldSlot(fieldIndex);
-  const playerPokemon = globalScene.getPlayerField()[fieldIndex];
+  const playerPokemon = globalScene.getPlayerPokemonForFieldSlot(fieldIndex);
   if (!playerPokemon) {
     return undefined;
   }

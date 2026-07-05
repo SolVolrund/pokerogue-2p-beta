@@ -22,7 +22,7 @@ export class CheckSwitchPhase extends BattlePhase {
   }
 
   private getPlayerPokemon(): PlayerPokemon | undefined {
-    const fieldPokemon = globalScene.getPlayerField()[this.fieldIndex];
+    const fieldPokemon = globalScene.getPlayerPokemonForFieldSlot(this.fieldIndex);
     if (fieldPokemon) {
       return fieldPokemon;
     }

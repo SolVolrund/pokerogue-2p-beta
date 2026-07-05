@@ -79,7 +79,7 @@ export class CommandUiHandler extends UiHandler {
   }
 
   private getActivePokemon(): PlayerPokemon | undefined {
-    const fieldPokemon = globalScene.getPlayerField()[this.fieldIndex];
+    const fieldPokemon = globalScene.getPlayerPokemonForFieldSlot(this.fieldIndex);
     if (fieldPokemon) {
       return fieldPokemon;
     }
@@ -379,9 +379,9 @@ export class CommandUiHandler extends UiHandler {
   }
 
   hideCommandControls(): void {
-    this.getUi().getMessageHandler().commandWindow.setVisible(false);
-    this.commandsContainer.setVisible(false);
-    this.teraButton.setVisible(false);
+    this.getUi().getMessageHandler().commandWindow?.setVisible(false);
+    this.commandsContainer?.setVisible(false);
+    this.teraButton?.setVisible(false);
     this.eraseCursor();
   }
 

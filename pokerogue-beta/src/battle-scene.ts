@@ -2057,6 +2057,14 @@ export class BattleScene extends SceneBase {
     return this.getPlayerFieldOwners()[fieldSlot] ?? this.fieldSlotOwners[fieldSlot] ?? 0;
   }
 
+  public getPlayerPokemonForFieldSlot(fieldSlot: number): PlayerPokemon | undefined {
+    if (!this.twoPlayerMode) {
+      return this.getPlayerField()[fieldSlot];
+    }
+
+    return this.getPlayerParty(this.getPlayerIndexForFieldSlot(fieldSlot))[0];
+  }
+
   public getPlayerIndexForPokemon(pokemon: Pokemon): PlayerIndex | undefined {
     if (!this.twoPlayerMode) {
       return this.getPlayerParty().includes(pokemon as PlayerPokemon) ? 0 : undefined;
@@ -2106,7 +2114,7 @@ export class BattleScene extends SceneBase {
   public getPlayerField(active = false): PlayerPokemon[] {
     if (this.twoPlayerMode) {
       return this.getPlayerFieldOwners()
-        .map(playerIndex => this.getPlayerParty(playerIndex)[0])
+        .map((_playerIndex, fieldSlot) => this.getPlayerPokemonForFieldSlot(fieldSlot))
         .filter((p): p is PlayerPokemon => !!p && (!active || p.isActive()));
     }
 
@@ -2156,11 +2164,19 @@ export class BattleScene extends SceneBase {
    */
   public getField(activeOnly = false): Pokemon[] {
     const ret: Pokemon[] = new Array(6).fill(null);
-    const playerField = this.getPlayerField();
     const enemyField = this.getEnemyField();
-    playerField.forEach((pokemon, fieldIndex) => {
-      ret[this.getPlayerBattlerIndex(fieldIndex)] = pokemon;
-    });
+    if (this.twoPlayerMode) {
+      this.getPlayerFieldOwners().forEach((_playerIndex, fieldIndex) => {
+        const pokemon = this.getPlayerPokemonForFieldSlot(fieldIndex);
+        if (pokemon) {
+          ret[this.getPlayerBattlerIndex(fieldIndex)] = pokemon;
+        }
+      });
+    } else {
+      this.getPlayerField().forEach((pokemon, fieldIndex) => {
+        ret[this.getPlayerBattlerIndex(fieldIndex)] = pokemon;
+      });
+    }
     enemyField.forEach((pokemon, fieldIndex) => {
       ret[this.getEnemyBattlerIndex(fieldIndex)] = pokemon;
     });

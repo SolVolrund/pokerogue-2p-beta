@@ -45,7 +45,7 @@ export class SwitchPhase extends BattlePhase {
     const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
     const allowedPartyMembers = globalScene.getPokemonAllowedInBattle(playerIndex);
     const activePartySlotCount = globalScene.twoPlayerMode ? 1 : globalScene.currentBattle.getBattlerCount();
-    const fieldPokemon = globalScene.getPlayerField()[this.fieldIndex];
+    const fieldPokemon = globalScene.getPlayerPokemonForFieldSlot(this.fieldIndex);
 
     // Skip modal switch if impossible (no remaining party members that aren't already in battle)
     if (this.isModal && allowedPartyMembers.every(p => p.isOnField())) {

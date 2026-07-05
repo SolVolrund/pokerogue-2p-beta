@@ -518,7 +518,7 @@ export class CommandPhase extends FieldPhase {
    */
   private tryExecuteQueuedMove(): boolean {
     this.clearUnusableMoves();
-    const playerPokemon = globalScene.getPlayerField()[this.fieldIndex];
+    const playerPokemon = this.getPokemon();
     const moveQueue = playerPokemon.getMoveQueue();
 
     if (moveQueue.length === 0) {
@@ -1102,7 +1102,11 @@ export class CommandPhase extends FieldPhase {
   }
 
   getPokemon(): PlayerPokemon {
-    return globalScene.getPlayerField()[this.fieldIndex];
+    const pokemon = globalScene.getPlayerPokemonForFieldSlot(this.fieldIndex);
+    if (!pokemon) {
+      throw new Error(`No player Pokemon found for field slot ${this.fieldIndex}`);
+    }
+    return pokemon;
   }
 
   end() {

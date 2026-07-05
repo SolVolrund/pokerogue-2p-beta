@@ -1327,10 +1327,12 @@ export class PartyUiHandler extends MessageUiHandler {
   }
 
   private allowBatonModifierSwitch(): boolean {
+    const fieldPokemon = globalScene.getPlayerPokemonForFieldSlot(this.fieldIndex);
     return !!(
       this.partyUiMode !== PartyUiMode.FAINT_SWITCH
+      && fieldPokemon
       && globalScene.findModifierForPlayer(
-        m => m.is("SwitchEffectTransferModifier") && m.pokemonId === globalScene.getPlayerField()[this.fieldIndex].id,
+        m => m.is("SwitchEffectTransferModifier") && m.pokemonId === fieldPokemon.id,
         this.getPlayerIndex(),
       )
     );
@@ -1339,7 +1341,8 @@ export class PartyUiHandler extends MessageUiHandler {
   // TODO: add FORCED_SWITCH (and perhaps also BATON_PASS_SWITCH) to the modes
   // TODO: refactor once moves in flight become a thing...
   private isBatonPassMove(): boolean {
-    const lastMove: TurnMove | undefined = globalScene.getPlayerField()[this.fieldIndex].getLastXMoves()[0];
+    const lastMove: TurnMove | undefined =
+      globalScene.getPlayerPokemonForFieldSlot(this.fieldIndex)?.getLastXMoves()[0];
     return (
       this.partyUiMode === PartyUiMode.FAINT_SWITCH
       && lastMove?.result === MoveResult.SUCCESS

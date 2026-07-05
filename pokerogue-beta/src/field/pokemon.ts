@@ -6007,6 +6007,16 @@ export class PlayerPokemon extends Pokemon {
   }
 
   getFieldIndex(): number {
+    if (globalScene.twoPlayerMode) {
+      const playerIndex = globalScene.getPlayerIndexForPokemon(this);
+      if (playerIndex !== undefined) {
+        const fieldIndex = globalScene.getPlayerFieldOwners().indexOf(playerIndex);
+        if (fieldIndex !== -1) {
+          return fieldIndex;
+        }
+      }
+    }
+
     return globalScene.getPlayerField().indexOf(this);
   }
 

@@ -53,7 +53,10 @@ export class TargetSelectUiHandler extends UiHandler {
     super.show(args);
 
     [this.fieldIndex, this.move, this.targetSelectCallback] = args;
-    const user = globalScene.getPlayerField()[this.fieldIndex];
+    const user = globalScene.getPlayerPokemonForFieldSlot(this.fieldIndex);
+    if (!user) {
+      return false;
+    }
 
     const explicitTargets = args[4];
     if (explicitTargets?.length) {

@@ -300,9 +300,7 @@ export class UI extends Phaser.GameObjects.Container {
     promptDelay?: number | null,
   ): void {
     const handler = this.getHandler();
-    if (handler instanceof CommandUiHandler) {
-      handler.hideCommandControls();
-    }
+    this.hideCommandControls();
 
     const pokename: string[] = [];
     const repname = ["#POKEMON1", "#POKEMON2", "#POKEMON3"];
@@ -552,6 +550,10 @@ export class UI extends Phaser.GameObjects.Container {
     args: any[],
   ): Promise<void> {
     return new Promise(resolve => {
+      if (mode === UiMode.MESSAGE) {
+        this.hideCommandControls();
+      }
+
       if (this.mode === mode && !forceTransition) {
         resolve();
         return;
@@ -608,6 +610,13 @@ export class UI extends Phaser.GameObjects.Container {
 
   setModeWithoutClear(mode: UiMode, ...args: any[]): Promise<void> {
     return this.setModeInternal(mode, false, false, false, args);
+  }
+
+  private hideCommandControls(): void {
+    const commandHandler = this.handlers[UiMode.COMMAND];
+    if (commandHandler instanceof CommandUiHandler) {
+      commandHandler.hideCommandControls();
+    }
   }
 
   setOverlayMode(mode: UiMode, ...args: any[]): Promise<void> {
