@@ -1,3 +1,4 @@
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { playContestTurnNotification } from "#data/contests/contest-audio";
 import { getContestSpectacularMove } from "#data/contests/contest-spectacular-moves";
@@ -5,14 +6,10 @@ import type { ContestParticipant, ContestParticipantId, ContestState } from "#da
 import { Button } from "#enums/buttons";
 import { MoveId } from "#enums/move-id";
 import { getContestPlayerMoves, getContestUi } from "#ui/contest-ui";
+import { updateWindowType } from "#ui/ui-theme";
 import { ContestPhase } from "./contest-phase";
 
-const FALLBACK_CONTEST_MOVES = [
-  MoveId.TACKLE,
-  MoveId.GROWL,
-  MoveId.TAIL_WHIP,
-  MoveId.QUICK_ATTACK,
-] as const;
+const FALLBACK_CONTEST_MOVES = [MoveId.TACKLE, MoveId.GROWL, MoveId.TAIL_WHIP, MoveId.QUICK_ATTACK] as const;
 
 export class ContestCommandPhase extends ContestPhase {
   public readonly phaseName = "ContestCommandPhase";
@@ -21,6 +18,7 @@ export class ContestCommandPhase extends ContestPhase {
   private playerMoves: readonly MoveId[] = [];
   private selectionIndex = 0;
   private complete = false;
+  private playerIndex: PlayerIndex | undefined;
 
   constructor(contestState: ContestState, contestantId: ContestParticipantId) {
     super(contestState);
@@ -35,11 +33,20 @@ export class ContestCommandPhase extends ContestPhase {
     this.showContestUi();
     playContestTurnNotification();
 
-    if (!this.contestant.pokemon) {
+    this.playerIndex = this.contestant.pokemon
+      ? globalScene.getPlayerIndexForPokemon(this.contestant.pokemon)
+      : undefined;
+
+    if (!this.contestant.pokemon || isComputerPartnerContestant(this.playerIndex)) {
       this.contestState.queueMove(this.contestant.id, selectContestMove(this.contestant, this.contestState.round));
       this.queueAppealPhase();
       this.end();
       return;
+    }
+
+    if (this.playerIndex !== undefined) {
+      globalScene.waitForPlayerInput(this.playerIndex);
+      updateWindowType(this.playerIndex + 1);
     }
 
     this.playerMoves = getContestPlayerMoves(this.contestState);
@@ -125,4 +132,8 @@ function wrapMoveSelection(selectionIndex: number, moveCount: number): number {
   }
 
   return ((selectionIndex % moveCount) + moveCount) % moveCount;
+}
+
+function isComputerPartnerContestant(playerIndex: PlayerIndex | undefined): boolean {
+  return playerIndex !== undefined && globalScene.isComputerPartnerPlayer(playerIndex);
 }

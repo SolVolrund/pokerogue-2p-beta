@@ -22,8 +22,8 @@ export class MysteryEncounterUiHandler extends UiHandler {
   private cursorObj?: Phaser.GameObjects.Image | undefined;
 
   private optionsContainer: Phaser.GameObjects.Container;
-  // Length = max number of allowable options (4)
-  private optionScrollTweens: (Phaser.Tweens.Tween | null)[] = new Array(4).fill(null);
+  // Length = max number of allowable options (5)
+  private optionScrollTweens: (Phaser.Tweens.Tween | null)[] = new Array(5).fill(null);
 
   private tooltipWindow: Phaser.GameObjects.NineSlice;
   private tooltipContainer: Phaser.GameObjects.Container;
@@ -177,6 +177,9 @@ export class MysteryEncounterUiHandler extends UiHandler {
         case 5:
           success = this.handleFourOptionMoveInput(button);
           break;
+        case 6:
+          success = this.handleFiveOptionMoveInput(button);
+          break;
       }
 
       this.displayOptionTooltip();
@@ -292,6 +295,45 @@ export class MysteryEncounterUiHandler extends UiHandler {
     return success;
   }
 
+  private handleFiveOptionMoveInput(button: Button): boolean {
+    let success = false;
+    const cursor = this.getCursor();
+    switch (button) {
+      case Button.UP:
+        if (cursor >= 2 && cursor !== this.viewPartyIndex) {
+          success = this.setCursor(cursor - 2);
+        } else {
+          success = this.setCursor(this.viewPartyIndex);
+        }
+        break;
+      case Button.DOWN:
+        if (cursor <= 1) {
+          success = this.setCursor(cursor + 2);
+        } else if (cursor === 2) {
+          success = this.setCursor(4);
+        } else if (cursor === this.viewPartyIndex) {
+          success = this.setCursor(1);
+        }
+        break;
+      case Button.LEFT:
+        if (cursor === this.viewPartyIndex) {
+          success = this.setCursor(1);
+        } else if (cursor % 2 === 1) {
+          success = this.setCursor(cursor - 1);
+        }
+        break;
+      case Button.RIGHT:
+        if (cursor === 1) {
+          success = this.setCursor(this.viewPartyIndex);
+        } else if (cursor % 2 === 0 && cursor < 4) {
+          success = this.setCursor(cursor + 1);
+        }
+        break;
+    }
+
+    return success;
+  }
+
   /**
    * When ME UI first displays, the option buttons will be disabled temporarily to prevent player accidentally clicking through hastily
    * This method is automatically called after a short delay but can also be called manually
@@ -342,6 +384,9 @@ export class MysteryEncounterUiHandler extends UiHandler {
     } else if (this.optionsContainer.getAll()?.length === 5) {
       // 4 Options
       this.cursorObj.setPosition(-10.5 + (cursor % 2 === 1 ? 100 : 0), 7 + (cursor > 1 ? 16 : 0));
+    } else if (this.optionsContainer.getAll()?.length === 6) {
+      // 5 Options
+      this.cursorObj.setPosition(-10.5 + (cursor % 2 === 1 ? 100 : 0), 7 + Math.floor(cursor / 2) * 16);
     }
 
     return changed;
@@ -391,6 +436,12 @@ export class MysteryEncounterUiHandler extends UiHandler {
           break;
         case 4:
           optionText = addBBCodeTextObject(i % 2 === 0 ? 0 : 100, i < 2 ? 0 : 16, "-", TextStyle.WINDOW, {
+            fontSize: "80px",
+            lineSpacing: -8,
+          });
+          break;
+        case 5:
+          optionText = addBBCodeTextObject(i % 2 === 0 ? 0 : 100, Math.floor(i / 2) * 16, "-", TextStyle.WINDOW, {
             fontSize: "80px",
             lineSpacing: -8,
           });

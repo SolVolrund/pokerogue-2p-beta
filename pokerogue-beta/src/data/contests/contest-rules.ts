@@ -21,6 +21,9 @@ import type { ContestType } from "./contest-type";
 const REPEAT_APPEAL_PENALTY = 2;
 const COMBO_APPEAL_BONUS = 3;
 const MAX_CONDITION_STARS = 3;
+const BASE_NERVOUS_CHANCE = 0.6;
+const NERVOUS_CHANCE_CONDITION_STAR_REDUCTION = 0.1;
+const NERVOUS_CHANCE_COMBO_STANDBY_REDUCTION = 0.1;
 
 export interface ContestMoveResolutionOptions {
   random?: () => number;
@@ -77,6 +80,7 @@ export function applyContestMove(
   const comboBonus = getComboBonus(contestant, moveId);
   const messages: string[] = [];
   const jamResults: ContestJamResult[] = [];
+  const random = options.random ?? Math.random;
 
   appeal = applyAppealBehavior({
     appeal,
@@ -86,14 +90,14 @@ export function applyContestMove(
     lastContestant,
     moveData,
     previousContestants,
-    random: options.random ?? Math.random,
+    random,
   });
   appeal = Math.max(0, appeal - repeatPenalty + comboBonus);
 
   const applauseResult = applyApplause(contestState, contestantId, moveData, effect.behavior);
   appeal += applauseResult.bonus;
 
-  applyStatusBehavior(contestState, contestant, effect.behavior, previousContestants, messages);
+  applyStatusBehavior(contestState, contestant, effect.behavior, previousContestants, messages, random);
   applyJamBehavior(contestState, contestantId, moveData, effect.behavior, previousContestants, jamResults);
   updateComboStandby(contestant, moveId);
 
@@ -283,6 +287,7 @@ function applyStatusBehavior(
   behavior: ContestSpectacularEffectBehavior,
   previousContestants: ContestParticipant[],
   messages: string[],
+  random: () => number,
 ): void {
   switch (behavior) {
     case ContestSpectacularEffectBehavior.FINAL_APPEAL:
@@ -299,9 +304,7 @@ function applyStatusBehavior(
       contestant.skipNextRound = true;
       break;
     case ContestSpectacularEffectBehavior.MAKE_FOLLOWING_NERVOUS:
-      for (const other of contestState.getRemainingContestants(contestant.id)) {
-        other.nervous = true;
-      }
+      applyFollowingNervousness(contestState, contestant, messages, random);
       break;
     case ContestSpectacularEffectBehavior.LOWER_PREVIOUS_ENERGY:
       for (const other of previousContestants) {
@@ -325,6 +328,53 @@ function applyStatusBehavior(
     default:
       break;
   }
+}
+
+function applyFollowingNervousness(
+  contestState: ContestState,
+  contestant: ContestParticipant,
+  messages: string[],
+  random: () => number,
+): void {
+  const targets = contestState.getRemainingContestants(contestant.id);
+  const baseChance = getBaseNervousChance(targets.length);
+
+  for (const target of targets) {
+    const targetName = getContestantNervousMessageName(target);
+    if (target.jamProtection === ContestJamProtection.FULL_ROUND) {
+      messages.push(`${targetName} resisted being startled.`);
+      continue;
+    }
+
+    if (target.jamProtection === ContestJamProtection.NEXT_JAM) {
+      target.jamProtection = ContestJamProtection.NONE;
+      messages.push(`${targetName} resisted being startled.`);
+      continue;
+    }
+
+    const nervousChance = getNervousChance(baseChance, target);
+    if (nervousChance > 0 && random() < nervousChance) {
+      target.nervous = true;
+      messages.push(`${targetName} was startled and became nervous.`);
+    } else {
+      messages.push(`${targetName} resisted being startled.`);
+    }
+  }
+}
+
+function getContestantNervousMessageName(contestant: ContestParticipant): string {
+  return contestant.pokemon?.getNameToRender() ?? contestant.pokemonNickname ?? contestant.name;
+}
+
+function getBaseNervousChance(remainingContestantCount: number): number {
+  return remainingContestantCount > 0 ? BASE_NERVOUS_CHANCE / remainingContestantCount : 0;
+}
+
+function getNervousChance(baseChance: number, target: ContestParticipant): number {
+  const conditionReduction = target.conditionStars * NERVOUS_CHANCE_CONDITION_STAR_REDUCTION;
+  const comboReduction = target.comboStandbyMoveId === undefined ? 0 : NERVOUS_CHANCE_COMBO_STANDBY_REDUCTION;
+
+  return Math.max(0, Math.min(1, baseChance - conditionReduction - comboReduction));
 }
 
 function applyJamBehavior(

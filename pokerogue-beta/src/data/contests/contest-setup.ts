@@ -1,45 +1,62 @@
+import type { PlayerIndex } from "#app/battle-scene";
 import type { PlayerPokemon } from "#field/pokemon";
 import { randSeedShuffle } from "#utils/common";
-import {
-  type ContestOpponentEntry,
-  ContestRank,
-  getContestOpponents,
-} from "./contest-opponents";
 import { chooseContestStageBgm } from "./contest-audio";
+import { type ContestOpponentEntry, ContestRank, getContestOpponents } from "./contest-opponents";
 import { ContestState, createContestParticipant } from "./contest-state";
 import { ContestType } from "./contest-type";
 
 const CONTEST_NPC_COUNT = 3;
+const CONTEST_TOTAL_CONTESTANTS = 4;
+
+export interface ContestPlayerContestantOptions {
+  playerIndex?: PlayerIndex;
+  playerName?: string;
+  pokemon?: PlayerPokemon;
+}
 
 export interface CreateContestStateOptions {
   contestType?: ContestType;
   rank?: ContestRank;
+  playerContestants?: readonly ContestPlayerContestantOptions[];
   playerPokemon?: PlayerPokemon;
 }
 
 export function createContestStateForRank(options: CreateContestStateOptions = {}): ContestState {
   const contestType = options.contestType ?? ContestType.COOL;
   const rank = options.rank ?? ContestRank.NORMAL;
-  const opponents = selectContestOpponents(rank, contestType);
+  const playerContestants = normalizePlayerContestants(options);
+  const opponents = selectContestOpponents(rank, contestType, CONTEST_TOTAL_CONTESTANTS - playerContestants.length);
 
   return new ContestState({
     contestType,
     rank,
     bgmKey: chooseContestStageBgm(),
     contestants: [
-      createContestParticipant("player", "Player", options.playerPokemon),
+      ...playerContestants.map((contestant, index) =>
+        createContestParticipant(
+          contestant.playerIndex === undefined ? "player" : `player_${contestant.playerIndex + 1}`,
+          contestant.playerName ?? getDefaultPlayerContestantName(contestant.playerIndex, index),
+          contestant.pokemon,
+        ),
+      ),
       ...opponents.map((opponent, index) =>
-        createContestParticipant(`contestant_${index + 2}`, opponent.coordinatorName, undefined, {
-          coordinatorName: opponent.coordinatorName,
-          coordinatorType: opponent.coordinatorType,
-          pokemonSpecies: opponent.pokemonSpecies,
-          ...(opponent.pokemonNickname ? { pokemonNickname: opponent.pokemonNickname } : {}),
-          rank: opponent.rank,
-          contestMoves: opponent.moves,
-          primaryJudgingScores: opponent.primaryJudgingScores,
-          ...(opponent.trainerType !== undefined ? { trainerType: opponent.trainerType } : {}),
-          ...(opponent.spriteKey ? { spriteKey: opponent.spriteKey } : {}),
-        }),
+        createContestParticipant(
+          `contestant_${playerContestants.length + index + 1}`,
+          opponent.coordinatorName,
+          undefined,
+          {
+            coordinatorName: opponent.coordinatorName,
+            coordinatorType: opponent.coordinatorType,
+            pokemonSpecies: opponent.pokemonSpecies,
+            ...(opponent.pokemonNickname ? { pokemonNickname: opponent.pokemonNickname } : {}),
+            rank: opponent.rank,
+            contestMoves: opponent.moves,
+            primaryJudgingScores: opponent.primaryJudgingScores,
+            ...(opponent.trainerType === undefined ? {} : { trainerType: opponent.trainerType }),
+            ...(opponent.spriteKey ? { spriteKey: opponent.spriteKey } : {}),
+          },
+        ),
       ),
     ],
   });
@@ -53,22 +70,45 @@ export function createNormalRankContestState(playerPokemon?: PlayerPokemon): Con
   });
 }
 
-function selectContestOpponents(rank: ContestRank, contestType: ContestType): ContestOpponentEntry[] {
+function normalizePlayerContestants(options: CreateContestStateOptions): ContestPlayerContestantOptions[] {
+  if (options.playerContestants && options.playerContestants.length > 0) {
+    return options.playerContestants.slice(0, CONTEST_TOTAL_CONTESTANTS).map(contestant => ({ ...contestant }));
+  }
+
+  return [
+    {
+      playerIndex: 0,
+      playerName: "Player",
+      ...(options.playerPokemon ? { pokemon: options.playerPokemon } : {}),
+    },
+  ];
+}
+
+function getDefaultPlayerContestantName(playerIndex: PlayerIndex | undefined, contestantIndex: number): string {
+  return playerIndex === undefined ? `Player ${contestantIndex + 1}` : `Player ${playerIndex + 1}`;
+}
+
+function selectContestOpponents(
+  rank: ContestRank,
+  contestType: ContestType,
+  count = CONTEST_NPC_COUNT,
+): ContestOpponentEntry[] {
+  if (count <= 0) {
+    return [];
+  }
+
   const preferredOpponents = getContestOpponents({ rank, contestType });
   const fallbackOpponents = getContestOpponents({ rank });
-  const selected = selectUniqueCoordinators(preferredOpponents, CONTEST_NPC_COUNT);
+  const selected = selectUniqueCoordinators(preferredOpponents, count);
 
-  if (selected.length >= CONTEST_NPC_COUNT) {
+  if (selected.length >= count) {
     return selected;
   }
 
   const selectedIds = new Set(selected.map(opponent => opponent.id));
   const fallbackPool = fallbackOpponents.filter(opponent => !selectedIds.has(opponent.id));
 
-  return [
-    ...selected,
-    ...selectUniqueCoordinators(fallbackPool, CONTEST_NPC_COUNT - selected.length),
-  ];
+  return [...selected, ...selectUniqueCoordinators(fallbackPool, count - selected.length)];
 }
 
 function selectUniqueCoordinators(opponents: readonly ContestOpponentEntry[], count: number): ContestOpponentEntry[] {

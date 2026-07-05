@@ -45,7 +45,21 @@ function getContestantPlayerIndex(contestant: ContestParticipant): PlayerIndex |
     return globalScene.getPlayerIndexForPokemon(contestant.pokemon);
   }
 
-  return contestant.id === "player" ? globalScene.activePlayerIndex : undefined;
+  if (contestant.id === "player") {
+    return globalScene.activePlayerIndex;
+  }
+
+  const playerIdMatch = contestant.id.match(/^player_(\d+)$/);
+  if (!playerIdMatch) {
+    return;
+  }
+
+  const playerIndex = Number(playerIdMatch[1]) - 1;
+  if (!globalScene.getActivePlayerIndexes().includes(playerIndex as PlayerIndex)) {
+    return;
+  }
+
+  return playerIndex as PlayerIndex;
 }
 
 function getContestPlacement(contestState: ContestState, contestant: ContestParticipant): number {

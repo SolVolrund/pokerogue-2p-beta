@@ -26,6 +26,27 @@ export enum ContestCoordinatorType {
   TUBER,
   YELLOW_DRESS_GIRL,
   YOUNGSTER,
+  BATTLE_GIRL,
+  BLACK_BELT,
+  BUG_CATCHER,
+  COOL_TRAINER_M,
+  FOSSIL_MANIAC,
+  GUITARIST,
+  HIKER,
+  KIRI,
+  LADY,
+  MOVE_REMINDER,
+  MR_BRINEY,
+  PICNICKER,
+  POKEFAN_F,
+  POKEFAN_M,
+  POKEMON_BREEDER_M,
+  PSYCHIC_M,
+  SAILOR,
+  SCIENTIST,
+  TEALA,
+  TWIN,
+  YOUNG_COUPLE_F,
 }
 
 export class ContestCoordinatorConfig {
@@ -46,8 +67,10 @@ export class ContestCoordinatorConfig {
   }
 
   getSpriteKey(): string {
-    return this.spriteKey
-      ?? (this.trainerType !== undefined ? TrainerType[this.trainerType].toString().toLowerCase() : this.getKey());
+    return (
+      this.spriteKey
+      ?? (this.trainerType === undefined ? this.getKey() : TrainerType[this.trainerType].toString().toLowerCase())
+    );
   }
 
   setName(name: string): ContestCoordinatorConfig {
@@ -96,16 +119,27 @@ export const contestCoordinatorConfigs = {
   [ContestCoordinatorType.COLLECTOR]: new ContestCoordinatorConfig(ContestCoordinatorType.COLLECTOR).setTrainerType(
     TrainerType.COLLECTOR,
   ),
-  [ContestCoordinatorType.EXPERT]: new ContestCoordinatorConfig(ContestCoordinatorType.EXPERT),
+  [ContestCoordinatorType.EXPERT]: new ContestCoordinatorConfig(ContestCoordinatorType.EXPERT)
+    .setTrainerType(TrainerType.VETERAN)
+    .setSpriteKey("veteran_f"),
   [ContestCoordinatorType.COOL_TRAINER_F]: new ContestCoordinatorConfig(ContestCoordinatorType.COOL_TRAINER_F)
-    .setTrainerType(TrainerType.ACE_TRAINER),
-  [ContestCoordinatorType.FLOWERS_GIRL]: new ContestCoordinatorConfig(ContestCoordinatorType.FLOWERS_GIRL),
-  [ContestCoordinatorType.GENTLEMAN]: new ContestCoordinatorConfig(ContestCoordinatorType.GENTLEMAN),
-  [ContestCoordinatorType.GREEN_SHOES_BOY]: new ContestCoordinatorConfig(ContestCoordinatorType.GREEN_SHOES_BOY),
+    .setTrainerType(TrainerType.ACE_TRAINER)
+    .setSpriteKey("ace_trainer_f"),
+  [ContestCoordinatorType.FLOWERS_GIRL]: new ContestCoordinatorConfig(ContestCoordinatorType.FLOWERS_GIRL)
+    .setTrainerType(TrainerType.AROMA_LADY)
+    .setSpriteKey("aroma_lady"),
+  [ContestCoordinatorType.GENTLEMAN]: new ContestCoordinatorConfig(ContestCoordinatorType.GENTLEMAN)
+    .setTrainerType(TrainerType.RICH)
+    .setSpriteKey("rich_m"),
+  [ContestCoordinatorType.GREEN_SHOES_BOY]: new ContestCoordinatorConfig(ContestCoordinatorType.GREEN_SHOES_BOY)
+    .setTrainerType(TrainerType.YOUNGSTER)
+    .setSpriteKey("youngster_m"),
   [ContestCoordinatorType.HEX_MANIAC]: new ContestCoordinatorConfig(ContestCoordinatorType.HEX_MANIAC).setTrainerType(
     TrainerType.HEX_MANIAC,
   ),
-  [ContestCoordinatorType.LASS]: new ContestCoordinatorConfig(ContestCoordinatorType.LASS),
+  [ContestCoordinatorType.LASS]: new ContestCoordinatorConfig(ContestCoordinatorType.LASS)
+    .setTrainerType(TrainerType.YOUNGSTER)
+    .setSpriteKey("youngster_f"),
   [ContestCoordinatorType.NINJA_BOY]: new ContestCoordinatorConfig(ContestCoordinatorType.NINJA_BOY).setSpriteKey(
     "ninja_boy",
   ),
@@ -121,10 +155,79 @@ export const contestCoordinatorConfigs = {
   [ContestCoordinatorType.SCHOOL_KID]: new ContestCoordinatorConfig(ContestCoordinatorType.SCHOOL_KID).setTrainerType(
     TrainerType.SCHOOL_KID,
   ),
-  [ContestCoordinatorType.TRIATHLETE]: new ContestCoordinatorConfig(ContestCoordinatorType.TRIATHLETE),
-  [ContestCoordinatorType.TUBER]: new ContestCoordinatorConfig(ContestCoordinatorType.TUBER),
-  [ContestCoordinatorType.YELLOW_DRESS_GIRL]: new ContestCoordinatorConfig(ContestCoordinatorType.YELLOW_DRESS_GIRL),
+  [ContestCoordinatorType.TRIATHLETE]: new ContestCoordinatorConfig(ContestCoordinatorType.TRIATHLETE)
+    .setTrainerType(TrainerType.CYCLIST)
+    .setSpriteKey("cyclist_m"),
+  [ContestCoordinatorType.TUBER]: new ContestCoordinatorConfig(ContestCoordinatorType.TUBER)
+    .setTrainerType(TrainerType.SWIMMER)
+    .setSpriteKey("swimmer_f"),
+  [ContestCoordinatorType.YELLOW_DRESS_GIRL]: new ContestCoordinatorConfig(ContestCoordinatorType.YELLOW_DRESS_GIRL)
+    .setTrainerType(TrainerType.PRESCHOOLER)
+    .setSpriteKey("preschooler_f"),
   [ContestCoordinatorType.YOUNGSTER]: new ContestCoordinatorConfig(ContestCoordinatorType.YOUNGSTER).setTrainerType(
     TrainerType.YOUNGSTER,
   ),
+  [ContestCoordinatorType.BATTLE_GIRL]: new ContestCoordinatorConfig(ContestCoordinatorType.BATTLE_GIRL)
+    .setTrainerType(TrainerType.SMASHER)
+    .setSpriteKey("smasher"),
+  [ContestCoordinatorType.BLACK_BELT]: new ContestCoordinatorConfig(ContestCoordinatorType.BLACK_BELT).setTrainerType(
+    TrainerType.BLACK_BELT,
+  ),
+  [ContestCoordinatorType.BUG_CATCHER]: new ContestCoordinatorConfig(ContestCoordinatorType.BUG_CATCHER).setTrainerType(
+    TrainerType.BUG_CATCHER,
+  ),
+  [ContestCoordinatorType.COOL_TRAINER_M]: new ContestCoordinatorConfig(ContestCoordinatorType.COOL_TRAINER_M)
+    .setTrainerType(TrainerType.ACE_TRAINER)
+    .setSpriteKey("ace_trainer_m"),
+  [ContestCoordinatorType.FOSSIL_MANIAC]: new ContestCoordinatorConfig(
+    ContestCoordinatorType.FOSSIL_MANIAC,
+  ).setTrainerType(TrainerType.RUIN_MANIAC),
+  [ContestCoordinatorType.GUITARIST]: new ContestCoordinatorConfig(ContestCoordinatorType.GUITARIST).setTrainerType(
+    TrainerType.GUITARIST,
+  ),
+  [ContestCoordinatorType.HIKER]: new ContestCoordinatorConfig(ContestCoordinatorType.HIKER).setTrainerType(
+    TrainerType.HIKER,
+  ),
+  [ContestCoordinatorType.KIRI]: new ContestCoordinatorConfig(ContestCoordinatorType.KIRI)
+    .setTrainerType(TrainerType.AROMA_LADY)
+    .setSpriteKey("aroma_lady"),
+  [ContestCoordinatorType.LADY]: new ContestCoordinatorConfig(ContestCoordinatorType.LADY)
+    .setTrainerType(TrainerType.RICH_KID)
+    .setSpriteKey("rich_kid_f"),
+  [ContestCoordinatorType.MOVE_REMINDER]: new ContestCoordinatorConfig(ContestCoordinatorType.MOVE_REMINDER)
+    .setTrainerType(TrainerType.VETERAN)
+    .setSpriteKey("veteran_f"),
+  [ContestCoordinatorType.MR_BRINEY]: new ContestCoordinatorConfig(ContestCoordinatorType.MR_BRINEY).setTrainerType(
+    TrainerType.SAILOR,
+  ),
+  [ContestCoordinatorType.PICNICKER]: new ContestCoordinatorConfig(ContestCoordinatorType.PICNICKER)
+    .setTrainerType(TrainerType.CAMPER)
+    .setSpriteKey("camper_f"),
+  [ContestCoordinatorType.POKEFAN_F]: new ContestCoordinatorConfig(ContestCoordinatorType.POKEFAN_F)
+    .setTrainerType(TrainerType.POKEFAN)
+    .setSpriteKey("pokefan_f"),
+  [ContestCoordinatorType.POKEFAN_M]: new ContestCoordinatorConfig(ContestCoordinatorType.POKEFAN_M)
+    .setTrainerType(TrainerType.POKEFAN)
+    .setSpriteKey("pokefan_m"),
+  [ContestCoordinatorType.POKEMON_BREEDER_M]: new ContestCoordinatorConfig(ContestCoordinatorType.POKEMON_BREEDER_M)
+    .setTrainerType(TrainerType.BREEDER)
+    .setSpriteKey("breeder_m"),
+  [ContestCoordinatorType.PSYCHIC_M]: new ContestCoordinatorConfig(ContestCoordinatorType.PSYCHIC_M)
+    .setTrainerType(TrainerType.PSYCHIC)
+    .setSpriteKey("psychic_m"),
+  [ContestCoordinatorType.SAILOR]: new ContestCoordinatorConfig(ContestCoordinatorType.SAILOR).setTrainerType(
+    TrainerType.SAILOR,
+  ),
+  [ContestCoordinatorType.SCIENTIST]: new ContestCoordinatorConfig(ContestCoordinatorType.SCIENTIST)
+    .setTrainerType(TrainerType.SCIENTIST)
+    .setSpriteKey("scientist_m"),
+  [ContestCoordinatorType.TEALA]: new ContestCoordinatorConfig(ContestCoordinatorType.TEALA).setTrainerType(
+    TrainerType.BEAUTY,
+  ),
+  [ContestCoordinatorType.TWIN]: new ContestCoordinatorConfig(ContestCoordinatorType.TWIN).setTrainerType(
+    TrainerType.TWINS,
+  ),
+  [ContestCoordinatorType.YOUNG_COUPLE_F]: new ContestCoordinatorConfig(ContestCoordinatorType.YOUNG_COUPLE_F)
+    .setTrainerType(TrainerType.YOUNG_COUPLE)
+    .setSpriteKey("young_couple"),
 } as const satisfies Record<ContestCoordinatorType, ContestCoordinatorConfig>;

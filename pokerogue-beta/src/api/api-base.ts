@@ -4,6 +4,18 @@ import type { SetRequired, UndefinedOnPartialDeep } from "type-fest";
 
 type DataType = "json" | "form-urlencoded";
 
+const DISABLED_REMOTE_API_HOST_SUFFIX = "pokerogue.net";
+const REMOTE_API_DISABLED_MESSAGE = "Remote PokeRogue API access is disabled in this build.";
+
+function isDisabledRemoteApiUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname === DISABLED_REMOTE_API_HOST_SUFFIX || hostname.endsWith(`.${DISABLED_REMOTE_API_HOST_SUFFIX}`);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Configuration type for {@linkcode ApiBase.doFetch}.
  * @internal
@@ -80,6 +92,16 @@ export abstract class ApiBase {
    * @param config - The request configuration
    */
   protected async doFetch(path: string, config: DoFetchConfig): Promise<Response> {
+    const requestUrl = this.base + path;
+
+    if (isDisabledRemoteApiUrl(requestUrl)) {
+      console.warn(`[PokeRogue 2P] Blocked ${config.method} request to live PokeRogue API: ${requestUrl}`);
+      return new Response(REMOTE_API_DISABLED_MESSAGE, {
+        status: 503,
+        statusText: "Remote API Disabled",
+      });
+    }
+
     config.headers = {
       ...config.headers,
       Authorization: getCookie(SESSION_ID_COOKIE_NAME),
@@ -88,11 +110,13 @@ export abstract class ApiBase {
 
     // can't import `isLocal` due to circular import issues
     if (import.meta.env.MODE === "development") {
-      console.log(`Sending ${config.method} request to: `, this.base + path, config);
+      console.log(`Sending ${config.method} request to: `, requestUrl, config);
     }
 
     // TODO: need some sort of error handling here?
-    return await fetch(this.base + path, config as RequestInit);
+    // Original live-capable request path, intentionally guarded above.
+    // return await fetch(this.base + path, config as RequestInit);
+    return await fetch(requestUrl, config as RequestInit);
   }
 
   /**

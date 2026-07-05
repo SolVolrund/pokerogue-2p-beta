@@ -4,11 +4,14 @@ import { allMoves } from "#data/data-lists";
 import { playContestAppealHeartChange } from "#data/contests/contest-audio";
 import { contestCoordinatorConfigs } from "#data/contests/contest-coordinator-types";
 import { ContestRank } from "#data/contests/contest-opponents";
-import { getContestSpectacularEffect } from "#data/contests/contest-spectacular-effects";
+import {
+  ContestSpectacularEffectBehavior,
+  getContestSpectacularEffect,
+} from "#data/contests/contest-spectacular-effects";
 import { contestLayout, getContestLayoutSpriteObjects } from "#data/contests/contest-layout";
 import type { ContestLayoutObject } from "#data/contests/contest-layout";
 import { getContestSpectacularMove } from "#data/contests/contest-spectacular-moves";
-import type { ContestParticipant, ContestState } from "#data/contests/contest-state";
+import { ContestJamProtection, type ContestParticipant, type ContestState } from "#data/contests/contest-state";
 import { ContestType } from "#data/contests/contest-type";
 import { AnimBlendType, AnimFocus, AnimFrameTarget } from "#enums/move-anims-common";
 import { MoveId } from "#enums/move-id";
@@ -465,7 +468,7 @@ export class ContestUi {
     }
 
     if (key.includes("status_condition")) {
-      return false;
+      return shouldShowContestStatusCondition(object, phaseName, contestState);
     }
 
     if (key.includes("judge_call")) {
@@ -1299,6 +1302,112 @@ function shouldShowGoodConditionStar(
   return (contestant?.conditionStars ?? 0) >= starPosition.starIndex;
 }
 
+function shouldShowContestStatusCondition(
+  object: ContestLayoutObject,
+  phaseName: string,
+  contestState: ContestState,
+): boolean {
+  const slotIndex = getScheduleRowSlotIndex(object);
+  if (slotIndex == null) {
+    return false;
+  }
+
+  const iconKey = getContestStatusIconKeyFromObject(object);
+  if (!iconKey) {
+    return false;
+  }
+
+  const contestant = contestState.getOrderedContestants()[slotIndex];
+  if (!contestant) {
+    return false;
+  }
+
+  if (iconKey === "at_risk") {
+    return !getContestStatusIconKey(contestant) && isContestantAtRiskOfNervousness(contestant, phaseName, contestState);
+  }
+
+  return getContestStatusIconKey(contestant) === iconKey;
+}
+
+function getContestStatusIconKey(contestant: ContestParticipant): string | undefined {
+  if (contestant.cannotAppeal || contestant.skipNextRound) {
+    return "lost_turn";
+  }
+
+  if (contestant.nervous) {
+    return "nervous";
+  }
+
+  if (contestant.jamProtection === ContestJamProtection.FULL_ROUND) {
+    return "oblivious";
+  }
+
+  if (contestant.jamProtection === ContestJamProtection.NEXT_JAM) {
+    return "settled_down";
+  }
+
+  return;
+}
+
+function getContestStatusIconKeyFromObject(object: ContestLayoutObject): string | undefined {
+  const label = object.label.toLowerCase();
+  const key = object.key.toLowerCase();
+
+  if (label.includes("at risk") || key.includes("at_risk")) {
+    return "at_risk";
+  }
+
+  if (label.includes("lost turn") || key.includes("lost_turn")) {
+    return "lost_turn";
+  }
+
+  if (label.includes("nervous") || key.includes("nervous")) {
+    return "nervous";
+  }
+
+  if (label.includes("settled down") || key.includes("settled_down")) {
+    return "settled_down";
+  }
+
+  if (label.includes("oblivious") || key.includes("oblivious") || key.includes("idk")) {
+    return "oblivious";
+  }
+
+  return;
+}
+
+function isContestantAtRiskOfNervousness(
+  contestant: ContestParticipant,
+  phaseName: string,
+  contestState: ContestState,
+): boolean {
+  if (phaseName !== "ContestAppealResultPhase") {
+    return false;
+  }
+
+  const sourceContestantId = contestState.currentRoundAppeals.at(-1);
+  if (!sourceContestantId) {
+    return false;
+  }
+
+  const sourceContestant = contestState.getContestant(sourceContestantId);
+  if (sourceContestant.cannotAppeal || sourceContestant.nervous) {
+    return false;
+  }
+
+  const moveData = getContestSpectacularMove(sourceContestant.lastMoveId ?? MoveId.NONE);
+  if (!moveData) {
+    return false;
+  }
+
+  const effect = getContestSpectacularEffect(moveData.effectId);
+  if (effect.behavior !== ContestSpectacularEffectBehavior.MAKE_FOLLOWING_NERVOUS) {
+    return false;
+  }
+
+  return contestState.getRemainingContestants(sourceContestantId).some(target => target.id === contestant.id);
+}
+
 function getActiveScheduleSlotIndex(phaseName: string, contestState: ContestState): number | undefined {
   const orderedContestants = contestState.getOrderedContestants();
 
@@ -1375,9 +1484,14 @@ function getMoveSelectorHeartIndex(key: string): number {
 }
 
 function isPlayerCommandPhase(contestState: ContestState): boolean {
-  return contestState.currentCommandContestantId
-    ? !!contestState.getContestant(contestState.currentCommandContestantId).pokemon
-    : false;
+  if (!contestState.currentCommandContestantId) {
+    return false;
+  }
+
+  const contestant = contestState.getContestant(contestState.currentCommandContestantId);
+  const playerIndex = contestant.pokemon ? globalScene.getPlayerIndexForPokemon(contestant.pokemon) : undefined;
+
+  return !!contestant.pokemon && (playerIndex === undefined || !globalScene.isComputerPartnerPlayer(playerIndex));
 }
 
 function isContestSchedulePhase(phaseName: string): boolean {
@@ -1409,7 +1523,9 @@ function getContestantPokemonName(contestant: ContestParticipant | undefined): s
 }
 
 export function getContestPlayerMoves(contestState: ContestState): readonly MoveId[] {
-  const contestant = contestState.contestants.find(candidate => candidate.pokemon) ?? contestState.contestants[0];
+  const contestant = contestState.currentCommandContestantId
+    ? contestState.getContestant(contestState.currentCommandContestantId)
+    : contestState.contestants.find(candidate => candidate.pokemon) ?? contestState.contestants[0];
 
   if (contestant?.contestMoves && contestant.contestMoves.length > 0) {
     return contestant.contestMoves;

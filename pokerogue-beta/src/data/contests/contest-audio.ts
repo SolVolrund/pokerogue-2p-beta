@@ -1,6 +1,6 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
-import type { ContestState } from "#data/contests/contest-state";
+import type { ContestParticipant, ContestState } from "#data/contests/contest-state";
 import { randSeedInt } from "#utils/common";
 
 export const CONTEST_LOBBY_BGM = "contests/pokemon_contest_lobby";
@@ -21,7 +21,11 @@ const CONTEST_STAGE_BGM_OPTIONS = [
 const CONTEST_STAGE_BGM_TOTAL_WEIGHT = CONTEST_STAGE_BGM_OPTIONS.reduce((total, option) => total + option.weight, 0);
 const CONTEST_SE_FOLDER = "se/contests";
 const CONTEST_SE_ASSETS = [
-  { key: CONTEST_APPEAL_HEART_CHANGE_SE, name: "contest_appeal_heart_change", filename: "contest_appeal_heart_change.wav" },
+  {
+    key: CONTEST_APPEAL_HEART_CHANGE_SE,
+    name: "contest_appeal_heart_change",
+    filename: "contest_appeal_heart_change.wav",
+  },
   { key: CONTEST_CHEERING_SE, name: "contest_cheering", filename: "contest_cheering.wav" },
   { key: CONTEST_TURN_NOTIFICATION_SE, name: "contest_turn_notification", filename: "contest_turn_notification.wav" },
 ] as const;
@@ -52,7 +56,7 @@ export function ensureContestAudioAssetsLoaded(): Promise<void> {
     return Promise.resolve();
   }
 
-  if (contestAudioAssetsLoading) {
+  if (contestAudioAssetsLoading !== undefined) {
     return contestAudioAssetsLoading;
   }
 
@@ -98,5 +102,15 @@ export function playContestTurnNotification(): void {
 function hasPlayerWonContest(contestState: ContestState): boolean {
   const highestScore = Math.max(...contestState.contestants.map(contestant => contestant.totalScore));
 
-  return contestState.contestants.some(contestant => contestant.id === "player" && contestant.totalScore === highestScore);
+  return contestState.contestants.some(
+    contestant => isPlayerContestant(contestant) && contestant.totalScore === highestScore,
+  );
+}
+
+function isPlayerContestant(contestant: ContestParticipant): boolean {
+  if (contestant.pokemon) {
+    return globalScene.getPlayerIndexForPokemon(contestant.pokemon) !== undefined;
+  }
+
+  return contestant.id === "player" || contestant.id.startsWith("player_");
 }
