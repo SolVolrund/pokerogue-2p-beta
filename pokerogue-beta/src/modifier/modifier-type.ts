@@ -2549,6 +2549,8 @@ export function regenerateModifierPoolThresholds(
 export interface CustomModifierSettings {
   /** If specified, will override the next X items to be the specified tier. These can upgrade with luck. */
   guaranteedModifierTiers?: ModifierTier[];
+  /** If specified, will generate every remaining shop item at this tier. */
+  forcedModifierTier?: ModifierTier;
   /** If specified, will override the first X items to be specific modifier options (these should be pre-genned). */
   guaranteedModifierTypeOptions?: ModifierTypeOption[];
   /** If specified, will override the next X items to be auto-generated from specific modifier functions (these don't have to be pre-genned). */
@@ -2636,8 +2638,17 @@ export function getPlayerModifierTypeOptions(
 
     // Fill remaining
     if (options.length < count && customModifierSettings.fillRemaining) {
+      const allowLuckUpgrades = customModifierSettings.allowLuckUpgrades ?? true;
       while (options.length < count) {
-        options.push(getModifierTypeOptionWithRetry(options, retryCount, party, undefined));
+        options.push(
+          getModifierTypeOptionWithRetry(
+            options,
+            retryCount,
+            party,
+            customModifierSettings.forcedModifierTier,
+            allowLuckUpgrades,
+          ),
+        );
       }
     }
   } else {

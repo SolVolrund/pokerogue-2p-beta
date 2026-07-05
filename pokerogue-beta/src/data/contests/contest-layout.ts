@@ -1,6 +1,6 @@
 import contestLayoutJson from "../../../assets/images/contests/contest-layout.json";
 
-export type ContestLayoutKind = "sprite" | "text-field";
+export type ContestLayoutKind = "sprite" | "text-field" | "marker";
 
 export interface ContestLayoutObject {
   kind: ContestLayoutKind;

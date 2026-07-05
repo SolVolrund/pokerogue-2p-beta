@@ -5,6 +5,7 @@ import {
   ContestRank,
   getContestOpponents,
 } from "./contest-opponents";
+import { chooseContestStageBgm } from "./contest-audio";
 import { ContestState, createContestParticipant } from "./contest-state";
 import { ContestType } from "./contest-type";
 
@@ -24,6 +25,7 @@ export function createContestStateForRank(options: CreateContestStateOptions = {
   return new ContestState({
     contestType,
     rank,
+    bgmKey: chooseContestStageBgm(),
     contestants: [
       createContestParticipant("player", "Player", options.playerPokemon),
       ...opponents.map((opponent, index) =>

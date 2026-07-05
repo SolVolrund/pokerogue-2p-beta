@@ -1,4 +1,5 @@
 import { globalScene } from "#app/global-scene";
+import { playContestTurnNotification } from "#data/contests/contest-audio";
 import { getContestSpectacularMove } from "#data/contests/contest-spectacular-moves";
 import type { ContestParticipant, ContestParticipantId, ContestState } from "#data/contests/contest-state";
 import { Button } from "#enums/buttons";
@@ -32,6 +33,7 @@ export class ContestCommandPhase extends ContestPhase {
     this.contestant = this.contestState.getContestant(this.contestantId);
     this.contestState.currentCommandContestantId = this.contestantId;
     this.showContestUi();
+    playContestTurnNotification();
 
     if (!this.contestant.pokemon) {
       this.contestState.queueMove(this.contestant.id, selectContestMove(this.contestant, this.contestState.round));

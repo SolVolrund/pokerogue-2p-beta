@@ -219,11 +219,11 @@ export const contestOpponents: readonly ContestOpponentEntry[] = [
     postGameOnly: false,
   },
       {
-    id: "normal_colby_electrike",
+    id: "normal_colby_totodile",
     coordinatorName: "Colby",
     coordinatorType: ContestCoordinatorType.NINJA_BOY,
-    pokemonSpecies: SpeciesId.ELECTRIKE,
-    pokemonNickname: "Rikelec",
+    pokemonSpecies: SpeciesId.TOTODILE,
+    pokemonNickname: "Totdil",
     rank: ContestRank.NORMAL,
     moves: [
       MoveId.RAGE,

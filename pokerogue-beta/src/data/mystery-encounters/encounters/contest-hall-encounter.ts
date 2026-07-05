@@ -1,5 +1,7 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
+import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
+import { CONTEST_LOBBY_BGM } from "#data/contests/contest-audio";
 import { createNormalRankContestState } from "#data/contests/contest-setup";
 import type { ContestState } from "#data/contests/contest-state";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
@@ -48,8 +50,9 @@ export const ContestHallEncounter: MysteryEncounter = MysteryEncounterBuilder.wi
       fileRoot: "contests",
       disableAnimation: true,
       hasShadow: false,
-      x: 0,
-      y: 0,
+      scale: 1.8,
+      x: 5,
+      y: 8,
     },
   ])
   .withIntroDialogue([
@@ -62,6 +65,10 @@ export const ContestHallEncounter: MysteryEncounter = MysteryEncounterBuilder.wi
   .withTitle(`${namespace}:title`)
   .withDescription(`${namespace}:description`)
   .withQuery(`${namespace}:query`)
+  .withOnInit(() => {
+    audioManager.playBgm(CONTEST_LOBBY_BGM, true);
+    return true;
+  })
   .withSimpleOption(
     {
       buttonLabel: `${namespace}:option.1.label`,

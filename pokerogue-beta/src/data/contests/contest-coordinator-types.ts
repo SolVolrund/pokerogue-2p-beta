@@ -106,7 +106,9 @@ export const contestCoordinatorConfigs = {
     TrainerType.HEX_MANIAC,
   ),
   [ContestCoordinatorType.LASS]: new ContestCoordinatorConfig(ContestCoordinatorType.LASS),
-  [ContestCoordinatorType.NINJA_BOY]: new ContestCoordinatorConfig(ContestCoordinatorType.NINJA_BOY),
+  [ContestCoordinatorType.NINJA_BOY]: new ContestCoordinatorConfig(ContestCoordinatorType.NINJA_BOY).setSpriteKey(
+    "ninja_boy",
+  ),
   [ContestCoordinatorType.POKEFAN]: new ContestCoordinatorConfig(ContestCoordinatorType.POKEFAN).setTrainerType(
     TrainerType.POKEFAN,
   ),

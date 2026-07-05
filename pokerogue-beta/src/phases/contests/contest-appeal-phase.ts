@@ -1,5 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import type { ContestParticipantId, ContestState } from "#data/contests/contest-state";
+import { MoveId } from "#enums/move-id";
+import { getContestUi } from "#ui/contest-ui";
 import { ContestPhase } from "./contest-phase";
 
 export class ContestAppealPhase extends ContestPhase {
@@ -15,7 +17,13 @@ export class ContestAppealPhase extends ContestPhase {
     super.start();
 
     this.showContestUi();
-    globalScene.phaseManager.unshiftNew("ContestAppealResultPhase", this.contestState, this.contestantId);
-    this.end();
+    getContestUi().playContestantAppeal(
+      this.contestState.getContestant(this.contestantId),
+      this.contestState.getQueuedMove(this.contestantId) ?? MoveId.NONE,
+    )
+      .then(() => {
+        globalScene.phaseManager.unshiftNew("ContestAppealResultPhase", this.contestState, this.contestantId);
+        this.end();
+      });
   }
 }

@@ -53,6 +53,7 @@ export interface ContestStateOptions {
   contestType: ContestType;
   rank?: ContestRank;
   contestants: readonly ContestParticipant[];
+  bgmKey?: string;
   totalRounds?: number;
   maxApplause?: number;
 }
@@ -84,6 +85,7 @@ export class ContestState {
   public round = 0;
   public applause = 0;
   public turnOrder: ContestParticipantId[];
+  public bgmKey: string | undefined;
   public currentRoundAppeals: ContestParticipantId[] = [];
   public currentCommandContestantId: ContestParticipantId | undefined;
   public randomizeNextTurnOrder = false;
@@ -98,6 +100,7 @@ export class ContestState {
     this.totalRounds = options.totalRounds ?? 5;
     this.maxApplause = options.maxApplause ?? 5;
     this.turnOrder = this.contestants.map(contestant => contestant.id);
+    this.bgmKey = options.bgmKey;
   }
 
   public beginRound(): void {
