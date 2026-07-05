@@ -26,7 +26,7 @@ export interface ContestParticipant {
   lastMoveId?: MoveId;
   moveHistory: MoveId[];
   repeatMoveCounts: Partial<Record<MoveId, number>>;
-  comboStandbyMoveId?: MoveId;
+  comboStandbyMoveId?: MoveId | undefined;
   nervous: boolean;
   pumpedUp: boolean;
   easilyStartled: boolean;
@@ -173,7 +173,8 @@ export class ContestState {
 
   public getPreviousAppealContestants(contestantId: ContestParticipantId): ContestParticipant[] {
     const contestantIndex = this.currentRoundAppeals.indexOf(contestantId);
-    const previousIds = contestantIndex >= 0 ? this.currentRoundAppeals.slice(0, contestantIndex) : this.currentRoundAppeals;
+    const previousIds =
+      contestantIndex >= 0 ? this.currentRoundAppeals.slice(0, contestantIndex) : this.currentRoundAppeals;
 
     return previousIds.map(id => this.getContestant(id));
   }
@@ -200,35 +201,44 @@ export class ContestState {
   public sortTurnOrderByPrimaryJudgingScore(): void {
     this.turnOrder = this.contestants
       .slice()
-      .sort((a, b) => this.getPrimaryJudgingScore(b.id) - this.getPrimaryJudgingScore(a.id))
+      .sort((a, b) => {
+        const scoreDifference = this.getPrimaryJudgingScore(b.id) - this.getPrimaryJudgingScore(a.id);
+        return (
+          scoreDifference || compareContestantTieBreakers(a, b, `intro-${this.contestType}-${this.rank ?? "none"}`)
+        );
+      })
       .map(contestant => contestant.id);
   }
 
   public finishRound(): void {
-    const nextTurnContestants = this.contestants
-      .slice()
-      .sort((a, b) => {
-        if (this.randomizeNextTurnOrder) {
-          return Math.random() - 0.5;
-        }
+    if (this.randomizeNextTurnOrder) {
+      this.turnOrder = this.contestants
+        .slice()
+        .sort((a, b) => compareContestantTieBreakers(a, b, `randomize-${this.round}`))
+        .map(contestant => contestant.id);
+      this.randomizeNextTurnOrder = false;
+      return;
+    }
 
-        if (a.appealOrderOverride !== b.appealOrderOverride) {
-          if (a.appealOrderOverride === ContestAppealOrderOverride.FIRST) {
-            return -1;
-          }
-          if (b.appealOrderOverride === ContestAppealOrderOverride.FIRST) {
-            return 1;
-          }
-          if (a.appealOrderOverride === ContestAppealOrderOverride.LAST) {
-            return 1;
-          }
-          if (b.appealOrderOverride === ContestAppealOrderOverride.LAST) {
-            return -1;
-          }
+    const nextTurnContestants = this.contestants.slice().sort((a, b) => {
+      if (a.appealOrderOverride !== b.appealOrderOverride) {
+        if (a.appealOrderOverride === ContestAppealOrderOverride.FIRST) {
+          return -1;
         }
+        if (b.appealOrderOverride === ContestAppealOrderOverride.FIRST) {
+          return 1;
+        }
+        if (a.appealOrderOverride === ContestAppealOrderOverride.LAST) {
+          return 1;
+        }
+        if (b.appealOrderOverride === ContestAppealOrderOverride.LAST) {
+          return -1;
+        }
+      }
 
-        return b.roundScore - a.roundScore;
-      });
+      const scoreDifference = b.roundScore - a.roundScore;
+      return scoreDifference || compareContestantTieBreakers(a, b, `round-${this.round}`);
+    });
 
     this.turnOrder = nextTurnContestants.map(contestant => contestant.id);
     this.randomizeNextTurnOrder = false;
@@ -241,6 +251,23 @@ export class ContestState {
   public isComplete(): boolean {
     return this.round >= this.totalRounds;
   }
+}
+
+export function compareContestantTieBreakers(a: ContestParticipant, b: ContestParticipant, salt: string): number {
+  const aHash = hashContestantTieBreaker(`${salt}:${a.id}`);
+  const bHash = hashContestantTieBreaker(`${salt}:${b.id}`);
+
+  return aHash - bHash || a.id.localeCompare(b.id);
+}
+
+function hashContestantTieBreaker(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
 }
 
 export function createContestParticipant(

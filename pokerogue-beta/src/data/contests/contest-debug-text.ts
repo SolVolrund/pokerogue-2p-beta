@@ -2,13 +2,14 @@ import { allMoves } from "#data/data-lists";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";
 import type { ContestMoveResolution } from "./contest-rules";
-import type { ContestParticipant, ContestState } from "./contest-state";
+import { type ContestParticipant, type ContestState, compareContestantTieBreakers } from "./contest-state";
 import { contestTypeData } from "./contest-type";
 
 export function getContestantDisplayName(contestant: ContestParticipant): string {
-  const pokemonName = contestant.pokemon?.getNameToRender()
+  const pokemonName =
+    contestant.pokemon?.getNameToRender()
     ?? contestant.pokemonNickname
-    ?? formatEnumName(contestant.pokemonSpecies !== undefined ? SpeciesId[contestant.pokemonSpecies] : undefined)
+    ?? formatEnumName(contestant.pokemonSpecies === undefined ? undefined : SpeciesId[contestant.pokemonSpecies])
     ?? "Pokemon";
 
   if (contestant.pokemon) {
@@ -39,10 +40,7 @@ export function formatContestIntroScoreMessage(contestState: ContestState): stri
   return `Primary judging is complete.\nAppeal order:\n${lines.join("\n")}`;
 }
 
-export function formatContestAppealMessage(
-  contestState: ContestState,
-  resolution: ContestMoveResolution,
-): string {
+export function formatContestAppealMessage(contestState: ContestState, resolution: ContestMoveResolution): string {
   const contestant = contestState.getContestant(resolution.contestantId);
   const contestantName = getContestantDisplayName(contestant);
   const moveName = getContestMoveName(resolution.moveId);
@@ -51,10 +49,7 @@ export function formatContestAppealMessage(
     return `${contestantName} could not appeal with ${moveName}.\n${resolution.messages.join("\n")}`;
   }
 
-  const lines = [
-    `${contestantName} used ${moveName}!`,
-    `Appeal: +${resolution.appeal}`,
-  ];
+  const lines = [`${contestantName} used ${moveName}!`, `Appeal: +${resolution.appeal}`];
 
   if (resolution.repeatPenalty > 0) {
     lines.push(`Repeat penalty: -${resolution.repeatPenalty}`);
@@ -86,9 +81,10 @@ export function formatContestAppealMessage(
 export function formatContestRoundSummaryMessage(contestState: ContestState): string {
   const lines = contestState.contestants
     .slice()
-    .sort((a, b) => b.roundScore - a.roundScore)
-    .map((contestant, index) =>
-      `${index + 1}. ${getContestantDisplayName(contestant)}: ${contestant.roundScore} this round (${contestant.totalScore} total)`,
+    .sort((a, b) => b.roundScore - a.roundScore || compareContestantTieBreakers(a, b, `summary-${contestState.round}`))
+    .map(
+      (contestant, index) =>
+        `${index + 1}. ${getContestantDisplayName(contestant)}: ${contestant.roundScore} this round (${contestant.totalScore} total)`,
     );
 
   return `Round ${contestState.round} results:\n${lines.join("\n")}`;
@@ -97,7 +93,7 @@ export function formatContestRoundSummaryMessage(contestState: ContestState): st
 export function formatContestFinalMessage(contestState: ContestState): string {
   const lines = contestState.contestants
     .slice()
-    .sort((a, b) => b.totalScore - a.totalScore)
+    .sort((a, b) => b.totalScore - a.totalScore || compareContestantTieBreakers(a, b, "final-summary"))
     .map((contestant, index) => `${index + 1}. ${getContestantDisplayName(contestant)}: ${contestant.totalScore}`);
 
   return `Contest results:\n${lines.join("\n")}`;
@@ -105,7 +101,7 @@ export function formatContestFinalMessage(contestState: ContestState): string {
 
 function formatEnumName(value?: string): string | undefined {
   if (!value) {
-    return undefined;
+    return;
   }
 
   return value

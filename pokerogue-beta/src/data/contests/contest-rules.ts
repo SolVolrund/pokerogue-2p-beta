@@ -1,5 +1,12 @@
 import { MoveId } from "#enums/move-id";
+import { randSeedFloat } from "#utils/common";
 import { contestMoves } from "./contest-moves";
+import {
+  ContestSpectacularEffectBehavior,
+  type ContestSpectacularEffectData,
+  getContestSpectacularEffect,
+} from "./contest-spectacular-effects";
+import { type ContestSpectacularMoveData, getContestSpectacularMove } from "./contest-spectacular-moves";
 import {
   ContestAppealOrderOverride,
   ContestJamProtection,
@@ -7,15 +14,6 @@ import {
   type ContestParticipantId,
   type ContestState,
 } from "./contest-state";
-import {
-  ContestSpectacularEffectBehavior,
-  type ContestSpectacularEffectData,
-  getContestSpectacularEffect,
-} from "./contest-spectacular-effects";
-import {
-  type ContestSpectacularMoveData,
-  getContestSpectacularMove,
-} from "./contest-spectacular-moves";
 import type { ContestType } from "./contest-type";
 
 const REPEAT_APPEAL_PENALTY = 2;
@@ -75,12 +73,12 @@ export function applyContestMove(
 
   let appeal = moveData.appeal;
   const previousContestants = contestState.getPreviousAppealContestants(contestantId);
-  const lastContestant = previousContestants[previousContestants.length - 1];
+  const lastContestant = previousContestants.at(-1);
   const repeatPenalty = getRepeatPenalty(contestant, moveId, effect.behavior);
   const comboBonus = getComboBonus(contestant, moveId);
   const messages: string[] = [];
   const jamResults: ContestJamResult[] = [];
-  const random = options.random ?? Math.random;
+  const random = options.random ?? randSeedFloat;
 
   appeal = applyAppealBehavior({
     appeal,
@@ -200,7 +198,7 @@ function updateComboStandby(contestant: ContestParticipant, moveId: MoveId): voi
   if ((contestMoves[moveId]?.normalCombo?.useBefore.length ?? 0) > 0) {
     contestant.comboStandbyMoveId = moveId;
   } else {
-    delete contestant.comboStandbyMoveId;
+    contestant.comboStandbyMoveId = undefined;
   }
 }
 
@@ -216,7 +214,8 @@ function applyApplause(
 
   const isFirst = contestState.currentRoundAppeals.length === 0;
   const isLast = contestState.getRemainingContestants(contestantId).length === 0;
-  const shouldRaiseApplause = moveData.contestType === contestState.contestType
+  const shouldRaiseApplause =
+    moveData.contestType === contestState.contestType
     || behavior === ContestSpectacularEffectBehavior.EXCITE_ANY_CONTEST
     || (behavior === ContestSpectacularEffectBehavior.EXCITE_IF_FIRST && isFirst)
     || (behavior === ContestSpectacularEffectBehavior.EXCITE_IF_LAST && isLast);
@@ -224,10 +223,11 @@ function applyApplause(
     return { bonus: 0, delta: 0 };
   }
 
-  const delta = behavior === ContestSpectacularEffectBehavior.EXCITE_IF_FIRST
+  const delta =
+    behavior === ContestSpectacularEffectBehavior.EXCITE_IF_FIRST
     || behavior === ContestSpectacularEffectBehavior.EXCITE_IF_LAST
-    ? 2
-    : 1;
+      ? 2
+      : 1;
 
   contestState.applause += delta;
   if (contestState.applause >= contestState.maxApplause) {
@@ -243,7 +243,7 @@ function applyAppealBehavior(args: {
   contestState: ContestState;
   contestant: ContestParticipant;
   effect: ContestSpectacularEffectData;
-  lastContestant?: ContestParticipant;
+  lastContestant: ContestParticipant | undefined;
   moveData: ContestSpectacularMoveData;
   previousContestants: ContestParticipant[];
   random: () => number;
@@ -264,7 +264,8 @@ function applyAppealBehavior(args: {
     case ContestSpectacularEffectBehavior.RANDOM_APPEAL:
       return [1, 2, 4, 8][Math.floor(random() * 4)] ?? args.appeal;
     case ContestSpectacularEffectBehavior.MATCH_PREVIOUS_TYPE:
-      return lastContestant && getContestSpectacularMove(lastContestant.lastMoveId ?? MoveId.NONE)?.contestType === moveData.contestType
+      return lastContestant
+        && getContestSpectacularMove(lastContestant.lastMoveId ?? MoveId.NONE)?.contestType === moveData.contestType
         ? 6
         : args.appeal;
     case ContestSpectacularEffectBehavior.BASED_ON_PREVIOUS_APPEAL:
@@ -408,7 +409,7 @@ function getJamTargets(
   behavior: ContestSpectacularEffectBehavior,
   previousContestants: ContestParticipant[],
 ): ContestParticipant[] {
-  const lastContestant = previousContestants[previousContestants.length - 1];
+  const lastContestant = previousContestants.at(-1);
 
   switch (behavior) {
     case ContestSpectacularEffectBehavior.STARTLE_PREVIOUS:

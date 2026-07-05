@@ -3,13 +3,14 @@ import { globalScene } from "#app/global-scene";
 import { playContestTurnNotification } from "#data/contests/contest-audio";
 import { getContestSpectacularMove } from "#data/contests/contest-spectacular-moves";
 import type { ContestParticipant, ContestParticipantId, ContestState } from "#data/contests/contest-state";
-import { Button } from "#enums/buttons";
 import { MoveId } from "#enums/move-id";
+import { clearContestInputMode, setContestInputMode } from "#ui/contest-input-ui-handler";
 import { getContestPlayerMoves, getContestUi } from "#ui/contest-ui";
 import { updateWindowType } from "#ui/ui-theme";
 import { ContestPhase } from "./contest-phase";
 
 const FALLBACK_CONTEST_MOVES = [MoveId.TACKLE, MoveId.GROWL, MoveId.TAIL_WHIP, MoveId.QUICK_ATTACK] as const;
+const CONTEST_COMMAND_INPUT_DELAY_MS = 750;
 
 export class ContestCommandPhase extends ContestPhase {
   public readonly phaseName = "ContestCommandPhase";
@@ -52,47 +53,34 @@ export class ContestCommandPhase extends ContestPhase {
     this.playerMoves = getContestPlayerMoves(this.contestState);
     this.selectionIndex = 0;
     getContestUi().setCommandSelection(this.selectionIndex, this.contestState);
-    globalScene.inputController.events.on("input_down", this.handleInput, this);
+    setContestInputMode({
+      inputDelayMs: CONTEST_COMMAND_INPUT_DELAY_MS,
+      onMoveSelection: delta => this.moveSelection(delta),
+      onConfirm: () => this.confirmSelection(),
+    });
   }
 
   override end(): void {
-    globalScene.inputController.events.off("input_down", this.handleInput, this);
+    clearContestInputMode();
     if (this.contestState.currentCommandContestantId === this.contestantId) {
       this.contestState.currentCommandContestantId = undefined;
     }
     super.end();
   }
 
-  private handleInput(input: { button: Button }): void {
+  private moveSelection(delta: number): boolean {
     if (this.complete) {
-      return;
+      return false;
     }
 
-    switch (input.button) {
-      case Button.UP:
-      case Button.LEFT:
-        this.moveSelection(-1);
-        return;
-      case Button.DOWN:
-      case Button.RIGHT:
-        this.moveSelection(1);
-        return;
-      case Button.ACTION:
-        this.confirmSelection();
-        return;
-      default:
-        return;
-    }
-  }
-
-  private moveSelection(delta: number): void {
     this.selectionIndex = wrapMoveSelection(this.selectionIndex + delta, this.playerMoves.length);
     getContestUi().setCommandSelection(this.selectionIndex, this.contestState);
+    return true;
   }
 
-  private confirmSelection(): void {
-    if (!this.contestant) {
-      return;
+  private confirmSelection(): boolean {
+    if (!this.contestant || this.complete) {
+      return false;
     }
 
     this.complete = true;
@@ -102,6 +90,7 @@ export class ContestCommandPhase extends ContestPhase {
     );
     this.queueAppealPhase();
     this.end();
+    return true;
   }
 
   private queueAppealPhase(): void {

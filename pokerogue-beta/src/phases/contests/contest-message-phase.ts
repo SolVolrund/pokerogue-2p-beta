@@ -1,8 +1,8 @@
 import { globalScene } from "#app/global-scene";
 import { Phase } from "#app/phase";
 import type { ContestState } from "#data/contests/contest-state";
-import { Button } from "#enums/buttons";
 import type { PhaseString } from "#types/phase-types";
+import { clearContestInputMode, setContestInputMode } from "#ui/contest-input-ui-handler";
 import { getContestUi } from "#ui/contest-ui";
 
 export class ContestMessagePhase extends Phase {
@@ -20,6 +20,9 @@ export class ContestMessagePhase extends Phase {
   }
 
   start(): void {
+    super.start();
+
+    globalScene.waitForSharedInput();
     globalScene.ui.clearText();
     const messageHandler = globalScene.ui.getMessageHandler();
     messageHandler.bg.setVisible(false);
@@ -28,21 +31,25 @@ export class ContestMessagePhase extends Phase {
     messageHandler.prompt?.setVisible(false);
     const contestUi = getContestUi();
     contestUi.showMessage(this.displayPhaseName, this.contestState, this.message);
-    globalScene.inputController.events.on("input_down", this.handleInput, this);
+    setContestInputMode({
+      onConfirm: () => this.completeMessage(),
+      onCancel: () => this.completeMessage(),
+    });
   }
 
   override end(): void {
-    globalScene.inputController.events.off("input_down", this.handleInput, this);
+    clearContestInputMode();
     getContestUi().clearMessage();
     super.end();
   }
 
-  private handleInput(input: { button: Button }): void {
-    if (this.complete || (input.button !== Button.ACTION && input.button !== Button.CANCEL)) {
-      return;
+  private completeMessage(): boolean {
+    if (this.complete) {
+      return false;
     }
 
     this.complete = true;
     this.end();
+    return true;
   }
 }
