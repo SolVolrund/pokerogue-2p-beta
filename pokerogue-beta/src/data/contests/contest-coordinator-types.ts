@@ -47,6 +47,13 @@ export enum ContestCoordinatorType {
   TEALA,
   TWIN,
   YOUNG_COUPLE_F,
+  DAWN_CONTEST,
+  MAY_CONTEST,
+  MOM,
+  NURSE,
+  NURSE_BORED,
+  TUBER_M,
+  VALERIE,
 }
 
 export class ContestCoordinatorConfig {
@@ -130,7 +137,7 @@ export const contestCoordinatorConfigs = {
     .setSpriteKey("aroma_lady"),
   [ContestCoordinatorType.GENTLEMAN]: new ContestCoordinatorConfig(ContestCoordinatorType.GENTLEMAN)
     .setTrainerType(TrainerType.RICH)
-    .setSpriteKey("rich_m"),
+    .setSpriteKey("gentleman_jext"),
   [ContestCoordinatorType.GREEN_SHOES_BOY]: new ContestCoordinatorConfig(ContestCoordinatorType.GREEN_SHOES_BOY)
     .setTrainerType(TrainerType.YOUNGSTER)
     .setSpriteKey("youngster_m"),
@@ -157,10 +164,10 @@ export const contestCoordinatorConfigs = {
   ),
   [ContestCoordinatorType.TRIATHLETE]: new ContestCoordinatorConfig(ContestCoordinatorType.TRIATHLETE)
     .setTrainerType(TrainerType.CYCLIST)
-    .setSpriteKey("cyclist_m"),
+    .setSpriteKey("triathlete_kyledove"),
   [ContestCoordinatorType.TUBER]: new ContestCoordinatorConfig(ContestCoordinatorType.TUBER)
     .setTrainerType(TrainerType.SWIMMER)
-    .setSpriteKey("swimmer_f"),
+    .setSpriteKey("tuber_f_kyledove"),
   [ContestCoordinatorType.YELLOW_DRESS_GIRL]: new ContestCoordinatorConfig(ContestCoordinatorType.YELLOW_DRESS_GIRL)
     .setTrainerType(TrainerType.PRESCHOOLER)
     .setSpriteKey("preschooler_f"),
@@ -230,4 +237,25 @@ export const contestCoordinatorConfigs = {
   [ContestCoordinatorType.YOUNG_COUPLE_F]: new ContestCoordinatorConfig(ContestCoordinatorType.YOUNG_COUPLE_F)
     .setTrainerType(TrainerType.YOUNG_COUPLE)
     .setSpriteKey("young_couple"),
+  [ContestCoordinatorType.DAWN_CONTEST]: new ContestCoordinatorConfig(ContestCoordinatorType.DAWN_CONTEST)
+    .setName("Dawn")
+    .setSpriteKey("dawn_contest_kyledove"),
+  [ContestCoordinatorType.MAY_CONTEST]: new ContestCoordinatorConfig(ContestCoordinatorType.MAY_CONTEST)
+    .setName("May")
+    .setSpriteKey("may_contest_kyledove"),
+  [ContestCoordinatorType.MOM]: new ContestCoordinatorConfig(ContestCoordinatorType.MOM)
+    .setName("Mom")
+    .setSpriteKey("mom_kyledove"),
+  [ContestCoordinatorType.NURSE]: new ContestCoordinatorConfig(ContestCoordinatorType.NURSE)
+    .setName("Nurse")
+    .setSpriteKey("nurse_kyledove"),
+  [ContestCoordinatorType.NURSE_BORED]: new ContestCoordinatorConfig(ContestCoordinatorType.NURSE_BORED)
+    .setName("Nurse")
+    .setSpriteKey("nurse_bored_kyledove"),
+  [ContestCoordinatorType.TUBER_M]: new ContestCoordinatorConfig(ContestCoordinatorType.TUBER_M)
+    .setName("Tuber")
+    .setSpriteKey("tuber_m_kyledove"),
+  [ContestCoordinatorType.VALERIE]: new ContestCoordinatorConfig(ContestCoordinatorType.VALERIE)
+    .setName("Valerie")
+    .setSpriteKey("valerie_kyledove"),
 } as const satisfies Record<ContestCoordinatorType, ContestCoordinatorConfig>;

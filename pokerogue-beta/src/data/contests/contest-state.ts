@@ -28,9 +28,9 @@ export interface ContestParticipant {
   repeatMoveCounts: Partial<Record<MoveId, number>>;
   comboStandbyMoveId?: MoveId | undefined;
   nervous: boolean;
-  pumpedUp: boolean;
   easilyStartled: boolean;
   cannotAppeal: boolean;
+  appealLocked: boolean;
   jamProtection: ContestJamProtection;
   skipNextRound: boolean;
   appealOrderOverride: ContestAppealOrderOverride;
@@ -76,6 +76,9 @@ export interface ContestParticipantOptions {
   spriteKey?: string;
 }
 
+const INTRO_JUDGING_SCORE_PER_HEART = 40;
+const MAX_INTRO_JUDGING_HEARTS = 6;
+
 export class ContestState {
   public readonly contestType: ContestType;
   public readonly rank?: ContestRank;
@@ -88,7 +91,10 @@ export class ContestState {
   public bgmKey: string | undefined;
   public currentRoundAppeals: ContestParticipantId[] = [];
   public currentCommandContestantId: ContestParticipantId | undefined;
+  public applausePaused = false;
+  public audienceBoredomQuickened = false;
   public randomizeNextTurnOrder = false;
+  private introJudgingScoresApplied = false;
   private readonly queuedMoves: Partial<Record<ContestParticipantId, MoveId>> = {};
 
   constructor(options: ContestStateOptions) {
@@ -108,10 +114,13 @@ export class ContestState {
       this.round = 1;
     }
 
+    this.applausePaused = false;
+    this.audienceBoredomQuickened = false;
+
     for (const contestant of this.contestants) {
       contestant.roundScore = 0;
       contestant.nervous = false;
-      contestant.cannotAppeal = contestant.skipNextRound;
+      contestant.cannotAppeal = contestant.appealLocked || contestant.skipNextRound;
       contestant.skipNextRound = false;
       contestant.jamProtection = ContestJamProtection.NONE;
       contestant.appealOrderOverride = ContestAppealOrderOverride.NONE;
@@ -196,6 +205,26 @@ export class ContestState {
 
   public getPrimaryJudgingScore(contestantId: ContestParticipantId): number {
     return this.getContestant(contestantId).primaryJudgingScores?.[this.contestType] ?? 0;
+  }
+
+  public getIntroJudgingHearts(contestantId: ContestParticipantId): number {
+    return Math.min(MAX_INTRO_JUDGING_HEARTS, Math.max(0, this.getPrimaryJudgingScore(contestantId)));
+  }
+
+  public getIntroJudgingFinalScore(contestantId: ContestParticipantId): number {
+    return this.getIntroJudgingHearts(contestantId) * INTRO_JUDGING_SCORE_PER_HEART;
+  }
+
+  public applyIntroJudgingScores(): void {
+    if (this.introJudgingScoresApplied) {
+      return;
+    }
+
+    for (const contestant of this.contestants) {
+      contestant.totalScore += this.getIntroJudgingFinalScore(contestant.id);
+    }
+
+    this.introJudgingScoresApplied = true;
   }
 
   public sortTurnOrderByPrimaryJudgingScore(): void {
@@ -286,9 +315,9 @@ export function createContestParticipant(
     moveHistory: [],
     repeatMoveCounts: {},
     nervous: false,
-    pumpedUp: false,
     easilyStartled: false,
     cannotAppeal: false,
+    appealLocked: false,
     jamProtection: ContestJamProtection.NONE,
     skipNextRound: false,
     appealOrderOverride: ContestAppealOrderOverride.NONE,

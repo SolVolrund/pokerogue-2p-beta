@@ -22,11 +22,23 @@ export interface QueuedEncounter {
   spawnPercent: number; // Out of 100
 }
 
+export interface ContestHallProgress {
+  declined?: boolean;
+  wonNormal?: boolean;
+  wonSuper?: boolean;
+  wonHyper?: boolean;
+  wonMaster?: boolean;
+  wonGrand?: boolean;
+  lastContestWave?: number;
+  nextScheduledWave?: number;
+}
+
 export class MysteryEncounterSaveData {
   encounteredEvents: SeenEncounterData[] = [];
   encounterSpawnChance: number = BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT;
   queuedEncounters: QueuedEncounter[] = [];
   fieldBlessing?: FieldBlessing;
+  contestHallProgress: ContestHallProgress = {};
 
   constructor(data?: MysteryEncounterSaveData) {
     if (data != null) {
@@ -35,5 +47,6 @@ export class MysteryEncounterSaveData {
 
     this.encounteredEvents = this.encounteredEvents ?? [];
     this.queuedEncounters = this.queuedEncounters ?? [];
+    this.contestHallProgress = this.contestHallProgress ?? {};
   }
 }

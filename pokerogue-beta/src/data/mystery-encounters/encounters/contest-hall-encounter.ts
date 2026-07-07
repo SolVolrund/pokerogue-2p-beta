@@ -3,9 +3,14 @@ import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { CONTEST_LOBBY_BGM } from "#data/contests/contest-audio";
+import { ensureContestHallScheduledWave, markContestHallDeclined } from "#data/contests/contest-hall-schedule";
 import { ContestRank } from "#data/contests/contest-opponents";
 import { type ContestPlayerContestantOptions, createContestStateForRank } from "#data/contests/contest-setup";
 import type { ContestState } from "#data/contests/contest-state";
+import {
+  CONTEST_ENCOUNTER_VISUAL_HIDE_DURATION,
+  CONTEST_SCREEN_FADE_DURATION,
+} from "#data/contests/contest-transition";
 import { ContestType, contestTypeData } from "#data/contests/contest-type";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
@@ -31,6 +36,7 @@ import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encou
 import { updateWindowType } from "#ui/ui-theme";
 import { randSeedInt } from "#utils/common";
 import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import i18next from "i18next";
 
 const namespace = "mysteryEncounters/contestHall";
@@ -43,15 +49,37 @@ const CONTEST_TYPE_OPTIONS = [
   ContestType.BEAUTY,
 ] as const;
 
+interface ContestParticipationVote {
+  playerIndex: PlayerIndex;
+  wantsToEnter: boolean;
+}
+
 interface ContestTypeVote {
   playerIndex: PlayerIndex;
   contestType: ContestType;
 }
 
 interface ContestHallData {
+  participationVotes: ContestParticipationVote[];
+  participationResolvedWantsToEnter?: boolean;
   contestTypeVotes: ContestTypeVote[];
   playerContestants: ContestPlayerContestantOptions[];
   skipSelectedDialogueOnce?: boolean;
+}
+
+class ContestHallProgressRequirement extends EncounterSceneRequirement {
+  override meetsRequirement(): boolean {
+    const progress = globalScene.mysteryEncounterSaveData.contestHallProgress;
+    return (
+      !progress.declined
+      && !progress.wonGrand
+      && ensureContestHallScheduledWave() === globalScene.currentBattle.waveIndex
+    );
+  }
+
+  override getDialogueToken(): [string, string] {
+    return ["contestHallScheduledWave", ensureContestHallScheduledWave()?.toString() ?? ""];
+  }
 }
 
 function getContestHallData(): ContestHallData {
@@ -61,6 +89,7 @@ function getContestHallData(): ContestHallData {
   }
 
   const data = encounter.misc as Partial<ContestHallData>;
+  data.participationVotes ??= [];
   data.contestTypeVotes ??= [];
   data.playerContestants ??= [];
 
@@ -69,6 +98,8 @@ function getContestHallData(): ContestHallData {
 
 function resetContestHallData(): ContestHallData {
   const data = getContestHallData();
+  data.participationVotes = [];
+  delete data.participationResolvedWantsToEnter;
   data.contestTypeVotes = [];
   data.playerContestants = [];
   data.skipSelectedDialogueOnce = false;
@@ -82,7 +113,47 @@ function getContestPlayerPokemon(playerIndex: PlayerIndex): PlayerPokemon | unde
 
 function createInitialContestState(contestType: ContestType): ContestState {
   const data = getContestHallData();
-
+  const progress = globalScene.mysteryEncounterSaveData.contestHallProgress
+  if (progress.wonGrand)
+  {
+    return createContestStateForRank({
+    rank: ContestRank.MASTER,
+    contestType,
+    playerContestants: data.playerContestants,
+  });
+  }
+  if (progress.wonMaster)
+  {
+    return createContestStateForRank({
+    rank: ContestRank.GRAND,
+    contestType,
+    playerContestants: data.playerContestants,
+  });
+  }
+  if (progress.wonHyper)
+  {
+    return createContestStateForRank({
+    rank: ContestRank.MASTER,
+    contestType,
+    playerContestants: data.playerContestants,
+  });
+  }
+    if (progress.wonSuper)
+  {
+    return createContestStateForRank({
+    rank: ContestRank.HYPER,
+    contestType,
+    playerContestants: data.playerContestants,
+  });
+  }
+  if (progress.wonNormal)
+  {
+    return createContestStateForRank({
+    rank: ContestRank.SUPER,
+    contestType,
+    playerContestants: data.playerContestants,
+  });
+  }
   return createContestStateForRank({
     rank: ContestRank.NORMAL,
     contestType,
@@ -90,22 +161,130 @@ function createInitialContestState(contestType: ContestType): ContestState {
   });
 }
 
-async function startContestEntry(): Promise<boolean> {
-  resetContestHallData();
-  await globalScene.ui.setMode(UiMode.MESSAGE);
-  await showEncounterText(`${namespace}:option.1.selected`);
-  return promptContestTypeVote(getMysteryEncounterPlayerIndexes()[0] ?? 0);
+function buildContestParticipationVoteOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
+  return [
+    buildContestParticipationVoteOption(playerIndex, true, 0),
+    buildContestParticipationVoteOption(playerIndex, false, 1),
+  ];
 }
 
-function buildEnterContestOption(): MysteryEncounterOption {
+function buildContestParticipationVoteOption(
+  playerIndex: PlayerIndex,
+  wantsToEnter: boolean,
+  startingCursorIndex: number,
+): MysteryEncounterOption {
+  const optionKey = wantsToEnter ? "1" : "2";
   return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
     .withDialogue({
-      buttonLabel: `${namespace}:option.1.label`,
-      buttonTooltip: `${namespace}:option.1.tooltip`,
+      buttonLabel: `${namespace}:option.${optionKey}.label`,
+      buttonTooltip: `${namespace}:option.${optionKey}.tooltip`,
     })
-    .withPreOptionPhase(startContestEntry)
-    .withOptionPhase(async () => true)
+    .withPreOptionPhase(async () => storeContestParticipationVote(playerIndex, wantsToEnter, startingCursorIndex))
+    .withOptionPhase(runResolvedContestParticipationOutcome)
     .build();
+}
+
+async function promptContestParticipationVote(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    slideInDescription: false,
+    overrideQuery: i18next.t(`${namespace}:participationVote.query`),
+    overrideOptions: buildContestParticipationVoteOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: chooseComputerPartnerParticipationOption,
+      onOptionChosen: (optionIndex, choicePlayerIndex) =>
+        storeContestParticipationVote(choicePlayerIndex, optionIndex === 0, optionIndex),
+    },
+  });
+
+  return result ?? false;
+}
+
+function chooseComputerPartnerParticipationOption(playerIndex: PlayerIndex): number {
+  return getContestPlayerPokemon(playerIndex) ? 0 : 1;
+}
+
+async function storeContestParticipationVote(
+  playerIndex: PlayerIndex,
+  wantsToEnter: boolean,
+  startingCursorIndex: number,
+): Promise<boolean> {
+  focusContestHallPlayer(playerIndex);
+
+  const data = getContestHallData();
+  data.participationVotes = data.participationVotes.filter(vote => vote.playerIndex !== playerIndex);
+  data.participationVotes.push({ playerIndex, wantsToEnter });
+
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(playerIndex);
+  if (nextPlayerIndex != null) {
+    return promptContestParticipationVote(nextPlayerIndex, startingCursorIndex);
+  }
+
+  data.skipSelectedDialogueOnce = true;
+  focusContestHallPlayer(0);
+  return runContestParticipationVotes();
+}
+
+async function runContestParticipationVotes(): Promise<boolean> {
+  const data = getContestHallData();
+  const votes = data.participationVotes.toSorted((a, b) => a.playerIndex - b.playerIndex);
+
+  await globalScene.ui.setMode(UiMode.MESSAGE);
+
+  for (const vote of votes) {
+    setContestParticipationVoteTokens(vote);
+    await showEncounterText(
+      `${namespace}:participationVote.${vote.wantsToEnter ? "enterSelected" : "leaveSelected"}`,
+    );
+  }
+
+  const shouldEnter = await getWinningContestParticipation(votes);
+  data.participationResolvedWantsToEnter = shouldEnter;
+  if (shouldEnter) {
+    await showEncounterText(`${namespace}:option.1.selected`);
+    return promptContestTypeVote(getMysteryEncounterPlayerIndexes()[0] ?? 0);
+  }
+
+  await showEncounterText(`${namespace}:option.2.selected`);
+  return true;
+}
+
+async function runResolvedContestParticipationOutcome(): Promise<boolean> {
+  const data = getContestHallData();
+  if (data.participationResolvedWantsToEnter === false) {
+    await skipContest();
+  }
+
+  return true;
+}
+
+async function getWinningContestParticipation(votes: ContestParticipationVote[]): Promise<boolean> {
+  if (votes.length === 0) {
+    return false;
+  }
+
+  const enterVotes = votes.filter(vote => vote.wantsToEnter);
+  const leaveVotes = votes.filter(vote => !vote.wantsToEnter);
+
+  if (enterVotes.length > leaveVotes.length) {
+    return true;
+  }
+
+  if (leaveVotes.length > enterVotes.length) {
+    return false;
+  }
+
+  const winningPlayerIndex = globalScene.resolvePlayerTieBreak(votes.map(vote => vote.playerIndex));
+  const winningVote = votes.find(vote => vote.playerIndex === winningPlayerIndex) ?? votes[0];
+  setContestParticipationVoteTokens(winningVote);
+  await showEncounterText(`${namespace}:participationVote.tieBreak`);
+
+  return winningVote.wantsToEnter;
+}
+
+function setContestParticipationVoteTokens(vote: ContestParticipationVote): void {
+  globalScene.currentBattle.mysteryEncounter!.setDialogueToken("playerName", getContestPlayerName(vote.playerIndex));
 }
 
 function buildContestTypeVoteOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
@@ -136,6 +315,7 @@ async function promptContestTypeVote(playerIndex: PlayerIndex, startingCursorInd
     overrideQuery: i18next.t(`${namespace}:contestTypeVote.query`),
     overrideOptions: buildContestTypeVoteOptions(playerIndex),
     startingCursorIndex,
+    optionRowSpacing: 12,
     computerPartnerOption: {
       chooseOptionIndex: chooseComputerPartnerContestTypeOption,
       onOptionChosen: (optionIndex, choicePlayerIndex) =>
@@ -174,6 +354,8 @@ async function storeContestTypeVote(
 async function runContestTypeVotes(): Promise<boolean> {
   const data = getContestHallData();
   const votes = data.contestTypeVotes.toSorted((a, b) => a.playerIndex - b.playerIndex);
+
+  await globalScene.ui.setMode(UiMode.MESSAGE);
 
   for (const vote of votes) {
     setContestVoteTokens(vote);
@@ -333,13 +515,15 @@ async function startContest(contestType: ContestType): Promise<void> {
     }
   }
 
-  await transitionMysteryEncounterIntroVisuals(true, true, 500);
+  await globalScene.ui.fadeOut(CONTEST_SCREEN_FADE_DURATION);
+  await transitionMysteryEncounterIntroVisuals(true, true, CONTEST_ENCOUNTER_VISUAL_HIDE_DURATION);
   const firstPlayerIndex = (data.playerContestants[0]?.playerIndex ?? 0) as PlayerIndex;
   focusContestHallPlayer(firstPlayerIndex);
   globalScene.phaseManager.pushNew("ContestStartPhase", createInitialContestState(contestType));
 }
 
 async function skipContest(): Promise<boolean> {
+  markContestHallDeclined();
   await transitionMysteryEncounterIntroVisuals(true, true, 500);
   leaveEncounterWithoutBattle(true);
   return true;
@@ -350,6 +534,7 @@ export const ContestHallEncounter: MysteryEncounter = MysteryEncounterBuilder.wi
 )
   .withEncounterTier(MysteryEncounterTier.GREAT)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
+  .withSceneRequirement(new ContestHallProgressRequirement())
   .withAutoHideIntroVisuals(false)
   .withIntroSpriteConfigs([
     {
@@ -377,17 +562,6 @@ export const ContestHallEncounter: MysteryEncounter = MysteryEncounterBuilder.wi
     resetContestHallData();
     return true;
   })
-  .withOption(buildEnterContestOption())
-  .withSimpleOption(
-    {
-      buttonLabel: `${namespace}:option.2.label`,
-      buttonTooltip: `${namespace}:option.2.tooltip`,
-      selected: [
-        {
-          text: `${namespace}:option.2.selected`,
-        },
-      ],
-    },
-    skipContest,
-  )
+  .withOption(buildContestParticipationVoteOption(0, true, 0))
+  .withOption(buildContestParticipationVoteOption(0, false, 1))
   .build();

@@ -34,6 +34,7 @@ import { UiInputs } from "#app/ui-inputs";
 import { STARTING_WAVE } from "#balance/misc";
 import { FRIENDSHIP_GAIN_FROM_BATTLE } from "#balance/starters";
 import { initCommonAnims, initMoveAnim, loadCommonAnimAssets, loadMoveAnimAssets } from "#data/battle-anims";
+import { isContestHallScheduledEncounterDue } from "#data/contests/contest-hall-schedule";
 import { getDailyMysteryEncounter } from "#data/daily-seed/daily-run";
 import { allMoves, biomeDepths, modifierTypes } from "#data/data-lists";
 import { getClassicFinalBossDialogue } from "#data/dialogue";
@@ -226,10 +227,10 @@ const TWO_PLAYER_SYNC_SETTING_KEYS = [
   SettingKeys.Shop_Cursor_Target,
   SettingKeys.Command_Cursor_Memory,
 ] as const;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = 2;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.CONTEST_HALL;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = true;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_PLAYER_MONEY: number | null = 1000;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = null;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = null;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = false;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_PLAYER_MONEY: number | null = null;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.MYSTERIOUS_CHEST,
   MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
@@ -5171,6 +5172,10 @@ export class BattleScene extends SceneBase {
       return false;
     }
 
+    if (this.isScheduledContestHallMysteryEncounterWave(battleType, waveIndex)) {
+      return true;
+    }
+
     const [lowestMysteryEncounterWave, highestMysteryEncounterWave] = this.gameMode.getMysteryEncounterLegalWaves();
     // Base spawn weight is BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT/256, and increases
     // by WEIGHT_INCREMENT_ON_SPAWN_MISS/256 for each missed attempt at spawning an encounter on a valid floor
@@ -5205,6 +5210,14 @@ export class BattleScene extends SceneBase {
       roll = randSeedInt(MYSTERY_ENCOUNTER_SPAWN_MAX_WEIGHT);
     }, waveIndex * 3000);
     return roll < successRate;
+  }
+
+  private isScheduledContestHallMysteryEncounterWave(battleType: BattleType, waveIndex: number): boolean {
+    return (
+      battleType === BattleType.WILD
+      && this.isMysteryEncounterEnabled(MysteryEncounterType.CONTEST_HALL)
+      && isContestHallScheduledEncounterDue(waveIndex)
+    );
   }
 
   private isDebugForcedMysteryEncounterWave(battleType: BattleType, waveIndex: number): boolean {
@@ -5344,6 +5357,18 @@ export class BattleScene extends SceneBase {
       encounter = new MysteryEncounter(encounter);
       encounter.populateDialogueTokensFromRequirements();
       return encounter;
+    }
+
+    if (
+      this.isMysteryEncounterEnabled(MysteryEncounterType.CONTEST_HALL)
+      && isContestHallScheduledEncounterDue(this.currentBattle.waveIndex)
+    ) {
+      const contestHallEncounter = allMysteryEncounters[MysteryEncounterType.CONTEST_HALL];
+      if (contestHallEncounter.meetsRequirements()) {
+        encounter = new MysteryEncounter(contestHallEncounter);
+        encounter.populateDialogueTokensFromRequirements();
+        return encounter;
+      }
     }
 
     const forcedDebugEncounter = DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE != null

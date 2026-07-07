@@ -347,7 +347,7 @@ export class ContestUi {
       this.showMessage(
         "ContestIntroScorePhase",
         contestState,
-        `${pokemonName}'s primary judging score: ${contestState.getPrimaryJudgingScore(contestant.id)}`,
+        `${pokemonName}'s primary judging score: ${contestState.getPrimaryJudgingScore(contestant.id)} (${contestState.getIntroJudgingHearts(contestant.id)} hearts, +${contestState.getIntroJudgingFinalScore(contestant.id)})`,
       );
       await waitContestDuration(CONTEST_INTRO_SCORE_HOLD_DURATION);
 

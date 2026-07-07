@@ -922,6 +922,7 @@ export class OptionSelectSettings {
   overrideQuery?: string;
   overrideOptions?: MysteryEncounterOption[];
   startingCursorIndex?: number;
+  optionRowSpacing?: number;
 }
 
 /**

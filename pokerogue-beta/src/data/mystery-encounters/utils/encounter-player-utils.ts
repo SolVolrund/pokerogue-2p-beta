@@ -11,6 +11,7 @@ export interface MysteryEncounterPlayerMenuConfig {
   overrideQuery?: string;
   startingCursorIndex?: number;
   slideInDescription?: boolean;
+  optionRowSpacing?: number;
   computerPartnerOption?: MysteryEncounterComputerPartnerOptionConfig;
 }
 
@@ -49,6 +50,7 @@ export async function showMysteryEncounterPlayerMenu({
   overrideQuery = "What will you do?",
   startingCursorIndex = 0,
   slideInDescription = false,
+  optionRowSpacing,
   computerPartnerOption,
 }: MysteryEncounterPlayerMenuConfig): Promise<boolean | undefined> {
   if (computerPartnerOption && globalScene.isComputerPartnerPlayer(playerIndex)) {
@@ -66,6 +68,7 @@ export async function showMysteryEncounterPlayerMenu({
       overrideQuery,
       overrideOptions,
       startingCursorIndex,
+      optionRowSpacing,
     });
   });
   return undefined;

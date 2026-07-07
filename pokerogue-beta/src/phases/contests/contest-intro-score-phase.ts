@@ -12,6 +12,7 @@ export class ContestIntroScorePhase extends ContestPhase {
     this.showContestUi();
     getContestUi().playIntroJudging(this.contestState)
       .then(() => {
+        this.contestState.applyIntroJudgingScores();
         this.contestState.sortTurnOrderByPrimaryJudgingScore();
         globalScene.phaseManager.unshiftNew(
           "ContestMessagePhase",

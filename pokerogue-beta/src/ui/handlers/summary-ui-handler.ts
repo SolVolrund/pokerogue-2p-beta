@@ -1,10 +1,13 @@
 import type { Ability } from "#abilities/ability";
-import type { PlayerIndex } from "#app/battle-scene";
 import { loggedInUser } from "#app/account";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { starterColors } from "#app/global-vars/starter-colors";
 import { getStarterValueFriendshipCap } from "#balance/starters";
+import { getContestSpectacularEffect } from "#data/contests/contest-spectacular-effects";
+import { getContestSpectacularMove } from "#data/contests/contest-spectacular-moves";
+import { ContestType, contestTypeData } from "#data/contests/contest-type";
 import { getLevelRelExp, getLevelTotalExp } from "#data/exp";
 import { getGenderColor, getGenderSymbol } from "#data/gender";
 import { getNatureName, getNatureStatMultiplier } from "#data/nature";
@@ -39,6 +42,12 @@ enum Page {
   PROFILE,
   STATS,
   MOVES,
+}
+
+enum StatsViewMode {
+  STATS,
+  IVS,
+  CONTEST,
 }
 
 export enum SummaryUiMode {
@@ -99,6 +108,7 @@ export class SummaryUiHandler extends UiHandler {
   private extraMoveRowContainer: Phaser.GameObjects.Container;
   private moveEffectContainer: Phaser.GameObjects.Container;
   private moveEffectContainerTitle: Phaser.GameObjects.Image;
+  private moveEffectLabels: Phaser.GameObjects.Text;
   private movePowerText: Phaser.GameObjects.Text;
   private moveAccuracyText: Phaser.GameObjects.Text;
   private moveCategoryIcon: Phaser.GameObjects.Sprite;
@@ -109,6 +119,7 @@ export class SummaryUiHandler extends UiHandler {
   private friendshipOverlay: Phaser.GameObjects.Sprite;
   private permStatsContainer: Phaser.GameObjects.Container;
   private ivContainer: Phaser.GameObjects.Container;
+  private contestStatsContainer: Phaser.GameObjects.Container;
   private statsContainer: Phaser.GameObjects.Container;
   private statsContainerItemTitle: Phaser.GameObjects.Image;
   private statsContainerStatsTitle: Phaser.GameObjects.Image;
@@ -126,6 +137,8 @@ export class SummaryUiHandler extends UiHandler {
   private transitioning: boolean;
   private statusVisible: boolean;
   private moveEffectsVisible: boolean;
+  private contestMoveInfoVisible: boolean;
+  private statsViewMode: StatsViewMode;
 
   private moveSelect: boolean;
   private moveCursor: number;
@@ -292,11 +305,11 @@ export class SummaryUiHandler extends UiHandler {
     this.moveEffectContainerTitle.setOrigin(0, 0.5);
     this.moveEffectContainer.add(this.moveEffectContainerTitle);
 
-    const moveEffectLabels = addTextObject(8, 12, i18next.t("pokemonSummary:powerAccuracyCategory"), TextStyle.SUMMARY);
-    moveEffectLabels.setLineSpacing(9);
-    moveEffectLabels.setOrigin(0, 0);
+    this.moveEffectLabels = addTextObject(8, 12, i18next.t("pokemonSummary:powerAccuracyCategory"), TextStyle.SUMMARY);
+    this.moveEffectLabels.setLineSpacing(9);
+    this.moveEffectLabels.setOrigin(0, 0);
 
-    this.moveEffectContainer.add(moveEffectLabels);
+    this.moveEffectContainer.add(this.moveEffectLabels);
 
     this.movePowerText = addTextObject(99, 27, "0", TextStyle.WINDOW_ALT);
     this.movePowerText.setOrigin(1, 1);
@@ -375,6 +388,9 @@ export class SummaryUiHandler extends UiHandler {
 
     this.summaryContainer.setVisible(true);
     this.cursor = -1;
+    this.contestMoveInfoVisible = false;
+    this.statsViewMode = StatsViewMode.STATS;
+    this.updateMoveEffectLabels();
 
     this.shinyOverlay.setVisible(this.pokemon.isShiny());
 
@@ -401,9 +417,7 @@ export class SummaryUiHandler extends UiHandler {
       if (this.pokemon?.summonData.speciesForm) {
         k += "Base";
       }
-      this.pokemonSprite.pipelineData[k] = this.pokemon?.isOnField()
-        ? this.pokemon.getSprite().pipelineData[k]
-        : [];
+      this.pokemonSprite.pipelineData[k] = this.pokemon?.isOnField() ? this.pokemon.getSprite().pipelineData[k] : [];
     });
     this.pokemon.cry();
 
@@ -588,6 +602,9 @@ export class SummaryUiHandler extends UiHandler {
       } else if (button === Button.CANCEL) {
         this.hideMoveSelect();
         success = true;
+      } else if (button === Button.STATS) {
+        this.toggleContestMoveInfo();
+        success = true;
       } else {
         switch (button) {
           case Button.UP:
@@ -625,9 +642,8 @@ export class SummaryUiHandler extends UiHandler {
         this.passiveContainer.descriptionText?.setVisible(!this.passiveContainer.descriptionText.visible);
         this.passiveContainer.labelImage.setVisible(!this.passiveContainer.labelImage.visible);
       } else if (this.cursor === Page.STATS) {
-        //Show IVs
-        this.permStatsContainer.setVisible(!this.permStatsContainer.visible);
-        this.ivContainer.setVisible(!this.ivContainer.visible);
+        this.cycleStatsViewMode();
+        success = true;
       }
     } else if (button === Button.CANCEL) {
       if (this.summaryUiMode === SummaryUiMode.LEARN_MOVE) {
@@ -680,6 +696,15 @@ export class SummaryUiHandler extends UiHandler {
             }
           }
           break;
+        case Button.STATS:
+          if (this.cursor === Page.MOVES) {
+            this.toggleContestMoveInfo();
+            success = true;
+          } else if (this.cursor === Page.STATS) {
+            this.cycleStatsViewMode();
+            success = true;
+          }
+          break;
       }
     }
 
@@ -730,15 +755,13 @@ export class SummaryUiHandler extends UiHandler {
 
       if (selectedMove) {
         this.moveDescriptionText.setY(84);
-        this.movePowerText.setText(selectedMove.power >= 0 ? selectedMove.power.toString() : "---");
-        this.moveAccuracyText.setText(selectedMove.accuracy >= 0 ? selectedMove.accuracy.toString() : "---");
-        this.moveCategoryIcon.setFrame(MoveCategory[selectedMove.category].toLowerCase());
+        this.updateSelectedMoveInfo(selectedMove);
         this.showMoveEffect();
       } else {
         this.hideMoveEffect();
       }
 
-      this.moveDescriptionText.setText(selectedMove?.effect || "");
+      this.moveDescriptionText.setText(selectedMove ? this.getSelectedMoveDescription(selectedMove) : "");
       const moveDescriptionLineCount = Math.floor(this.moveDescriptionText.displayHeight / 14.83);
 
       if (this.descriptionScrollTween) {
@@ -1068,6 +1091,8 @@ export class SummaryUiHandler extends UiHandler {
         this.statsContainer.add(this.permStatsContainer);
         this.ivContainer = globalScene.add.container(27, 64);
         this.statsContainer.add(this.ivContainer);
+        this.contestStatsContainer = globalScene.add.container(27, 64);
+        this.statsContainer.add(this.contestStatsContainer);
         this.statsContainer.setVisible(true);
 
         this.statsContainerItemTitle = globalScene.add.image(7, 4, getLocalizedSpriteKey("summary_stats_item_title")); // Pixel text 'ITEM'
@@ -1117,11 +1142,20 @@ export class SummaryUiHandler extends UiHandler {
             statName,
             this.pokemon?.ivs[stat] === 31 ? TextStyle.SUMMARY_STATS_GOLD : TextStyle.SUMMARY_STATS,
           );
+          const contestType = this.getContestStatType(stat);
+          const contestLabel = addTextObject(
+            116 * colIndex + (colIndex === 1 ? 5 : 0),
+            16 * rowIndex,
+            contestType ? contestTypeData[contestType].name : "",
+            TextStyle.SUMMARY_STATS,
+          );
 
           statLabel.setOrigin(0.5, 0);
           ivLabel.setOrigin(0.5, 0);
+          contestLabel.setOrigin(0.5, 0);
           this.permStatsContainer.add(statLabel);
           this.ivContainer.add(ivLabel);
+          this.contestStatsContainer.add(contestLabel);
 
           // TODO: are those bangs correct?
           const statValueText =
@@ -1136,8 +1170,16 @@ export class SummaryUiHandler extends UiHandler {
           const ivValue = addTextObject(93 + 93 * colIndex, 16 * rowIndex, ivText, TextStyle.WINDOW_ALT);
           ivValue.setOrigin(1, 0);
           this.ivContainer.add(ivValue);
+          const contestStatValue = addTextObject(
+            93 + 93 * colIndex,
+            16 * rowIndex,
+            contestType ? this.getContestStatValue(contestType).toString() : "",
+            TextStyle.WINDOW_ALT,
+          );
+          contestStatValue.setOrigin(1, 0);
+          this.contestStatsContainer.add(contestStatValue);
         });
-        this.ivContainer.setVisible(false);
+        this.applyStatsViewMode();
 
         const itemModifiers = (
           globalScene.findModifiers(
@@ -1249,10 +1291,10 @@ export class SummaryUiHandler extends UiHandler {
           this.extraMoveRowContainer.setVisible(true);
 
           if (this.newMove && this.pokemon) {
-            const spriteKey = getLocalizedSpriteKey("types");
-            const moveType = this.pokemon.getMoveType(this.newMove);
-            const newMoveTypeIcon = globalScene.add.sprite(0, 0, spriteKey, PokemonType[moveType].toLowerCase());
+            const newMoveTypeIcon = globalScene.add.sprite(0, 0, getLocalizedSpriteKey("types"));
             newMoveTypeIcon.setOrigin(0, 1);
+            this.extraMoveRowContainer.setData("moveTypeIcon", newMoveTypeIcon);
+            this.updateMoveTypeIcon(newMoveTypeIcon, this.newMove);
             this.extraMoveRowContainer.add(newMoveTypeIcon);
           }
           const ppOverlay = globalScene.add.image(177, -5, getLocalizedSpriteKey("summary_moves_overlay_pp")); // Pixel text 'PP'
@@ -1275,10 +1317,10 @@ export class SummaryUiHandler extends UiHandler {
           this.moveRowsContainer.add(moveRowContainer);
 
           if (move && this.pokemon) {
-            const spriteKey = getLocalizedSpriteKey("types");
-            const moveType = this.pokemon.getMoveType(move.getMove());
-            const typeIcon = globalScene.add.sprite(0, 0, spriteKey, PokemonType[moveType].toLowerCase());
+            const typeIcon = globalScene.add.sprite(0, 0, getLocalizedSpriteKey("types"));
             typeIcon.setOrigin(0, 1);
+            moveRowContainer.setData("moveTypeIcon", typeIcon);
+            this.updateMoveTypeIcon(typeIcon, move.getMove());
             moveRowContainer.add(typeIcon);
           }
 
@@ -1317,6 +1359,134 @@ export class SummaryUiHandler extends UiHandler {
         break;
       }
     }
+  }
+
+  private getContestStatType(stat: Stat): ContestType | null {
+    switch (stat) {
+      case Stat.HP:
+        return ContestType.COOL;
+      case Stat.ATK:
+        return ContestType.BEAUTY;
+      case Stat.DEF:
+        return ContestType.CUTE;
+      case Stat.SPDEF:
+        return ContestType.SMART;
+      case Stat.SPATK:
+        return ContestType.TOUGH;
+      default:
+        return null;
+    }
+  }
+
+  private getContestStatValue(_contestType: ContestType): number {
+    return 0;
+  }
+
+  private cycleStatsViewMode(): void {
+    const nextMode =
+      this.statsViewMode === StatsViewMode.STATS
+        ? StatsViewMode.IVS
+        : this.statsViewMode === StatsViewMode.IVS
+          ? StatsViewMode.CONTEST
+          : StatsViewMode.STATS;
+    this.setStatsViewMode(nextMode);
+  }
+
+  private setStatsViewMode(mode: StatsViewMode): void {
+    this.statsViewMode = mode;
+    this.applyStatsViewMode();
+  }
+
+  private applyStatsViewMode(): void {
+    this.permStatsContainer?.setVisible(this.statsViewMode === StatsViewMode.STATS);
+    this.ivContainer?.setVisible(this.statsViewMode === StatsViewMode.IVS);
+    this.contestStatsContainer?.setVisible(this.statsViewMode === StatsViewMode.CONTEST);
+  }
+
+  private toggleContestMoveInfo(): void {
+    this.contestMoveInfoVisible = !this.contestMoveInfoVisible;
+    this.updateMoveEffectLabels();
+    this.refreshMoveTypeIcons();
+    const selectedMove = this.getSelectedMove();
+    if (selectedMove) {
+      this.updateSelectedMoveInfo(selectedMove);
+      this.moveDescriptionText.setText(this.getSelectedMoveDescription(selectedMove));
+    }
+  }
+
+  private updateMoveEffectLabels(): void {
+    this.moveEffectLabels?.setText(
+      this.contestMoveInfoVisible
+        ? i18next.t("pokemonSummary:contestAppealJammingCategory", {
+            defaultValue: "Appeal\nJamming\nCategory",
+          })
+        : i18next.t("pokemonSummary:powerAccuracyCategory"),
+    );
+  }
+
+  private updateSelectedMoveInfo(selectedMove: Move): void {
+    if (this.contestMoveInfoVisible) {
+      const contestMove = getContestSpectacularMove(selectedMove.id);
+      this.movePowerText.setText(contestMove ? contestMove.appeal.toString() : "---");
+      this.moveAccuracyText.setText(contestMove ? contestMove.jam.toString() : "---");
+    } else {
+      this.movePowerText.setText(selectedMove.power >= 0 ? selectedMove.power.toString() : "---");
+      this.moveAccuracyText.setText(selectedMove.accuracy >= 0 ? selectedMove.accuracy.toString() : "---");
+    }
+    this.moveCategoryIcon.setFrame(MoveCategory[selectedMove.category].toLowerCase());
+  }
+
+  private getSelectedMoveDescription(selectedMove: Move): string {
+    if (!this.contestMoveInfoVisible) {
+      return selectedMove.effect || "";
+    }
+    const contestMove = getContestSpectacularMove(selectedMove.id);
+    if (!contestMove) {
+      return i18next.t("pokemonSummary:noContestEffectData", { defaultValue: "No contest effect data." });
+    }
+    return getContestSpectacularEffect(contestMove.effectId).flavorText;
+  }
+
+  private refreshMoveTypeIcons(): void {
+    if (!this.pokemon || !this.moveRowsContainer) {
+      return;
+    }
+    for (let m = 0; m < 4; m++) {
+      const moveRowContainer = this.moveRowsContainer.getAt(m) as Phaser.GameObjects.Container | undefined;
+      const typeIcon = moveRowContainer?.getData("moveTypeIcon") as Phaser.GameObjects.Sprite | undefined;
+      const move = this.pokemon.moveset[m]?.getMove();
+      if (typeIcon && move) {
+        this.updateMoveTypeIcon(typeIcon, move);
+      }
+    }
+
+    const extraMoveTypeIcon = this.extraMoveRowContainer?.getData("moveTypeIcon") as
+      | Phaser.GameObjects.Sprite
+      | undefined;
+    if (extraMoveTypeIcon && this.newMove) {
+      this.updateMoveTypeIcon(extraMoveTypeIcon, this.newMove);
+    }
+  }
+
+  private updateMoveTypeIcon(typeIcon: Phaser.GameObjects.Sprite, move: Move): void {
+    if (this.contestMoveInfoVisible) {
+      const contestMove = getContestSpectacularMove(move.id);
+      if (!contestMove) {
+        typeIcon.setVisible(false);
+        return;
+      }
+      typeIcon.setTexture("contest_attributes_tags", contestMove.contestType);
+      typeIcon.setVisible(true);
+      return;
+    }
+
+    if (!this.pokemon) {
+      typeIcon.setVisible(false);
+      return;
+    }
+    const moveType = this.pokemon.getMoveType(move);
+    typeIcon.setTexture(getLocalizedSpriteKey("types"), PokemonType[moveType].toLowerCase());
+    typeIcon.setVisible(true);
   }
 
   showStatus(instant?: boolean) {
@@ -1427,6 +1597,8 @@ export class SummaryUiHandler extends UiHandler {
     this.pokemon = null;
     this.cursor = -1;
     this.newMove = null;
+    this.contestMoveInfoVisible = false;
+    this.statsViewMode = StatsViewMode.STATS;
     if (this.moveSelect) {
       this.moveSelect = false;
       this.moveSelectFunction = null;

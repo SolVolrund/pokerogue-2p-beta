@@ -34,7 +34,9 @@ export function formatContestStartMessage(contestState: ContestState): string {
 export function formatContestIntroScoreMessage(contestState: ContestState): string {
   const lines = contestState.getOrderedContestants().map((contestant, index) => {
     const primaryScore = contestState.getPrimaryJudgingScore(contestant.id);
-    return `${index + 1}. ${getContestantDisplayName(contestant)} (${primaryScore})`;
+    const introHearts = contestState.getIntroJudgingHearts(contestant.id);
+    const introScore = contestState.getIntroJudgingFinalScore(contestant.id);
+    return `${index + 1}. ${getContestantDisplayName(contestant)} (${primaryScore}, ${introHearts} hearts, +${introScore})`;
   });
 
   return `Primary judging is complete.\nAppeal order:\n${lines.join("\n")}`;

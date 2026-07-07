@@ -14,10 +14,11 @@ import {
   type ContestParticipantId,
   type ContestState,
 } from "./contest-state";
-import type { ContestType } from "./contest-type";
+import { isSecondaryContestType, type ContestType } from "./contest-type";
 
 const REPEAT_APPEAL_PENALTY = 2;
 const COMBO_APPEAL_BONUS = 3;
+const HIGH_EXPECTATION_JAM = 5;
 const MAX_CONDITION_STARS = 3;
 const BASE_NERVOUS_CHANCE = 0.6;
 const NERVOUS_CHANCE_CONDITION_STAR_REDUCTION = 0.1;
@@ -116,9 +117,6 @@ export function applyContestMove(
   });
 
   contestant.easilyStartled = effect.behavior === ContestSpectacularEffectBehavior.EASY_STARTLE;
-  if (effect.behavior === ContestSpectacularEffectBehavior.BETTER_IF_PUMPED) {
-    contestant.pumpedUp = false;
-  }
 
   return {
     contestantId,
@@ -182,13 +180,13 @@ function getRepeatPenalty(
 
 function getComboBonus(contestant: ContestParticipant, moveId: MoveId): number {
   const currentMoveCombos = contestMoves[moveId]?.normalCombo;
-  const previousMoveId = contestant.lastMoveId;
-  if (!previousMoveId) {
+  const standbyMoveId = contestant.comboStandbyMoveId;
+  if (!standbyMoveId || contestant.lastMoveId !== standbyMoveId) {
     return 0;
   }
 
-  const previousMoveCombos = contestMoves[previousMoveId]?.normalCombo;
-  const currentMoveFollowsPrevious = currentMoveCombos?.useAfter.includes(previousMoveId) ?? false;
+  const previousMoveCombos = contestMoves[standbyMoveId]?.normalCombo;
+  const currentMoveFollowsPrevious = currentMoveCombos?.useAfter.includes(standbyMoveId) ?? false;
   const previousMoveLeadsToCurrent = previousMoveCombos?.useBefore.includes(moveId) ?? false;
 
   return currentMoveFollowsPrevious || previousMoveLeadsToCurrent ? COMBO_APPEAL_BONUS : 0;
@@ -209,23 +207,36 @@ function applyApplause(
   behavior: ContestSpectacularEffectBehavior,
 ): { bonus: number; delta: number } {
   if (behavior === ContestSpectacularEffectBehavior.PAUSE_EXCITEMENT) {
+    contestState.applausePaused = true;
     return { bonus: 0, delta: 0 };
   }
 
   const isFirst = contestState.currentRoundAppeals.length === 0;
   const isLast = contestState.getRemainingContestants(contestantId).length === 0;
-  const shouldRaiseApplause =
-    moveData.contestType === contestState.contestType
-    || behavior === ContestSpectacularEffectBehavior.EXCITE_ANY_CONTEST
+  const isPrimaryType = moveData.contestType === contestState.contestType;
+  const isSecondaryType = isSecondaryContestType(contestState.contestType, moveData.contestType);
+  const hasExciteOverride =
+    behavior === ContestSpectacularEffectBehavior.EXCITE_ANY_CONTEST
     || (behavior === ContestSpectacularEffectBehavior.EXCITE_IF_FIRST && isFirst)
     || (behavior === ContestSpectacularEffectBehavior.EXCITE_IF_LAST && isLast);
-  if (!shouldRaiseApplause) {
+
+  const shouldRaiseApplause = isPrimaryType || hasExciteOverride;
+  const shouldLowerApplause = !shouldRaiseApplause && !isSecondaryType;
+
+  if (shouldLowerApplause) {
+    const drop = contestState.audienceBoredomQuickened ? 2 : 1;
+    const delta = contestState.applause > 0 ? -Math.min(drop, contestState.applause) : 0;
+    contestState.applause = Math.max(0, contestState.applause + delta);
+    return { bonus: 0, delta };
+  }
+
+  if (!shouldRaiseApplause || contestState.applausePaused) {
     return { bonus: 0, delta: 0 };
   }
 
   const delta =
-    behavior === ContestSpectacularEffectBehavior.EXCITE_IF_FIRST
-    || behavior === ContestSpectacularEffectBehavior.EXCITE_IF_LAST
+    (behavior === ContestSpectacularEffectBehavior.EXCITE_IF_FIRST && isFirst)
+    || (behavior === ContestSpectacularEffectBehavior.EXCITE_IF_LAST && isLast)
       ? 2
       : 1;
 
@@ -256,7 +267,10 @@ function applyAppealBehavior(args: {
     case ContestSpectacularEffectBehavior.BEST_LAST:
       return contestState.getRemainingContestants(contestant.id).length === 0 ? 6 : args.appeal;
     case ContestSpectacularEffectBehavior.COPY_PREVIOUS_APPEALS:
-      return Math.max(1, previousContestants.reduce((total, other) => total + other.roundScore, 0) + 1);
+      return Math.max(
+        1,
+        Math.floor(previousContestants.reduce((total, other) => total + other.roundScore, 0) / 2) + 1,
+      );
     case ContestSpectacularEffectBehavior.COPY_PREVIOUS_APPEAL:
       return Math.max(1, (lastContestant?.roundScore ?? 0) + 1);
     case ContestSpectacularEffectBehavior.BETTER_LATER:
@@ -274,7 +288,7 @@ function applyAppealBehavior(args: {
       }
       return lastContestant.roundScore === 3 ? 3 : 0;
     case ContestSpectacularEffectBehavior.BETTER_IF_PUMPED:
-      return contestant.pumpedUp ? 6 : args.appeal;
+      return getConditionAppeal(contestant.conditionStars);
     case ContestSpectacularEffectBehavior.BETTER_WITH_EXCITEMENT:
       return [1, 1, 3, 4, 6][contestState.applause] ?? args.appeal;
     default:
@@ -292,8 +306,11 @@ function applyStatusBehavior(
 ): void {
   switch (behavior) {
     case ContestSpectacularEffectBehavior.FINAL_APPEAL:
-      contestant.skipNextRound = true;
+      contestant.appealLocked = true;
       messages.push(`${contestant.name} cannot appeal again after this move.`);
+      break;
+    case ContestSpectacularEffectBehavior.LOWER_EXPECTATIONS:
+      lowerOtherContestantsExpectations(contestState, contestant, messages);
       break;
     case ContestSpectacularEffectBehavior.PREVENT_NEXT_STARTLE:
       contestant.jamProtection = ContestJamProtection.NEXT_JAM;
@@ -309,12 +326,10 @@ function applyStatusBehavior(
       break;
     case ContestSpectacularEffectBehavior.LOWER_PREVIOUS_ENERGY:
       for (const other of previousContestants) {
-        other.pumpedUp = false;
-        other.conditionStars = 0;
+        other.conditionStars = Math.max(0, other.conditionStars - 1);
       }
       break;
     case ContestSpectacularEffectBehavior.PUMPED_UP:
-      contestant.pumpedUp = true;
       contestant.conditionStars = Math.min(MAX_CONDITION_STARS, contestant.conditionStars + 1);
       break;
     case ContestSpectacularEffectBehavior.MOVE_EARLIER_NEXT:
@@ -326,8 +341,34 @@ function applyStatusBehavior(
     case ContestSpectacularEffectBehavior.RANDOMIZE_NEXT_ORDER:
       contestState.randomizeNextTurnOrder = true;
       break;
+    case ContestSpectacularEffectBehavior.QUICKEN_AUDIENCE_BOREDOM:
+      contestState.audienceBoredomQuickened = true;
+      messages.push(`The audience became harder to impress.`);
+      break;
     default:
       break;
+  }
+}
+
+function getConditionAppeal(conditionStars: number): number {
+  return [1, 3, 5, 7][Math.min(MAX_CONDITION_STARS, Math.max(0, conditionStars))] ?? 1;
+}
+
+function lowerOtherContestantsExpectations(
+  contestState: ContestState,
+  contestant: ContestParticipant,
+  messages: string[],
+): void {
+  const affectedContestants = contestState.contestants.filter(
+    other => other.id !== contestant.id && other.comboStandbyMoveId !== undefined,
+  );
+
+  for (const other of affectedContestants) {
+    other.comboStandbyMoveId = undefined;
+  }
+
+  if (affectedContestants.length > 0) {
+    messages.push(`The audience's expectations fell.`);
   }
 }
 
@@ -393,13 +434,29 @@ function applyJamBehavior(
   }
 
   for (const target of jamTargets) {
-    const appliedJam = contestState.applyJam(target.id, requestedJam);
+    const targetJam = getRequestedJamForTarget(target, behavior, requestedJam);
+    const appliedJam = contestState.applyJam(target.id, targetJam);
     jamResults.push({
       contestantId: target.id,
-      requestedJam,
+      requestedJam: targetJam,
       appliedJam,
     });
   }
+}
+
+function getRequestedJamForTarget(
+  target: ContestParticipant,
+  behavior: ContestSpectacularEffectBehavior,
+  requestedJam: number,
+): number {
+  if (
+    behavior === ContestSpectacularEffectBehavior.STARTLE_HIGH_EXPECTATION
+    && target.comboStandbyMoveId !== undefined
+  ) {
+    return HIGH_EXPECTATION_JAM;
+  }
+
+  return requestedJam;
 }
 
 function getJamTargets(
@@ -424,6 +481,7 @@ function getJamTargets(
         contestant => getContestSpectacularMove(contestant.lastMoveId ?? MoveId.NONE)?.contestType === contestType,
       );
     case ContestSpectacularEffectBehavior.STARTLE_HIGH_EXPECTATION:
+      return previousContestants;
     case ContestSpectacularEffectBehavior.STARTLE_GOOD_APPEALS:
       return previousContestants.filter(contestant => contestant.roundScore > 0);
     default:

@@ -302,6 +302,7 @@ export class LoadingScene extends SceneBase {
       // egg gacha stuff
       .loadEventBannerImages(lang)
       .loadAtlas("categories", "")
+      .loadAtlas("contest_attributes_tags", "contests/ui")
       .loadAtlas("egg", "egg")
       .loadAtlas("egg_crack", "egg")
       .loadAtlas("egg_icons", "egg")

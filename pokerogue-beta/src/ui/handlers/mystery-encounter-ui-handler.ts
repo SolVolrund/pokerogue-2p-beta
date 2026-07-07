@@ -359,9 +359,14 @@ export class MysteryEncounterUiHandler extends UiHandler {
     return this.cursor ? this.cursor : 0;
   }
 
+  private getOptionRowSpacing(): number {
+    return this.overrideSettings?.optionRowSpacing ?? 16;
+  }
+
   override setCursor(cursor: number): boolean {
     const prevCursor = this.getCursor();
     const changed = prevCursor !== cursor;
+    const optionRowSpacing = this.getOptionRowSpacing();
     if (changed) {
       this.cursor = cursor;
     }
@@ -380,13 +385,16 @@ export class MysteryEncounterUiHandler extends UiHandler {
       this.cursorObj.setPosition(-10.5 + (cursor % 2 === 1 ? 100 : 0), 15);
     } else if (this.optionsContainer.getAll()?.length === 4) {
       // 3 Options
-      this.cursorObj.setPosition(-10.5 + (cursor % 2 === 1 ? 100 : 0), 7 + (cursor > 1 ? 16 : 0));
+      this.cursorObj.setPosition(-10.5 + (cursor % 2 === 1 ? 100 : 0), 7 + (cursor > 1 ? optionRowSpacing : 0));
     } else if (this.optionsContainer.getAll()?.length === 5) {
       // 4 Options
-      this.cursorObj.setPosition(-10.5 + (cursor % 2 === 1 ? 100 : 0), 7 + (cursor > 1 ? 16 : 0));
+      this.cursorObj.setPosition(-10.5 + (cursor % 2 === 1 ? 100 : 0), 7 + (cursor > 1 ? optionRowSpacing : 0));
     } else if (this.optionsContainer.getAll()?.length === 6) {
       // 5 Options
-      this.cursorObj.setPosition(-10.5 + (cursor % 2 === 1 ? 100 : 0), 7 + Math.floor(cursor / 2) * 16);
+      this.cursorObj.setPosition(
+        -10.5 + (cursor % 2 === 1 ? 100 : 0),
+        7 + Math.floor(cursor / 2) * optionRowSpacing,
+      );
     }
 
     return changed;
@@ -415,6 +423,7 @@ export class MysteryEncounterUiHandler extends UiHandler {
     this.optionsContainer.removeAll(true);
 
     // Options Window
+    const optionRowSpacing = this.getOptionRowSpacing();
     for (let i = 0; i < this.encounterOptions.length; i++) {
       const option = this.encounterOptions[i];
 
@@ -429,22 +438,28 @@ export class MysteryEncounterUiHandler extends UiHandler {
           });
           break;
         case 3:
-          optionText = addBBCodeTextObject(i % 2 === 0 ? 0 : 100, i < 2 ? 0 : 16, "-", TextStyle.WINDOW, {
+          optionText = addBBCodeTextObject(i % 2 === 0 ? 0 : 100, i < 2 ? 0 : optionRowSpacing, "-", TextStyle.WINDOW, {
             fontSize: "80px",
             lineSpacing: -8,
           });
           break;
         case 4:
-          optionText = addBBCodeTextObject(i % 2 === 0 ? 0 : 100, i < 2 ? 0 : 16, "-", TextStyle.WINDOW, {
+          optionText = addBBCodeTextObject(i % 2 === 0 ? 0 : 100, i < 2 ? 0 : optionRowSpacing, "-", TextStyle.WINDOW, {
             fontSize: "80px",
             lineSpacing: -8,
           });
           break;
         case 5:
-          optionText = addBBCodeTextObject(i % 2 === 0 ? 0 : 100, Math.floor(i / 2) * 16, "-", TextStyle.WINDOW, {
-            fontSize: "80px",
-            lineSpacing: -8,
-          });
+          optionText = addBBCodeTextObject(
+            i % 2 === 0 ? 0 : 100,
+            Math.floor(i / 2) * optionRowSpacing,
+            "-",
+            TextStyle.WINDOW,
+            {
+              fontSize: "80px",
+              lineSpacing: -8,
+            },
+          );
           break;
       }
 
