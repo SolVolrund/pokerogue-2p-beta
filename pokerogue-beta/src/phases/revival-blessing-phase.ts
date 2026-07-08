@@ -19,8 +19,12 @@ export class RevivalBlessingPhase extends BattlePhase {
   }
 
   public override start(): void {
+    const playerIndex =
+      globalScene.getPlayerIndexForPokemon(this.user) ?? globalScene.getPlayerIndexForFieldSlot(this.user.getFieldIndex());
+    const party = globalScene.getPlayerParty(playerIndex);
+
     if (globalScene.twoPlayerMode) {
-      globalScene.waitForPlayerInput(globalScene.getPlayerIndexForFieldSlot(this.user.getFieldIndex()));
+      globalScene.waitForPlayerInput(playerIndex);
     }
 
     globalScene.ui.setMode(
@@ -29,7 +33,7 @@ export class RevivalBlessingPhase extends BattlePhase {
       this.user.getFieldIndex(),
       (slotIndex: number, _option: PartyOption) => {
         if (slotIndex >= 0 && slotIndex < 6) {
-          const pokemon = globalScene.getPlayerParty()[slotIndex];
+          const pokemon = party[slotIndex];
           if (!pokemon || !pokemon.isFainted()) {
             return this.end();
           }
@@ -45,8 +49,13 @@ export class RevivalBlessingPhase extends BattlePhase {
             true,
           );
 
+          if (globalScene.twoPlayerMode) {
+            globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.end());
+            return;
+          }
+
           const allyPokemon = this.user.getAlly();
-          if (globalScene.currentBattle.double && globalScene.getPlayerParty().length > 1 && allyPokemon != null) {
+          if (globalScene.currentBattle.double && party.length > 1 && allyPokemon != null) {
             if (slotIndex <= 1) {
               // Revived ally pokemon
               globalScene.phaseManager.unshiftNew(

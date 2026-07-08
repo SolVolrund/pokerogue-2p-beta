@@ -12,7 +12,12 @@ import {
 import { contestLayout, getContestLayoutSpriteObjects } from "#data/contests/contest-layout";
 import type { ContestLayoutObject } from "#data/contests/contest-layout";
 import { getContestSpectacularMove } from "#data/contests/contest-spectacular-moves";
-import { ContestJamProtection, type ContestParticipant, type ContestState } from "#data/contests/contest-state";
+import {
+  ContestJamProtection,
+  contestScoreToHearts,
+  type ContestParticipant,
+  type ContestState,
+} from "#data/contests/contest-state";
 import { ContestType, contestTypeData } from "#data/contests/contest-type";
 import { AnimBlendType, AnimFocus, AnimFrameTarget } from "#enums/move-anims-common";
 import { MoveId } from "#enums/move-id";
@@ -355,8 +360,8 @@ export class ContestUi {
     const changedContestants = contestState.getOrderedContestants()
       .map(contestant => ({
         id: contestant.id,
-        from: previousScores.get(contestant.id) ?? 0,
-        to: contestant.roundScore,
+        from: contestScoreToHearts(previousScores.get(contestant.id) ?? 0),
+        to: contestScoreToHearts(contestant.roundScore),
       }))
       .filter(change => change.from !== change.to);
 
@@ -1357,7 +1362,7 @@ function shouldShowBenchedAppealHeart(
     return false;
   }
 
-  const score = displayedRoundScores.get(contestant.id) ?? contestant.roundScore;
+  const score = displayedRoundScores.get(contestant.id) ?? contestScoreToHearts(contestant.roundScore);
   const isJammedHeart = label.includes("jammed") || key.endsWith("_jammed");
 
   if (isJammedHeart) {

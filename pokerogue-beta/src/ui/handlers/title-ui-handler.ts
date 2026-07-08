@@ -1,5 +1,5 @@
-import { pokerogueApi } from "#api/api";
 import { loggedInUser } from "#app/account";
+import type { PlayerIndex } from "#app/battle-scene";
 import { FAKE_TITLE_LOGO_CHANCE } from "#app/constants";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
@@ -28,14 +28,18 @@ export class TitleUiHandler extends OptionSelectUiHandler {
   private splashMessageText: Phaser.GameObjects.Text;
   private eventDisplay: TimedEventDisplay;
   private appVersionText: Phaser.GameObjects.Text;
-
-  private titleStatsTimer: NodeJS.Timeout | null;
+  private titleStatusTimer: NodeJS.Timeout | null;
 
   /**
    * Returns the username of logged in user. If the username is hidden, the trainer name based on gender will be displayed.
    * @returns The username of logged in user
    */
   private getUsername(): string {
+    const multiplayerName = this.getMultiplayerUsername();
+    if (multiplayerName) {
+      return i18next.t("menu:loggedInAs", { username: multiplayerName });
+    }
+
     const usernameReplacement = i18next.t(
       globalScene.gameData.gender === PlayerGender.FEMALE ? "trainerNames:playerF" : "trainerNames:playerM",
     );
@@ -47,8 +51,64 @@ export class TitleUiHandler extends OptionSelectUiHandler {
     return i18next.t("menu:loggedInAs", { username: displayName });
   }
 
+  private getMultiplayerUsername(): string | undefined {
+    if (!globalScene.twoPlayerMode) {
+      return undefined;
+    }
+
+    if (globalScene.twoPlayerComputerPartner) {
+      return "Player 1";
+    }
+
+    if (globalScene.twoPlayerLocalInputSeat === "both") {
+      return globalScene.multiplayerPlayerCount === 3 ? "Local Players 1-3" : "Local Players 1-2";
+    }
+
+    return globalScene.twoPlayerLocalInputSeat === 0
+      ? "Host / Player 1"
+      : `Player ${globalScene.twoPlayerLocalInputSeat + 1}`;
+  }
+
+  private getReadyPlayerCount(): number {
+    if (!globalScene.twoPlayerMode) {
+      return 1;
+    }
+
+    return globalScene
+      .getActivePlayerIndexes()
+      .filter(playerIndex => this.isPlayerReadyForTitle(playerIndex))
+      .length;
+  }
+
+  private isPlayerReadyForTitle(playerIndex: PlayerIndex): boolean {
+    return globalScene.isComputerPartnerPlayer(playerIndex) || !!globalScene.twoPlayerProfileSlotsReady[playerIndex];
+  }
+
+  private getSessionStatusText(): string {
+    if (!globalScene.twoPlayerMode) {
+      return "Local build";
+    }
+
+    const playerCount = globalScene.multiplayerPlayerCount;
+    if (globalScene.twoPlayerComputerPartner) {
+      const computerCount = globalScene
+        .getActivePlayerIndexes()
+        .filter(playerIndex => globalScene.isComputerPartnerPlayer(playerIndex))
+        .length;
+      const humanCount = playerCount - computerCount;
+      const cpuLabel = computerCount === 1 ? "CPU" : "CPUs";
+      return `${humanCount} player + ${computerCount} ${cpuLabel}`;
+    }
+
+    return `${this.getReadyPlayerCount()}/${playerCount} players ready`;
+  }
+
   updateUsername() {
     this.usernameLabel.setText(this.getUsername());
+  }
+
+  updateSessionStatus(): void {
+    this.playerCountLabel.setText(this.getSessionStatusText());
   }
 
   constructor(mode: UiMode = UiMode.TITLE) {
@@ -84,7 +144,7 @@ export class TitleUiHandler extends OptionSelectUiHandler {
     this.usernameLabel = addTextObject(labelPosX, 0, this.getUsername(), TextStyle.MESSAGE, { fontSize: "54px" }) // formatting
       .setOrigin(1, 0);
 
-    this.playerCountLabel = addTextObject(labelPosX, 0, `? ${i18next.t("menu:playersOnline")}`, TextStyle.MESSAGE, {
+    this.playerCountLabel = addTextObject(labelPosX, 0, this.getSessionStatusText(), TextStyle.MESSAGE, {
       // formatting
       fontSize: "54px",
     }).setOrigin(1, 0);
@@ -114,26 +174,6 @@ export class TitleUiHandler extends OptionSelectUiHandler {
       this.splashMessageText,
       this.appVersionText,
     ]);
-  }
-
-  updateTitleStats(): void {
-    pokerogueApi
-      .getGameTitleStats()
-      .then(stats => {
-        if (stats == null) {
-          return;
-        }
-        this.playerCountLabel.setText(`${stats.playerCount} ${i18next.t("menu:playersOnline")}`);
-        const splashMessage = this.splashMessage;
-        if (splashMessage === "splashMessages:battlesWon") {
-          this.splashMessageText.setText(i18next.t(splashMessage, { count: stats.battleCount }));
-        }
-      })
-      .catch(err => {
-        if (!isDev) {
-          console.error("Failed to fetch title stats:\n", err);
-        }
-      });
   }
 
   /** Used solely to display a random Pokémon name in a splash message. */
@@ -172,6 +212,7 @@ export class TitleUiHandler extends OptionSelectUiHandler {
     const windowHeight = this.getWindowHeight();
 
     this.updateUsername();
+    this.updateSessionStatus();
 
     // Moving username and player count to top of the menu
     // and sorting it, to display the shorter one on top
@@ -212,11 +253,11 @@ export class TitleUiHandler extends OptionSelectUiHandler {
     this.randomPokemon();
     this.genderSplash();
 
-    this.updateTitleStats();
-
-    this.titleStatsTimer = setInterval(() => {
-      this.updateTitleStats();
-    }, 60000);
+    this.titleStatusTimer && clearInterval(this.titleStatusTimer);
+    this.titleStatusTimer = setInterval(() => {
+      this.updateUsername();
+      this.updateSessionStatus();
+    }, 1000);
 
     globalScene.tweens.add({
       targets: [this.titleContainer, ui.getMessageHandler().bg],
@@ -234,9 +275,8 @@ export class TitleUiHandler extends OptionSelectUiHandler {
     const ui = this.getUi();
 
     this.eventDisplay?.clear();
-
-    this.titleStatsTimer && clearInterval(this.titleStatsTimer);
-    this.titleStatsTimer = null;
+    this.titleStatusTimer && clearInterval(this.titleStatusTimer);
+    this.titleStatusTimer = null;
 
     globalScene.tweens.add({
       targets: [this.titleContainer, ui.getMessageHandler().bg],

@@ -77,7 +77,16 @@ export interface ContestParticipantOptions {
 }
 
 const INTRO_JUDGING_SCORE_PER_HEART = 40;
+export const CONTEST_SCORE_PER_APPEAL_HEART = 10;
 const MAX_INTRO_JUDGING_HEARTS = 6;
+
+export function contestHeartsToScore(hearts: number): number {
+  return hearts * CONTEST_SCORE_PER_APPEAL_HEART;
+}
+
+export function contestScoreToHearts(score: number): number {
+  return score / CONTEST_SCORE_PER_APPEAL_HEART;
+}
 
 export class ContestState {
   public readonly contestType: ContestType;
@@ -143,8 +152,9 @@ export class ContestState {
 
   public recordAppeal(contestantId: ContestParticipantId, result: ContestAppealResult): void {
     const contestant = this.getContestant(contestantId);
-    contestant.roundScore += result.appeal - result.jam;
-    contestant.totalScore += result.appeal - result.jam;
+    const scoreDelta = contestHeartsToScore(result.appeal - result.jam);
+    contestant.roundScore += scoreDelta;
+    contestant.totalScore += scoreDelta;
     contestant.lastMoveId = result.moveId;
     contestant.moveHistory.push(result.moveId);
     contestant.repeatMoveCounts[result.moveId] = (contestant.repeatMoveCounts[result.moveId] ?? 0) + 1;
@@ -164,8 +174,9 @@ export class ContestState {
       return 0;
     }
 
-    contestant.roundScore -= appliedJam;
-    contestant.totalScore -= appliedJam;
+    const scoreDelta = contestHeartsToScore(appliedJam);
+    contestant.roundScore -= scoreDelta;
+    contestant.totalScore -= scoreDelta;
 
     return appliedJam;
   }

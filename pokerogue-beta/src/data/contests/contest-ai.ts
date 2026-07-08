@@ -12,6 +12,7 @@ import {
 import {
   ContestAppealOrderOverride,
   ContestJamProtection,
+  contestScoreToHearts,
   type ContestParticipant,
   type ContestState,
 } from "./contest-state";
@@ -140,10 +141,12 @@ function getExpectedAppeal(args: {
     case ContestSpectacularEffectBehavior.COPY_PREVIOUS_APPEALS:
       return Math.max(
         1,
-        Math.floor(previousContestants.reduce((total, other) => total + other.roundScore, 0) / 2) + 1,
+        Math.floor(
+          previousContestants.reduce((total, other) => total + contestScoreToHearts(other.roundScore), 0) / 2,
+        ) + 1,
       );
     case ContestSpectacularEffectBehavior.COPY_PREVIOUS_APPEAL:
-      return Math.max(1, (lastContestant?.roundScore ?? 0) + 1);
+      return Math.max(1, contestScoreToHearts(lastContestant?.roundScore ?? 0) + 1);
     case ContestSpectacularEffectBehavior.BETTER_LATER:
       return [1, 2, 4, 6][previousContestants.length] ?? moveData.appeal;
     case ContestSpectacularEffectBehavior.RANDOM_APPEAL:
@@ -154,10 +157,10 @@ function getExpectedAppeal(args: {
         ? 6
         : moveData.appeal;
     case ContestSpectacularEffectBehavior.BASED_ON_PREVIOUS_APPEAL:
-      if (!lastContestant || lastContestant.roundScore < 3) {
+      if (!lastContestant || contestScoreToHearts(lastContestant.roundScore) < 3) {
         return 6;
       }
-      return lastContestant.roundScore === 3 ? 3 : 0;
+      return contestScoreToHearts(lastContestant.roundScore) === 3 ? 3 : 0;
     case ContestSpectacularEffectBehavior.BETTER_IF_PUMPED:
       return getConditionAppeal(contestant.conditionStars);
     case ContestSpectacularEffectBehavior.BETTER_WITH_EXCITEMENT:
@@ -307,7 +310,7 @@ function getJamTargets(
     case ContestSpectacularEffectBehavior.STARTLE_HIGH_EXPECTATION:
       return previousContestants;
     case ContestSpectacularEffectBehavior.STARTLE_GOOD_APPEALS:
-      return previousContestants.filter(other => other.roundScore > 0);
+      return previousContestants.filter(other => contestScoreToHearts(other.roundScore) > 0);
     default:
       return contestState.currentRoundAppeals
         .filter(id => id !== contestant.id)
@@ -510,7 +513,7 @@ function getOpponentPressure(
   opponent: ContestParticipant,
 ): number {
   const totalGap = opponent.totalScore - contestant.totalScore;
-  const roundGap = opponent.roundScore - contestant.roundScore;
+  const roundGap = contestScoreToHearts(opponent.roundScore - contestant.roundScore);
 
   if (totalGap > 0) {
     return 1.25 + Math.min(1.25, totalGap / 10) + Math.max(0, roundGap) * 0.08;

@@ -1,5 +1,7 @@
 import type { InfoToggle } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
+import { getContestSpectacularEffect } from "#data/contests/contest-spectacular-effects";
+import { getContestSpectacularMove } from "#data/contests/contest-spectacular-moves";
 import { MoveCategory } from "#enums/move-category";
 import { PokemonType } from "#enums/pokemon-type";
 import { TextStyle } from "#enums/text-style";
@@ -45,12 +47,16 @@ export class MoveInfoOverlay extends Phaser.GameObjects.Container implements Inf
   private descScroll: Phaser.Tweens.Tween | null = null;
 
   private val: Phaser.GameObjects.Container;
+  private ppLabel: Phaser.GameObjects.Text;
   private pp: Phaser.GameObjects.Text;
+  private powLabel: Phaser.GameObjects.Text;
   private pow: Phaser.GameObjects.Text;
+  private accLabel: Phaser.GameObjects.Text;
   private acc: Phaser.GameObjects.Text;
   private typ: Phaser.GameObjects.Sprite;
   private cat: Phaser.GameObjects.Sprite;
   private descBg: Phaser.GameObjects.NineSlice;
+  private contestMode = false;
 
   private options: MoveInfoOverlaySettings;
 
@@ -131,28 +137,28 @@ export class MoveInfoOverlay extends Phaser.GameObjects.Container implements Inf
     this.cat = globalScene.add.sprite(57, EFF_HEIGHT - 35, "categories", "physical");
     this.val.add(this.cat);
 
-    const ppTxt = addTextObject(12, EFF_HEIGHT - 25, "PP", TextStyle.MOVE_INFO_CONTENT);
-    ppTxt.setOrigin(0.0, 0.5);
-    ppTxt.setText(i18next.t("fightUiHandler:pp"));
-    this.val.add(ppTxt);
+    this.ppLabel = addTextObject(12, EFF_HEIGHT - 25, "PP", TextStyle.MOVE_INFO_CONTENT);
+    this.ppLabel.setOrigin(0.0, 0.5);
+    this.ppLabel.setText(i18next.t("fightUiHandler:pp"));
+    this.val.add(this.ppLabel);
 
     this.pp = addTextObject(70, EFF_HEIGHT - 25, "--", TextStyle.MOVE_INFO_CONTENT);
     this.pp.setOrigin(1, 0.5);
     this.val.add(this.pp);
 
-    const powTxt = addTextObject(12, EFF_HEIGHT - 17, "POWER", TextStyle.MOVE_INFO_CONTENT);
-    powTxt.setOrigin(0.0, 0.5);
-    powTxt.setText(i18next.t("fightUiHandler:power"));
-    this.val.add(powTxt);
+    this.powLabel = addTextObject(12, EFF_HEIGHT - 17, "POWER", TextStyle.MOVE_INFO_CONTENT);
+    this.powLabel.setOrigin(0.0, 0.5);
+    this.powLabel.setText(i18next.t("fightUiHandler:power"));
+    this.val.add(this.powLabel);
 
     this.pow = addTextObject(70, EFF_HEIGHT - 17, "---", TextStyle.MOVE_INFO_CONTENT);
     this.pow.setOrigin(1, 0.5);
     this.val.add(this.pow);
 
-    const accTxt = addTextObject(12, EFF_HEIGHT - 9, "ACC", TextStyle.MOVE_INFO_CONTENT);
-    accTxt.setOrigin(0.0, 0.5);
-    accTxt.setText(i18next.t("fightUiHandler:accuracy"));
-    this.val.add(accTxt);
+    this.accLabel = addTextObject(12, EFF_HEIGHT - 9, "ACC", TextStyle.MOVE_INFO_CONTENT);
+    this.accLabel.setOrigin(0.0, 0.5);
+    this.accLabel.setText(i18next.t("fightUiHandler:accuracy"));
+    this.val.add(this.accLabel);
 
     this.acc = addTextObject(70, EFF_HEIGHT - 9, "---", TextStyle.MOVE_INFO_CONTENT);
     this.acc.setOrigin(1, 0.5);
@@ -171,17 +177,38 @@ export class MoveInfoOverlay extends Phaser.GameObjects.Container implements Inf
   }
 
   // show this component with infos for the specific move
-  show(move: Move): boolean {
+  show(move: Move, contestMode = this.contestMode): boolean {
     if (!globalScene.enableMoveInfo) {
       return false; // move infos have been disabled // TODO:: is `false` correct? i used to be `undeefined`
     }
-    this.pow.setText(move.power >= 0 ? move.power.toString() : "---");
-    this.acc.setText(move.accuracy >= 0 ? move.accuracy.toString() : "---");
+    this.setContestMode(contestMode);
     this.pp.setText(move.pp >= 0 ? move.pp.toString() : "---");
-    this.typ.setTexture(getLocalizedSpriteKey("types"), PokemonType[move.type].toLowerCase());
-    this.cat.setFrame(MoveCategory[move.category].toLowerCase());
 
-    this.desc.setText(move?.effect || "");
+    if (this.contestMode) {
+      const contestMove = getContestSpectacularMove(move.id);
+      this.pow.setText(contestMove ? contestMove.appeal.toString() : "---");
+      this.acc.setText(contestMove ? contestMove.jam.toString() : "---");
+      this.cat.setVisible(false);
+
+      if (contestMove) {
+        this.typ.setTexture("contest_attributes_tags", contestMove.contestType);
+        this.typ.setScale(0.8);
+        this.typ.setVisible(true);
+        this.desc.setText(getContestSpectacularEffect(contestMove.effectId).flavorText);
+      } else {
+        this.typ.setVisible(false);
+        this.desc.setText(i18next.t("pokemonSummary:noContestEffectData", { defaultValue: "No contest effect data." }));
+      }
+    } else {
+      this.pow.setText(move.power >= 0 ? move.power.toString() : "---");
+      this.acc.setText(move.accuracy >= 0 ? move.accuracy.toString() : "---");
+      this.typ.setTexture(getLocalizedSpriteKey("types"), PokemonType[move.type].toLowerCase());
+      this.typ.setScale(0.8);
+      this.typ.setVisible(true);
+      this.cat.setVisible(true);
+      this.cat.setFrame(MoveCategory[move.category].toLowerCase());
+      this.desc.setText(move?.effect || "");
+    }
 
     // stop previous scrolling effects and reset y position
     if (this.descScroll) {
@@ -209,6 +236,20 @@ export class MoveInfoOverlay extends Phaser.GameObjects.Container implements Inf
     }
     this.active = true;
     return true;
+  }
+
+  setContestMode(contestMode: boolean): void {
+    this.contestMode = contestMode;
+    this.ppLabel.setVisible(!contestMode);
+    this.pp.setVisible(!contestMode);
+    this.powLabel.setText(
+      contestMode ? i18next.t("pokemonSummary:contestAppeal", { defaultValue: "Appeal" }) : i18next.t("fightUiHandler:power"),
+    );
+    this.accLabel.setText(
+      contestMode
+        ? i18next.t("pokemonSummary:contestJamming", { defaultValue: "Jamming" })
+        : i18next.t("fightUiHandler:accuracy"),
+    );
   }
 
   clear() {

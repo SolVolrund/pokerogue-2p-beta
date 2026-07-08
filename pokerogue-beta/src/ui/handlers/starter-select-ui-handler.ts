@@ -15,6 +15,7 @@ import {
   POKERUS_STARTER_COUNT,
 } from "#balance/starters";
 import { allAbilities, allMoves } from "#data/data-lists";
+import { getContestSpectacularMove } from "#data/contests/contest-spectacular-moves";
 import { Egg } from "#data/egg";
 import { GrowthRate, getGrowthRateColor } from "#data/exp";
 import { Gender, getGenderColor, getGenderSymbol } from "#data/gender";
@@ -53,6 +54,7 @@ import { DropDown, DropDownLabel, DropDownOption, DropDownState, DropDownType, S
 import { FilterBar } from "#ui/filter-bar";
 import { MessageUiHandler } from "#ui/message-ui-handler";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
+import type { Move } from "#moves/move";
 import { PokemonIconAnimHelper, PokemonIconAnimMode } from "#ui/pokemon-icon-anim-helper";
 import { ScrollBar } from "#ui/scroll-bar";
 import { StarterContainer } from "#ui/starter-container";
@@ -2037,12 +2039,12 @@ export class StarterSelectUiHandler extends MessageUiHandler {
           );
           if (this.speciesStarterMoves.length > 1) {
             // this lets you change the pokemon moves
-            const showSwapOptions = (moveset: StarterMoveset) => {
+            const showSwapOptions = (moveset: StarterMoveset, contestMoveInfoVisible = false) => {
               this.blockInput = true;
 
               ui.setMode(UiMode.STARTER_SELECT).then(() => {
                 ui.showText(i18next.t("starterSelectUiHandler:selectMoveSwapOut"), null, () => {
-                  this.moveInfoOverlay.show(allMoves[moveset[0]]);
+                  this.moveInfoOverlay.show(allMoves[moveset[0]], contestMoveInfoVisible);
 
                   ui.setModeWithoutClear(UiMode.OPTION_SELECT, {
                     options: moveset
@@ -2057,7 +2059,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
                                 null,
                                 () => {
                                   const possibleMoves = this.speciesStarterMoves.filter((sm: MoveId) => sm !== m);
-                                  this.moveInfoOverlay.show(allMoves[possibleMoves[0]]);
+                                  this.moveInfoOverlay.show(allMoves[possibleMoves[0]], contestMoveInfoVisible);
 
                                   ui.setModeWithoutClear(UiMode.OPTION_SELECT, {
                                     options: possibleMoves
@@ -2067,11 +2069,11 @@ export class StarterSelectUiHandler extends MessageUiHandler {
                                           label: allMoves[sm].name,
                                           handler: () => {
                                             this.switchMoveHandler(i, sm, m);
-                                            showSwapOptions(this.starterMoveset!); // TODO: is this bang correct?
+                                            showSwapOptions(this.starterMoveset!, contestMoveInfoVisible); // TODO: is this bang correct?
                                             return true;
                                           },
                                           onHover: () => {
-                                            this.moveInfoOverlay.show(allMoves[sm]);
+                                            this.moveInfoOverlay.show(allMoves[sm], contestMoveInfoVisible);
                                           },
                                         };
                                         return option;
@@ -2079,7 +2081,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
                                       .concat({
                                         label: i18next.t("menu:cancel"),
                                         handler: () => {
-                                          showSwapOptions(this.starterMoveset!); // TODO: is this bang correct?
+                                          showSwapOptions(this.starterMoveset!, contestMoveInfoVisible); // TODO: is this bang correct?
                                           return true;
                                         },
                                         onHover: () => {
@@ -2097,10 +2099,22 @@ export class StarterSelectUiHandler extends MessageUiHandler {
                             return true;
                           },
                           onHover: () => {
-                            this.moveInfoOverlay.show(allMoves[m]);
+                            this.moveInfoOverlay.show(allMoves[m], contestMoveInfoVisible);
                           },
                         };
                         return option;
+                      })
+                      .concat({
+                        label: contestMoveInfoVisible
+                          ? i18next.t("starterSelectUiHandler:battleMoveInfo")
+                          : i18next.t("starterSelectUiHandler:contestMoveInfo"),
+                        handler: () => {
+                          showSwapOptions(moveset, !contestMoveInfoVisible);
+                          return true;
+                        },
+                        onHover: () => {
+                          this.moveInfoOverlay.clear();
+                        },
                       })
                       .concat({
                         label: i18next.t("menu:cancel"),
@@ -3624,7 +3638,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     if (this.statsMode) {
       if (this.speciesStarterDexEntry?.caughtAttr) {
         this.statsContainer.setVisible(true);
-        this.showStats(this.statsViewMode);
+        this.showStats(this.statsViewMode, species);
       } else {
         this.statsContainer.setVisible(false);
         this.statsContainer.updateIvs(null);
@@ -4273,7 +4287,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
 
     for (let m = 0; m < 4; m++) {
       const move = m < this.starterMoveset.length ? allMoves[this.starterMoveset[m]] : null;
-      this.pokemonMoveBgs[m].setFrame(PokemonType[move ? move.type : PokemonType.UNKNOWN].toString().toLowerCase());
+      this.updateStarterMoveBg(this.pokemonMoveBgs[m], move);
       this.pokemonMoveLabels[m].setText(move ? move.name : "-");
       this.pokemonMoveContainers[m].setVisible(!!move);
     }
@@ -4290,9 +4304,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
         ? allMoves[speciesEggMoves[species.speciesId as keyof typeof speciesEggMoves][em]]
         : null;
       const eggMoveUnlocked = eggMove && eggMoves & (1 << em);
-      this.pokemonEggMoveBgs[em].setFrame(
-        PokemonType[eggMove ? eggMove.type : PokemonType.UNKNOWN].toString().toLowerCase(),
-      );
+      this.updateStarterMoveBg(this.pokemonEggMoveBgs[em], eggMove);
       this.pokemonEggMoveLabels[em].setText(eggMove && eggMoveUnlocked ? eggMove.name : "???");
     }
 
@@ -4321,6 +4333,33 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       this.type2Icon.setVisible(false);
     } else {
       this.type2Icon.setVisible(true).setFrame(PokemonType[type2].toLowerCase());
+    }
+  }
+
+  private updateStarterMoveBg(moveBg: Phaser.GameObjects.NineSlice, move: Move | null): void {
+    if (this.statsMode && this.statsViewMode === StarterStatsViewMode.CONDITIONS) {
+      const contestMove = move ? getContestSpectacularMove(move.id) : undefined;
+      moveBg.setTexture("contest_type_bgs", contestMove?.contestType ?? "unknown");
+      return;
+    }
+
+    moveBg.setTexture("type_bgs", PokemonType[move ? move.type : PokemonType.UNKNOWN].toString().toLowerCase());
+  }
+
+  private updateStarterMoveBgs(): void {
+    for (let m = 0; m < 4; m++) {
+      const move = this.starterMoveset && m < this.starterMoveset.length ? allMoves[this.starterMoveset[m]] : null;
+      this.updateStarterMoveBg(this.pokemonMoveBgs[m], move);
+    }
+
+    const species = this.lastSpecies;
+    const hasEggMoves = species && Object.hasOwn(speciesEggMoves, species.speciesId);
+
+    for (let em = 0; em < 4; em++) {
+      const eggMove = hasEggMoves
+        ? allMoves[speciesEggMoves[species.speciesId as keyof typeof speciesEggMoves][em]]
+        : null;
+      this.updateStarterMoveBg(this.pokemonEggMoveBgs[em], eggMove);
     }
   }
 
@@ -4694,18 +4733,19 @@ export class StarterSelectUiHandler extends MessageUiHandler {
         && !globalScene.gameMode.hasChallenge(Challenges.FRESH_START);
       this.updateInstructions();
     }
+    this.updateStarterMoveBgs();
   }
 
-  showStats(viewMode = this.statsViewMode): void {
+  showStats(viewMode = this.statsViewMode, species: PokemonSpecies | null = this.lastSpecies): void {
     if (!this.speciesStarterDexEntry) {
       return;
     }
 
     this.statsContainer.setVisible(true);
 
-    if (viewMode === StarterStatsViewMode.CONDITIONS && this.lastSpecies) {
+    if (viewMode === StarterStatsViewMode.CONDITIONS && species) {
       this.statsContainer.updateContestStats(
-        globalScene.gameData.getSpeciesDexContestStats(this.lastSpecies.speciesId),
+        globalScene.gameData.getSpeciesDexContestStats(species.speciesId),
       );
     } else {
       this.statsContainer.updateIvs(this.speciesStarterDexEntry.ivs);

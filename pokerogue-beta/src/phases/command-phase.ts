@@ -450,7 +450,7 @@ export class CommandPhase extends FieldPhase {
     // If we somehow are attempting to check the right pokemon but there's only one pokemon out
     // Switch back to the center pokemon. This can happen rarely in double battles with mid turn switching
     // TODO: Prevent this from happening in the first place
-    if (globalScene.getPlayerField().filter(p => p.isActive()).length === 1) {
+    if (!globalScene.twoPlayerMode && globalScene.getPlayerField().filter(p => p.isActive()).length === 1) {
       this.fieldIndex = FieldPosition.CENTER;
       return;
     }

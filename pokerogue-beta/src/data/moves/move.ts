@@ -7412,11 +7412,12 @@ export class RevivalBlessingAttr extends MoveEffectAttr {
   }
 
   getCondition(): MoveConditionFunc {
-    return (user, _target, _move) =>
-      user.hasTrainer()
-      && (user.isPlayer() ? globalScene.getPlayerParty() : globalScene.getEnemyParty()).some(
-        (p: Pokemon) => p.isFainted() && !p.isBoss(),
-      );
+    return (user, _target, _move) => {
+      const playerIndex = user.isPlayer() ? globalScene.getPlayerIndexForPokemon(user) : undefined;
+      const party =
+        user.isPlayer() && playerIndex !== undefined ? globalScene.getPlayerParty(playerIndex) : globalScene.getEnemyParty();
+      return user.hasTrainer() && party.some((p: Pokemon) => p.isFainted() && !p.isBoss());
+    };
   }
 
   override getUserBenefitScore(user: Pokemon, _target: Pokemon, _move: Move): number {

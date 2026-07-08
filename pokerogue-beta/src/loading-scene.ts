@@ -111,6 +111,7 @@ export class LoadingScene extends SceneBase {
       .loadImage("cursor_tera", "ui")
       .loadImage("type_tera", "ui")
       .loadAtlas("type_bgs", "ui")
+      .loadAtlas("contest_type_bgs", "ui")
       .loadAtlas("button_tera", "ui")
       .loadImage("common_egg", "ui")
       .loadImage("normal_memory", "ui")
