@@ -1378,8 +1378,8 @@ export class SummaryUiHandler extends UiHandler {
     }
   }
 
-  private getContestStatValue(_contestType: ContestType): number {
-    return 0;
+  private getContestStatValue(contestType: ContestType): number {
+    return this.pokemon ? globalScene.gameData.getPokemonContestStat(this.pokemon, contestType) : 0;
   }
 
   private cycleStatsViewMode(): void {

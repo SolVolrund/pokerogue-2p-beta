@@ -137,6 +137,24 @@ export const PLAYER_GIRL_TRAINER_SPRITES: PlayerTrainerSprite[] = [
   PlayerTrainerSprite.MIRA,
 ];
 
+const PLAYER_TRAINER_FRONT_SPRITE_KEYS: Record<PlayerTrainerSprite, string> = {
+  [PlayerTrainerSprite.BASE_BOY]: "unknown_m",
+  [PlayerTrainerSprite.BASE_GIRL]: "unknown_f",
+  [PlayerTrainerSprite.BUCK]: "buck",
+  [PlayerTrainerSprite.CHERYL]: "cheryl",
+  [PlayerTrainerSprite.DAWN_DP]: "dawn_dp",
+  [PlayerTrainerSprite.DAWN_PT]: "dawn_pt",
+  [PlayerTrainerSprite.DAWN_ZORUA]: "dawn_zorua",
+  [PlayerTrainerSprite.ETHAN]: "ethan",
+  [PlayerTrainerSprite.LUCAS_DP]: "lucas_dp",
+  [PlayerTrainerSprite.LUCAS_PT]: "lucas_pt",
+  [PlayerTrainerSprite.LYRA]: "lyra",
+  [PlayerTrainerSprite.MARLEY]: "marley",
+  [PlayerTrainerSprite.MIRA]: "mira",
+  [PlayerTrainerSprite.RILEY]: "riley",
+  [PlayerTrainerSprite.SILVER]: "silver",
+};
+
 export function getPlayerTrainerSpriteOption(sprite: PlayerTrainerSprite): PlayerTrainerSpriteOption {
   return PLAYER_TRAINER_SPRITE_OPTIONS[sprite] ?? PLAYER_TRAINER_SPRITE_OPTIONS[PlayerTrainerSprite.BASE_BOY];
 }
@@ -152,6 +170,10 @@ export function getPlayerTrainerSpriteName(sprite: PlayerTrainerSprite): string 
 export function getPlayerTrainerSpriteBackTextureKey(sprite: PlayerTrainerSprite, pokeball = false): string {
   const atlasKey = getPlayerTrainerSpriteOption(sprite).atlasKey;
   return `${atlasKey}${pokeball ? "_pb" : ""}`;
+}
+
+export function getPlayerTrainerSpriteFrontTextureKey(sprite: PlayerTrainerSprite): string {
+  return PLAYER_TRAINER_FRONT_SPRITE_KEYS[sprite] ?? PLAYER_TRAINER_FRONT_SPRITE_KEYS[PlayerTrainerSprite.BASE_BOY];
 }
 
 export function getPlayerTrainerSpriteYOffset(sprite: PlayerTrainerSprite): number {

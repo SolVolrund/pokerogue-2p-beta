@@ -1606,7 +1606,7 @@ export class BattleScene extends SceneBase {
   }
 
   public getBattleFieldSlotCount(): number {
-    return this.twoPlayerMode ? this.getPlayerFieldOwners().length : this.currentBattle?.getBattlerCount() ?? 1;
+    return this.twoPlayerMode ? this.getPlayerFieldOwners().length : this.currentBattle?.double ? 2 : 1;
   }
 
   public getPlayerBattlerIndex(fieldIndex: number): BattlerIndex {

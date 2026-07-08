@@ -9,6 +9,8 @@ import { FusionSpeciesFormEvolution } from "#balance/pokemon-evolutions";
 import { FRIENDSHIP_GAIN_FROM_RARE_CANDY } from "#balance/starters";
 import { getBerryEffectFunc, getBerryPredicate } from "#data/berry";
 import { allMoves, modifierTypes } from "#data/data-lists";
+import { CONTEST_STAT_MAX, type PartialContestStats } from "#data/contests/contest-stats";
+import { CONTEST_TYPES } from "#data/contests/contest-type";
 import { getLevelTotalExp } from "#data/exp";
 import { SpeciesFormChangeItemTrigger, SpeciesFormChangeManualTrigger } from "#data/form-change-triggers";
 import { MAX_PER_TYPE_POKEBALLS } from "#data/pokeball";
@@ -2420,6 +2422,43 @@ export class PokemonNatureChangeModifier extends ConsumablePokemonModifier {
   }
 }
 
+export class PokeblockModifier extends ConsumablePokemonModifier {
+  private statGains: PartialContestStats;
+
+  constructor(type: ModifierType, pokemonId: number, statGains: PartialContestStats) {
+    super(type, pokemonId);
+
+    this.statGains = { ...statGains };
+  }
+
+  override shouldApply(playerPokemon?: PlayerPokemon): boolean {
+    if (!super.shouldApply(playerPokemon) || !playerPokemon) {
+      return false;
+    }
+
+    const playerIndex = globalScene.getPlayerIndexForPokemon(playerPokemon) ?? globalScene.activePlayerIndex;
+    const contestStats = globalScene.getPlayerGameData(playerIndex).getPokemonContestStats(playerPokemon);
+
+    return CONTEST_TYPES.some(contestType => {
+      const amount = this.statGains[contestType] ?? 0;
+      return amount > 0 && contestStats[contestType] < CONTEST_STAT_MAX;
+    });
+  }
+
+  override apply(playerPokemon: PlayerPokemon): boolean {
+    const playerIndex = globalScene.getPlayerIndexForPokemon(playerPokemon) ?? globalScene.activePlayerIndex;
+    const changed = globalScene
+      .getPlayerGameData(playerIndex)
+      .addSpeciesDexContestStats(playerPokemon.species.speciesId, this.statGains);
+
+    if (changed) {
+      globalScene.savePlayerSystemSaveLocal(playerIndex);
+    }
+
+    return changed;
+  }
+}
+
 export class PokemonLevelIncrementModifier extends ConsumablePokemonModifier {
   /**
    * Applies {@linkcode PokemonLevelIncrementModifier}
@@ -3708,6 +3747,27 @@ export class IvScannerModifier extends PersistentModifier {
   }
 }
 
+export class PokeblockKitModifier extends PersistentModifier {
+  static readonly CHANCE_PER_STACK = 15;
+
+  match(modifier: Modifier): boolean {
+    return modifier instanceof PokeblockKitModifier;
+  }
+
+  clone(): PokeblockKitModifier {
+    return new PokeblockKitModifier(this.type, this.stackCount);
+  }
+
+  override apply(chance: NumberHolder): boolean {
+    chance.value += this.getStackCount() * PokeblockKitModifier.CHANCE_PER_STACK;
+    return true;
+  }
+
+  getMaxStackCount(): number {
+    return 5;
+  }
+}
+
 export class ExtraModifierModifier extends PersistentModifier {
   match(modifier: Modifier): boolean {
     return modifier instanceof ExtraModifierModifier;
@@ -4222,6 +4282,7 @@ const ModifierClassMap = Object.freeze({
   PokemonAllMovePpRestoreModifier,
   PokemonPpUpModifier,
   PokemonNatureChangeModifier,
+  PokeblockModifier,
   PokemonLevelIncrementModifier,
   TmModifier,
   RememberMoveModifier,
@@ -4253,6 +4314,7 @@ const ModifierClassMap = Object.freeze({
   TurnHeldItemTransferModifier,
   ContactHeldItemTransferChanceModifier,
   IvScannerModifier,
+  PokeblockKitModifier,
   ExtraModifierModifier,
   TempExtraModifierModifier,
   EnemyPersistentModifier,

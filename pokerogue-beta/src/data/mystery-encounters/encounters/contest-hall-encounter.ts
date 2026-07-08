@@ -15,6 +15,7 @@ import { ContestType, contestTypeData } from "#data/contests/contest-type";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
+import { getPlayerTrainerSpriteFrontTextureKey } from "#enums/player-trainer-sprite";
 import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import { showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
@@ -33,10 +34,10 @@ import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
+import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import { updateWindowType } from "#ui/ui-theme";
 import { randSeedInt } from "#utils/common";
 import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
-import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import i18next from "i18next";
 
 const namespace = "mysteryEncounters/contestHall";
@@ -478,6 +479,7 @@ function storeContestPlayerPokemon(playerIndex: PlayerIndex, pokemon: PlayerPoke
     playerIndex,
     playerName: getContestPlayerName(playerIndex),
     pokemon,
+    spriteKey: getPlayerTrainerSpriteFrontTextureKey(globalScene.getTrainerSprite(playerIndex)),
   });
 }
 

@@ -7,6 +7,8 @@ import { activeOverrides } from "#app/overrides";
 import { EvolutionItem } from "#balance/pokemon-evolutions";
 import { tmPoolTiers } from "#balance/tm-pool-tiers";
 import { getBerryEffectDescription, getBerryName } from "#data/berry";
+import { CONTEST_TYPES, ContestType, contestTypeData } from "#data/contests/contest-type";
+import { CONTEST_STAT_MAX, type PartialContestStats } from "#data/contests/contest-stats";
 import { getDailyEventSeedLuck } from "#data/daily-seed/daily-run";
 import { allMoves, modifierTypes } from "#data/data-lists";
 import { SpeciesFormChangeItemTrigger } from "#data/form-change-triggers";
@@ -98,6 +100,8 @@ import {
   PokemonNatureWeightModifier,
   PokemonPpRestoreModifier,
   PokemonPpUpModifier,
+  PokeblockKitModifier,
+  PokeblockModifier,
   PokemonStatusHealModifier,
   PreserveBerryModifier,
   RememberMoveModifier,
@@ -776,6 +780,46 @@ export class RememberMoveModifierType extends PokemonModifierType {
       },
       group,
     );
+  }
+}
+
+export class PokeblockModifierType extends PokemonModifierType {
+  private statGains: PartialContestStats;
+
+  constructor(localeKey: string, iconImage: string, statGains: PartialContestStats) {
+    super(
+      localeKey,
+      iconImage,
+      (type, args) => new PokeblockModifier(type, (args[0] as PlayerPokemon).id, this.statGains),
+      (pokemon: PlayerPokemon) => {
+        const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.activePlayerIndex;
+        const contestStats = globalScene.getPlayerGameData(playerIndex).getPokemonContestStats(pokemon);
+        const hasRoomForGain = CONTEST_TYPES.some(contestType => {
+          const amount = this.statGains[contestType] ?? 0;
+          return amount > 0 && contestStats[contestType] < CONTEST_STAT_MAX;
+        });
+
+        return hasRoomForGain ? null : PartyUiHandler.NoEffectMessage;
+      },
+      "pokeblock",
+    );
+
+    this.statGains = { ...statGains };
+  }
+
+  getDescription(): string {
+    const boostedTypes = CONTEST_TYPES.filter(contestType => (this.statGains[contestType] ?? 0) > 0);
+    const amount = boostedTypes.length > 0 ? (this.statGains[boostedTypes[0]] ?? 0) : 0;
+
+    if (boostedTypes.length === CONTEST_TYPES.length) {
+      return i18next.t("modifierType:ModifierType.PokeblockModifierType.descriptionAll", { amount });
+    }
+
+    const contestType = boostedTypes[0] ?? ContestType.COOL;
+    return i18next.t("modifierType:ModifierType.PokeblockModifierType.description", {
+      amount,
+      condition: contestTypeData[contestType].name,
+    });
   }
 }
 
@@ -1971,6 +2015,69 @@ const modifierTypeInitObj = Object.freeze({
   PP_UP: () => new PokemonPpUpModifierType("modifierType:ModifierType.PP_UP", "pp_up", 1),
   PP_MAX: () => new PokemonPpUpModifierType("modifierType:ModifierType.PP_MAX", "pp_max", 3),
 
+  POKEBLOCK_KIT: () =>
+    new ModifierType(
+      "modifierType:ModifierType.POKEBLOCK_KIT",
+      "pokeblock_kit_smaller",
+      (type, _args) => new PokeblockKitModifier(type),
+    ),
+  POKEBLOCK_RED: () =>
+    new PokeblockModifierType("modifierType:ModifierType.POKEBLOCK_RED", "pokeblock_red", {
+      [ContestType.COOL]: 5,
+    }),
+  POKEBLOCK_BLUE: () =>
+    new PokeblockModifierType("modifierType:ModifierType.POKEBLOCK_BLUE", "pokeblock_blue", {
+      [ContestType.BEAUTY]: 5,
+    }),
+  POKEBLOCK_GREEN: () =>
+    new PokeblockModifierType("modifierType:ModifierType.POKEBLOCK_GREEN", "pokeblock_green", {
+      [ContestType.SMART]: 5,
+    }),
+  POKEBLOCK_YELLOW: () =>
+    new PokeblockModifierType("modifierType:ModifierType.POKEBLOCK_YELLOW", "pokeblock_yellow", {
+      [ContestType.TOUGH]: 5,
+    }),
+  POKEBLOCK_PINK: () =>
+    new PokeblockModifierType("modifierType:ModifierType.POKEBLOCK_PINK", "pokeblock_pink", {
+      [ContestType.CUTE]: 5,
+    }),
+  POKEBLOCK_RED_PLUS: () =>
+    new PokeblockModifierType("modifierType:ModifierType.POKEBLOCK_RED_PLUS", "pokeblock_red_plus", {
+      [ContestType.COOL]: 10,
+    }),
+  POKEBLOCK_BLUE_PLUS: () =>
+    new PokeblockModifierType("modifierType:ModifierType.POKEBLOCK_BLUE_PLUS", "pokeblock_blue_plus", {
+      [ContestType.BEAUTY]: 10,
+    }),
+  POKEBLOCK_GREEN_PLUS: () =>
+    new PokeblockModifierType("modifierType:ModifierType.POKEBLOCK_GREEN_PLUS", "pokeblock_green_plus", {
+      [ContestType.SMART]: 10,
+    }),
+  POKEBLOCK_YELLOW_PLUS: () =>
+    new PokeblockModifierType("modifierType:ModifierType.POKEBLOCK_YELLOW_PLUS", "pokeblock_yellow_plus", {
+      [ContestType.TOUGH]: 10,
+    }),
+  POKEBLOCK_PINK_PLUS: () =>
+    new PokeblockModifierType("modifierType:ModifierType.POKEBLOCK_PINK_PLUS", "pokeblock_pink_plus", {
+      [ContestType.CUTE]: 10,
+    }),
+  POKEBLOCK_RAINBOW: () =>
+    new PokeblockModifierType("modifierType:ModifierType.POKEBLOCK_RAINBOW", "pokeblock_rainbow", {
+      [ContestType.COOL]: 5,
+      [ContestType.BEAUTY]: 5,
+      [ContestType.CUTE]: 5,
+      [ContestType.SMART]: 5,
+      [ContestType.TOUGH]: 5,
+    }),
+  POKEBLOCK_RAINBOW_PLUS: () =>
+    new PokeblockModifierType("modifierType:ModifierType.POKEBLOCK_RAINBOW_PLUS", "pokeblock_rainbow_plus", {
+      [ContestType.COOL]: 10,
+      [ContestType.BEAUTY]: 10,
+      [ContestType.CUTE]: 10,
+      [ContestType.SMART]: 10,
+      [ContestType.TOUGH]: 10,
+    }),
+
   /*REPEL: () => new DoubleBattleChanceBoosterModifierType('Repel', 5),
   SUPER_REPEL: () => new DoubleBattleChanceBoosterModifierType('Super Repel', 10),
   MAX_REPEL: () => new DoubleBattleChanceBoosterModifierType('Max Repel', 25),*/
@@ -3067,6 +3174,63 @@ export function getLuckTextTint(luckValue: number): number {
 
 export function initModifierTypes() {
   Object.assign(modifierTypes, modifierTypeInitObj);
+}
+
+const POKEBLOCK_MODIFIER_TYPES_BY_TIER: Record<ModifierTier.COMMON | ModifierTier.GREAT | ModifierTier.ULTRA | ModifierTier.ROGUE, ModifierTypeFunc[]> = {
+  [ModifierTier.COMMON]: [
+    modifierTypeInitObj.POKEBLOCK_RED,
+    modifierTypeInitObj.POKEBLOCK_BLUE,
+    modifierTypeInitObj.POKEBLOCK_GREEN,
+    modifierTypeInitObj.POKEBLOCK_YELLOW,
+    modifierTypeInitObj.POKEBLOCK_PINK,
+  ],
+  [ModifierTier.GREAT]: [
+    modifierTypeInitObj.POKEBLOCK_RED_PLUS,
+    modifierTypeInitObj.POKEBLOCK_BLUE_PLUS,
+    modifierTypeInitObj.POKEBLOCK_GREEN_PLUS,
+    modifierTypeInitObj.POKEBLOCK_YELLOW_PLUS,
+    modifierTypeInitObj.POKEBLOCK_PINK_PLUS,
+  ],
+  [ModifierTier.ULTRA]: [modifierTypeInitObj.POKEBLOCK_RAINBOW],
+  [ModifierTier.ROGUE]: [modifierTypeInitObj.POKEBLOCK_RAINBOW_PLUS],
+};
+
+export function getPokeblockModifierTypeOption(
+  party: PlayerPokemon[],
+  allowLuckUpgrades = true,
+): ModifierTypeOption {
+  const tierValue = randSeedInt(1024);
+  let upgradeCount = 0;
+
+  if (tierValue && allowLuckUpgrades) {
+    const partyLuckValue = getPartyLuckValue(party);
+    const upgradeOdds = Math.floor(128 / ((partyLuckValue + 4) / 4));
+    while (randSeedInt(upgradeOdds) < 4) {
+      upgradeCount++;
+    }
+  }
+
+  let tier: ModifierTier;
+  if (tierValue > 255) {
+    tier = ModifierTier.COMMON;
+  } else if (tierValue > 60) {
+    tier = ModifierTier.GREAT;
+  } else if (tierValue > 12) {
+    tier = ModifierTier.ULTRA;
+  } else {
+    tier = ModifierTier.ROGUE;
+  }
+
+  const upgradedTier = Math.min(tier + upgradeCount, ModifierTier.ROGUE) as
+    | ModifierTier.COMMON
+    | ModifierTier.GREAT
+    | ModifierTier.ULTRA
+    | ModifierTier.ROGUE;
+  const modifierTypeFunc = randSeedItem(POKEBLOCK_MODIFIER_TYPES_BY_TIER[upgradedTier]);
+  const modifierType = modifierTypeFunc().withIdFromFunc(modifierTypeFunc);
+  modifierType.setTier(upgradedTier);
+
+  return new ModifierTypeOption(modifierType, Math.max(0, upgradedTier - tier));
 }
 
 // TODO: If necessary, add the rest of the modifier types here.

@@ -3,6 +3,7 @@ import { AnimConfig, initMoveAnim, loadMoveAnimAssets, moveAnims } from "#data/b
 import { allMoves } from "#data/data-lists";
 import { playContestAppealHeartChange } from "#data/contests/contest-audio";
 import { contestCoordinatorConfigs } from "#data/contests/contest-coordinator-types";
+import { CONTEST_AD_REEL_MESSAGES, CONTEST_CHAT_MESSAGES, CONTEST_CHAT_NAMES } from "#data/contests/contest-live-feed";
 import { ContestRank } from "#data/contests/contest-opponents";
 import {
   ContestSpectacularEffectBehavior,
@@ -12,7 +13,7 @@ import { contestLayout, getContestLayoutSpriteObjects } from "#data/contests/con
 import type { ContestLayoutObject } from "#data/contests/contest-layout";
 import { getContestSpectacularMove } from "#data/contests/contest-spectacular-moves";
 import { ContestJamProtection, type ContestParticipant, type ContestState } from "#data/contests/contest-state";
-import { ContestType } from "#data/contests/contest-type";
+import { ContestType, contestTypeData } from "#data/contests/contest-type";
 import { AnimBlendType, AnimFocus, AnimFrameTarget } from "#enums/move-anims-common";
 import { MoveId } from "#enums/move-id";
 import { TrainerType } from "#enums/trainer-type";
@@ -59,6 +60,15 @@ type ContestPoint = {
   x: number;
   y: number;
 };
+type ContestTextFieldStyle = Phaser.Types.GameObjects.Text.TextStyle & {
+  maxLines: number;
+};
+type ContestFeedTokens = Record<string, string>;
+type ContestLiveFeedState = {
+  sessionKey: string;
+  latestStep: number;
+  messages: string[];
+};
 
 const CONTEST_TEXTURE_PREFIX = "contest_layout";
 const MAX_APPEAL_HEARTS = 8;
@@ -83,7 +93,10 @@ const CONTEST_INTRO_EXIT_DURATION = 500;
 const CONTEST_INTRO_NAME_HOLD_DURATION = 800;
 const CONTEST_INTRO_SCORE_HOLD_DURATION = 900;
 const CONTEST_INTRO_SPRITE_SCALE = 0.5;
-const CONTEST_AUDIENCE_FRAME_DURATION = 16;
+const CONTEST_AUDIENCE_FRAME_DURATION = 64;
+const CONTEST_CHAT_STREAM_MAX_MESSAGES = 30;
+const CONTEST_AD_REEL_MAX_MESSAGES = 3;
+const CONTEST_FEED_EXTRA_MESSAGE_CHANCE = 4;
 const MOVE_ANIM_USER_FOCUS_X = 106;
 const MOVE_ANIM_USER_FOCUS_Y = 116;
 const MOVE_ANIM_TARGET_FOCUS_X = 234;
@@ -94,6 +107,25 @@ const FALLBACK_CONTEST_MOVES = [
   MoveId.TAIL_WHIP,
   MoveId.QUICK_ATTACK,
 ] as const;
+
+function getContestTextFieldStyle(object: ContestLayoutObject): ContestTextFieldStyle {
+  switch (object.role) {
+    case "move_selector":
+      return { fontSize: "72px", maxLines: 4 };
+    case "move_description":
+      return { fontSize: "64px", maxLines: 3 };
+    case "contest_chat_stream":
+      return { fontSize: "30px", maxLines: CONTEST_CHAT_STREAM_MAX_MESSAGES };
+    case "contest_ad_reel":
+      return { fontSize: "36px", maxLines: 1 };
+    default:
+      return { fontSize: "48px", maxLines: 4 };
+  }
+}
+
+function getContestTextFieldMaxLines(object: ContestLayoutObject): number {
+  return getContestTextFieldStyle(object).maxLines;
+}
 
 let contestUi: ContestUi | undefined;
 let contestAssetsLoading: Promise<void> | undefined;
@@ -157,6 +189,8 @@ export class ContestUi {
   private currentContestState: ContestState | undefined;
   private messageText = "";
   private commandSelectionIndex = 0;
+  private readonly chatFeedState = createContestLiveFeedState();
+  private readonly adFeedState = createContestLiveFeedState();
 
   constructor() {
     this.container = globalScene.add.container(0, 0);
@@ -177,6 +211,7 @@ export class ContestUi {
     this.container.setVisible(true);
     this.currentPhaseName = phaseName;
     this.currentContestState = contestState;
+    this.updateContestLiveFeed(phaseName, contestState);
 
     for (const sprite of this.sprites) {
       sprite.setVisible(this.shouldShowSprite(sprite.layoutObject, phaseName, contestState));
@@ -189,6 +224,46 @@ export class ContestUi {
     }
 
     this.startAudienceAnimation();
+  }
+
+  private updateContestLiveFeed(phaseName: string, contestState: ContestState): void {
+    const sessionKey = getContestFeedSessionKey(contestState);
+    this.updateContestLiveFeedState(this.chatFeedState, sessionKey, "chat", phaseName, contestState);
+    this.updateContestLiveFeedState(this.adFeedState, sessionKey, "ad", phaseName, contestState);
+  }
+
+  private updateContestLiveFeedState(
+    state: ContestLiveFeedState,
+    sessionKey: string,
+    kind: "chat" | "ad",
+    phaseName: string,
+    contestState: ContestState,
+  ): void {
+    const latestStep = getContestFeedStep(phaseName, contestState);
+
+    if (state.sessionKey !== sessionKey || (phaseName === "ContestStartPhase" && latestStep < state.latestStep)) {
+      state.sessionKey = sessionKey;
+      state.latestStep = -1;
+      state.messages = [];
+    }
+
+    if (latestStep <= state.latestStep) {
+      return;
+    }
+
+    const templates = kind === "chat" ? CONTEST_CHAT_MESSAGES : CONTEST_AD_REEL_MESSAGES;
+    const messageCount = getContestFeedMessageCount(kind, latestStep);
+    const newMessages: string[] = [];
+
+    for (let messageIndex = 0; messageIndex < messageCount; messageIndex++) {
+      const template = getContestFeedTemplate(templates, kind, latestStep, messageIndex);
+      const tokens = getContestFeedTokens(phaseName, contestState, kind, latestStep, messageIndex);
+      newMessages.push(formatContestFeedTemplate(template, tokens));
+    }
+
+    state.messages.unshift(...newMessages.reverse());
+    state.messages.length = Math.min(state.messages.length, getContestLiveFeedMaxMessages(kind));
+    state.latestStep = latestStep;
   }
 
   setCommandSelection(index: number, contestState: ContestState): void {
@@ -204,6 +279,23 @@ export class ContestUi {
   showMessage(phaseName: string, contestState: ContestState, message: string): void {
     this.messageText = message;
     this.showPhase(phaseName, contestState);
+  }
+
+  getMessagePages(message: string): string[] {
+    const textField = this.textFields.find(field => field.layoutObject.role === "general_text");
+    if (!textField) {
+      return [message];
+    }
+
+    const maxLines = getContestTextFieldMaxLines(textField.layoutObject);
+    const wrappedLines = textField.runWordWrap(message).split(/\n/g);
+    const pages: string[] = [];
+
+    for (let lineIndex = 0; lineIndex < wrappedLines.length; lineIndex += maxLines) {
+      pages.push(wrappedLines.slice(lineIndex, lineIndex + maxLines).join("\n"));
+    }
+
+    return pages.length > 0 ? pages : [""];
   }
 
   clearMessage(): void {
@@ -392,8 +484,7 @@ export class ContestUi {
     const text = addTextObject(object.x, object.y, "", TextStyle.MESSAGE, {
       fixedWidth: object.width * 6,
       fixedHeight: object.height * 6,
-      fontSize: "48px",
-      maxLines: 4,
+      ...getContestTextFieldStyle(object),
       wordWrap: { width: object.width * 6 },
     }) as ContestLayoutText;
     text.layoutObject = object;
@@ -508,6 +599,14 @@ export class ContestUi {
 
     if (role === "general_text") {
       return getGeneralContestText(phaseName, contestState);
+    }
+
+    if (role === "contest_chat_stream") {
+      return getContestChatStreamText(this.chatFeedState.messages);
+    }
+
+    if (role === "contest_ad_reel") {
+      return getContestAdReelText(this.adFeedState.messages);
     }
 
     if (role === "dialogue") {
@@ -1588,6 +1687,182 @@ function getGeneralContestText(phaseName: string, contestState: ContestState): s
     default:
       return "";
   }
+}
+
+function createContestLiveFeedState(): ContestLiveFeedState {
+  return {
+    sessionKey: "",
+    latestStep: -1,
+    messages: [],
+  };
+}
+
+function getContestLiveFeedMaxMessages(kind: "chat" | "ad"): number {
+  return kind === "chat" ? CONTEST_CHAT_STREAM_MAX_MESSAGES : CONTEST_AD_REEL_MAX_MESSAGES;
+}
+
+function getContestChatStreamText(messages: readonly string[]): string {
+  return messages.slice(0, CONTEST_CHAT_STREAM_MAX_MESSAGES).join("\n");
+}
+
+function getContestAdReelText(messages: readonly string[]): string {
+  return messages.slice(0, CONTEST_AD_REEL_MAX_MESSAGES).join(" | ");
+}
+
+function getContestFeedStep(phaseName: string, contestState: ContestState): number {
+  const round = Math.max(0, contestState.round);
+  const appealCount = contestState.currentRoundAppeals.length;
+  const contestantCount = Math.max(1, contestState.contestants.length);
+
+  switch (phaseName) {
+    case "ContestStartPhase":
+      return 0;
+    case "ContestIntroScorePhase":
+      return 1;
+    case "ContestRoundStartPhase":
+      return round * 100;
+    case "ContestCommandPhase":
+      return round * 100 + 1 + appealCount * 3;
+    case "ContestAppealPhase":
+      return round * 100 + 2 + appealCount * 3;
+    case "ContestAppealResultPhase":
+      return round * 100 + 3 + Math.max(0, appealCount - 1) * 3;
+    case "ContestRoundScoringPhase":
+      return round * 100 + 1 + contestantCount * 3;
+    case "ContestRoundEndPhase":
+      return round * 100 + 2 + contestantCount * 3;
+    case "ContestEndPhase":
+      return (contestState.totalRounds + 1) * 100;
+    default:
+      return round * 100 + appealCount;
+  }
+}
+
+function getContestFeedSessionKey(contestState: ContestState): string {
+  const contestantKeys = contestState.contestants
+    .map(contestant => `${contestant.id}:${contestant.name}:${getContestantPokemonName(contestant)}`)
+    .join("|");
+
+  return [
+    globalScene.seed ?? "",
+    globalScene.currentBattle?.waveIndex ?? 0,
+    contestState.contestType,
+    contestState.rank ?? "",
+    contestantKeys,
+  ].join(":");
+}
+
+function getContestFeedMessageCount(kind: "chat" | "ad", step: number): number {
+  if (kind !== "chat") {
+    return 1;
+  }
+
+  return getContestFeedSeededIndex(`${kind}:extra:${step}`, CONTEST_FEED_EXTRA_MESSAGE_CHANCE) === 0 ? 2 : 1;
+}
+
+function getContestFeedTemplate(
+  templates: readonly string[],
+  kind: "chat" | "ad",
+  step: number,
+  messageIndex: number,
+): string {
+  return templates[getContestFeedSeededIndex(`${kind}:template:${step}:${messageIndex}`, templates.length)] ?? "";
+}
+
+function getContestFeedSeededIndex(key: string, range: number): number {
+  if (range <= 1) {
+    return 0;
+  }
+
+  const seed = `${globalScene.seed ?? ""}:${globalScene.currentBattle?.waveIndex ?? 0}`;
+  return getContestFeedHash(`${seed}:${key}`) % range;
+}
+
+function getContestFeedHash(value: string): number {
+  let hash = 2166136261;
+
+  for (let index = 0; index < value.length; index++) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
+
+function getContestFeedTokens(
+  phaseName: string,
+  contestState: ContestState,
+  kind: "chat" | "ad",
+  step: number,
+  messageIndex: number,
+): ContestFeedTokens {
+  const contestant = getContestFeedContestant(phaseName, contestState);
+  const leader = getContestLeader(contestState);
+  const lastPlace = getContestLastPlace(contestState);
+
+  return {
+    CHAT_NAME: kind === "chat" ? getContestChatName(step, messageIndex) : "",
+    CHAT_NAME_2: kind === "chat" ? getContestChatName(step, messageIndex, 2) : "",
+    CHAT_NAME_3: kind === "chat" ? getContestChatName(step, messageIndex, 3) : "",
+    CHAT_NAME_4: kind === "chat" ? getContestChatName(step, messageIndex, 4) : "",
+    CHAT_NAME_5: kind === "chat" ? getContestChatName(step, messageIndex, 5) : "",
+    applause: `${contestState.applause}/${contestState.maxApplause}`,
+    contestType: contestTypeData[contestState.contestType].name,
+    leader: getContestantPokemonName(leader) || "the field",
+    leaderScore: `${leader?.totalScore ?? 0}`,
+    leaderTrainer: leader?.name ?? "Someone",
+    last: getContestantPokemonName(lastPlace) || "the field",
+    lastPokemon: getContestantPokemonName(lastPlace) || "the field",
+    lastScore: `${lastPlace?.totalScore ?? 0}`,
+    lastTrainer: lastPlace?.name ?? "Someone",
+    pokemon: getContestantPokemonName(contestant) || "the next act",
+    round: `${Math.max(1, contestState.round)}`,
+    score: `${leader?.totalScore ?? 0}`,
+    trainer: contestant?.name ?? "Someone",
+  };
+}
+
+function getContestChatName(step: number, messageIndex: number, nameOffset = 1): string {
+  const chatNames: readonly string[] = CONTEST_CHAT_NAMES;
+  if (chatNames.length === 0) {
+    return "Contest Fan";
+  }
+
+  return chatNames[getContestFeedSeededIndex(`chat:name:${step}:${messageIndex}:${nameOffset}`, chatNames.length)]
+    ?? "Contest Fan";
+}
+
+function getContestFeedContestant(phaseName: string, contestState: ContestState): ContestParticipant | undefined {
+  if (phaseName === "ContestAppealPhase") {
+    return contestState.getOrderedContestants()[contestState.currentRoundAppeals.length];
+  }
+
+  if (phaseName === "ContestAppealResultPhase") {
+    const lastAppealId = contestState.currentRoundAppeals.at(-1);
+    return lastAppealId ? contestState.getContestant(lastAppealId) : undefined;
+  }
+
+  if (contestState.currentCommandContestantId) {
+    return contestState.getContestant(contestState.currentCommandContestantId);
+  }
+
+  return getContestLeader(contestState);
+}
+
+function getContestLeader(contestState: ContestState): ContestParticipant | undefined {
+  return contestState.getOrderedContestants()
+    .slice()
+    .sort((a, b) => b.totalScore - a.totalScore)[0];
+}
+
+function getContestLastPlace(contestState: ContestState): ContestParticipant | undefined {
+  return contestState.getOrderedContestants()
+    .slice()
+    .sort((a, b) => a.totalScore - b.totalScore)[0];
+}
+
+function formatContestFeedTemplate(template: string, tokens: ContestFeedTokens): string {
+  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, token: string) => tokens[token] ?? "");
 }
 
 function getDialogueText(phaseName: string, contestState: ContestState): string {

@@ -1,4 +1,5 @@
 import type { PlayerIndex } from "#app/battle-scene";
+import { globalScene } from "#app/global-scene";
 import type { PlayerPokemon } from "#field/pokemon";
 import { randSeedShuffle } from "#utils/common";
 import { chooseContestStageBgm } from "./contest-audio";
@@ -13,6 +14,7 @@ export interface ContestPlayerContestantOptions {
   playerIndex?: PlayerIndex;
   playerName?: string;
   pokemon?: PlayerPokemon;
+  spriteKey?: string;
 }
 
 export interface CreateContestStateOptions {
@@ -38,6 +40,12 @@ export function createContestStateForRank(options: CreateContestStateOptions = {
           contestant.playerIndex === undefined ? "player" : `player_${contestant.playerIndex + 1}`,
           contestant.playerName ?? getDefaultPlayerContestantName(contestant.playerIndex, index),
           contestant.pokemon,
+          {
+            ...(contestant.pokemon
+              ? { primaryJudgingScores: globalScene.gameData.getPokemonContestIntroJudgingScores(contestant.pokemon) }
+              : {}),
+            ...(contestant.spriteKey ? { spriteKey: contestant.spriteKey } : {}),
+          },
         ),
       ),
       ...opponents.map((opponent, index) =>

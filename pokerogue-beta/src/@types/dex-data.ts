@@ -1,3 +1,4 @@
+import type { PartialContestStats } from "#data/contests/contest-stats";
 import type { RibbonData } from "#system/ribbons/ribbon-data";
 
 export interface DexData {
@@ -12,5 +13,6 @@ export interface DexEntry {
   caughtCount: number;
   hatchedCount: number;
   ivs: number[];
+  contestStats?: PartialContestStats;
   ribbons: RibbonData;
 }

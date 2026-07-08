@@ -31,6 +31,7 @@ export interface ContestHallProgress {
   wonGrand?: boolean;
   lastContestWave?: number;
   nextScheduledWave?: number;
+  receivedPokeblockKit?: boolean;
 }
 
 export class MysteryEncounterSaveData {

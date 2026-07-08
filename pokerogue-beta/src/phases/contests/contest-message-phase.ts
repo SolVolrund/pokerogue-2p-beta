@@ -10,6 +10,8 @@ export class ContestMessagePhase extends Phase {
   private readonly contestState: ContestState;
   private readonly displayPhaseName: PhaseString;
   private readonly message: string;
+  private messagePages: string[] = [];
+  private messagePageIndex = 0;
   private complete = false;
 
   constructor(contestState: ContestState, displayPhaseName: PhaseString, message: string) {
@@ -30,7 +32,9 @@ export class ContestMessagePhase extends Phase {
     messageHandler.movesWindowContainer.setVisible(false);
     messageHandler.prompt?.setVisible(false);
     const contestUi = getContestUi();
-    contestUi.showMessage(this.displayPhaseName, this.contestState, this.message);
+    this.messagePages = contestUi.getMessagePages(this.message);
+    this.messagePageIndex = 0;
+    this.showCurrentMessagePage();
     setContestInputMode({
       onConfirm: () => this.completeMessage(),
       onCancel: () => this.completeMessage(),
@@ -43,9 +47,23 @@ export class ContestMessagePhase extends Phase {
     super.end();
   }
 
+  private showCurrentMessagePage(): void {
+    getContestUi().showMessage(
+      this.displayPhaseName,
+      this.contestState,
+      this.messagePages[this.messagePageIndex] ?? "",
+    );
+  }
+
   private completeMessage(): boolean {
     if (this.complete) {
       return false;
+    }
+
+    if (this.messagePageIndex < this.messagePages.length - 1) {
+      this.messagePageIndex++;
+      this.showCurrentMessagePage();
+      return true;
     }
 
     this.complete = true;

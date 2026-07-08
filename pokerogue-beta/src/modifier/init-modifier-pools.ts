@@ -15,6 +15,7 @@ import type { Pokemon } from "#field/pokemon";
 import {
   BerryModifier,
   DoubleBattleChanceBoosterModifier,
+  PokeblockKitModifier,
   SpeciesCritBoosterModifier,
   TurnStatusEffectModifier,
   OldSeaMapModifier,
@@ -356,6 +357,21 @@ function initUltraModifierPool() {
     new WeightedModifierType(modifierTypes.BIG_NUGGET, skipInLastClassicWaveOrDefault(12)),
     new WeightedModifierType(modifierTypes.PP_MAX, 3),
     new WeightedModifierType(modifierTypes.MINT, 4),
+    new WeightedModifierType(
+      modifierTypes.POKEBLOCK_KIT,
+      () => {
+        if (!globalScene.mysteryEncounterSaveData.contestHallProgress.receivedPokeblockKit) {
+          return 0;
+        }
+
+        const existingKit = globalScene.findModifierForPlayer(
+          modifier => modifier instanceof PokeblockKitModifier,
+          globalScene.activePlayerIndex,
+        ) as PokeblockKitModifier | undefined;
+        return existingKit && existingKit.getStackCount() >= existingKit.getMaxStackCount() ? 0 : 4;
+      },
+      4,
+    ),
     new WeightedModifierType(
       modifierTypes.RARE_EVOLUTION_ITEM,
       () => Math.min(Math.ceil(globalScene.currentBattle.waveIndex / 15) * 4, 32),

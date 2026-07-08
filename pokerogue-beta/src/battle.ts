@@ -137,7 +137,7 @@ export class Battle {
       battleType === BattleType.TRAINER
         ? trainer?.getPartyLevels(this.waveIndex)
         : // TODO: Remove array.fill.map
-          new Array(double ? globalScene.getBattleFieldSlotCount() : 1).fill(null).map(() => this.getLevelForWave());
+          new Array(this.getBattlerCount()).fill(null).map(() => this.getLevelForWave());
   }
 
   public get isClassicFinalBoss(): boolean {
@@ -178,7 +178,11 @@ export class Battle {
   }
 
   getBattlerCount(): number {
-    return this.double ? globalScene.getBattleFieldSlotCount() : 1;
+    if (!this.double) {
+      return 1;
+    }
+
+    return globalScene.twoPlayerMode ? globalScene.getBattleFieldSlotCount() : 2;
   }
 
   incrementTurn(): void {

@@ -12,12 +12,14 @@ import {
   HealShopCostModifier,
   LinkingCordGoldModifier,
   LockModifierTiersModifier,
+  PokeblockKitModifier,
   PokemonHeldItemModifier,
   TempExtraModifierModifier,
 } from "#modifiers/modifier";
 import type { CustomModifierSettings, ModifierType } from "#modifiers/modifier-type";
 import {
   FusePokemonModifierType,
+  getPokeblockModifierTypeOption,
   getPlayerModifierTypeOptions,
   getPlayerShopModifierTypeOptionsForWave,
   ModifierTypeOption,
@@ -42,7 +44,7 @@ import {
   type ComputerPartnerRewardChoice,
 } from "#utils/computer-partner-reward-ai";
 import { getComputerPartnerProfile, getComputerPartnerProfileWithRolePreferences } from "#utils/computer-partner-profile";
-import { NumberHolder } from "#utils/common";
+import { NumberHolder, randSeedInt } from "#utils/common";
 import i18next from "i18next";
 
 export type ModifierSelectCallback = (rowCursor: number, cursor: number) => boolean;
@@ -1025,12 +1027,29 @@ export class SelectModifierPhase extends BattlePhase {
   }
 
   getModifierTypeOptions(modifierCount: number): ModifierTypeOption[] {
-    return getPlayerModifierTypeOptions(
+    const options = getPlayerModifierTypeOptions(
       modifierCount,
       globalScene.getPlayerParty(this.playerIndex),
       this.shouldLockRarities() ? this.modifierTiers : undefined,
       this.customModifierSettings,
     );
+
+    this.tryAppendPokeblockRewardOption(options);
+    return options;
+  }
+
+  private tryAppendPokeblockRewardOption(options: ModifierTypeOption[]): void {
+    if (this.isCopy) {
+      return;
+    }
+
+    const bonusChance = new NumberHolder(0);
+    globalScene.applyModifiersForPlayer(PokeblockKitModifier, this.playerIndex, bonusChance);
+    if (bonusChance.value <= 0 || randSeedInt(100) >= bonusChance.value) {
+      return;
+    }
+
+    options.push(getPokeblockModifierTypeOption(globalScene.getPlayerParty(this.playerIndex)));
   }
 
   private hasLockCapsule(): boolean {

@@ -6,6 +6,14 @@ export enum ContestType {
   TOUGH = "tough",
 }
 
+export const CONTEST_TYPES = [
+  ContestType.COOL,
+  ContestType.BEAUTY,
+  ContestType.CUTE,
+  ContestType.SMART,
+  ContestType.TOUGH,
+] as const;
+
 export interface ContestTypeData {
   id: number;
   name: string;

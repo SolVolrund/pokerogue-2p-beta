@@ -1,5 +1,7 @@
 import { globalScene } from "#app/global-scene";
-import { getStatKey, PERMANENT_STATS } from "#enums/stat";
+import { CONTEST_STAT_MAX, type ContestStats } from "#data/contests/contest-stats";
+import { ContestType, contestTypeData } from "#data/contests/contest-type";
+import { getStatKey, PERMANENT_STATS, Stat } from "#enums/stat";
 import { TextStyle } from "#enums/text-style";
 import { addBBCodeTextObject, addTextObject, getTextColor } from "#ui/text";
 import i18next from "i18next";
@@ -26,6 +28,7 @@ export class StatsContainer extends Phaser.GameObjects.Container {
   private readonly showDiff: boolean;
   private statsIvsCache: number[];
   private ivChart: Phaser.GameObjects.Polygon;
+  private ivStatLabelTexts: Phaser.GameObjects.Text[];
   private ivStatValueTexts: BBCodeText[];
 
   constructor(x: number, y: number, showDiff = false) {
@@ -83,6 +86,7 @@ export class StatsContainer extends Phaser.GameObjects.Container {
     this.add(this.ivChart);
     this.add(ivChartBorder);
 
+    this.ivStatLabelTexts = [];
     this.ivStatValueTexts = [];
 
     for (const s of PERMANENT_STATS) {
@@ -96,6 +100,7 @@ export class StatsContainer extends Phaser.GameObjects.Container {
         TextStyle.STATS_HEXAGON,
       );
       statLabel.setOrigin(0.5);
+      this.ivStatLabelTexts[s] = statLabel;
 
       this.ivStatValueTexts[s] = addBBCodeTextObject(
         statLabel.x - (this.showDiff ? 0 : ivLabelOffset[s]),
@@ -111,6 +116,8 @@ export class StatsContainer extends Phaser.GameObjects.Container {
   }
 
   public updateIvs(ivs: number[] | null, originalIvs?: number[]): void {
+    this.setIvLabels();
+
     if (!ivs) {
       this.statsIvsCache = defaultIvChartData;
       this.ivChart.setTo(defaultIvChartData);
@@ -144,6 +151,7 @@ export class StatsContainer extends Phaser.GameObjects.Container {
         }
       }
       text.setText(`[shadow]${label}[/shadow]`);
+      text.setVisible(true);
     });
 
     const newColor = ivs.every(iv => iv === 31) ? Number.parseInt(perfectIVColor.slice(1), 16) : 0x98d8a0;
@@ -174,5 +182,97 @@ export class StatsContainer extends Phaser.GameObjects.Container {
         this.ivChart.setTo(interpolatedData);
       },
     });
+  }
+
+  public updateContestStats(stats: ContestStats | null): void {
+    this.setContestLabels();
+
+    if (!stats) {
+      this.statsIvsCache = defaultIvChartData;
+      this.ivChart.setTo(defaultIvChartData);
+      this.ivStatValueTexts.forEach(text => text.setText(""));
+      return;
+    }
+
+    const contestValues = new Array(6).fill(0);
+    contestValues[Stat.HP] = stats[ContestType.COOL];
+    contestValues[Stat.ATK] = stats[ContestType.BEAUTY];
+    contestValues[Stat.DEF] = stats[ContestType.CUTE];
+    contestValues[Stat.SPDEF] = stats[ContestType.SMART];
+    contestValues[Stat.SPATK] = stats[ContestType.TOUGH];
+
+    const contestChartData = new Array(6)
+      .fill(null)
+      .flatMap((_, i) => [
+        (contestValues[ivChartStatIndexes[i]] / CONTEST_STAT_MAX)
+          * ivChartSize
+          * ivChartStatCoordMultipliers[ivChartStatIndexes[i]][0],
+        (contestValues[ivChartStatIndexes[i]] / CONTEST_STAT_MAX)
+          * ivChartSize
+          * ivChartStatCoordMultipliers[ivChartStatIndexes[i]][1],
+      ]);
+    const lastChartData = this.statsIvsCache || defaultIvChartData;
+    const contestFillColor = 0xf0b860;
+    const oldColor = this.ivChart.fillColor;
+    const interpolateColor =
+      oldColor === contestFillColor
+        ? null
+        : [Phaser.Display.Color.IntegerToColor(oldColor), Phaser.Display.Color.IntegerToColor(contestFillColor)];
+
+    this.statsIvsCache = contestChartData.slice(0);
+
+    this.ivStatValueTexts.forEach((text: BBCodeText, index: number) => {
+      const isSpeedPlaceholder = index === Stat.SPD;
+      text.setText(isSpeedPlaceholder ? "" : `[shadow]${contestValues[index].toString()}[/shadow]`);
+      text.setVisible(!isSpeedPlaceholder);
+    });
+
+    globalScene.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: 1000,
+      ease: "Cubic.easeOut",
+      onUpdate: (tween: Phaser.Tweens.Tween) => {
+        const progress = tween.getValue() ?? 1;
+        const interpolatedData = contestChartData.map(
+          (v: number, i: number) => v * progress + lastChartData[i] * (1 - progress),
+        );
+        if (interpolateColor) {
+          this.ivChart.setFillStyle(
+            Phaser.Display.Color.ValueToColor(
+              Phaser.Display.Color.Interpolate.ColorWithColor(interpolateColor[0], interpolateColor[1], 1, progress),
+            ).color,
+            0.75,
+          );
+        }
+        this.ivChart.setTo(interpolatedData);
+      },
+    });
+  }
+
+  private setIvLabels(): void {
+    for (const stat of PERMANENT_STATS) {
+      this.ivStatLabelTexts[stat].setText(i18next.t(getStatKey(stat)));
+      this.ivStatLabelTexts[stat].setVisible(true);
+      this.ivStatValueTexts[stat].setVisible(true);
+    }
+  }
+
+  private setContestLabels(): void {
+    const contestLabels = {
+      [Stat.HP]: contestTypeData[ContestType.COOL].name,
+      [Stat.ATK]: contestTypeData[ContestType.BEAUTY].name,
+      [Stat.DEF]: contestTypeData[ContestType.CUTE].name,
+      [Stat.SPDEF]: contestTypeData[ContestType.SMART].name,
+      [Stat.SPATK]: contestTypeData[ContestType.TOUGH].name,
+      [Stat.SPD]: "",
+    } satisfies Record<(typeof PERMANENT_STATS)[number], string>;
+
+    for (const stat of PERMANENT_STATS) {
+      const label = contestLabels[stat];
+      this.ivStatLabelTexts[stat].setText(label);
+      this.ivStatLabelTexts[stat].setVisible(!!label);
+      this.ivStatValueTexts[stat].setVisible(!!label);
+    }
   }
 }

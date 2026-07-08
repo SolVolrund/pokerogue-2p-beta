@@ -88,6 +88,11 @@ interface LanguageSetting {
   starterInfoYOffset?: number;
 }
 
+enum StarterStatsViewMode {
+  IVS,
+  CONDITIONS,
+}
+
 const languageSettings: { [key: string]: LanguageSetting } = {
   en: {
     starterInfoTextSize: "56px",
@@ -384,6 +389,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   private moveInfoOverlay: MoveInfoOverlay;
 
   private statsMode: boolean;
+  private statsViewMode = StarterStatsViewMode.IVS;
   private starterIconsCursorXOffset = -3;
   private starterIconsCursorYOffset = 1;
   private starterIconsCursorIndex: number;
@@ -2015,7 +2021,15 @@ export class StarterSelectUiHandler extends MessageUiHandler {
             {
               label: i18next.t("starterSelectUiHandler:toggleIVs"),
               handler: () => {
-                this.toggleStatsMode();
+                this.toggleStatsMode(undefined, StarterStatsViewMode.IVS);
+                ui.setMode(UiMode.STARTER_SELECT);
+                return true;
+              },
+            },
+            {
+              label: i18next.t("starterSelectUiHandler:toggleConditions"),
+              handler: () => {
+                this.toggleStatsMode(undefined, StarterStatsViewMode.CONDITIONS);
                 ui.setMode(UiMode.STARTER_SELECT);
                 return true;
               },
@@ -3610,7 +3624,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     if (this.statsMode) {
       if (this.speciesStarterDexEntry?.caughtAttr) {
         this.statsContainer.setVisible(true);
-        this.showStats();
+        this.showStats(this.statsViewMode);
       } else {
         this.statsContainer.setVisible(false);
         this.statsContainer.updateIvs(null);
@@ -4650,12 +4664,13 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     return props;
   }
 
-  toggleStatsMode(on?: boolean): void {
+  toggleStatsMode(on?: boolean, viewMode = StarterStatsViewMode.IVS): void {
     if (on === undefined) {
-      on = !this.statsMode;
+      on = !(this.statsMode && this.statsViewMode === viewMode);
     }
     if (on) {
-      this.showStats();
+      this.statsViewMode = viewMode;
+      this.showStats(this.statsViewMode);
       this.statsMode = true;
       this.pokemonSprite.setVisible(false);
       this.teraIcon.setVisible(false);
@@ -4681,14 +4696,20 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     }
   }
 
-  showStats(): void {
+  showStats(viewMode = this.statsViewMode): void {
     if (!this.speciesStarterDexEntry) {
       return;
     }
 
     this.statsContainer.setVisible(true);
 
-    this.statsContainer.updateIvs(this.speciesStarterDexEntry.ivs);
+    if (viewMode === StarterStatsViewMode.CONDITIONS && this.lastSpecies) {
+      this.statsContainer.updateContestStats(
+        globalScene.gameData.getSpeciesDexContestStats(this.lastSpecies.speciesId),
+      );
+    } else {
+      this.statsContainer.updateIvs(this.speciesStarterDexEntry.ivs);
+    }
   }
 
   clearText() {

@@ -14,6 +14,16 @@ import { bypassLogin, isBeta, isDev } from "#constants/app-constants";
 import { MAX_STARTER_CANDY_COUNT } from "#constants/game-constants";
 import { EntryHazardTag } from "#data/arena-tag";
 import { getSerializedDailyRunConfig, parseDailySeed } from "#data/daily-seed/daily-seed-utils";
+import {
+  addContestStatValue,
+  createEmptyContestStats,
+  getContestIntroJudgingScores,
+  getContestStatValue,
+  normalizeContestStats,
+  type ContestStats,
+  type PartialContestStats,
+} from "#data/contests/contest-stats";
+import { CONTEST_TYPES, type ContestType } from "#data/contests/contest-type";
 import { allMoves } from "#data/data-lists";
 import type { Egg } from "#data/egg";
 import type { PokemonSpecies } from "#data/pokemon-species";
@@ -123,6 +133,7 @@ const systemShortKeys = {
   caughtCount: "$c",
   hatchedCount: "$hc",
   ivs: "$i",
+  contestStats: "$cs",
   moveset: "$m",
   eggMoves: "$em",
   candyCount: "$x",
@@ -1858,6 +1869,7 @@ export class GameData {
         caughtCount: 0,
         hatchedCount: 0,
         ivs: [0, 0, 0, 0, 0, 0],
+        contestStats: createEmptyContestStats(),
         ribbons: new RibbonData(0),
       };
     }
@@ -1926,6 +1938,7 @@ export class GameData {
         caughtCount: 0,
         hatchedCount: 0,
         ivs: [0, 0, 0, 0, 0, 0],
+        contestStats: createEmptyContestStats(),
         ribbons: new RibbonData(0),
       };
     }
@@ -2268,6 +2281,48 @@ export class GameData {
     } while (speciesId != null);
   }
 
+  getSpeciesDexContestStats(speciesId: SpeciesId): ContestStats {
+    return normalizeContestStats(this.getSpeciesContestDexEntry(speciesId)?.contestStats);
+  }
+
+  getPokemonContestStats(pokemon: Pokemon): ContestStats {
+    return this.getSpeciesDexContestStats(pokemon.species.speciesId);
+  }
+
+  getPokemonContestStat(pokemon: Pokemon, contestType: ContestType): number {
+    return getContestStatValue(this.getPokemonContestStats(pokemon), contestType);
+  }
+
+  getPokemonContestIntroJudgingScores(pokemon: Pokemon): ContestStats {
+    return getContestIntroJudgingScores(this.getPokemonContestStats(pokemon));
+  }
+
+  addSpeciesDexContestStat(speciesId: SpeciesId, contestType: ContestType, amount: number): boolean {
+    const dexEntry = this.getSpeciesContestDexEntry(speciesId);
+
+    if (!dexEntry) {
+      return false;
+    }
+
+    const previousValue = getContestStatValue(dexEntry.contestStats, contestType);
+    dexEntry.contestStats = addContestStatValue(dexEntry.contestStats, contestType, amount);
+
+    return getContestStatValue(dexEntry.contestStats, contestType) !== previousValue;
+  }
+
+  addSpeciesDexContestStats(speciesId: SpeciesId, statGains: PartialContestStats): boolean {
+    let changed = false;
+
+    for (const contestType of CONTEST_TYPES) {
+      const amount = statGains[contestType] ?? 0;
+      if (amount) {
+        changed = this.addSpeciesDexContestStat(speciesId, contestType, amount) || changed;
+      }
+    }
+
+    return changed;
+  }
+
   getSpeciesCount(dexEntryPredicate: (entry: DexEntry) => boolean): number {
     const dexKeys = Object.keys(this.dexData);
     let speciesCount = 0;
@@ -2442,7 +2497,13 @@ export class GameData {
       if (!Object.hasOwn(entry, "ribbons")) {
         entry.ribbons = new RibbonData(0);
       }
+      entry.contestStats = normalizeContestStats(entry.contestStats);
     }
+  }
+
+  private getSpeciesContestDexEntry(speciesId: SpeciesId): DexEntry | undefined {
+    const rootSpeciesId = getPokemonSpecies(speciesId).getRootSpeciesId(true);
+    return this.dexData[rootSpeciesId] ?? this.dexData[speciesId];
   }
 
   migrateStarterAbilities(systemData: SystemSaveData, initialStarterData?: StarterData): void {
