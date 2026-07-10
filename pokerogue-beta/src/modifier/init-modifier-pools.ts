@@ -30,6 +30,7 @@ import {
 import type { initModifierTypes } from "#modifiers/modifier-type";
 import { WeightedModifierType } from "#modifiers/modifier-type";
 import type { WeightedModifierTypeWeightFunc } from "#types/modifier-types";
+import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
 
 /**
  * Initialize the wild modifier pool
@@ -130,6 +131,7 @@ function initCommonModifierPool() {
     new WeightedModifierType(modifierTypes.LURE, lureWeightFunc(10, 2)),
     new WeightedModifierType(modifierTypes.TEMP_STAT_STAGE_BOOSTER, 4),
     new WeightedModifierType(modifierTypes.BERRY, 2),
+    new WeightedModifierType(modifierTypes.MIRROR_HERB, 2),
     new WeightedModifierType(modifierTypes.TM_COMMON, 2),
   ].map(m => {
     m.setTier(ModifierTier.COMMON);
@@ -350,6 +352,14 @@ function initGreatModifierPool() {
 /**
  * Initialize the Ultra modifier pool
  */
+function hasLoadedDiceTarget(pokemon: Pokemon): boolean {
+  const isHoldingMax = pokemon.getHeldItems().some(item => (
+    item.type.id === "LOADED_DICE" && item.getStackCount() >= item.getMaxStackCount()
+  ));
+
+  return !isHoldingMax && pokemon.getMoveset(true).some(move => move && isLoadedDiceBoostedMove(move.getMove()));
+}
+
 function initUltraModifierPool() {
   modifierPool[ModifierTier.ULTRA] = [
     new WeightedModifierType(modifierTypes.ULTRA_BALL, () => (hasMaximumBalls(PokeballType.ULTRA_BALL) ? 0 : 15), 15),
@@ -606,6 +616,11 @@ function initUltraModifierPool() {
           : 0;
       },
       10,
+    ),
+    new WeightedModifierType(
+      modifierTypes.LOADED_DICE,
+      (party: Pokemon[]) => party.some(hasLoadedDiceTarget) ? 8 : 0,
+      8,
     ),
     new WeightedModifierType(modifierTypes.REVIVER_SEED, 4),
     new WeightedModifierType(modifierTypes.CANDY_JAR, skipInLastClassicWaveOrDefault(5)),

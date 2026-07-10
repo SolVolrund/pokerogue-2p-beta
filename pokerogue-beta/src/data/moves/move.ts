@@ -72,6 +72,7 @@ import type { EnemyPokemon, Pokemon } from "#field/pokemon";
 import {
   AttackTypeBoosterModifier,
   BerryModifier,
+  LoadedDiceModifier,
   PokemonFormChangeItemModifier,
   PokemonHeldItemModifier,
   PokemonMoveAccuracyBoosterModifier,
@@ -137,6 +138,7 @@ import {
 } from "#utils/common";
 import { getEnumValues } from "#utils/enums";
 import { getPokemonTypeLocaleKey } from "#utils/i18n";
+import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
 import { areAllies, canSpeciesTera, willTerastallize } from "#utils/pokemon-utils";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import { groupStatChange } from "#utils/stat-change";
@@ -1288,7 +1290,7 @@ export abstract class Move implements Localizable {
     if (this.hasAttr("MultiHitPowerIncrementAttr")) {
       // assume everything with the multihit power increment attr hits 3 times.
       // skipMultiHitCheck is true if skill link is in effect
-      if (res?.maxMultiHit || accMult * this.accuracy > 100) {
+      if (res?.maxMultiHit.value || accMult * this.accuracy > 100) {
         effectivePower = this.power * powerMult * 6 * accMult;
       } else {
         // TODO: Rewrite this to care about accuracy multiplier. For now, it increases complexity too much.
@@ -1298,9 +1300,16 @@ export abstract class Move implements Localizable {
       }
     } else {
       const multiHitAttr = this.getAttrs("MultiHitAttr")[0];
-      if (multiHitAttr && !res?.maxMultiHit) {
+      if (multiHitAttr) {
+        const loadedDice = !!pokemon
+          && isLoadedDiceBoostedMove(this)
+          && pokemon.getHeldItems().some(modifier => modifier instanceof LoadedDiceModifier);
         effectivePower =
-          multiHitAttr.calculateExpectedHitCount(this, { accMultiplier: accMult, maxMultiHit: res?.maxMultiHit?.value })
+          multiHitAttr.calculateExpectedHitCount(this, {
+            accMultiplier: accMult,
+            maxMultiHit: res?.maxMultiHit?.value,
+            loadedDice,
+          })
           * this.power;
       } else {
         effectivePower =
@@ -2964,6 +2973,10 @@ export class MultiHitAttr extends MoveAttr {
     return this.multiHitType;
   }
 
+  getIntrinsicMultiHitType(): MultiHitType {
+    return this.intrinsicMultiHitType;
+  }
+
   /**
    * Set the hit count of an attack based on this attribute instance's {@linkcode MultiHitType}.
    * If the target has an immunity to this attack's types, the hit count will always be 1.
@@ -3001,16 +3014,16 @@ export class MultiHitAttr extends MoveAttr {
         const rand = user.randBattleSeedInt(20);
         const hitValue = new NumberHolder(rand);
         applyAbAttrs("MaxMultiHitAbAttr", { pokemon: user, hits: hitValue });
+        const hitCount = new NumberHolder(5);
         if (hitValue.value >= 13) {
-          return 2;
+          hitCount.value = 2;
+        } else if (hitValue.value >= 6) {
+          hitCount.value = 3;
+        } else if (hitValue.value >= 3) {
+          hitCount.value = 4;
         }
-        if (hitValue.value >= 6) {
-          return 3;
-        }
-        if (hitValue.value >= 3) {
-          return 4;
-        }
-        return 5;
+        globalScene.applyModifiersForPokemon(LoadedDiceModifier, user, user, this.multiHitType, hitCount);
+        return hitCount.value;
       }
       case MultiHitType.TWO:
         return 2;
@@ -3047,12 +3060,19 @@ export class MultiHitAttr extends MoveAttr {
       maxMultiHit = false,
       partySize = 1,
       accMultiplier = 1,
-    }: { ignoreAcc?: boolean; maxMultiHit?: boolean | undefined; partySize?: number; accMultiplier?: number } = {},
+      loadedDice = false,
+    }: {
+      ignoreAcc?: boolean;
+      maxMultiHit?: boolean | undefined;
+      partySize?: number;
+      accMultiplier?: number;
+      loadedDice?: boolean;
+    } = {},
   ): number {
     let expectedHits: number;
     switch (this.multiHitType) {
       case MultiHitType.TWO_TO_FIVE:
-        expectedHits = maxMultiHit ? 5 : 3.1;
+        expectedHits = maxMultiHit ? 5 : loadedDice ? 4.15 : 3.1;
         break;
       case MultiHitType.TWO:
         expectedHits = 2;

@@ -4,6 +4,7 @@ export const StatChangeSource = {
   STICKY_WEB: 1,
   MIRROR_ARMOR: 2,
   OPPORTUNIST: 3,
+  MIRROR_HERB: 4,
 } as const;
 
 export type StatChangeSource = ValueOf<typeof StatChangeSource>;

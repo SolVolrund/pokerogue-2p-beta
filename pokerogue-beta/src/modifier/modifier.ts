@@ -21,12 +21,14 @@ import { BerryType } from "#enums/berry-type";
 import { Color, ShadowColor } from "#enums/color";
 import { FormChangeItem } from "#enums/form-change-item";
 import { LearnMoveType } from "#enums/learn-move-type";
+import { MultiHitType } from "#enums/multi-hit-type";
 import type { MoveId } from "#enums/move-id";
 import type { Nature } from "#enums/nature";
 import type { PokeballType } from "#enums/pokeball";
 import type { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { BATTLE_STATS, type PermanentStat, Stat, TEMP_BATTLE_STATS, type TempBattleStat } from "#enums/stat";
+import { StatChangeSource } from "#enums/stat-change-source";
 import { StatusEffect } from "#enums/status-effect";
 import { TextStyle } from "#enums/text-style";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
@@ -40,12 +42,14 @@ import type {
   PokemonExpBoosterModifierType,
   PokemonFriendshipBoosterModifierType,
   PokemonMoveAccuracyBoosterModifierType,
+  LoadedDiceModifierType,
   PokemonMultiHitModifierType,
   TerastallizeModifierType,
   TmModifierType,
 } from "#modifiers/modifier-type";
 import type { VoucherType } from "#system/voucher";
 import type { ModifierInstanceMap, ModifierString } from "#types/modifier-types";
+import type { StatChange } from "#types/stat-change";
 import { addModifierIconSprite } from "#ui/modifier-icon";
 import { addTextObject } from "#ui/text";
 import { hslToHex } from "#utils/color-utils";
@@ -2145,6 +2149,48 @@ export class ResetNegativeStatStageModifier extends PokemonHeldItemModifier {
 }
 
 /**
+ * Modifier used for held items, namely Mirror Herb, that copy positive stat
+ * stages in battle.
+ */
+export class MirrorHerbModifier extends PokemonHeldItemModifier {
+  matchType(modifier: Modifier) {
+    return modifier instanceof MirrorHerbModifier;
+  }
+
+  clone() {
+    return new MirrorHerbModifier(this.type, this.pokemonId, this.stackCount);
+  }
+
+  /**
+   * Copies positive stat stage changes applied to an opponent.
+   * @param pokemon {@linkcode Pokemon} that holds the item
+   * @param changes stat stage changes to copy
+   * @returns `true` if any positive stat stage changes were queued, false otherwise
+   */
+  override apply(pokemon: Pokemon, changes: readonly StatChange[]): boolean {
+    const positiveChanges = changes.filter(c => c.stages > 0);
+
+    if (positiveChanges.length === 0) {
+      return false;
+    }
+
+    globalScene.phaseManager.unshiftNew("StatStageChangePhase", {
+      battlerIndex: pokemon.getBattlerIndex(),
+      changes: positiveChanges,
+      sourcePokemon: pokemon,
+      ignoreAbilities: false,
+      sourceEffectType: StatChangeSource.MIRROR_HERB,
+    });
+
+    return true;
+  }
+
+  getMaxHeldItemCount(_pokemon: Pokemon): number {
+    return 2;
+  }
+}
+
+/**
  * Modifier used for held items, namely Mystical Rock, that extend the
  * duration of weather and terrain effects.
  */
@@ -3182,6 +3228,34 @@ export class PokemonMultiHitModifier extends PokemonHeldItemModifier {
 
   getMaxHeldItemCount(_pokemon: Pokemon): number {
     return 2;
+  }
+}
+
+export class LoadedDiceModifier extends PokemonHeldItemModifier {
+  public declare type: LoadedDiceModifierType;
+
+  matchType(modifier: Modifier): boolean {
+    return modifier instanceof LoadedDiceModifier;
+  }
+
+  clone(): PersistentModifier {
+    return new LoadedDiceModifier(this.type, this.pokemonId, this.stackCount);
+  }
+
+  /**
+   * Makes true 2-to-5 hit moves roll at least 4 hits.
+   */
+  override apply(_pokemon: Pokemon, multiHitType: MultiHitType, hitCount: NumberHolder): boolean {
+    if (multiHitType !== MultiHitType.TWO_TO_FIVE || hitCount.value >= 4) {
+      return false;
+    }
+
+    hitCount.value = 4;
+    return true;
+  }
+
+  getMaxHeldItemCount(_pokemon: Pokemon): number {
+    return 1;
   }
 }
 
@@ -4298,6 +4372,7 @@ const ModifierClassMap = Object.freeze({
   PreserveBerryModifier,
   PokemonInstantReviveModifier,
   ResetNegativeStatStageModifier,
+  MirrorHerbModifier,
   FieldEffectModifier,
   ScreenEffectModifier,
   ConsumablePokemonModifier,
@@ -4325,6 +4400,7 @@ const ModifierClassMap = Object.freeze({
   ShinyBadgeModifier,
   PokemonNatureWeightModifier,
   PokemonMoveAccuracyBoosterModifier,
+  LoadedDiceModifier,
   PokemonMultiHitModifier,
   PokemonFormChangeItemModifier,
   MoneyRewardModifier,

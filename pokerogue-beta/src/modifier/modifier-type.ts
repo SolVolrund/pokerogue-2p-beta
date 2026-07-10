@@ -73,8 +73,10 @@ import {
   IvScannerModifier,
   LevelIncrementBoosterModifier,
   LinkingCordGoldModifier,
+  LoadedDiceModifier,
   LockModifierTiersModifier,
   MapModifier,
+  MirrorHerbModifier,
   OldSeaMapModifier,
   MegaEvolutionAccessModifier,
   type Modifier,
@@ -133,6 +135,7 @@ import { getModifierTierTextTint } from "#ui/text";
 import { applyChallenges } from "#utils/challenge-utils";
 import { BooleanHolder, formatMoney, NumberHolder, padInt, randSeedInt, randSeedItem } from "#utils/common";
 import { getEnumKeys, getEnumValues } from "#utils/enums";
+import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
 import { getModifierPoolForType, getModifierType } from "#utils/modifier-utils";
 import { toCamelCase } from "#utils/strings";
 import i18next from "i18next";
@@ -1212,6 +1215,32 @@ export class PokemonMultiHitModifierType extends PokemonHeldItemModifierType {
   }
 }
 
+export class LoadedDiceModifierType extends PokemonHeldItemModifierType {
+  constructor(localeKey: string, iconImage: string) {
+    super(
+      localeKey,
+      iconImage,
+      (type, args) => new LoadedDiceModifier(type as LoadedDiceModifierType, (args[0] as Pokemon).id),
+    );
+
+    const heldItemSelectFilter = this.selectFilter;
+    this.selectFilter = (pokemon: PlayerPokemon) => {
+      const heldItemResult = heldItemSelectFilter?.(pokemon);
+      if (heldItemResult != null) {
+        return heldItemResult;
+      }
+
+      return pokemon.getMoveset(true).some(move => move && isLoadedDiceBoostedMove(move.getMove()))
+        ? null
+        : PartyUiHandler.NoEffectMessage;
+    };
+  }
+
+  getDescription(): string {
+    return i18next.t("modifierType:ModifierType.LOADED_DICE.description");
+  }
+}
+
 export class TmModifierType extends PokemonModifierType {
   public moveId: MoveId;
 
@@ -2007,6 +2036,13 @@ const modifierTypeInitObj = Object.freeze({
       (type, args) => new ResetNegativeStatStageModifier(type, (args[0] as Pokemon).id),
     ),
 
+  MIRROR_HERB: () =>
+    new PokemonHeldItemModifierType(
+      "modifierType:ModifierType.MIRROR_HERB",
+      "mirror_herb",
+      (type, args) => new MirrorHerbModifier(type, (args[0] as Pokemon).id),
+    ),
+
   ETHER: () => new PokemonPpRestoreModifierType("modifierType:ModifierType.ETHER", "ether", 10),
   MAX_ETHER: () => new PokemonPpRestoreModifierType("modifierType:ModifierType.MAX_ETHER", "max_ether", -1),
 
@@ -2289,6 +2325,8 @@ const modifierTypeInitObj = Object.freeze({
   GRIP_CLAW: () =>
     new ContactHeldItemTransferChanceModifierType("modifierType:ModifierType.GRIP_CLAW", "grip_claw", 10),
   WIDE_LENS: () => new PokemonMoveAccuracyBoosterModifierType("modifierType:ModifierType.WIDE_LENS", "wide_lens", 5),
+
+  LOADED_DICE: () => new LoadedDiceModifierType("modifierType:ModifierType.LOADED_DICE", "loaded_dice"),
 
   MULTI_LENS: () => new PokemonMultiHitModifierType("modifierType:ModifierType.MULTI_LENS", "zoom_lens"),
 

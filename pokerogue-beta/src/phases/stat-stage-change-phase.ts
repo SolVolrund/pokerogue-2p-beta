@@ -9,7 +9,7 @@ import { ArenaTagType } from "#enums/arena-tag-type";
 import { type BattleStat, getStatKey, getStatStageChangeDescriptionKey, Stat } from "#enums/stat";
 import { StatChangeSource } from "#enums/stat-change-source";
 import type { Pokemon } from "#field/pokemon";
-import { ResetNegativeStatStageModifier } from "#modifiers/modifier";
+import { MirrorHerbModifier, ResetNegativeStatStageModifier } from "#modifiers/modifier";
 import { PokemonPhase } from "#phases/pokemon-phase";
 import type { ConditionalUserFieldProtectStatAbAttrParams, PreStatStageChangeAbAttrParams } from "#types/ability-types";
 import type { StatChange, StatStageChangePhaseOptions } from "#types/stat-change";
@@ -223,7 +223,7 @@ export class StatStageChangePhase extends PokemonPhase {
   private applyStatChangesAndEnd(pokemon: Pokemon, applied: readonly StatChange[]): void {
     this.queueStatChangeMessages(applied);
     this.updateStatStages(pokemon, applied);
-    this.triggerReactionAbilities(pokemon);
+    this.triggerReactionAbilities(pokemon, applied);
     this.checkWhiteHerb(pokemon);
 
     pokemon.updateInfo();
@@ -273,11 +273,14 @@ export class StatStageChangePhase extends PokemonPhase {
    * something like Mirror Herb (copying +4 instead of a single +2) but is
    * otherwise not significant beyond faster animation.
    */
-  private triggerReactionAbilities(pokemon: Pokemon): void {
-    if (this.options.changes.some(c => c.stages > 0)) {
+  private triggerReactionAbilities(pokemon: Pokemon, applied: readonly StatChange[]): void {
+    const positiveApplied = applied.filter(c => c.stages > 0);
+
+    if (positiveApplied.length > 0) {
       for (const opponent of pokemon.getOpponentsGenerator()) {
-        applyAbAttrs("StatStageChangeCopyAbAttr", { pokemon: opponent, changes: this.options.changes });
+        applyAbAttrs("StatStageChangeCopyAbAttr", { pokemon: opponent, changes: positiveApplied });
       }
+      this.checkMirrorHerb(pokemon, positiveApplied);
     }
 
     applyAbAttrs("PostStatStageChangeAbAttr", { pokemon, changes: this.options.changes, selfTarget: this.selfTarget });
@@ -307,6 +310,27 @@ export class StatStageChangePhase extends PokemonPhase {
     if (whiteHerb) {
       pokemon.loseHeldItem(whiteHerb);
       globalScene.updateModifiers(this.player);
+    }
+  }
+
+  private checkMirrorHerb(pokemon: Pokemon, changes: readonly StatChange[]): void {
+    if (this.options.sourceEffectType === StatChangeSource.MIRROR_HERB) {
+      return;
+    }
+
+    for (const opponent of pokemon.getOpponentsGenerator()) {
+      const mirrorHerb = globalScene.applyModifierForPokemon(
+        MirrorHerbModifier,
+        opponent,
+        opponent,
+        changes,
+      ) as MirrorHerbModifier | null;
+
+      if (mirrorHerb) {
+        opponent.loseHeldItem(mirrorHerb);
+        const playerIndex = opponent.isPlayer() ? globalScene.getPlayerIndexForPokemon(opponent) : undefined;
+        globalScene.updateModifiers(opponent.isPlayer(), undefined, playerIndex);
+      }
     }
   }
 

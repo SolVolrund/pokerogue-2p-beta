@@ -26,6 +26,7 @@ import {
   type ComputerPartnerProfile,
   type ComputerPartnerRole,
 } from "#utils/computer-partner-profile";
+import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
 
 export type ComputerPartnerRecoveryItemId =
   | "POTION"
@@ -180,6 +181,7 @@ const REWARD_PRIORITY: Partial<Record<ComputerPartnerRecoveryItemId | string, nu
   LEEK: 15,
   MYSTICAL_ROCK: 16,
   LIGHT_CLAY: 16,
+  LOADED_DICE: 17,
   TM_ULTRA: 17,
   MINT: 18,
   PP_MAX: 19,
@@ -217,6 +219,7 @@ const REWARD_PRIORITY: Partial<Record<ComputerPartnerRecoveryItemId | string, nu
   SUPER_POTION: 5,
   ETHER: 5,
   MAX_ETHER: 5,
+  MIRROR_HERB: 6,
 };
 
 const ZERO_BALL_REWARD_PRIORITY: Partial<Record<string, number>> = {
@@ -399,6 +402,23 @@ function chooseAttackTypeBoosterTarget(type: AttackTypeBoosterModifierType, part
   return getTargetablePartyIndexes(type, party, pokemon =>
     pokemon.isOfType(type.moveType, { includeTeraType: false, returnOriginalTypesIfStellar: true }),
   )[0];
+}
+
+function chooseLoadedDiceTarget(type: PokemonModifierType, party: PlayerPokemon[]): RewardTarget | undefined {
+  return getTargetablePartyIndexes(type, party, pokemon =>
+    pokemon.getMoveset(true).some(move => move && isLoadedDiceBoostedMove(move.getMove())),
+  )
+    .map(targetPokemonIndex => {
+      const usefulMoveCount = party[targetPokemonIndex]
+        .getMoveset(true)
+        .filter(move => move && isLoadedDiceBoostedMove(move.getMove())).length;
+
+      return {
+        targetPokemonIndex,
+        targetScore: usefulMoveCount * 35 - targetPokemonIndex,
+      };
+    })
+    .sort((a, b) => b.targetScore - a.targetScore)[0];
 }
 
 function chooseTeraShardTarget(type: TerastallizeModifierType, party: PlayerPokemon[]): number | undefined {
@@ -599,6 +619,10 @@ function getRewardTarget(
     if (aceTargetPokemonIndex !== undefined) {
       return { targetPokemonIndex: aceTargetPokemonIndex };
     }
+  }
+
+  if (itemId === "LOADED_DICE") {
+    return chooseLoadedDiceTarget(type, party);
   }
 
   if (type instanceof AttackTypeBoosterModifierType) {
