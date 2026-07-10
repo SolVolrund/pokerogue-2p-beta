@@ -77,6 +77,7 @@ import {
   PokemonMoveAccuracyBoosterModifier,
   PokemonMultiHitModifier,
   PreserveBerryModifier,
+  ScreenEffectModifier,
 } from "#modifiers/modifier";
 import { applyMoveAttrs } from "#moves/apply-attrs";
 import {
@@ -7141,7 +7142,11 @@ export class AddArenaTagAttr extends MoveEffectAttr {
         (this.selfSideTarget ? user : target).isPlayer() === (move.hasAttr("AddArenaTrapTagAttr") && target === user)
           ? ArenaTagSide.ENEMY
           : ArenaTagSide.PLAYER;
-      globalScene.arena.addTag(this.tagType, this.turnCount, move.id, user.id, side);
+      const turnCount = new NumberHolder(this.turnCount);
+      if ((screenTags as readonly ArenaTagType[]).includes(this.tagType)) {
+        globalScene.applyModifierForPokemon(ScreenEffectModifier, user, user, turnCount);
+      }
+      globalScene.arena.addTag(this.tagType, turnCount.value, move.id, user.id, side);
       return true;
     }
 

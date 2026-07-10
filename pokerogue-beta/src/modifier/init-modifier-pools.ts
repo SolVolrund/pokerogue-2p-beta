@@ -575,6 +575,38 @@ function initUltraModifierPool() {
       },
       10,
     ),
+    new WeightedModifierType(
+      modifierTypes.LIGHT_CLAY,
+      (party: Pokemon[]) => {
+        return party.some(p => {
+          let isHoldingMax = false;
+          for (const i of p.getHeldItems()) {
+            if (i.type.id === "LIGHT_CLAY") {
+              isHoldingMax = i.getStackCount() === i.getMaxStackCount();
+              break;
+            }
+          }
+
+          if (!isHoldingMax) {
+            const moveset = p.getMoveset(true).map(m => m.moveId);
+
+            const hasMoves = [
+              MoveId.LIGHT_SCREEN,
+              MoveId.REFLECT,
+              MoveId.AURORA_VEIL,
+              MoveId.GLITZY_GLOW,
+              MoveId.BADDY_BAD,
+            ].some(m => moveset.includes(m));
+
+            return hasMoves;
+          }
+          return false;
+        })
+          ? 10
+          : 0;
+      },
+      10,
+    ),
     new WeightedModifierType(modifierTypes.REVIVER_SEED, 4),
     new WeightedModifierType(modifierTypes.CANDY_JAR, skipInLastClassicWaveOrDefault(5)),
     new WeightedModifierType(modifierTypes.ATTACK_TYPE_BOOSTER, 9),

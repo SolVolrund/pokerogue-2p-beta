@@ -1,5 +1,5 @@
-import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import type { PlayerIndex } from "#app/battle-scene";
+import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import { globalScene } from "#app/global-scene";
 import { modifierTypes } from "#data/data-lists";
 import { ModifierTier } from "#enums/modifier-tier";
@@ -8,27 +8,27 @@ import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { PartyMemberStrength } from "#enums/party-member-strength";
 import { TrainerSlot } from "#enums/trainer-slot";
-import type { EnemyPartyConfig } from "#mystery-encounters/encounter-phase-utils";
+import type { TrainerType } from "#enums/trainer-type";
 import { showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
+import type { EnemyPartyConfig } from "#mystery-encounters/encounter-phase-utils";
+import { initBattleWithEnemyConfig, setEncounterRewards } from "#mystery-encounters/encounter-phase-utils";
 import {
   getNextMysteryEncounterPlayerIndex,
   showMysteryEncounterPlayerMenu,
 } from "#mystery-encounters/encounter-player-utils";
-import { initBattleWithEnemyConfig, setEncounterRewards } from "#mystery-encounters/encounter-phase-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
+import type { TrainerConfig } from "#trainers/trainer-config";
 import { trainerConfigs } from "#trainers/trainer-config";
 import {
   TrainerPartyCompoundTemplate,
   TrainerPartyTemplate,
   trainerPartyTemplates,
 } from "#trainers/trainer-party-template";
-import { randSeedInt } from "#utils/common";
-import type { TrainerConfig } from "#trainers/trainer-config";
-import type { TrainerType } from "#enums/trainer-type";
 import { updateWindowType } from "#ui/ui-theme";
+import { randSeedInt } from "#utils/common";
 import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
 import { getComputerPartnerTeamConfidence } from "#utils/computer-partner-team-confidence";
 import i18next from "i18next";
@@ -54,7 +54,8 @@ function getRandomTrainerTypeForChallenger(isBoss = false, excludedTrainerTypes:
 
   while (
     retries < 8
-    && (excludedTrainerTypes.includes(trainerType) || (globalScene.twoPlayerMode && trainerConfigs[trainerType].doubleOnly))
+    && (excludedTrainerTypes.includes(trainerType)
+      || (globalScene.twoPlayerMode && trainerConfigs[trainerType].doubleOnly))
   ) {
     trainerType = globalScene.arena.randomTrainerType(globalScene.currentBattle.waveIndex, isBoss);
     retries++;
@@ -97,9 +98,7 @@ function getChallengerLevelAdditiveModifier(optionIndex: MysteriousChallengerOpt
   }
 }
 
-function getChallengerRewards(
-  optionIndex: MysteriousChallengerOptionIndex,
-): Parameters<typeof setEncounterRewards>[0] {
+function getChallengerRewards(optionIndex: MysteriousChallengerOptionIndex): Parameters<typeof setEncounterRewards>[0] {
   switch (optionIndex) {
     case 1:
       return {
@@ -153,7 +152,7 @@ async function promptNextMysteriousChallengerPlayer(
     playerIndex,
     slideInDescription: false,
     overrideQuery: i18next.t(`${namespace}:query`),
-    overrideOptions: buildMysteriousChallengerPlayerOptions(),
+    overrideOptions: buildMysteriousChallengerPlayerOptions(playerIndex),
     startingCursorIndex,
     computerPartnerOption: {
       chooseOptionIndex: chooseComputerPartnerChallengerOption,
@@ -224,9 +223,7 @@ function createMysteriousChallengerBattleConfig(choices: MysteriousChallengerCho
   };
 }
 
-async function runMysteriousChallengerChoices(
-  optionIndex: MysteriousChallengerOptionIndex,
-): Promise<boolean> {
+async function runMysteriousChallengerChoices(optionIndex: MysteriousChallengerOptionIndex): Promise<boolean> {
   const choices = globalScene.twoPlayerMode
     ? getMysteriousChallengerData().choices.toSorted((a, b) => a.playerIndex - b.playerIndex)
     : [{ playerIndex: globalScene.activePlayerIndex, optionIndex }];
@@ -250,14 +247,21 @@ async function runMysteriousChallengerChoices(
   globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
 
   let initBattlePromise: Promise<void>;
-  globalScene.executeWithSeedOffset(() => {
-    initBattlePromise = initBattleWithEnemyConfig(createMysteriousChallengerBattleConfig(choices));
-  }, globalScene.currentBattle.waveIndex * 1000 + choices.reduce((total, choice) => total + choice.optionIndex * (choice.playerIndex + 1), 0));
+  globalScene.executeWithSeedOffset(
+    () => {
+      initBattlePromise = initBattleWithEnemyConfig(createMysteriousChallengerBattleConfig(choices));
+    },
+    globalScene.currentBattle.waveIndex * 1000
+      + choices.reduce((total, choice) => total + choice.optionIndex * (choice.playerIndex + 1), 0),
+  );
   await initBattlePromise!;
   return true;
 }
 
-function buildMysteriousChallengerOption(optionIndex: MysteriousChallengerOptionIndex): MysteryEncounterOption {
+function buildMysteriousChallengerOption(
+  optionIndex: MysteriousChallengerOptionIndex,
+  playerIndex?: PlayerIndex,
+): MysteryEncounterOption {
   return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
     .withDialogue({
       buttonLabel: `${namespace}:option.${optionIndex}.label`,
@@ -268,16 +272,18 @@ function buildMysteriousChallengerOption(optionIndex: MysteriousChallengerOption
         },
       ],
     })
-    .withPreOptionPhase(async () => storeMysteriousChallengerChoice(optionIndex, globalScene.activePlayerIndex))
+    .withPreOptionPhase(async () =>
+      storeMysteriousChallengerChoice(optionIndex, playerIndex ?? globalScene.activePlayerIndex),
+    )
     .withOptionPhase(async () => runMysteriousChallengerChoices(optionIndex))
     .build();
 }
 
-function buildMysteriousChallengerPlayerOptions(): MysteryEncounterOption[] {
+function buildMysteriousChallengerPlayerOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
   return [
-    buildMysteriousChallengerOption(1),
-    buildMysteriousChallengerOption(2),
-    buildMysteriousChallengerOption(3),
+    buildMysteriousChallengerOption(1, playerIndex),
+    buildMysteriousChallengerOption(2, playerIndex),
+    buildMysteriousChallengerOption(3, playerIndex),
   ];
 }
 

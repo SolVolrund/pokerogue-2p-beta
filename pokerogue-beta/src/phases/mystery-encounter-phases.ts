@@ -67,9 +67,9 @@ export class MysteryEncounterPhase extends Phase {
     encounter.updateSeedOffset();
     this.normalizeTwoPlayerTrainerSprites();
 
-    if (!this.optionSelectSettings) {
-      // Sets flag that ME was encountered, only if this is not a followup option select phase
-      // Can be used in later MEs to check for requirements to spawn, run history, etc.
+    if (!this.optionSelectSettings && encounter.countsForEncounterPacing) {
+      // Record normal ME history, only if this is not a followup option select phase.
+      // Scheduled side encounters can skip this and track their own progress.
       globalScene.mysteryEncounterSaveData.encounteredEvents.push(
         new SeenEncounterData(encounter.encounterType, encounter.encounterTier, globalScene.currentBattle.waveIndex),
       );
@@ -157,9 +157,9 @@ export class MysteryEncounterPhase extends Phase {
     // Set option selected flag
     encounter.selectedOption = option;
 
-    if (!this.optionSelectSettings) {
-      // Saves the selected option in the ME save data, only if this is not a followup option select phase
-      // Can be used for analytics purposes to track what options are popular on certain encounters
+    if (!this.optionSelectSettings && encounter.countsForEncounterPacing) {
+      // Saves the selected option in normal ME history, only if this is not a followup option select phase.
+      // Can be used for analytics purposes to track what options are popular on certain encounters.
       const encounterSaveData = globalScene.mysteryEncounterSaveData.encounteredEvents.at(-1)!;
       if (encounterSaveData.type === encounter.encounterType) {
         encounterSaveData.selectedOption = index;

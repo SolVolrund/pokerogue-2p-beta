@@ -131,6 +131,7 @@ export class TrainerConfig {
   public nameDouble: string;
   public title: string;
   public titleDouble: string;
+  public spriteKey = "";
   public hasGenders = false;
   /**
    * Whether this trainer has a **random** chance to appear as a double battle variant instead of a single battle variant.
@@ -207,7 +208,7 @@ export class TrainerConfig {
   }
 
   getSpriteKey(female?: boolean, isDouble = false): string {
-    let ret = this.getKey();
+    let ret = this.spriteKey || this.getKey();
     if (this.hasGenders) {
       ret += `_${female ? "f" : "m"}`;
     }
@@ -223,6 +224,11 @@ export class TrainerConfig {
     }
 
     return ret;
+  }
+
+  setSpriteKey(spriteKey: string): TrainerConfig {
+    this.spriteKey = spriteKey;
+    return this;
   }
 
   setName(name: string): TrainerConfig {
@@ -913,6 +919,7 @@ export class TrainerConfig {
     let clone = new TrainerConfig(this.trainerType);
     clone = this.trainerTypeDouble ? clone.setDoubleTrainerType(this.trainerTypeDouble) : clone;
     clone = this.name ? clone.setName(this.name) : clone;
+    clone = this.spriteKey ? clone.setSpriteKey(this.spriteKey) : clone;
     clone = this.hasGenders ? clone.setHasGenders(this.nameFemale, this.femaleEncounterBgm) : clone;
     clone = this.hasDouble ? clone.setHasDouble(this.nameDouble, this.doubleEncounterBgm) : clone;
     clone = this.title ? clone.setTitle(this.title) : clone;
@@ -5537,7 +5544,7 @@ export const trainerConfigs: TrainerConfigs = {
 
   [TrainerType.DAWN_ZORUA]: new TrainerConfig(++t)
     .setName("Dawn")
-    .setPartyTemplates(trainerPartyTemplates.SIX_WEAK_BALANCED, trainerPartyTemplates.TWO_AVG_ONE_STRONG)
+    .setPartyTemplates(trainerPartyTemplates.ONE_STRONGER_ONE_AVG_TWO_STRONG_ONE_AVG_ONE_STRONGER)
     .setBattleBgm("battle_trainer")
     .setMixedBattleBgm("battle_trainer")
     .setPartyMemberFunc(0, getDawnIllusionPairMemberFunc(true))
@@ -5567,9 +5574,59 @@ export const trainerConfigs: TrainerConfigs = {
     )
     .setPartyMemberFunc(5, getDawnIllusionPairMemberFunc(false)),
 
+
+  [TrainerType.BIANCA_LATIAS]: new TrainerConfig(++t)
+    .setName("Bianca")
+    .setSpriteKey("bianca_latias")
+    .setHasCharSprite()
+    .setPartyTemplates(trainerPartyTemplates.THREE_AVG_TWO_STRONG_ONE_STRONGER)
+    .setBattleBgm("battle_trainer")
+    .setMixedBattleBgm("battle_trainer")
+    .setPartyMemberFunc(
+      0,
+      getRandomPartyMemberFunc([SpeciesId.POLIWAG], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      1,
+      getRandomPartyMemberFunc([SpeciesId.CATERPIE], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      2,
+      getRandomPartyMemberFunc([SpeciesId.ODDISH], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      3,
+      getRandomPartyMemberFunc([SpeciesId.YANMA], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      4,
+      getRandomPartyMemberFunc([SpeciesId.WOOPER], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      5,
+      getRandomPartyMemberFunc([SpeciesId.LATIOS], TrainerSlot.TRAINER, true, p => {
+        p.moveset = [
+          new PokemonMove(MoveId.ICE_BEAM),
+          new PokemonMove(MoveId.RECOVER),
+          new PokemonMove(MoveId.CALM_MIND),
+          new PokemonMove(MoveId.PSYCHIC),
+        ];
+      }),
+    ),
+
   [TrainerType.DUPLICA_DITTO]: new TrainerConfig(++t)
     .setName("Duplica")
-    .setPartyTemplates(trainerPartyTemplates.SIX_WEAK_BALANCED)
+    .setPartyTemplates(trainerPartyTemplates.SIX_STRONG)
     .setBattleBgm("battle_trainer")
     .setMixedBattleBgm("battle_trainer")
     .setPartyMemberFunc(0, getDuplicaDittoPartyMemberFunc())

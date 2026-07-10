@@ -2174,6 +2174,32 @@ export class FieldEffectModifier extends PokemonHeldItemModifier {
   }
 }
 
+export class ScreenEffectModifier extends PokemonHeldItemModifier {
+  /**
+   * Provides two more turns per stack to any screen effect caused
+   * by the holder.
+   * @param pokemon {@linkcode Pokemon} that holds the held item
+   * @param fieldDuration {@linkcode NumberHolder} that stores the current field effect duration
+   * @returns `true` if the field effect extension was applied successfully
+   */
+  override apply(_pokemon: Pokemon, screenDuration: NumberHolder): boolean {
+    screenDuration.value += 2 * this.stackCount;
+    return true;
+  }
+
+  override matchType(modifier: Modifier): boolean {
+    return modifier instanceof ScreenEffectModifier;
+  }
+
+  override clone(): ScreenEffectModifier {
+    return new ScreenEffectModifier(this.type, this.pokemonId, this.stackCount);
+  }
+
+  override getMaxHeldItemCount(_pokemon?: Pokemon): number {
+    return 2;
+  }
+}
+
 export abstract class ConsumablePokemonModifier extends ConsumableModifier {
   public pokemonId: number;
 
@@ -4273,6 +4299,7 @@ const ModifierClassMap = Object.freeze({
   PokemonInstantReviveModifier,
   ResetNegativeStatStageModifier,
   FieldEffectModifier,
+  ScreenEffectModifier,
   ConsumablePokemonModifier,
   TerastallizeModifier,
   PokemonHpRestoreModifier,

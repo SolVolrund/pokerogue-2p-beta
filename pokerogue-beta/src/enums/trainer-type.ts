@@ -310,6 +310,8 @@ export enum TrainerType {
   DAWN_ZORUA,
   DUPLICA_DITTO,
   DUPLICA,
+  BIANCA,
+  BIANCA_LATIAS,
 
   // #endregion Champions
 

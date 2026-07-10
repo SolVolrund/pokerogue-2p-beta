@@ -66,6 +66,7 @@ export interface IMysteryEncounter {
   skipEnemyBattleTurns: boolean;
   skipToFightInput: boolean;
   preventGameStatsUpdates: boolean;
+  countsForEncounterPacing: boolean;
   twoPlayerSharedDecision: boolean;
 
   onInit?: (() => boolean) | undefined;
@@ -171,6 +172,8 @@ export class MysteryEncounter implements IMysteryEncounter {
    * If true, will prevent updating {@linkcode GameStats} for encountering and/or defeating Pokemon
    */
   preventGameStatsUpdates: boolean;
+  /** If false, skip the normal Mystery Encounter history/cooldown accounting. */
+  countsForEncounterPacing: boolean;
 
   // #endregion Optional params
 
@@ -312,6 +315,7 @@ export class MysteryEncounter implements IMysteryEncounter {
     this.enterIntroVisualsFromRight = this.enterIntroVisualsFromRight ?? false;
     this.continuousEncounter = this.continuousEncounter ?? false;
     this.twoPlayerSharedDecision = this.twoPlayerSharedDecision ?? false;
+    this.countsForEncounterPacing = this.countsForEncounterPacing ?? true;
 
     // Reset any dirty flags or encounter data
     this.startOfBattleEffectsComplete = false;
@@ -594,6 +598,7 @@ export class MysteryEncounterBuilder implements Partial<IMysteryEncounter> {
   skipEnemyBattleTurns = false;
   skipToFightInput = false;
   preventGameStatsUpdates = false;
+  countsForEncounterPacing = true;
   twoPlayerSharedDecision = false;
   maxAllowedEncounters = 3;
   expMultiplier = 1;
@@ -823,6 +828,17 @@ export class MysteryEncounterBuilder implements Partial<IMysteryEncounter> {
     preventGameStatsUpdates: boolean,
   ): this & Required<Pick<IMysteryEncounter, "preventGameStatsUpdates">> {
     return Object.assign(this, { preventGameStatsUpdates });
+  }
+
+  /**
+   * If false, this encounter will not be written to the normal random Mystery Encounter history.
+   * Useful for scheduled side content that tracks its own progress.
+   * Default `true`
+   */
+  withCountsForEncounterPacing(
+    countsForEncounterPacing: boolean,
+  ): this & Required<Pick<IMysteryEncounter, "countsForEncounterPacing">> {
+    return Object.assign(this, { countsForEncounterPacing });
   }
 
   /**

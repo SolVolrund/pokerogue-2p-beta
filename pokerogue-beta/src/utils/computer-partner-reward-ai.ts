@@ -179,6 +179,7 @@ const REWARD_PRIORITY: Partial<Record<ComputerPartnerRecoveryItemId | string, nu
   ATTACK_TYPE_BOOSTER: 14,
   LEEK: 15,
   MYSTICAL_ROCK: 16,
+  LIGHT_CLAY: 16,
   TM_ULTRA: 17,
   MINT: 18,
   PP_MAX: 19,

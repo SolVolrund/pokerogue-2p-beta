@@ -535,6 +535,7 @@ export const ContestHallEncounter: MysteryEncounter = MysteryEncounterBuilder.wi
   MysteryEncounterType.CONTEST_HALL,
 )
   .withEncounterTier(MysteryEncounterTier.GREAT)
+  .withCountsForEncounterPacing(false)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withSceneRequirement(new ContestHallProgressRequirement())
   .withAutoHideIntroVisuals(false)

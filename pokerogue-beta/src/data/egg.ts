@@ -205,9 +205,9 @@ export class Egg {
       }
     };
 
-    const eggSeedIndex = eggOptions?.pulled && !eggOptions.fromSave
-      ? this.getOwnerGameData().eggs.length
-      : (eggOptions?.id ?? 0);
+    const eggSeedIndex = eggOptions?.fromSave
+      ? (eggOptions.id ?? 0)
+      : (eggOptions?.id ?? this.getOwnerGameData().eggs.length);
     const seedOverride = globalScene.twoPlayerMode
       ? `${globalScene.seed}:egg:${this.ownerPlayerIndex}:${eggSeedIndex}`
       : randomString(24);

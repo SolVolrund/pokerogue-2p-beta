@@ -166,6 +166,22 @@ export const trainerPartyTemplates = {
   SIX_WEAK: new TrainerPartyTemplate(6, PartyMemberStrength.WEAK),
   SIX_WEAK_SAME: new TrainerPartyTemplate(6, PartyMemberStrength.WEAK, true),
   SIX_WEAK_BALANCED: new TrainerPartyTemplate(6, PartyMemberStrength.WEAK, false, true),
+  THREE_AVG_TWO_STRONG_ONE_STRONGER: new TrainerPartyCompoundTemplate(
+    new TrainerPartyTemplate(3, PartyMemberStrength.AVERAGE, undefined, undefined, EvoLevelThresholdKind.STRONG),
+    new TrainerPartyTemplate(2, PartyMemberStrength.STRONG, undefined, undefined, EvoLevelThresholdKind.STRONG),
+    new TrainerPartyTemplate(1, PartyMemberStrength.STRONGER, undefined, undefined, EvoLevelThresholdKind.STRONG),
+  ),
+  SIX_STRONG: new TrainerPartyCompoundTemplate(
+    new TrainerPartyTemplate(6, PartyMemberStrength.STRONG, undefined, undefined, EvoLevelThresholdKind.STRONG),
+  ),
+  ONE_STRONGER_ONE_AVG_TWO_STRONG_ONE_AVG_ONE_STRONGER: new TrainerPartyCompoundTemplate(
+    new TrainerPartyTemplate(1, PartyMemberStrength.STRONGER, undefined, undefined, EvoLevelThresholdKind.STRONG),
+    new TrainerPartyTemplate(1, PartyMemberStrength.AVERAGE, undefined, undefined, EvoLevelThresholdKind.STRONG),
+    new TrainerPartyTemplate(1, PartyMemberStrength.STRONG, undefined, undefined, EvoLevelThresholdKind.STRONG),
+    new TrainerPartyTemplate(1, PartyMemberStrength.STRONG, undefined, undefined, EvoLevelThresholdKind.STRONG),
+    new TrainerPartyTemplate(1, PartyMemberStrength.AVERAGE, undefined, undefined, EvoLevelThresholdKind.STRONG),
+    new TrainerPartyTemplate(1, PartyMemberStrength.STRONGER, undefined, undefined, EvoLevelThresholdKind.STRONG),
+  ),
 
   GYM_LEADER_1: new TrainerPartyCompoundTemplate(
     new TrainerPartyTemplate(1, PartyMemberStrength.AVERAGE, undefined, undefined, EvoLevelThresholdKind.STRONG),

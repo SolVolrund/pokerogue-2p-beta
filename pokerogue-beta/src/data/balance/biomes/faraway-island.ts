@@ -78,7 +78,7 @@ const trainerPool: TrainerPools = {
   [BiomePoolTier.UNCOMMON]: [TrainerType.DAWN_ZORUA],
   [BiomePoolTier.RARE]: [TrainerType.DAWN_ZORUA, TrainerType.DUPLICA_DITTO],
   [BiomePoolTier.SUPER_RARE]: [TrainerType.DUPLICA_DITTO],
-  [BiomePoolTier.ULTRA_RARE]: [],
+  [BiomePoolTier.ULTRA_RARE]: [TrainerType.BIANCA_LATIAS],
   [BiomePoolTier.BOSS]: [],
   [BiomePoolTier.BOSS_RARE]: [],
   [BiomePoolTier.BOSS_SUPER_RARE]: [],
