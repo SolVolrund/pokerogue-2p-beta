@@ -27,10 +27,10 @@ import type { MoveTargetSet } from "#types/move-target-set";
 import type { TurnMove } from "#types/turn-move";
 import { getComputerPartnerImprovedSwitchIndex, isComputerPartnerFieldIndex } from "#utils/computer-partner-ai";
 import {
+  type ComputerPartnerCaptureDecisionOptions,
   getComputerPartnerCaptureDecision,
   getComputerPartnerCaptureDecisionsFromInterests,
   isComputerPartnerMoveSafeForCaptureTarget,
-  type ComputerPartnerCaptureDecisionOptions,
 } from "#utils/computer-partner-capture-ai";
 import i18next from "i18next";
 
@@ -98,7 +98,7 @@ export class CommandPhase extends FieldPhase {
     const playerPokemon = this.getPokemon();
 
     if (playerPokemon.getMoveQueue().length > 0 || playerPokemon.isTrapped()) {
-      return undefined;
+      return;
     }
 
     const switchMultiplier =
@@ -122,31 +122,32 @@ export class CommandPhase extends FieldPhase {
 
     const blockedTargetIds = this.getComputerPartnerBlockedCaptureTargetIds(playerIndex);
     const claimedTargetIds = this.getComputerPartnerClaimedCaptureTargetIds(playerIndex);
-    const captureDecisionOptions = claimedTargetIds.length > 0
-      ? {
-        allowedBossTargetIds: claimedTargetIds,
-        forceThrowTargetIds: claimedTargetIds,
-        preferredTargetIds: claimedTargetIds,
-      }
-      : undefined;
+    const captureDecisionOptions =
+      claimedTargetIds.length > 0
+        ? {
+            allowedBossTargetIds: claimedTargetIds,
+            forceThrowTargetIds: claimedTargetIds,
+            preferredTargetIds: claimedTargetIds,
+          }
+        : undefined;
     const captureDecision =
       globalScene.currentBattle.battleType === BattleType.WILD
         ? this.getCachedComputerPartnerCaptureDecision(
-          playerIndex,
-          playerPokemon,
-          blockedTargetIds,
-          captureDecisionOptions,
-        )
+            playerIndex,
+            playerPokemon,
+            blockedTargetIds,
+            captureDecisionOptions,
+          )
         : getComputerPartnerCaptureDecision(
-          globalScene.getComputerPartnerKey(playerIndex),
-          globalScene.getPlayerParty(playerIndex),
-          playerPokemon,
-          globalScene.getEnemyField(),
-          globalScene.getPlayerPokeballCounts(playerIndex),
-          blockedTargetIds,
-          globalScene.getComputerPartnerRolePreferences(playerIndex),
-          captureDecisionOptions,
-        );
+            globalScene.getComputerPartnerKey(playerIndex),
+            globalScene.getPlayerParty(playerIndex),
+            playerPokemon,
+            globalScene.getEnemyField(),
+            globalScene.getPlayerPokeballCounts(playerIndex),
+            blockedTargetIds,
+            globalScene.getComputerPartnerRolePreferences(playerIndex),
+            captureDecisionOptions,
+          );
 
     if (!captureDecision) {
       return false;
@@ -251,20 +252,25 @@ export class CommandPhase extends FieldPhase {
 
   private getComputerPartnerBlockedCaptureTargetIds(playerIndex: PlayerIndex): number[] {
     const battle = globalScene.currentBattle;
-    const activeTargetIds = new Set(globalScene.getEnemyField().filter(pokemon =>
-      pokemon.isActive(true) && !pokemon.isFainted(),
-    ).map(pokemon => pokemon.id));
+    const activeTargetIds = new Set(
+      globalScene
+        .getEnemyField()
+        .filter(pokemon => pokemon.isActive(true) && !pokemon.isFainted())
+        .map(pokemon => pokemon.id),
+    );
 
     battle.computerPartnerCaptureClaims = battle.computerPartnerCaptureClaims.filter(claim =>
       activeTargetIds.has(claim.targetId),
     );
 
     if (battle.computerPartnerCaptureClaims.length > 0) {
-      return [...new Set(
-        battle.computerPartnerCaptureClaims
-          .filter(claim => claim.playerIndex !== playerIndex && this.hasUsableCaptureBall(claim.playerIndex))
-          .map(claim => claim.targetId),
-      )];
+      return [
+        ...new Set(
+          battle.computerPartnerCaptureClaims
+            .filter(claim => claim.playerIndex !== playerIndex && this.hasUsableCaptureBall(claim.playerIndex))
+            .map(claim => claim.targetId),
+        ),
+      ];
     }
 
     const reservedTargetIds =
@@ -309,12 +315,16 @@ export class CommandPhase extends FieldPhase {
       return false;
     }
 
-    return unsafeTargets.some(reservedTarget =>
-      !isComputerPartnerMoveSafeForCaptureTarget(playerPokemon, reservedTarget, pokemonMove.getMove()),
+    return unsafeTargets.some(
+      reservedTarget =>
+        !isComputerPartnerMoveSafeForCaptureTarget(playerPokemon, reservedTarget, pokemonMove.getMove()),
     );
   }
 
-  private getReservedCaptureSafeMove(playerPokemon: PlayerPokemon, reservedTargets: EnemyPokemon[]): TurnMove | undefined {
+  private getReservedCaptureSafeMove(
+    playerPokemon: PlayerPokemon,
+    reservedTargets: EnemyPokemon[],
+  ): TurnMove | undefined {
     const enemyBattlerIndexes = new Set(globalScene.getEnemyField().map(pokemon => pokemon.getBattlerIndex()));
     const reservedBattlerIndexes = new Set(reservedTargets.map(pokemon => pokemon.getBattlerIndex()));
 
@@ -351,10 +361,14 @@ export class CommandPhase extends FieldPhase {
       }
     }
 
-    return undefined;
+    return;
   }
 
-  private protectReservedCaptureTargets(playerIndex: PlayerIndex, playerPokemon: PlayerPokemon, turnMove: TurnMove): TurnMove {
+  private protectReservedCaptureTargets(
+    playerIndex: PlayerIndex,
+    playerPokemon: PlayerPokemon,
+    turnMove: TurnMove,
+  ): TurnMove {
     const reservedTargets = this.getComputerPartnerBlockedCaptureTargets(playerIndex);
     if (
       reservedTargets.length === 0
@@ -363,11 +377,13 @@ export class CommandPhase extends FieldPhase {
       return turnMove;
     }
 
-    return this.getReservedCaptureSafeMove(playerPokemon, reservedTargets) ?? {
-      move: MoveId.NONE,
-      targets: [],
-      useMode: MoveUseMode.NORMAL,
-    };
+    return (
+      this.getReservedCaptureSafeMove(playerPokemon, reservedTargets) ?? {
+        move: MoveId.NONE,
+        targets: [],
+        useMode: MoveUseMode.NORMAL,
+      }
+    );
   }
 
   private handleComputerPartnerCommand(): boolean {
@@ -392,7 +408,7 @@ export class CommandPhase extends FieldPhase {
       return true;
     }
 
-    playerPokemon.aiType = AiType.SMART;
+    playerPokemon.aiType = AiType.PLANNER;
     globalScene.aiCommandInProgress = true;
     try {
       const nextMove = this.protectReservedCaptureTargets(playerIndex, playerPokemon, playerPokemon.getNextMove());
@@ -792,15 +808,14 @@ export class CommandPhase extends FieldPhase {
       || targetPokemon.bossSegmentIndex < 1 // TODO: Decouple this hardcoded exception for wonder guard and just check the target...
       || targetPokemon.hasAbility(AbilityId.WONDER_GUARD, false, true)
     ) {
-      return undefined;
+      return;
     }
 
     // When facing the final boss, it must be weakened unless a Master Ball is used AND no challenges are active.
     // The message is customized for the final boss.
     if (
       isFinalBoss
-      && (pokeballType < PokeballType.MASTER_BALL
-        || (pokeballType === PokeballType.MASTER_BALL && isChallengeActive))
+      && (pokeballType < PokeballType.MASTER_BALL || (pokeballType === PokeballType.MASTER_BALL && isChallengeActive))
     ) {
       return "battle:noPokeballForceFinalBossCatchable";
     }
@@ -810,7 +825,7 @@ export class CommandPhase extends FieldPhase {
       return "battle:noPokeballStrong";
     }
 
-    return undefined;
+    return;
   }
 
   /**
@@ -847,7 +862,7 @@ export class CommandPhase extends FieldPhase {
           .find(targetPokemon => !!targetPokemon);
         this.queueShowText(
           firstTarget
-            ? this.getBallTargetBlockMessage(firstTarget, cursor) ?? "battle:noPokeballStrong"
+            ? (this.getBallTargetBlockMessage(firstTarget, cursor) ?? "battle:noPokeballStrong")
             : "battle:noPokeballStrong",
         );
         return false;
@@ -932,15 +947,17 @@ export class CommandPhase extends FieldPhase {
     const currentBattle = globalScene.currentBattle;
 
     if (isBatonSwitch || !this.handleTrap()) {
-      this.setTurnCommand(this.isSwitch
-        ? {
-            command: Command.POKEMON,
-            cursor,
-            args: [isBatonSwitch],
-          }
-        : {
-            command: Command.RUN,
-          });
+      this.setTurnCommand(
+        this.isSwitch
+          ? {
+              command: Command.POKEMON,
+              cursor,
+              args: [isBatonSwitch],
+            }
+          : {
+              command: Command.RUN,
+            },
+      );
       if (!this.isSwitch && this.fieldIndex) {
         currentBattle.turnCommands[this.getPreviousFieldBattlerIndex()]!.skip = true;
       }

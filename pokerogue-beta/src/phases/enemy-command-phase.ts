@@ -1,9 +1,11 @@
 import { globalScene } from "#app/global-scene";
 import { AbilityId } from "#enums/ability-id";
+import { AiType } from "#enums/ai-type";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { Command } from "#enums/command";
 import type { EnemyPokemon } from "#field/pokemon";
 import { FieldPhase } from "#phases/field-phase";
+import { getPlannerSwitchIndex } from "#utils/battle-planner-ai";
 
 /**
  * Phase for determining an enemy AI's action for the next turn.
@@ -68,8 +70,16 @@ export class EnemyCommandPhase extends FieldPhase {
 
           const switchMultiplier = 1 - (battle.enemySwitchCounter ? Math.pow(0.1, 1 / battle.enemySwitchCounter) : 0);
 
-          if (sortedPartyMemberScores[0][1] * switchMultiplier >= matchupScore * (trainer.config.isBoss ? 2 : 3)) {
-            const index = trainer.getNextSummonIndex(enemyPokemon.trainerSlot, partyMemberScores);
+          const plannerSwitchIndex =
+            enemyPokemon.aiType === AiType.PLANNER
+              ? getPlannerSwitchIndex(enemyPokemon, partyMemberScores, switchMultiplier, trainer.config.isBoss)
+              : undefined;
+
+          if (
+            plannerSwitchIndex !== undefined
+            || sortedPartyMemberScores[0][1] * switchMultiplier >= matchupScore * (trainer.config.isBoss ? 2 : 3)
+          ) {
+            const index = plannerSwitchIndex ?? trainer.getNextSummonIndex(enemyPokemon.trainerSlot, partyMemberScores);
 
             battle.turnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = {
               command: Command.POKEMON,
@@ -90,7 +100,9 @@ export class EnemyCommandPhase extends FieldPhase {
     const nextMove = enemyPokemon.getNextMove();
 
     if (this.shouldTera(enemyPokemon)) {
-      globalScene.currentBattle.preTurnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = { command: Command.TERA };
+      globalScene.currentBattle.preTurnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = {
+        command: Command.TERA,
+      };
     }
 
     globalScene.currentBattle.turnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = {

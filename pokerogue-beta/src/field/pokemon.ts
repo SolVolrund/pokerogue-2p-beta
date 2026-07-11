@@ -122,8 +122,8 @@ import {
   HiddenAbilityRateBoosterModifier,
   PokemonBaseStatFlatModifier,
   PokemonBaseStatTotalModifier,
-  PokemonFriendshipBoosterModifier,
   PokemonFormChangeItemModifier,
+  PokemonFriendshipBoosterModifier,
   PokemonHeldItemModifier,
   PokemonIncrementingStatModifier,
   PokemonMultiHitModifier,
@@ -154,7 +154,6 @@ import type {
   GetBaseDamageParams,
 } from "#types/damage-params";
 import type { DamageCalculationResult, DamageResult } from "#types/damage-result";
-import { isClassicFinalBossPhaseOne } from "#utils/classic-final-boss-utils";
 import type { GetEffectiveStatParams } from "#types/pokemon-common";
 import type { LevelMovesWithSource } from "#types/pokemon-species";
 import type { StarterDataEntry, StarterMoveset } from "#types/save-data";
@@ -167,7 +166,10 @@ import type { PartyOption } from "#ui/party-ui-handler";
 import { PartyUiHandler } from "#ui/party-ui-handler";
 import { PlayerBattleInfo } from "#ui/player-battle-info";
 import { coerceArray } from "#utils/array";
+import { choosePlannerMove } from "#utils/battle-planner-ai";
+import { getEnemyBattlerIndex, getPlayerBattlerIndex } from "#utils/battler-index-utils";
 import { applyChallenges } from "#utils/challenge-utils";
+import { isClassicFinalBossPhaseOne } from "#utils/classic-final-boss-utils";
 import { argbFromRgba, deltaRgb, rgbaFromArgb, rgbaToInt, rgbHexToRgba, rgbToHsv } from "#utils/color-utils";
 import {
   BooleanHolder,
@@ -185,7 +187,6 @@ import { calculateBossSegmentDamage } from "#utils/damage";
 import { getEnumValues } from "#utils/enums";
 import { cachedFetch } from "#utils/fetch-utils";
 import { decodeNickname, getFusedSpeciesName, getPokemonSpecies } from "#utils/pokemon-utils";
-import { getEnemyBattlerIndex, getPlayerBattlerIndex } from "#utils/battler-index-utils";
 import { weightedPick } from "#utils/random";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import { ValueHolder } from "#utils/value-holder";
@@ -1353,14 +1354,15 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
         && globalScene.multiplayerPlayerCount > 2
         && playerFieldOwnerCount > 1;
       const useThreeEnemyCompactInfo = this.isEnemy() && globalScene.currentBattle?.getBattlerCount() > 2;
-      const useMiniBattleInfo = isPlayerPokemon && globalScene.twoPlayerMode
-        ? true
-        : fieldPosition !== FieldPosition.CENTER;
+      const useMiniBattleInfo =
+        isPlayerPokemon && globalScene.twoPlayerMode ? true : fieldPosition !== FieldPosition.CENTER;
       if (!usePlayerCompactInfo && !useThreeEnemyCompactInfo) {
         battleInfo.clearCompactLayout();
       }
       battleInfo.setMini(useMiniBattleInfo);
-      battleInfo.setOffset(usePlayerCompactInfo || useThreeEnemyCompactInfo ? false : fieldPosition === FieldPosition.RIGHT);
+      battleInfo.setOffset(
+        usePlayerCompactInfo || useThreeEnemyCompactInfo ? false : fieldPosition === FieldPosition.RIGHT,
+      );
       if (usePlayerCompactInfo) {
         battleInfo.setPlayerCompactLayout(this.getFieldIndex(), playerFieldOwnerCount);
       } else if (useThreeEnemyCompactInfo) {
@@ -1760,9 +1762,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   getMaxHp(useIllusion = false): number {
-    return useIllusion
-      ? (this.summonData.illusion?.maxHp ?? this.getStat(Stat.HP))
-      : this.getStat(Stat.HP);
+    return useIllusion ? (this.summonData.illusion?.maxHp ?? this.getStat(Stat.HP)) : this.getStat(Stat.HP);
   }
 
   /** Returns the amount of hp currently missing from this {@linkcode Pokemon} (max - current) */
@@ -2565,14 +2565,12 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       && this.hasSpecies(SpeciesId.ARCEUS)
       && moveType >= PokemonType.NORMAL
       && moveType <= PokemonType.FAIRY
-      && this
-        .getHeldItems()
-        .some(
-          modifier =>
-            modifier instanceof PokemonFormChangeItemModifier
-            && modifier.formChangeItem === FormChangeItem.LEGEND_PLATE
-            && modifier.active,
-        )
+      && this.getHeldItems().some(
+        modifier =>
+          modifier instanceof PokemonFormChangeItemModifier
+          && modifier.formChangeItem === FormChangeItem.LEGEND_PLATE
+          && modifier.active,
+      )
     );
   }
 
@@ -3350,7 +3348,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * @returns `true` if the two pokemon are opponents, `false` otherwise
    */
   public isOpponent(target: Pokemon): boolean {
-    return isForcedDuelOpponent(this, target) || (this.isPlayer() !== target.isPlayer() && !isForcedDuelAlly(this, target));
+    return (
+      isForcedDuelOpponent(this, target) || (this.isPlayer() !== target.isPlayer() && !isForcedDuelAlly(this, target))
+    );
   }
 
   getOpponent(targetIndex: number): Pokemon | null {
@@ -3741,14 +3741,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     applyMoveAttrs("FixedDamageAttr", source, this, move, fixedDamage);
     if (fixedDamage.value) {
       const multiLensMultiplier = new NumberHolder(1);
-      globalScene.applyModifiersForPokemon(
-        PokemonMultiHitModifier,
-        source,
-        source,
-        move.id,
-        null,
-        multiLensMultiplier,
-      );
+      globalScene.applyModifiersForPokemon(PokemonMultiHitModifier, source, source, move.id, null, multiLensMultiplier);
       fixedDamage.value = toDmgValue(fixedDamage.value * multiLensMultiplier.value);
 
       return {
@@ -5925,10 +5918,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   getPersistentTreasureCount(): number {
     return (
       this.getHeldItems().filter(m => m.is("DamageMoneyRewardModifier")).length
-      + globalScene.findModifiersForPokemon(
-        m => m.is("MoneyMultiplierModifier") || m.is("ExtraModifierModifier"),
-        this,
-      ).length
+      + globalScene.findModifiersForPokemon(m => m.is("MoneyMultiplierModifier") || m.is("ExtraModifierModifier"), this)
+        .length
     );
   }
 }
@@ -6466,7 +6457,14 @@ export class PlayerPokemon extends Pokemon {
     pokemon
       .getMoveset(true)
       .map((m: PokemonMove) =>
-        globalScene.phaseManager.unshiftNew("LearnMovePhase", newPartyMemberIndex, m.getMove().id, undefined, -1, playerIndex),
+        globalScene.phaseManager.unshiftNew(
+          "LearnMovePhase",
+          newPartyMemberIndex,
+          m.getMove().id,
+          undefined,
+          -1,
+          playerIndex,
+        ),
       );
     pokemon.destroy();
     this.updateFusionPalette();
@@ -6623,7 +6621,7 @@ export class EnemyPokemon extends Pokemon {
       }
     }
 
-    this.aiType = boss || this.hasTrainer() ? AiType.SMART : AiType.SMART_RANDOM;
+    this.aiType = boss || this.hasTrainer() ? AiType.PLANNER : AiType.SMART_RANDOM;
   }
 
   initBattleInfo(): void {
@@ -6842,6 +6840,9 @@ export class EnemyPokemon extends Pokemon {
           const moveId = movePool[globalScene.randBattleSeedInt(movePool.length)].moveId;
           return { move: moveId, targets: this.getNextTargets(moveId), useMode: MoveUseMode.NORMAL };
         }
+        case AiType.PLANNER: {
+          return choosePlannerMove(this, movePool);
+        }
         case AiType.SMART_RANDOM:
         case AiType.SMART: {
           /**
@@ -7057,8 +7058,7 @@ export class EnemyPokemon extends Pokemon {
      */
     const benefitScores = targets.map(p => [
       p.getBattlerIndex(),
-      move.getTargetBenefitScore(this, p, move)
-        * (isBattleOpponentForTargeting(this, p) ? -1 : 1),
+      move.getTargetBenefitScore(this, p, move) * (isBattleOpponentForTargeting(this, p) ? -1 : 1),
     ]);
 
     const sortedBenefitScores = benefitScores.slice(0);
