@@ -1,7 +1,7 @@
+import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { Phase } from "#app/phase";
-import type { PlayerIndex } from "#app/battle-scene";
 import type { EggHatchData } from "#data/egg-hatch-data";
 import { UiMode } from "#enums/ui-mode";
 
@@ -37,7 +37,7 @@ export class EggSummaryPhase extends Phase {
     }
     globalScene.savePlayerSystemSaveLocal(this.playerIndex);
 
-    await globalScene.ui.setModeForceTransition(UiMode.EGG_HATCH_SUMMARY, this.eggHatchData);
+    await globalScene.ui.setModeForceTransition(UiMode.EGG_HATCH_SUMMARY, this.eggHatchData, this.playerIndex);
     audioManager.fadeOutBgm();
   }
 

@@ -159,6 +159,8 @@ export class LoadingScene extends SceneBase {
       .loadImage("starter_select_bg", "ui")
       .loadImage("pokedex_summary_bg", "ui")
       .loadImage("select_cursor", "ui")
+      .loadImage("select_cursor_player_2", "ui")
+      .loadImage("select_cursor_player_3", "ui")
       .loadImage("select_cursor_highlight", "ui")
       .loadImage("select_cursor_highlight_thick", "ui")
       .loadImage("select_cursor_pokerus", "ui")

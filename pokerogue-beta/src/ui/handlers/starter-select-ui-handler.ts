@@ -14,8 +14,8 @@ import {
   getValueReductionCandyCounts,
   POKERUS_STARTER_COUNT,
 } from "#balance/starters";
-import { allAbilities, allMoves } from "#data/data-lists";
 import { getContestSpectacularMove } from "#data/contests/contest-spectacular-moves";
+import { allAbilities, allMoves } from "#data/data-lists";
 import { Egg } from "#data/egg";
 import { GrowthRate, getGrowthRateColor } from "#data/exp";
 import { Gender, getGenderColor, getGenderSymbol } from "#data/gender";
@@ -41,6 +41,7 @@ import { UiMode } from "#enums/ui-mode";
 import { UiTheme } from "#enums/ui-theme";
 import type { CandyUpgradeNotificationChangedEvent } from "#events/battle-scene";
 import { BattleSceneEventType } from "#events/battle-scene";
+import type { Move } from "#moves/move";
 import type { Variant } from "#sprites/variant";
 import { getVariantIcon, getVariantTint } from "#sprites/variant";
 import { achvs } from "#system/achv";
@@ -54,9 +55,9 @@ import { DropDown, DropDownLabel, DropDownOption, DropDownState, DropDownType, S
 import { FilterBar } from "#ui/filter-bar";
 import { MessageUiHandler } from "#ui/message-ui-handler";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
-import type { Move } from "#moves/move";
 import { PokemonIconAnimHelper, PokemonIconAnimMode } from "#ui/pokemon-icon-anim-helper";
 import { ScrollBar } from "#ui/scroll-bar";
+import { getPlayerSelectCursorTexture } from "#ui/select-cursor";
 import { StarterContainer } from "#ui/starter-container";
 import { StatsContainer } from "#ui/stats-container";
 import { addBBCodeTextObject, addTextObject, getTextColor, updateCandyCountTextStyle } from "#ui/text";
@@ -1218,6 +1219,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       super.show(args);
       this.starterSelectCallback = args[0] as StarterSelectCallback;
 
+      this.cursorObj.setTexture(getPlayerSelectCursorTexture(globalScene.activePlayerIndex));
       this.starterSelectContainer.setVisible(true);
 
       this.starterPreferences = loadStarterPreferences();

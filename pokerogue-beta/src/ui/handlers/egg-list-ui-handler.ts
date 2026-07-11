@@ -6,6 +6,7 @@ import { MessageUiHandler } from "#ui/message-ui-handler";
 import { PokemonIconAnimHelper, PokemonIconAnimMode } from "#ui/pokemon-icon-anim-helper";
 import { ScrollBar } from "#ui/scroll-bar";
 import { ScrollableGridHelper } from "#ui/scrollable-grid-helper";
+import { getPlayerSelectCursorTexture } from "#ui/select-cursor";
 import { addTextObject } from "#ui/text";
 import { addWindow } from "#ui/ui-theme";
 import i18next from "i18next";
@@ -99,6 +100,8 @@ export class EggListUiHandler extends MessageUiHandler {
 
   override show(args: any[]): boolean {
     super.show(args);
+
+    this.cursorObj.setTexture(getPlayerSelectCursorTexture(globalScene.activePlayerIndex));
 
     this.initEggIcons();
 

@@ -1,3 +1,4 @@
+import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
@@ -10,6 +11,7 @@ import { PokemonHatchInfoContainer } from "#ui/pokemon-hatch-info-container";
 import { PokemonIconAnimHelper, PokemonIconAnimMode } from "#ui/pokemon-icon-anim-helper";
 import { ScrollBar } from "#ui/scroll-bar";
 import { ScrollableGridHelper } from "#ui/scrollable-grid-helper";
+import { getPlayerSelectCursorTexture } from "#ui/select-cursor";
 
 const iconContainerX = 112;
 const iconContainerY = 9;
@@ -142,9 +144,13 @@ export class EggSummaryUiHandler extends MessageUiHandler {
   /**
    * @param args EggHatchData[][]
    * args[0]: list of EggHatchData for each egg/pokemon hatched
+   * args[1]: player index that owns the hatched pokemon
    */
-  show(args: EggHatchData[][]): boolean {
+  show(args: [EggHatchData[], PlayerIndex?]): boolean {
     super.show(args);
+    const playerIndex = args[1] ?? globalScene.activePlayerIndex;
+    this.cursorObj.setTexture(getPlayerSelectCursorTexture(playerIndex));
+
     if (args.length > 0) {
       // sort the egg hatch data by egg tier then by species number (then by order hatched)
       this.eggHatchData = args[0].sort(function sortHatchData(a: EggHatchData, b: EggHatchData) {

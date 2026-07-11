@@ -572,6 +572,152 @@ export class GameData {
     }) as SystemSaveData;
   }
 
+  private static mergeSystemSaveProgress(target: SystemSaveData, source?: SystemSaveData): SystemSaveData {
+    if (!source) {
+      return target;
+    }
+
+    GameData.mergeDexDataProgress(target.dexData, source.dexData);
+    GameData.mergeStarterDataProgress(target.starterData, source.starterData);
+    GameData.mergeGameStatsProgress(target.gameStats, source.gameStats);
+    GameData.mergeBooleanUnlocks(target.unlocks, source.unlocks);
+    GameData.mergeTimestampUnlocks(target.achvUnlocks, source.achvUnlocks);
+    GameData.mergeTimestampUnlocks(target.voucherUnlocks, source.voucherUnlocks);
+
+    if (source.computerPartnerUnlocks) {
+      target.computerPartnerUnlocks ??= {};
+      for (const key of COMPUTER_PARTNER_KEYS) {
+        const sourceTimestamp = source.computerPartnerUnlocks[key];
+        if (sourceTimestamp !== undefined) {
+          target.computerPartnerUnlocks[key] = Math.max(target.computerPartnerUnlocks[key] ?? 0, sourceTimestamp);
+        }
+      }
+    }
+
+    return target;
+  }
+
+  private static mergeDexDataProgress(target: DexData, source?: DexData): void {
+    if (!source) {
+      return;
+    }
+
+    for (const speciesId of Object.keys(source)) {
+      const sourceEntry = source[speciesId];
+      if (!sourceEntry) {
+        continue;
+      }
+
+      target[speciesId] ??= {
+        seenAttr: 0n,
+        caughtAttr: 0n,
+        natureAttr: 0,
+        seenCount: 0,
+        caughtCount: 0,
+        hatchedCount: 0,
+        ivs: [0, 0, 0, 0, 0, 0],
+        contestStats: createEmptyContestStats(),
+        ribbons: new RibbonData(0),
+      };
+
+      GameData.mergeDexEntryProgress(target[speciesId], sourceEntry);
+    }
+  }
+
+  private static mergeDexEntryProgress(target: DexEntry, source: DexEntry): void {
+    target.seenAttr = (target.seenAttr ?? 0n) | (source.seenAttr ?? 0n);
+    target.caughtAttr = (target.caughtAttr ?? 0n) | (source.caughtAttr ?? 0n);
+    target.natureAttr = (target.natureAttr ?? 0) | (source.natureAttr ?? 0);
+    target.seenCount = Math.max(target.seenCount ?? 0, source.seenCount ?? 0);
+    target.caughtCount = Math.max(target.caughtCount ?? 0, source.caughtCount ?? 0);
+    target.hatchedCount = Math.max(target.hatchedCount ?? 0, source.hatchedCount ?? 0);
+    target.ivs = Array.from({ length: 6 }, (_, i) => Math.max(target.ivs?.[i] ?? 0, source.ivs?.[i] ?? 0));
+    target.contestStats = GameData.mergeContestStatsProgress(target.contestStats, source.contestStats);
+
+    const targetRibbons = target.ribbons?.getRibbons?.() ?? 0n;
+    const sourceRibbons = source.ribbons?.getRibbons?.() ?? 0n;
+    target.ribbons = new RibbonData(targetRibbons | sourceRibbons);
+  }
+
+  private static mergeContestStatsProgress(
+    target: PartialContestStats | undefined,
+    source: PartialContestStats | undefined,
+  ): ContestStats {
+    const merged = normalizeContestStats(target);
+    const sourceStats = normalizeContestStats(source);
+    for (const contestType of CONTEST_TYPES) {
+      merged[contestType] = Math.max(merged[contestType], sourceStats[contestType]);
+    }
+    return merged;
+  }
+
+  private static mergeStarterDataProgress(target: StarterData, source?: StarterData): void {
+    if (!source) {
+      return;
+    }
+
+    for (const speciesId of Object.keys(source)) {
+      const sourceEntry = source[speciesId];
+      if (!sourceEntry) {
+        continue;
+      }
+
+      target[speciesId] ??= {
+        moveset: null,
+        eggMoves: 0,
+        candyCount: 0,
+        friendship: 0,
+        abilityAttr: 0,
+        passiveAttr: 0,
+        valueReduction: 0,
+        classicWinCount: 0,
+      };
+
+      const targetEntry = target[speciesId];
+      targetEntry.eggMoves |= sourceEntry.eggMoves ?? 0;
+      targetEntry.friendship = Math.max(targetEntry.friendship ?? 0, sourceEntry.friendship ?? 0);
+      targetEntry.abilityAttr |= sourceEntry.abilityAttr ?? 0;
+      targetEntry.passiveAttr |= sourceEntry.passiveAttr ?? 0;
+      targetEntry.valueReduction = Math.max(targetEntry.valueReduction ?? 0, sourceEntry.valueReduction ?? 0);
+      targetEntry.classicWinCount = Math.max(targetEntry.classicWinCount ?? 0, sourceEntry.classicWinCount ?? 0);
+    }
+  }
+
+  private static mergeGameStatsProgress(target: GameStats, source?: GameStats): void {
+    if (!source) {
+      return;
+    }
+
+    const targetStats = target as unknown as Record<string, number>;
+    const sourceStats = source as unknown as Record<string, number>;
+    for (const key of Object.keys(sourceStats)) {
+      const sourceValue = sourceStats[key];
+      if (typeof sourceValue === "number") {
+        targetStats[key] = Math.max(targetStats[key] ?? 0, sourceValue);
+      }
+    }
+  }
+
+  private static mergeBooleanUnlocks(target: Unlocks, source?: Unlocks): void {
+    if (!source) {
+      return;
+    }
+
+    for (const key of Object.keys(source)) {
+      target[key] ||= !!source[key];
+    }
+  }
+
+  private static mergeTimestampUnlocks(target: Record<string, number>, source?: Record<string, number>): void {
+    if (!source) {
+      return;
+    }
+
+    for (const key of Object.keys(source)) {
+      target[key] = Math.max(target[key] ?? 0, source[key] ?? 0);
+    }
+  }
+
   convertSystemDataStr(dataStr: string, shorten = false): string {
     if (!shorten) {
       // Account for past key oversight
@@ -1573,9 +1719,22 @@ export class GameData {
     const maxIntAttrValue = 0x80000000;
 
     const systemSaveSource = globalScene.twoPlayerMode ? globalScene.getLocalPlayerGameData() : this;
-    const systemData = useCachedSystem
-      ? GameData.parseSystemData(decrypt(localStorage.getItem(`data_${loggedInUser?.username}`)!, bypassLogin))
-      : systemSaveSource.getSystemSaveData(); // TODO: is this bang correct?
+    const liveSystemData = systemSaveSource.getSystemSaveData();
+    let cachedSystemData: SystemSaveData | undefined;
+    const cachedSystemDataStr = localStorage.getItem(`data_${loggedInUser?.username}`);
+
+    if (cachedSystemDataStr) {
+      try {
+        cachedSystemData = GameData.parseSystemData(decrypt(cachedSystemDataStr, bypassLogin));
+      } catch (err) {
+        console.warn("Failed to parse cached system save while saving; using live system data only.", err);
+      }
+    }
+
+    const systemData = useCachedSystem && cachedSystemData ? cachedSystemData : liveSystemData;
+    GameData.mergeSystemSaveProgress(systemData, liveSystemData);
+    GameData.mergeSystemSaveProgress(systemData, cachedSystemData);
+    systemData.timestamp = Date.now();
 
     const request = {
       system: systemData,

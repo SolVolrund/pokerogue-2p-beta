@@ -654,7 +654,7 @@ export class MenuUiHandler extends MessageUiHandler {
             ui.setMode(UiMode.LOADING, {
               buttonActions: [],
               fadeOut: () =>
-                globalScene.gameData.saveAll(true, true, true, true).then(() => {
+                globalScene.gameData.saveAll(true, true, true).then(() => {
                   globalScene.reset(true);
                 }),
             });
