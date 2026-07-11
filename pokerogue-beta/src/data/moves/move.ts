@@ -8195,6 +8195,10 @@ export class NaturePowerAttr extends CallMoveAttr {
         return MoveId.BRINE;
       case BiomeId.ISLAND:
         return MoveId.LEAF_TORNADO;
+      case BiomeId.ALTO_MARE:
+        return MoveId.SCALD;
+      case BiomeId.SECRET_GARDEN:
+        return MoveId.MIST_BALL;
       case BiomeId.MOUNTAIN:
         return MoveId.AIR_SLASH;
       case BiomeId.BADLANDS:

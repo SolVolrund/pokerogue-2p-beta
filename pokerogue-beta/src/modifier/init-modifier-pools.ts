@@ -1,3 +1,4 @@
+import type { PlayerIndex } from "#app/battle-scene";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
@@ -15,6 +16,7 @@ import type { Pokemon } from "#field/pokemon";
 import {
   BerryModifier,
   DoubleBattleChanceBoosterModifier,
+  GrandLaurelModifier,
   PokeblockKitModifier,
   SpeciesCritBoosterModifier,
   TurnStatusEffectModifier,
@@ -137,6 +139,18 @@ function initCommonModifierPool() {
     m.setTier(ModifierTier.COMMON);
     return m;
   });
+}
+
+function getRewardPlayerIndex(party: readonly Pokemon[] = []): PlayerIndex {
+  const playerPokemon = party.find(pokemon => pokemon.isPlayer());
+  return playerPokemon
+    ? (globalScene.getPlayerIndexForPokemon(playerPokemon) ?? globalScene.activePlayerIndex)
+    : globalScene.activePlayerIndex;
+}
+
+function isRewardPlayerUnlockAvailable(unlockable: Unlockables, party: readonly Pokemon[] = []): boolean {
+  return !globalScene.gameMode.isFreshStartChallenge()
+    && globalScene.getPlayerGameData(getRewardPlayerIndex(party)).isUnlocked(unlockable);
 }
 
 /**
@@ -395,18 +409,17 @@ function initUltraModifierPool() {
     new WeightedModifierType(modifierTypes.AMULET_COIN, skipInLastClassicWaveOrDefault(3)),
     new WeightedModifierType(
       modifierTypes.OLD_SEA_MAP,
-      () =>
+      (party: Pokemon[]) =>
         globalScene.gameMode.isClassic
         && globalScene.currentBattle.waveIndex < 180
-        && !globalScene.gameMode.isFreshStartChallenge()
-        && globalScene.gameData.isUnlocked(Unlockables.OLD_SEA_MAP)
+        && isRewardPlayerUnlockAvailable(Unlockables.OLD_SEA_MAP, party)
           ? 3
           : 0,
       3,
     ),
     new WeightedModifierType(modifierTypes.EVIOLITE, (party: Pokemon[]) => {
-      const { gameMode, gameData } = globalScene;
-      if (gameMode.isDaily || (!gameMode.isFreshStartChallenge() && gameData.isUnlocked(Unlockables.EVIOLITE))) {
+      const { gameMode } = globalScene;
+      if (gameMode.isDaily || isRewardPlayerUnlockAvailable(Unlockables.EVIOLITE, party)) {
         return party.some(p => {
           // Check if Pokemon's species (or fusion species, if applicable) can evolve or if they're G-Max'd
           if (
@@ -720,18 +733,28 @@ function initMasterModifierPool() {
     ),
     new WeightedModifierType(
       modifierTypes.MINI_BLACK_HOLE,
-      () =>
-        !globalScene.gameMode.isFreshStartChallenge()
-        && globalScene.gameData.isUnlocked(Unlockables.MINI_BLACK_HOLE)
+      (party: Pokemon[]) =>
+        isRewardPlayerUnlockAvailable(Unlockables.MINI_BLACK_HOLE, party)
           ? 1
           : 0,
       1,
     ),
     new WeightedModifierType(
       modifierTypes.GAMMA_RAY_BURST,
-      () =>
-        !globalScene.gameMode.isFreshStartChallenge()
-        && globalScene.gameData.isUnlocked(Unlockables.GAMMA_RAY_BURST)
+      (party: Pokemon[]) =>
+        isRewardPlayerUnlockAvailable(Unlockables.GAMMA_RAY_BURST, party)
+          ? 1
+          : 0,
+      1,
+    ),
+    new WeightedModifierType(
+      modifierTypes.GRAND_LAUREL,
+      (party: Pokemon[]) =>
+        isRewardPlayerUnlockAvailable(Unlockables.GRAND_LAUREL, party)
+        && !globalScene.findModifierForPlayer(
+          modifier => modifier instanceof GrandLaurelModifier,
+          getRewardPlayerIndex(party),
+        )
           ? 1
           : 0,
       1,

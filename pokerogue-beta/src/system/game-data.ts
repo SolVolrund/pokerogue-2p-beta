@@ -193,6 +193,7 @@ export class GameData {
       [Unlockables.EVIOLITE]: false,
       [Unlockables.GAMMA_RAY_BURST]: false,
       [Unlockables.OLD_SEA_MAP]: false,
+      [Unlockables.GRAND_LAUREL]: false,
     };
     this.achvUnlocks = {};
     this.voucherUnlocks = {};

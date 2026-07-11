@@ -322,39 +322,36 @@ export class GameOverPhase extends BattlePhase {
   handleUnlocks(): void {
     if (this.isVictory && globalScene.gameMode.isClassic) {
       const classicFinalBossSpeciesId = globalScene.currentBattle.classicFinalBossSpeciesId;
-      if (!globalScene.gameData.unlocks[Unlockables.ENDLESS_MODE]) {
-        globalScene.phaseManager.unshiftNew("UnlockPhase", Unlockables.ENDLESS_MODE);
+      const activePlayerIndexes = globalScene.getActivePlayerIndexes();
+      const queueUnlock = (unlockable: Unlockables, playerIndexes = activePlayerIndexes): void => {
+        const lockedPlayerIndexes = playerIndexes.filter(playerIndex => (
+          !globalScene.getPlayerGameData(playerIndex).unlocks[unlockable]
+        ));
+        if (lockedPlayerIndexes.length > 0) {
+          globalScene.phaseManager.unshiftNew("UnlockPhase", unlockable, lockedPlayerIndexes);
+        }
+      };
+
+      queueUnlock(Unlockables.ENDLESS_MODE);
+      if (activePlayerIndexes.some(playerIndex => globalScene.getPlayerParty(playerIndex).some(p => p.fusionSpecies))) {
+        queueUnlock(Unlockables.SPLICED_ENDLESS_MODE);
       }
-      if (
-        globalScene.getPlayerParty().filter(p => p.fusionSpecies).length > 0
-        && !globalScene.gameData.unlocks[Unlockables.SPLICED_ENDLESS_MODE]
-      ) {
-        globalScene.phaseManager.unshiftNew("UnlockPhase", Unlockables.SPLICED_ENDLESS_MODE);
+
+      if (classicFinalBossSpeciesId === SpeciesId.ETERNATUS) {
+        queueUnlock(Unlockables.MINI_BLACK_HOLE);
       }
-      if (
-        classicFinalBossSpeciesId === SpeciesId.ETERNATUS
-        && !globalScene.gameData.unlocks[Unlockables.MINI_BLACK_HOLE]
-      ) {
-        globalScene.phaseManager.unshiftNew("UnlockPhase", Unlockables.MINI_BLACK_HOLE);
+      if (classicFinalBossSpeciesId === SpeciesId.NECROZMA) {
+        queueUnlock(Unlockables.GAMMA_RAY_BURST);
       }
-      if (
-        classicFinalBossSpeciesId === SpeciesId.NECROZMA
-        && !globalScene.gameData.unlocks[Unlockables.GAMMA_RAY_BURST]
-      ) {
-        globalScene.phaseManager.unshiftNew("UnlockPhase", Unlockables.GAMMA_RAY_BURST);
+      if (classicFinalBossSpeciesId === SpeciesId.MEW) {
+        queueUnlock(Unlockables.OLD_SEA_MAP);
       }
-      if (
-        classicFinalBossSpeciesId === SpeciesId.MEW
-        && !globalScene.gameData.unlocks[Unlockables.OLD_SEA_MAP]
-      ) {
-        globalScene.phaseManager.unshiftNew("UnlockPhase", Unlockables.OLD_SEA_MAP);
-      }
-      if (
-        !globalScene.gameData.unlocks[Unlockables.EVIOLITE]
-        && globalScene.getPlayerParty().some(p => speciesDataRegistry.hasEvolutions(p.getSpeciesForm(true).speciesId))
-      ) {
-        globalScene.phaseManager.unshiftNew("UnlockPhase", Unlockables.EVIOLITE);
-      }
+      queueUnlock(
+        Unlockables.EVIOLITE,
+        activePlayerIndexes.filter(playerIndex => globalScene
+          .getPlayerParty(playerIndex)
+          .some(p => speciesDataRegistry.hasEvolutions(p.getSpeciesForm(true).speciesId))),
+      );
     }
   }
 

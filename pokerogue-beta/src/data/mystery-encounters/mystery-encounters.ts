@@ -79,6 +79,7 @@ export const NON_EXTREME_ENCOUNTER_BIOMES = [
   BiomeId.SNOWY_FOREST,
   BiomeId.ISLAND,
   BiomeId.LABORATORY,
+  BiomeId.ALTO_MARE,
 ];
 
 /**
@@ -118,6 +119,7 @@ export const HUMAN_TRANSITABLE_BIOMES = [
   BiomeId.SNOWY_FOREST,
   BiomeId.ISLAND,
   BiomeId.LABORATORY,
+  BiomeId.ALTO_MARE,
 ];
 
 /**
@@ -139,6 +141,7 @@ export const CIVILIZATION_ENCOUNTER_BIOMES = [
   BiomeId.CONSTRUCTION_SITE,
   BiomeId.SLUM,
   BiomeId.ISLAND,
+  BiomeId.ALTO_MARE,
 ];
 
 export const allMysteryEncounters: {
@@ -190,6 +193,7 @@ const anyBiomeEncounters: MysteryEncounterType[] = [
   MysteryEncounterType.GTS_MALFUNCTION,
   MysteryEncounterType.SHINY_BADGE,
   MysteryEncounterType.LEGENDARY_CONFLICT,
+  MysteryEncounterType.CONTEST_HALL,
 ];
 
 /**
@@ -235,6 +239,8 @@ export const mysteryEncountersByBiome = new Map<BiomeId, MysteryEncounterType[]>
   [BiomeId.ISLAND, []],
   [BiomeId.FARAWAY_ISLAND, [MysteryEncounterType.FARAWAY_ISLAND_TREASURE]],
   [BiomeId.LABORATORY, []],
+  [BiomeId.ALTO_MARE, []],
+  [BiomeId.SECRET_GARDEN, []],
 ]);
 
 export function initMysteryEncounters() {

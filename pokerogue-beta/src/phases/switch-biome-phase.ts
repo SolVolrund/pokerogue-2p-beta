@@ -1,6 +1,6 @@
 import { globalScene } from "#app/global-scene";
 import type { BiomeId } from "#enums/biome-id";
-import { getBiomeKey } from "#field/arena";
+import { getBiomeAssetKey } from "#field/arena";
 import { BattlePhase } from "#phases/battle-phase";
 
 export class SwitchBiomePhase extends BattlePhase {
@@ -42,7 +42,7 @@ export class SwitchBiomePhase extends BattlePhase {
         const previousBiome = globalScene.arena.biomeId;
         globalScene.newArena(this.nextBiome);
 
-        const biomeKey = getBiomeKey(this.nextBiome);
+        const biomeKey = getBiomeAssetKey(this.nextBiome);
         const bgTexture = `${biomeKey}_bg`;
         globalScene.arenaBgTransition.setTexture(bgTexture);
         globalScene.arenaBgTransition.setAlpha(0);

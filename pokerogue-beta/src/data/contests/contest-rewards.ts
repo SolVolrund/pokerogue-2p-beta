@@ -2,18 +2,37 @@ import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { modifierTypes } from "#data/data-lists";
 import { ModifierTier } from "#enums/modifier-tier";
+import { Unlockables } from "#enums/unlockables";
+import { GrandLaurelModifier } from "#modifiers/modifier";
 import { setEncounterRewards } from "#mystery-encounters/encounter-phase-utils";
 import { getModifierType } from "#utils/modifier-utils";
-import type { ContestParticipant, ContestState } from "./contest-state";
+import { ContestRank } from "./contest-opponents";
+import { compareContestantTieBreakers, type ContestParticipant, type ContestState } from "./contest-state";
 
 export function setContestPlacementRewards(contestState: ContestState): void {
-  const playerRewardTiers = getContestPlayerRewardTiers(contestState);
+  const playerPlacements = getContestPlayerPlacements(contestState);
   const pokeblockKitRewardPlayers = getFirstContestPokeblockKitRewardPlayers(contestState);
 
-  for (const [playerIndex, tier] of playerRewardTiers) {
+  for (const [playerIndex, placement] of playerPlacements) {
+    const grandFestivalWin = contestState.rank === ContestRank.GRAND && placement === 1;
+    if (grandFestivalWin && !hasGrandLaurel(playerIndex)) {
+      setEncounterRewards(
+        {
+          guaranteedModifierTypeFuncs: [modifierTypes.GRAND_LAUREL],
+          fillRemaining: false,
+          rerollMultiplier: -1,
+          allowLuckUpgrades: false,
+        },
+        undefined,
+        () => unlockGrandLaurel(playerIndex),
+        playerIndex,
+      );
+      continue;
+    }
+
     setEncounterRewards(
       {
-        forcedModifierTier: tier,
+        forcedModifierTier: grandFestivalWin ? ModifierTier.MASTER : getContestRewardTier(placement),
         fillRemaining: true,
         allowLuckUpgrades: false,
       },
@@ -50,23 +69,37 @@ function awardPokeblockKit(playerIndex: PlayerIndex): void {
   globalScene.addModifier(modifier, false, true, false, true, undefined, playerIndex);
 }
 
-function getContestPlayerRewardTiers(contestState: ContestState): Map<PlayerIndex, ModifierTier> {
-  const tiers = new Map<PlayerIndex, ModifierTier>();
+function unlockGrandLaurel(playerIndex: PlayerIndex): void {
+  const gameData = globalScene.getPlayerGameData(playerIndex);
+  gameData.unlocks[Unlockables.GRAND_LAUREL] = true;
+  if (globalScene.twoPlayerMode) {
+    globalScene.savePlayerSystemSaveLocal(playerIndex);
+  } else {
+    gameData.saveSystemLocal();
+  }
+}
 
-  for (const contestant of contestState.contestants) {
+function hasGrandLaurel(playerIndex: PlayerIndex): boolean {
+  return !!globalScene.findModifierForPlayer(modifier => modifier instanceof GrandLaurelModifier, playerIndex);
+}
+
+function getContestPlayerPlacements(contestState: ContestState): Map<PlayerIndex, number> {
+  const placements = new Map<PlayerIndex, number>();
+
+  for (const [index, contestant] of getContestPlacementOrder(contestState).entries()) {
     const playerIndex = getContestantPlayerIndex(contestant);
     if (playerIndex === undefined) {
       continue;
     }
 
-    const tier = getContestRewardTier(getContestPlacement(contestState, contestant));
-    const existingTier = tiers.get(playerIndex);
-    if (existingTier === undefined || tier > existingTier) {
-      tiers.set(playerIndex, tier);
+    const placement = index + 1;
+    const existingPlacement = placements.get(playerIndex);
+    if (existingPlacement === undefined || placement < existingPlacement) {
+      placements.set(playerIndex, placement);
     }
   }
 
-  return tiers;
+  return placements;
 }
 
 function getContestantPlayerIndex(contestant: ContestParticipant): PlayerIndex | undefined {
@@ -91,8 +124,10 @@ function getContestantPlayerIndex(contestant: ContestParticipant): PlayerIndex |
   return playerIndex as PlayerIndex;
 }
 
-function getContestPlacement(contestState: ContestState, contestant: ContestParticipant): number {
-  return 1 + contestState.contestants.filter(other => other.totalScore > contestant.totalScore).length;
+function getContestPlacementOrder(contestState: ContestState): ContestParticipant[] {
+  return contestState.contestants
+    .slice()
+    .sort((a, b) => b.totalScore - a.totalScore || compareContestantTieBreakers(a, b, "reward-placement"));
 }
 
 function getContestRewardTier(placement: number): ModifierTier {

@@ -1,6 +1,7 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
+import { BiomeId } from "#enums/biome-id";
 import { MoveId } from "#enums/move-id";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
@@ -28,6 +29,8 @@ import { getPokemonSpecies } from "#utils/pokemon-utils";
 
 const OPTION_1_REQUIRED_MOVE = MoveId.SURF;
 const OPTION_2_REQUIRED_MOVE = MoveId.FLY;
+const SECRET_ROUTE_BIOME = BiomeId.ALTO_MARE;
+const SECRET_ROUTE_SPECIES = new Set<SpeciesId>([SpeciesId.TOTODILE, SpeciesId.CROCONAW, SpeciesId.FERALIGATR]);
 /**
  * Damage percentage taken when wandering aimlessly.
  * Can be a number between `0` - `100`.
@@ -37,7 +40,7 @@ const DAMAGE_PERCENTAGE: number = 25;
 /** The i18n namespace for the encounter */
 const namespace = "mysteryEncounters/lostAtSea";
 
-type LostAtSeaOptionIndex = 1 | 2 | 3;
+type LostAtSeaOptionIndex = 1 | 2 | 3 | 4;
 
 interface LostAtSeaChoice {
   playerIndex: PlayerIndex;
@@ -87,6 +90,45 @@ class PlayerCanLearnMoveRequirement extends EncounterPokemonRequirement {
   }
 }
 
+class PlayerTotodileLineRequirement extends EncounterPokemonRequirement {
+  private readonly playerIndex: PlayerIndex | undefined;
+
+  constructor(playerIndex?: PlayerIndex) {
+    super();
+    this.playerIndex = playerIndex;
+    this.minNumberOfPokemon = 1;
+    this.invertQuery = false;
+  }
+
+  override meetsRequirement(): boolean {
+    return this.queryPlayerParty().length >= this.minNumberOfPokemon;
+  }
+
+  override queryParty(_partyPokemon: PlayerPokemon[]): PlayerPokemon[] {
+    return this.queryPlayerParty();
+  }
+
+  override getDialogueToken(pokemon?: PlayerPokemon): [string, string] {
+    return [
+      "option4PrimaryName",
+      pokemon?.getNameToRender() ?? getTotodileLinePokemon(this.playerIndex ?? 0)?.getNameToRender() ?? "",
+    ];
+  }
+
+  private queryPlayerParty(): PlayerPokemon[] {
+    const party =
+      globalScene.twoPlayerMode && this.playerIndex != null
+        ? globalScene.getPlayerParty(this.playerIndex)
+        : globalScene.getPlayerParty();
+
+    return party.filter(
+      pokemon =>
+        pokemon.isAllowedInBattle()
+        && SECRET_ROUTE_SPECIES.has(pokemon.species.speciesId),
+    );
+  }
+}
+
 function getLostAtSeaData(): LostAtSeaData {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   if (!encounter.misc || !Array.isArray(encounter.misc.choices)) {
@@ -112,10 +154,16 @@ function getChoiceGuidePokemon(playerIndex: PlayerIndex, optionIndex: LostAtSeaO
   if (optionIndex === 2) {
     return getGuidePokemon(playerIndex, OPTION_2_REQUIRED_MOVE);
   }
+  if (optionIndex === 4) {
+    return getTotodileLinePokemon(playerIndex);
+  }
   return undefined;
 }
 
 function chooseComputerPartnerLostAtSeaOption(playerIndex: PlayerIndex): LostAtSeaOptionIndex {
+  if (getChoiceGuidePokemon(playerIndex, 4)) {
+    return 4;
+  }
   if (getChoiceGuidePokemon(playerIndex, 1)) {
     return 1;
   }
@@ -137,10 +185,17 @@ function queueComputerPartnerLostAtSeaChoiceMessage(playerIndex: PlayerIndex, op
     return;
   }
 
-  const actionText = optionIndex === 1 ? "pushed" : "helped guide";
+  const actionText =
+    optionIndex === 1
+      ? "pushed"
+      : optionIndex === 2
+        ? "helped guide"
+        : "tugged";
   globalScene.waitForPlayerInput(0);
   globalScene.phaseManager.queueMessage(
-    `${guidePokemon.getNameToRender()} ${actionText} ${getLostAtSeaTrainerDisplayName(playerIndex)}'s boat to shore.`,
+    optionIndex === 4
+      ? `${guidePokemon.getNameToRender()} ${actionText} ${getLostAtSeaTrainerDisplayName(playerIndex)}'s boat toward a strange current.`
+      : `${guidePokemon.getNameToRender()} ${actionText} ${getLostAtSeaTrainerDisplayName(playerIndex)}'s boat to shore.`,
     null,
     true,
   );
@@ -148,12 +203,13 @@ function queueComputerPartnerLostAtSeaChoiceMessage(playerIndex: PlayerIndex, op
 
 async function promptNextLostAtSeaPlayer(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
   setLostAtSeaPlayerOptionTokens(playerIndex);
+  const options = buildLostAtSeaPlayerOptions(playerIndex);
   const result = await showMysteryEncounterPlayerMenu({
     playerIndex,
     slideInDescription: false,
     overrideQuery: "What will you do?",
-    overrideOptions: buildLostAtSeaPlayerOptions(playerIndex),
-    startingCursorIndex,
+    overrideOptions: options,
+    startingCursorIndex: Math.min(startingCursorIndex, options.length - 1),
     computerPartnerOption: {
       chooseOptionIndex: chooseComputerPartnerLostAtSeaOption,
       onOptionChosen: (optionIndex, choicePlayerIndex) =>
@@ -200,17 +256,25 @@ function setLostAtSeaPlayerOptionTokens(playerIndex: PlayerIndex): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const surfPokemon = getChoiceGuidePokemon(playerIndex, 1);
   const flyPokemon = getChoiceGuidePokemon(playerIndex, 2);
+  const totodileLinePokemon = getChoiceGuidePokemon(playerIndex, 4);
 
   encounter.setDialogueToken("option1PrimaryName", surfPokemon?.getNameToRender() ?? "");
   encounter.setDialogueToken("option2PrimaryName", flyPokemon?.getNameToRender() ?? "");
+  encounter.setDialogueToken("option4PrimaryName", totodileLinePokemon?.getNameToRender() ?? "");
 }
 
 function buildLostAtSeaPlayerOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
-  return [
+  const options = [
     buildLostAtSeaMoveOption(1, OPTION_1_REQUIRED_MOVE, playerIndex),
     buildLostAtSeaMoveOption(2, OPTION_2_REQUIRED_MOVE, playerIndex),
     buildLostAtSeaWanderOption(playerIndex),
   ];
+
+  if (getTotodileLinePokemon(playerIndex)) {
+    options.push(buildLostAtSeaSecretRouteOption(playerIndex));
+  }
+
+  return options;
 }
 
 function buildLostAtSeaMoveOption(
@@ -262,15 +326,49 @@ function buildLostAtSeaWanderOption(playerIndex: PlayerIndex): MysteryEncounterO
     .build();
 }
 
+function buildLostAtSeaSecretRouteOption(playerIndex: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DISABLED_OR_SPECIAL)
+    .withPrimaryPokemonRequirement(new PlayerTotodileLineRequirement(playerIndex))
+    .withDialogue({
+      buttonLabel: `${namespace}:option.4.label`,
+      disabledButtonLabel: `${namespace}:option.4.labelDisabled`,
+      buttonTooltip: `${namespace}:option.4.tooltip`,
+      disabledButtonTooltip: `${namespace}:option.4.tooltipDisabled`,
+      selected: [
+        {
+          text: `${namespace}:option.4.selected`,
+        },
+      ],
+    })
+    .withPreOptionPhase(async () => storeLostAtSeaChoice(4, playerIndex))
+    .withOptionPhase(async () =>
+      globalScene.twoPlayerMode ? runTwoPlayerLostAtSeaChoices() : handleTotodileRoutePhase(),
+    )
+    .build();
+}
+
 async function runTwoPlayerLostAtSeaChoices(): Promise<boolean> {
   const data = getLostAtSeaData();
   const laprasSpecies = getPokemonSpecies(SpeciesId.LAPRAS);
+
+  if (await shouldTakeSecretRoute(data)) {
+    return handleTwoPlayerTotodileRoutePhase(data);
+  }
 
   for (const choice of data.choices.toSorted((a, b) => a.playerIndex - b.playerIndex)) {
     globalScene.waitForPlayerInput(choice.playerIndex);
 
     if (choice.optionIndex === 3) {
       await showEncounterText(`${namespace}:option.3.selected`);
+      applyLostAtSeaWanderDamage(choice.playerIndex);
+      continue;
+    }
+    if (choice.optionIndex === 4) {
+      const guidePokemon = choice.guidePokemon ?? getChoiceGuidePokemon(choice.playerIndex, choice.optionIndex);
+      if (guidePokemon) {
+        globalScene.currentBattle.mysteryEncounter!.setDialogueToken("option4PrimaryName", guidePokemon.getNameToRender());
+      }
+      await showEncounterText(`${namespace}:option.4.rejected`);
       applyLostAtSeaWanderDamage(choice.playerIndex);
       continue;
     }
@@ -294,6 +392,61 @@ async function runTwoPlayerLostAtSeaChoices(): Promise<boolean> {
   return true;
 }
 
+async function shouldTakeSecretRoute(data: LostAtSeaData): Promise<boolean> {
+  const totodileOwnerChoices = data.choices.filter(choice => getTotodileLinePokemon(choice.playerIndex));
+  if (totodileOwnerChoices.length === 0) {
+    return false;
+  }
+
+  const secretRouteChoices = totodileOwnerChoices.filter(choice => choice.optionIndex === 4);
+  if (secretRouteChoices.length === 0) {
+    return false;
+  }
+
+  const nonSecretRouteChoiceCount = totodileOwnerChoices.length - secretRouteChoices.length;
+  if (secretRouteChoices.length > nonSecretRouteChoiceCount) {
+    return true;
+  }
+  if (secretRouteChoices.length < nonSecretRouteChoiceCount) {
+    return false;
+  }
+
+  const winningPlayerIndex = globalScene.resolvePlayerTieBreak(totodileOwnerChoices.map(choice => choice.playerIndex));
+  globalScene.currentBattle.mysteryEncounter!.setDialogueToken(
+    "tieBreakPlayerName",
+    getLostAtSeaTrainerDisplayName(winningPlayerIndex),
+  );
+  await showEncounterText(`${namespace}:option.4.tieBreak`);
+  return totodileOwnerChoices.find(choice => choice.playerIndex === winningPlayerIndex)?.optionIndex === 4;
+}
+
+async function handleTwoPlayerTotodileRoutePhase(data: LostAtSeaData): Promise<boolean> {
+  const laprasSpecies = getPokemonSpecies(SpeciesId.LAPRAS);
+  const secretRouteChoices = data.choices
+    .filter(choice => choice.optionIndex === 4)
+    .toSorted((a, b) => a.playerIndex - b.playerIndex);
+  const firstGuidePokemon = secretRouteChoices[0]?.guidePokemon ?? getTotodileLinePokemon(secretRouteChoices[0]?.playerIndex ?? 0);
+
+  globalScene.waitForPlayerInput(secretRouteChoices[0]?.playerIndex ?? 0);
+  if (firstGuidePokemon) {
+    globalScene.currentBattle.mysteryEncounter!.setDialogueToken("option4PrimaryName", firstGuidePokemon.getNameToRender());
+  }
+
+  await showEncounterText(`${namespace}:option.4.selected`);
+
+  for (const choice of secretRouteChoices) {
+    const guidePokemon = choice.guidePokemon ?? getTotodileLinePokemon(choice.playerIndex);
+    if (guidePokemon) {
+      setEncounterExp(guidePokemon.id, laprasSpecies.baseExp, true, choice.playerIndex);
+    }
+  }
+
+  globalScene.waitForPlayerInput(0);
+  leaveEncounterWithoutBattle();
+  globalScene.phaseManager.unshiftNew("SwitchBiomePhase", SECRET_ROUTE_BIOME);
+  return true;
+}
+
 function applyLostAtSeaWanderDamage(playerIndex: PlayerIndex = globalScene.activePlayerIndex): void {
   const allowedPokemon = globalScene.getPlayerParty(playerIndex).filter(p => p.isAllowedInBattle());
 
@@ -302,6 +455,13 @@ function applyLostAtSeaWanderDamage(playerIndex: PlayerIndex = globalScene.activ
     const damage = Math.floor(pkm.getMaxHp() * percentage);
     applyDamageToPokemon(pkm, damage);
   }
+}
+
+function getTotodileLinePokemon(playerIndex: PlayerIndex): PlayerPokemon | undefined {
+  return globalScene
+    .getPlayerParty(playerIndex)
+    .filter(pokemon => pokemon.isAllowedInBattle())
+    .find(pokemon => SECRET_ROUTE_SPECIES.has(pokemon.species.speciesId));
 }
 
 /**
@@ -330,6 +490,7 @@ export const LostAtSeaEncounter: MysteryEncounter = MysteryEncounterBuilder.with
     encounter.setDialogueToken("damagePercentage", String(DAMAGE_PERCENTAGE));
     encounter.setDialogueToken("option1RequiredMove", new PokemonMove(OPTION_1_REQUIRED_MOVE).getName());
     encounter.setDialogueToken("option2RequiredMove", new PokemonMove(OPTION_2_REQUIRED_MOVE).getName());
+    setLostAtSeaPlayerOptionTokens(0);
 
     return true;
   })
@@ -348,6 +509,10 @@ export const LostAtSeaEncounter: MysteryEncounter = MysteryEncounterBuilder.with
   .withOption(
     // Option 3: Wander aimlessly
     buildLostAtSeaWanderOption(0),
+  )
+  .withOption(
+    // Option 4: Totodile's secret current to Alto Mare
+    buildLostAtSeaSecretRouteOption(0),
   )
   .withOutroDialogue([
     {
@@ -370,5 +535,20 @@ function handlePokemonGuidingYouPhase() {
   }
 
   leaveEncounterWithoutBattle();
+  return true;
+}
+
+function handleTotodileRoutePhase(): boolean {
+  const laprasSpecies = getPokemonSpecies(SpeciesId.LAPRAS);
+  const { mysteryEncounter } = globalScene.currentBattle;
+  const guidePokemon = mysteryEncounter?.selectedOption?.primaryPokemon ?? getTotodileLinePokemon(0);
+
+  if (guidePokemon?.id) {
+    mysteryEncounter?.setDialogueToken("option4PrimaryName", guidePokemon.getNameToRender());
+    setEncounterExp(guidePokemon.id, laprasSpecies.baseExp, true);
+  }
+
+  leaveEncounterWithoutBattle();
+  globalScene.phaseManager.unshiftNew("SwitchBiomePhase", SECRET_ROUTE_BIOME);
   return true;
 }

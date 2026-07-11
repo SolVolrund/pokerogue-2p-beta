@@ -37,6 +37,8 @@ export const BiomeId = {
   LABORATORY: 41,
   END: 50,
   FARAWAY_ISLAND: 51,
+  ALTO_MARE: 52,
+  SECRET_GARDEN: 53,
 } as const;
 
 export type BiomeId = ObjectValues<typeof BiomeId>;

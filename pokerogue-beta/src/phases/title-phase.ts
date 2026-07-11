@@ -17,7 +17,7 @@ import { GameModes } from "#enums/game-modes";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
-import { getBiomeKey } from "#field/arena";
+import { getBiomeAssetKey } from "#field/arena";
 import type { Modifier } from "#modifiers/modifier";
 import { getDailyRunStarterModifiers, regenerateModifierPoolThresholds } from "#modifiers/modifier-type";
 import { vouchers } from "#system/voucher";
@@ -102,7 +102,7 @@ export class TitlePhase extends Phase {
 
       globalScene.sessionSlotId = loggedInUser.lastSessionSlot;
       // Set the BG texture to the last save's current biome
-      const biomeKey = getBiomeKey(sessionData.arena.biome);
+      const biomeKey = getBiomeAssetKey(sessionData.arena.biome);
       const bgTexture = `${biomeKey}_bg`;
       await globalScene.loadBiomeAssets(sessionData.arena.biome);
       globalScene.arenaBg.setTexture(bgTexture);

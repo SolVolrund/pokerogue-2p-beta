@@ -12,7 +12,7 @@ import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { PokemonType } from "#enums/pokemon-type";
 import { Stat } from "#enums/stat";
 import { TrainerSlot } from "#enums/trainer-slot";
-import { getBiomeKey } from "#field/arena";
+import { getBiomeAssetKey } from "#field/arena";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import { EnemyPokemon } from "#field/pokemon";
 import { getPartyLuckValue } from "#modifiers/modifier-type";
@@ -532,7 +532,7 @@ async function animateBiomeChange(nextBiome: BiomeId): Promise<void> {
   await globalScene.loadBiomeAssets(nextBiome);
   globalScene.newArena(nextBiome);
 
-  const biomeKey = getBiomeKey(nextBiome);
+  const biomeKey = getBiomeAssetKey(nextBiome);
   const bgTexture = `${biomeKey}_bg`;
   globalScene.arenaBgTransition //
     .setTexture(bgTexture)

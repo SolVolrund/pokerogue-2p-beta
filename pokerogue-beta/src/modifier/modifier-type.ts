@@ -66,6 +66,7 @@ import {
   FusePokemonModifier,
   GammaRayBurstModifier,
   GigantamaxAccessModifier,
+  GrandLaurelModifier,
   HealingBoosterModifier,
   HealShopCostModifier,
   HiddenAbilityRateBoosterModifier,
@@ -1995,6 +1996,13 @@ const modifierTypeInitObj = Object.freeze({
   MAP: () => new ModifierType("modifierType:ModifierType.MAP", "map", (type, _args) => new MapModifier(type)),
 
   OLD_SEA_MAP: () => new ModifierType("modifierType:ModifierType.OLD_SEA_MAP", "old_sea_map", (type, _args) => new OldSeaMapModifier(type)),
+
+  GRAND_LAUREL: () =>
+    new ModifierType(
+      "modifierType:ModifierType.GRAND_LAUREL",
+      "grand_laurel",
+      (type, _args) => new GrandLaurelModifier(type),
+    ),
 
   LINKING_CORD_GOLD: () =>
     new ModifierType(

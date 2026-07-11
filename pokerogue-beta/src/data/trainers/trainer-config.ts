@@ -1056,6 +1056,7 @@ function getDawnIllusionPairMemberFunc(isLeadSlot: boolean): PartyMemberFunc {
       undefined,
       p => {
         p.generateAndPopulateMoveset();
+        p.passive = true;
       },
     );
   };
@@ -5551,29 +5552,117 @@ export const trainerConfigs: TrainerConfigs = {
     .setPartyMemberFunc(
       1,
       getRandomPartyMemberFunc([SpeciesId.CYNDAQUIL, SpeciesId.LITTEN, SpeciesId.ZORUA], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
         p.generateAndPopulateMoveset();
       }),
     )
     .setPartyMemberFunc(
       2,
       getRandomPartyMemberFunc([SpeciesId.PIPLUP, SpeciesId.DRATINI], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
         p.generateAndPopulateMoveset();
       }),
     )
     .setPartyMemberFunc(
       3,
       getRandomPartyMemberFunc([SpeciesId.BUNEARY, SpeciesId.GIMMIGHOUL], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
         p.generateAndPopulateMoveset();
       }),
     )
     .setPartyMemberFunc(
       4,
       getRandomPartyMemberFunc([SpeciesId.TOGEPI, SpeciesId.WHIMSICOTT], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
         p.generateAndPopulateMoveset();
       }),
     )
     .setPartyMemberFunc(5, getDawnIllusionPairMemberFunc(false)),
 
+    [TrainerType.BIANCA]: new TrainerConfig(++t)
+    .setName("Bianca")
+    .setSpriteKey("bianca")
+    .setHasCharSprite()
+    .setPartyTemplates(trainerPartyTemplates.THREE_AVG_TWO_STRONG_ONE_STRONGER)
+    .setBattleBgm("battle_trainer")
+    .setMixedBattleBgm("battle_trainer")
+
+    .setPartyMemberFunc(
+      0,
+      getRandomPartyMemberFunc([SpeciesId.SMEARGLE], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
+        p.abilityIndex = 2;
+        p.moveset = [
+          new PokemonMove(MoveId.SPORE),
+          new PokemonMove(MoveId.SUBSTITUTE),
+          new PokemonMove(MoveId.PROTECT),
+          new PokemonMove(MoveId.BATON_PASS),
+        ];
+      }),
+    )
+    .setPartyMemberFunc(
+      1,
+      getRandomPartyMemberFunc([SpeciesId.SMEARGLE], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
+        p.abilityIndex = 2;
+        p.moveset = [
+          new PokemonMove(MoveId.TAILWIND),
+          new PokemonMove(MoveId.STICKY_WEB),
+          new PokemonMove(MoveId.STEALTH_ROCK),
+          new PokemonMove(MoveId.TOXIC_SPIKES),
+        ];
+      }),
+    )
+    .setPartyMemberFunc(
+      2,
+      getRandomPartyMemberFunc([SpeciesId.SMEARGLE], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
+        p.abilityIndex = 2;
+        p.moveset = [
+          new PokemonMove(MoveId.WIDE_GUARD),
+          new PokemonMove(MoveId.REFLECT),
+          new PokemonMove(MoveId.LIGHT_SCREEN),
+          new PokemonMove(MoveId.LEECH_SEED),
+        ];
+      }),
+    )
+    .setPartyMemberFunc(
+      3,
+      getRandomPartyMemberFunc([SpeciesId.SMEARGLE], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
+        p.abilityIndex = 2;
+        p.moveset = [
+          new PokemonMove(MoveId.POWER_TRIP),
+          new PokemonMove(MoveId.STORED_POWER),
+          new PokemonMove(MoveId.RECOVER),
+          new PokemonMove(MoveId.COSMIC_POWER),
+        ];
+      }),
+    )
+    .setPartyMemberFunc(
+      4,
+      getRandomPartyMemberFunc([SpeciesId.LATIOS], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
+        p.moveset = [
+          new PokemonMove(MoveId.ICE_BEAM),
+          new PokemonMove(MoveId.RECOVER),
+          new PokemonMove(MoveId.CALM_MIND),
+          new PokemonMove(MoveId.LUSTER_PURGE),
+        ];
+      }),
+    )
+    .setPartyMemberFunc(
+      5,
+      getRandomPartyMemberFunc([SpeciesId.LATIAS], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
+        p.moveset = [
+          new PokemonMove(MoveId.ICE_BEAM),
+          new PokemonMove(MoveId.MIST_BALL),
+          new PokemonMove(MoveId.ROOST),
+          new PokemonMove(MoveId.TOXIC),
+        ];
+      }),
+    ),
 
   [TrainerType.BIANCA_LATIAS]: new TrainerConfig(++t)
     .setName("Bianca")
@@ -5585,36 +5674,42 @@ export const trainerConfigs: TrainerConfigs = {
     .setPartyMemberFunc(
       0,
       getRandomPartyMemberFunc([SpeciesId.POLIWAG], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
         p.generateAndPopulateMoveset();
       }),
     )
     .setPartyMemberFunc(
       1,
       getRandomPartyMemberFunc([SpeciesId.CATERPIE], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
         p.generateAndPopulateMoveset();
       }),
     )
     .setPartyMemberFunc(
       2,
       getRandomPartyMemberFunc([SpeciesId.ODDISH], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
         p.generateAndPopulateMoveset();
       }),
     )
     .setPartyMemberFunc(
       3,
       getRandomPartyMemberFunc([SpeciesId.YANMA], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
         p.generateAndPopulateMoveset();
       }),
     )
     .setPartyMemberFunc(
       4,
       getRandomPartyMemberFunc([SpeciesId.WOOPER], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
         p.generateAndPopulateMoveset();
       }),
     )
     .setPartyMemberFunc(
       5,
       getRandomPartyMemberFunc([SpeciesId.LATIOS], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
         p.moveset = [
           new PokemonMove(MoveId.ICE_BEAM),
           new PokemonMove(MoveId.RECOVER),

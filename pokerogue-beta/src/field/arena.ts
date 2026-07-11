@@ -148,7 +148,7 @@ export class Arena {
 
   /** A float representing the loop point of the current biome's bgm in seconds */
   public get bgmLoopPoint(): number {
-    return biomeBgmLoopPoints[getBiomeKey(this.biomeId)];
+    return biomeBgmLoopPoints[this.bgm] ?? biomeBgmLoopPoints[getBiomeKey(this.biomeId)] ?? 0;
   }
 
   public get bgTerrainColorRatioForBiome(): number {
@@ -167,7 +167,7 @@ export class Arena {
   // #region Misc Public Methods
 
   public init() {
-    const biomeKey = getBiomeKey(this.biomeId);
+    const biomeKey = getBiomeAssetKey(this.biomeId);
 
     globalScene.arenaPlayer.setBiome(this.biomeId);
     globalScene.arenaPlayerTransition.setBiome(this.biomeId);
@@ -1033,6 +1033,15 @@ export class Arena {
 
 export function getBiomeKey(biomeId: BiomeId): string {
   return enumValueToKey(BiomeId, biomeId).toLowerCase();
+}
+
+export function getBiomeAssetKey(biomeId: BiomeId): string {
+  switch (biomeId) {
+    case BiomeId.SECRET_GARDEN:
+      return getBiomeKey(BiomeId.ALTO_MARE);
+    default:
+      return getBiomeKey(biomeId);
+  }
 }
 
 export function getBiomeHasProps(biomeId: BiomeId): boolean {

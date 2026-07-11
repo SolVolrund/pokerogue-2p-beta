@@ -17,5 +17,7 @@ export function getUnlockableName(unlockable: Unlockables) {
       return i18next.t("modifierType:ModifierType.GAMMA_RAY_BURST.name");
     case Unlockables.OLD_SEA_MAP:
       return i18next.t("modifierType:ModifierType.OLD_SEA_MAP.name");
+    case Unlockables.GRAND_LAUREL:
+      return i18next.t("modifierType:ModifierType.GRAND_LAUREL.name");
   }
 }

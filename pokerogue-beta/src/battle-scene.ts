@@ -83,7 +83,7 @@ import { TrainerVariant } from "#enums/trainer-variant";
 import { UiMode } from "#enums/ui-mode";
 import { UiTheme } from "#enums/ui-theme";
 import { NewArenaEvent } from "#events/battle-scene";
-import { Arena, getBiomeHasProps, getBiomeKey } from "#field/arena";
+import { Arena, getBiomeAssetKey, getBiomeHasProps } from "#field/arena";
 import { ArenaBase } from "#field/arena-base";
 import { DamageNumberHandler } from "#field/damage-number-handler";
 import type { Pokemon } from "#field/pokemon";
@@ -228,8 +228,8 @@ const TWO_PLAYER_SYNC_SETTING_KEYS = [
   SettingKeys.Command_Cursor_Memory,
 ] as const;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = null;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = null;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = false;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.LOST_AT_SEA;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = true;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_PLAYER_MONEY: number | null = null;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.MYSTERIOUS_CHEST,
@@ -740,7 +740,7 @@ export class BattleScene extends SceneBase {
   // TODO: Split this up into multiple sub-methods
   launchBattle() {
     const biome = activeOverrides.STARTING_BIOME_OVERRIDE || BiomeId.PLAINS;
-    const biomeKey = getBiomeKey(biome);
+    const biomeKey = getBiomeAssetKey(biome);
 
     this.arenaBg = this.add
       .sprite(0, 0, `${biomeKey}_bg`)
@@ -3101,7 +3101,7 @@ export class BattleScene extends SceneBase {
    */
   public async loadBiomeAssets(biome: BiomeId): Promise<void> {
     const { promise, resolve } = Promise.withResolvers<void>();
-    const btKey = getBiomeKey(biome);
+    const btKey = getBiomeAssetKey(biome);
 
     // Already in texture cache — nothing to load
     if (this.textures.exists(`${btKey}_bg`)) {
@@ -3147,10 +3147,14 @@ export class BattleScene extends SceneBase {
    * @param biome - The {@linkcode BiomeId} of the biome to clear assets for
    */
   public clearBiomeAssets(biome: BiomeId): void {
-    const btKey = getBiomeKey(biome);
+    const btKey = getBiomeAssetKey(biome);
 
     // Don't clear TOWN — it's the starting biome
-    if (btKey === "town") {
+    if (biome === BiomeId.TOWN) {
+      return;
+    }
+
+    if (this.arena && this.arena.biomeId !== biome && getBiomeAssetKey(this.arena.biomeId) === btKey) {
       return;
     }
 

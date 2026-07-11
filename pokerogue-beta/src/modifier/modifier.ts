@@ -10,7 +10,7 @@ import { FRIENDSHIP_GAIN_FROM_RARE_CANDY } from "#balance/starters";
 import { getBerryEffectFunc, getBerryPredicate } from "#data/berry";
 import { allMoves, modifierTypes } from "#data/data-lists";
 import { CONTEST_STAT_MAX, type PartialContestStats } from "#data/contests/contest-stats";
-import { CONTEST_TYPES } from "#data/contests/contest-type";
+import { CONTEST_TYPES, ContestType } from "#data/contests/contest-type";
 import { getLevelTotalExp } from "#data/exp";
 import { SpeciesFormChangeItemTrigger, SpeciesFormChangeManualTrigger } from "#data/form-change-triggers";
 import { MAX_PER_TYPE_POKEBALLS } from "#data/pokeball";
@@ -69,6 +69,13 @@ const GAMMA_RAY_BURST_VITAMIN_STATS = [
   Stat.SPDEF,
   Stat.SPD,
 ] as const;
+const GRAND_LAUREL_STAT_TYPES: Partial<Record<PermanentStat, ContestType>> = {
+  [Stat.HP]: ContestType.COOL,
+  [Stat.ATK]: ContestType.BEAUTY,
+  [Stat.DEF]: ContestType.CUTE,
+  [Stat.SPATK]: ContestType.TOUGH,
+  [Stat.SPDEF]: ContestType.SMART,
+};
 
 export const modifierSortFunc = (a: Modifier, b: Modifier): number => {
   const itemNameMatch = a.type.name.localeCompare(b.type.name);
@@ -913,6 +920,44 @@ export class BaseStatModifier extends PokemonHeldItemModifier {
 
   getMaxHeldItemCount(pokemon: Pokemon): number {
     return pokemon.ivs[this.stat];
+  }
+}
+
+export class GrandLaurelModifier extends PersistentModifier {
+  match(modifier: Modifier): boolean {
+    return modifier instanceof GrandLaurelModifier;
+  }
+
+  clone(): GrandLaurelModifier {
+    return new GrandLaurelModifier(this.type, this.stackCount);
+  }
+
+  override shouldApply(pokemon?: Pokemon, baseStats?: number[]): boolean {
+    return !!pokemon && pokemon.isPlayer() && Array.isArray(baseStats);
+  }
+
+  override apply(pokemon: Pokemon, baseStats: number[]): boolean {
+    const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon);
+    if (playerIndex === undefined) {
+      return false;
+    }
+
+    const contestStats = globalScene.getPlayerGameData(playerIndex).getPokemonContestStats(pokemon);
+    let applied = false;
+
+    for (const [statKey, contestType] of Object.entries(GRAND_LAUREL_STAT_TYPES) as [string, ContestType][]) {
+      const stat = Number(statKey) as PermanentStat;
+      const condition = contestStats[contestType] ?? 0;
+      const boostPercent = 1 + Math.floor(condition / 10);
+      baseStats[stat] = Math.floor(baseStats[stat] * (1 + boostPercent / 100));
+      applied = true;
+    }
+
+    return applied;
+  }
+
+  getMaxStackCount(): number {
+    return 1;
   }
 }
 
@@ -4351,6 +4396,7 @@ const ModifierClassMap = Object.freeze({
   PokemonHeldItemModifier,
   LapsingPokemonHeldItemModifier,
   BaseStatModifier,
+  GrandLaurelModifier,
   GammaRayBurstModifier,
   EvoTrackerModifier,
   PokemonBaseStatTotalModifier,

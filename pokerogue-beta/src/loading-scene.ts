@@ -7,11 +7,11 @@ import { isMobile } from "#app/touch-controls";
 import { BiomeId } from "#enums/biome-id";
 import { GachaType } from "#enums/gacha-types";
 import { getPlayerTrainerSpriteBackTextureKey, PLAYER_TRAINER_SPRITE_OPTIONS } from "#enums/player-trainer-sprite";
-import { getBiomeHasProps } from "#field/arena";
+import { getBiomeAssetKey, getBiomeHasProps } from "#field/arena";
 import { CacheBustedLoaderPlugin } from "#plugins/cache-busted-loader-plugin";
 import { getWindowVariantSuffix, WindowVariant } from "#ui/ui-theme";
 import { hasAllLocalizedSprites, localPing } from "#utils/common";
-import { enumValueToKey, getEnumValues } from "#utils/enums";
+import { getEnumValues } from "#utils/enums";
 import i18next from "i18next";
 import type { GameObjects } from "phaser";
 
@@ -569,7 +569,7 @@ export class LoadingScene extends SceneBase {
   private loadBiomeImages(startingBiome: BiomeId = BiomeId.TOWN): this {
     const biomesToLoad = new Set([BiomeId.TOWN, startingBiome]);
     biomesToLoad.forEach(bt => {
-      const btKey = enumValueToKey(BiomeId, bt).toLowerCase();
+      const btKey = getBiomeAssetKey(bt);
       const isBaseAnimated = btKey === "end";
       const baseAKey = `${btKey}_a`;
       const baseBKey = `${btKey}_b`;

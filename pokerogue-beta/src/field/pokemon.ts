@@ -118,6 +118,7 @@ import {
   EnemyDamageReducerModifier,
   EnemyFusionChanceModifier,
   EvoTrackerModifier,
+  GrandLaurelModifier,
   HiddenAbilityRateBoosterModifier,
   PokemonBaseStatFlatModifier,
   PokemonBaseStatTotalModifier,
@@ -1714,6 +1715,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     }
     // Vitamins
     globalScene.applyModifiersForPokemon(BaseStatModifier, this, this, baseStats);
+    // Grand Laurel
+    globalScene.applyModifiersForPokemon(GrandLaurelModifier, this, this, baseStats);
 
     return baseStats;
   }

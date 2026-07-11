@@ -1,4 +1,5 @@
 import { abyssBiome } from "#biomes/abyss";
+import { altoMareBiome } from "#biomes/alto-mare";
 import { badlandsBiome } from "#biomes/badlands";
 import { beachBiome } from "#biomes/beach";
 import { caveBiome } from "#biomes/cave";
@@ -25,6 +26,7 @@ import { ruinsBiome } from "#biomes/ruins";
 import { seaBiome } from "#biomes/sea";
 import { farawayIslandBiome } from "#biomes/faraway-island";
 import { seabedBiome } from "#biomes/seabed";
+import { secretGardenBiome } from "#biomes/secret-garden";
 import { slumBiome } from "#biomes/slum";
 import { snowyForestBiome } from "#biomes/snowy-forest";
 import { spaceBiome } from "#biomes/space";
@@ -74,6 +76,8 @@ export function initBiomes(): void {
     snowyForestBiome,
     islandBiome,
     laboratoryBiome,
+    altoMareBiome,
+    secretGardenBiome,
     endBiome,
   ];
 
