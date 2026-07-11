@@ -1113,6 +1113,7 @@ export class TwoPlayerInputTransport {
     if (!this.profileSnapshotResponseSenderIds.has(message.senderId)) {
       this.profileSnapshotResponseSenderIds.add(message.senderId);
       this.sendProfileSnapshot();
+      this.sendSettingsSnapshot();
     }
 
     this.logDebug?.({

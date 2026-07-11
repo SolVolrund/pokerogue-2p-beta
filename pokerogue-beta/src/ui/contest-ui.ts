@@ -9,7 +9,7 @@ import {
   ContestSpectacularEffectBehavior,
   getContestSpectacularEffect,
 } from "#data/contests/contest-spectacular-effects";
-import { contestLayout, getContestLayoutSpriteObjects } from "#data/contests/contest-layout";
+import { getContestLayout, getContestLayoutSpriteObjects, loadContestLayout } from "#data/contests/contest-layout";
 import type { ContestLayoutObject } from "#data/contests/contest-layout";
 import { getContestSpectacularMove } from "#data/contests/contest-spectacular-moves";
 import {
@@ -145,7 +145,9 @@ export function destroyContestUi(): void {
   contestUi = undefined;
 }
 
-export function ensureContestUiAssetsLoaded(): Promise<void> {
+export async function ensureContestUiAssetsLoaded(): Promise<void> {
+  await loadContestLayout();
+
   const missingAssets = getContestLayoutSpriteObjects()
     .filter(object => object.assetPath && !globalScene.textures.exists(getContestLayoutTextureKey(object)))
     .filter((object, index, objects) =>
@@ -153,11 +155,12 @@ export function ensureContestUiAssetsLoaded(): Promise<void> {
     );
 
   if (missingAssets.length === 0) {
-    return Promise.resolve();
+    return;
   }
 
   if (contestAssetsLoading) {
-    return contestAssetsLoading;
+    await contestAssetsLoading;
+    return;
   }
 
   contestAssetsLoading = new Promise(resolve => {
@@ -175,7 +178,7 @@ export function ensureContestUiAssetsLoaded(): Promise<void> {
     globalScene.load.start();
   });
 
-  return contestAssetsLoading;
+  await contestAssetsLoading;
 }
 
 export class ContestUi {
@@ -203,7 +206,7 @@ export class ContestUi {
     this.container.setName("contest-ui");
     globalScene.field.add(this.container);
 
-    for (const object of contestLayout.objects.slice().sort((a, b) => a.z - b.z)) {
+    for (const object of getContestLayout().objects.slice().sort((a, b) => a.z - b.z)) {
       if (object.kind === "sprite") {
         this.addSprite(object);
       } else if (object.kind === "text-field") {
@@ -1277,7 +1280,7 @@ function waitContestDuration(duration: number): Promise<void> {
 }
 
 function getContestLayoutPoint(role: string, fallback: ContestPoint): ContestPoint {
-  const object = contestLayout.objects.find(candidate =>
+  const object = getContestLayout().objects.find(candidate =>
     candidate.kind === "marker" && (candidate.role === role || candidate.key === role),
   );
 

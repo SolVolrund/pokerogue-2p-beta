@@ -132,7 +132,7 @@ import { achvs, ModifierAchv, MoneyAchv } from "#system/achv";
 import { GameData } from "#system/game-data";
 import { initGameSpeed } from "#system/game-speed";
 import type { PokemonData } from "#system/pokemon-data";
-import { MusicPreference, Setting, SettingKeys, setSetting } from "#system/settings";
+import { MusicPreference, Setting, SettingType, setSetting } from "#system/settings";
 import {
   getMysteryEncounterEventSettings,
   isMysteryEncounterEnabledBySettings,
@@ -213,20 +213,7 @@ const TWO_PLAYER_SESSION_SYSTEM_SAVE_KEYS = [
   "pokerogue_3p_session_system_save_2",
 ] as const;
 const TWO_PLAYER_PROFILE_HANDSHAKE_BUILD = "profile-handshake-2026-06-17c";
-const TWO_PLAYER_SYNC_SETTING_KEYS = [
-  SettingKeys.Game_Speed,
-  SettingKeys.HP_Bar_Speed,
-  SettingKeys.EXP_Gains_Speed,
-  SettingKeys.EXP_Party_Display,
-  SettingKeys.Skip_Seen_Dialogues,
-  SettingKeys.Egg_Skip,
-  SettingKeys.Battle_Style,
-  SettingKeys.Hide_Move_Skip_Confirm,
-  SettingKeys.Move_Animations,
-  SettingKeys.Show_Stats_on_Level_Up,
-  SettingKeys.Shop_Cursor_Target,
-  SettingKeys.Command_Cursor_Memory,
-] as const;
+const TWO_PLAYER_SYNC_SETTING_TYPES = new Set<SettingType>([SettingType.GENERAL, SettingType.DISPLAY]);
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = null;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.LOST_AT_SEA;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = true;
@@ -1285,7 +1272,7 @@ export class BattleScene extends SceneBase {
 
   private getTwoPlayerSyncedSettingKeys(): string[] {
     return [
-      ...TWO_PLAYER_SYNC_SETTING_KEYS,
+      ...Setting.filter(setting => TWO_PLAYER_SYNC_SETTING_TYPES.has(setting.type)).map(setting => setting.key),
       ...getMysteryEncounterEventSettings().map(setting => setting.key),
     ];
   }
