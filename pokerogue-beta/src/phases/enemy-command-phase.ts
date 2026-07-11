@@ -69,16 +69,28 @@ export class EnemyCommandPhase extends FieldPhase {
           const sortedPartyMemberScores = trainer.getSortedPartyMemberMatchupScores(partyMemberScores);
 
           const switchMultiplier = 1 - (battle.enemySwitchCounter ? Math.pow(0.1, 1 / battle.enemySwitchCounter) : 0);
+          const usePlannerSwitch = enemyPokemon.aiType === AiType.PLANNER;
+          const allyAlreadySwitching = globalScene.getEnemyField().some((fieldPokemon, fieldIndex) => {
+            return (
+              fieldPokemon !== enemyPokemon
+              && battle.turnCommands[globalScene.getEnemyBattlerIndex(fieldIndex)]?.command === Command.POKEMON
+            );
+          });
 
-          const plannerSwitchIndex =
-            enemyPokemon.aiType === AiType.PLANNER
-              ? getPlannerSwitchIndex(enemyPokemon, partyMemberScores, switchMultiplier, trainer.config.isBoss)
-              : undefined;
+          const plannerSwitchIndex = usePlannerSwitch
+            ? getPlannerSwitchIndex(
+                enemyPokemon,
+                partyMemberScores,
+                switchMultiplier,
+                trainer.config.isBoss,
+                allyAlreadySwitching,
+              )
+            : undefined;
+          const legacyShouldSwitch =
+            !usePlannerSwitch
+            && sortedPartyMemberScores[0][1] * switchMultiplier >= matchupScore * (trainer.config.isBoss ? 2 : 3);
 
-          if (
-            plannerSwitchIndex !== undefined
-            || sortedPartyMemberScores[0][1] * switchMultiplier >= matchupScore * (trainer.config.isBoss ? 2 : 3)
-          ) {
+          if (plannerSwitchIndex !== undefined || legacyShouldSwitch) {
             const index = plannerSwitchIndex ?? trainer.getNextSummonIndex(enemyPokemon.trainerSlot, partyMemberScores);
 
             battle.turnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = {
