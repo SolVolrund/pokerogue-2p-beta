@@ -3,8 +3,11 @@ import { AbilityId } from "#enums/ability-id";
 import { AiType } from "#enums/ai-type";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { Command } from "#enums/command";
+import { FieldPosition } from "#enums/field-position";
+import { MoveId } from "#enums/move-id";
 import type { EnemyPokemon } from "#field/pokemon";
 import { FieldPhase } from "#phases/field-phase";
+import { shouldAiRepositionToCenter } from "#utils/ai-targeting";
 import { getPlannerSwitchIndex } from "#utils/battle-planner-ai";
 
 /**
@@ -47,6 +50,16 @@ export class EnemyCommandPhase extends FieldPhase {
       this.skipTurn = true;
     }
 
+    if (!this.skipTurn && shouldAiRepositionToCenter(enemyPokemon)) {
+      battle.turnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = {
+        command: Command.REPOSITION,
+        cursor: FieldPosition.CENTER,
+        skip: this.skipTurn,
+      };
+
+      return this.end();
+    }
+
     /**
      * If the enemy has a trainer, decide whether or not the enemy should switch
      * to another member in its party.
@@ -69,7 +82,7 @@ export class EnemyCommandPhase extends FieldPhase {
           const sortedPartyMemberScores = trainer.getSortedPartyMemberMatchupScores(partyMemberScores);
 
           const switchMultiplier = 1 - (battle.enemySwitchCounter ? Math.pow(0.1, 1 / battle.enemySwitchCounter) : 0);
-          const usePlannerSwitch = enemyPokemon.aiType === AiType.PLANNER;
+          const usePlannerSwitch = globalScene.plannerAiEnabled && enemyPokemon.aiType === AiType.PLANNER;
           const allyAlreadySwitching = globalScene.getEnemyField().some((fieldPokemon, fieldIndex) => {
             return (
               fieldPokemon !== enemyPokemon
@@ -120,7 +133,7 @@ export class EnemyCommandPhase extends FieldPhase {
     globalScene.currentBattle.turnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = {
       command: Command.FIGHT,
       move: nextMove,
-      skip: this.skipTurn,
+      skip: this.skipTurn || nextMove.move === MoveId.NONE,
     };
 
     globalScene.currentBattle.enemySwitchCounter = Math.max(globalScene.currentBattle.enemySwitchCounter - 1, 0);

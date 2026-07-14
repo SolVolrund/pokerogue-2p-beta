@@ -54,6 +54,8 @@ export interface ContestStateOptions {
   rank?: ContestRank;
   contestants: readonly ContestParticipant[];
   bgmKey?: string;
+  // Reserved for contest-local RNG if move effects begin desyncing again.
+  seedSalt?: string;
   totalRounds?: number;
   maxApplause?: number;
 }
@@ -94,6 +96,7 @@ export class ContestState {
   public readonly contestants: ContestParticipant[];
   public readonly totalRounds: number;
   public readonly maxApplause: number;
+  public readonly seedSalt: string;
   public round = 0;
   public applause = 0;
   public turnOrder: ContestParticipantId[];
@@ -114,6 +117,7 @@ export class ContestState {
     this.contestants = options.contestants.map(contestant => ({ ...contestant }));
     this.totalRounds = options.totalRounds ?? 5;
     this.maxApplause = options.maxApplause ?? 5;
+    this.seedSalt = options.seedSalt ?? "";
     this.turnOrder = this.contestants.map(contestant => contestant.id);
     this.bgmKey = options.bgmKey;
   }
@@ -131,6 +135,7 @@ export class ContestState {
       contestant.nervous = false;
       contestant.cannotAppeal = contestant.appealLocked || contestant.skipNextRound;
       contestant.skipNextRound = false;
+      contestant.easilyStartled = false;
       contestant.jamProtection = ContestJamProtection.NONE;
       contestant.appealOrderOverride = ContestAppealOrderOverride.NONE;
     }

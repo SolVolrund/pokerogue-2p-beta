@@ -499,6 +499,7 @@ export class BattleScene extends SceneBase {
   public hideUsername = false;
   /** Determines the selected battle style. */
   public battleStyle: BattleStyle = BattleStyle.SWITCH;
+  public plannerAiEnabled = false;
   /**
    * Defines whether or not to show type effectiveness hints
    * - true: Show hints for moves

@@ -11,6 +11,7 @@ import type { Move } from "#moves/move";
 import { getMoveTargets } from "#moves/move-utils";
 import type { PokemonMove } from "#moves/pokemon-move";
 import type { TurnMove } from "#types/turn-move";
+import { getAiMoveTargetData } from "#utils/ai-targeting";
 
 const FAIL_SCORE = -100_000;
 const KO_SCORE = 220;
@@ -39,10 +40,11 @@ export function choosePlannerMove(user: Pokemon, movePool: PokemonMove[]): TurnM
 
   const chosenMove = chooseFromBestPlannerChoices(choices);
   if (!chosenMove) {
+    const struggleTargets = getPlannerMoveTargets(user, MoveId.STRUGGLE);
     return {
-      move: MoveId.STRUGGLE,
-      targets: getPlannerMoveTargets(user, MoveId.STRUGGLE),
-      useMode: MoveUseMode.IGNORE_PP,
+      move: struggleTargets.length > 0 ? MoveId.STRUGGLE : MoveId.NONE,
+      targets: struggleTargets,
+      useMode: struggleTargets.length > 0 ? MoveUseMode.IGNORE_PP : MoveUseMode.NORMAL,
     };
   }
 
@@ -232,8 +234,13 @@ function scorePlannerMove(user: Pokemon, pokemonMove: PokemonMove): PlannerMoveC
     return;
   }
 
-  const targetSet = getMoveTargets(user, move.id);
-  const targets = globalScene.getField(true).filter(pokemon => targetSet.targets.includes(pokemon.getBattlerIndex()));
+  const targetData = getAiMoveTargetData(user, move.id);
+  if (targetData.lacksRequiredOpponent) {
+    return;
+  }
+
+  const { targetSet } = targetData;
+  const targets = targetSet.multiple ? targetData.allTargets : targetData.selectableTargets;
 
   if (targetSet.multiple) {
     const targetIndexes = targets.map(fieldTarget => fieldTarget.getBattlerIndex());
@@ -637,8 +644,8 @@ function getBestOffensivePressure(user: Pokemon): PlannerOffensivePressure {
 }
 
 function canMoveReachTarget(user: Pokemon, target: Pokemon, moveId: MoveId): boolean {
-  const targetSet = getMoveTargets(user, moveId);
-  return targetSet.targets.includes(target.getBattlerIndex());
+  const targetData = getAiMoveTargetData(user, moveId);
+  return targetData.selectableTargets.includes(target);
 }
 
 function targetReliesOnAttackCategory(
@@ -671,8 +678,8 @@ function enemySideCanExploitDefenseDrop(
 }
 
 function getPlannerMoveTargets(user: Pokemon, moveId: MoveId): BattlerIndex[] {
-  const moveTargets = getMoveTargets(user, moveId);
-  const targets = globalScene.getField(true).filter(p => moveTargets.targets.includes(p.getBattlerIndex()));
+  const targetData = getAiMoveTargetData(user, moveId);
+  const targets = targetData.targetSet.multiple ? targetData.allTargets : targetData.selectableTargets;
   return targets.map(target => target.getBattlerIndex());
 }
 

@@ -212,6 +212,7 @@ export const SettingKeys = {
   Skip_Seen_Dialogues: "SKIP_SEEN_DIALOGUES",
   Egg_Skip: "EGG_SKIP",
   Battle_Style: "BATTLE_STYLE",
+  Planner_AI_Enable: "PLANNER_AI_ENABLE",
   Enable_Retries: "ENABLE_RETRIES",
   Hide_IVs: "HIDE_IVS",
   Hide_Move_Skip_Confirm: "HIDE_MOVE_SKIP_CONFIRM",
@@ -409,6 +410,13 @@ export const Setting: Setting[] = [
         label: i18next.t("settings:set"),
       },
     ],
+    default: 0,
+    type: SettingType.GENERAL,
+  },
+  {
+    key: SettingKeys.Planner_AI_Enable,
+    label: i18next.t("settings:plannerAiEnable"),
+    options: OFF_ON,
     default: 0,
     type: SettingType.GENERAL,
   },
@@ -981,6 +989,9 @@ export function setSetting(setting: string, value: number): boolean {
       break;
     case SettingKeys.Battle_Style:
       globalScene.battleStyle = value;
+      break;
+    case SettingKeys.Planner_AI_Enable:
+      globalScene.plannerAiEnabled = Setting[index].options[value].value === "On";
       break;
     case SettingKeys.Show_BGM_Bar:
       globalScene.showBgmBar = Setting[index].options[value].value === "On";

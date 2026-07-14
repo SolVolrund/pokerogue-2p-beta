@@ -2586,7 +2586,7 @@ export class PartyStatusCureAttr extends MoveEffectAttr {
     if (!this.canApply(user, target, move, args)) {
       return false;
     }
-    const partyPokemon = user.isPlayer() ? globalScene.getPlayerParty() : globalScene.getEnemyParty();
+    const partyPokemon = this.getPartyPokemon(user);
     for (const p of partyPokemon) {
       this.cureStatus(p, user.id);
     }
@@ -2596,6 +2596,25 @@ export class PartyStatusCureAttr extends MoveEffectAttr {
     }
 
     return true;
+  }
+
+  private getPartyPokemon(user: Pokemon): Pokemon[] {
+    if (!user.isPlayer()) {
+      return globalScene.getEnemyParty();
+    }
+
+    const userPlayerIndex = globalScene.getPlayerIndexForPokemon(user);
+    const userIsEnemySide =
+      userPlayerIndex !== undefined && globalScene.isMysteryEncounterEnemySidePlayer(userPlayerIndex);
+
+    if (!globalScene.twoPlayerMode) {
+      return globalScene.getPlayerParty(userPlayerIndex ?? globalScene.activePlayerIndex);
+    }
+
+    return globalScene
+      .getActivePlayerIndexes()
+      .filter(playerIndex => globalScene.isMysteryEncounterEnemySidePlayer(playerIndex) === userIsEnemySide)
+      .flatMap(playerIndex => globalScene.getPlayerParty(playerIndex));
   }
 
   /**

@@ -133,7 +133,7 @@ function initCommonModifierPool() {
     new WeightedModifierType(modifierTypes.LURE, lureWeightFunc(10, 2)),
     new WeightedModifierType(modifierTypes.TEMP_STAT_STAGE_BOOSTER, 4),
     new WeightedModifierType(modifierTypes.BERRY, 2),
-    new WeightedModifierType(modifierTypes.MIRROR_HERB, 2),
+    new WeightedModifierType(modifierTypes.MIRROR_HERB, 1),
     new WeightedModifierType(modifierTypes.TM_COMMON, 2),
   ].map(m => {
     m.setTier(ModifierTier.COMMON);
@@ -632,8 +632,8 @@ function initUltraModifierPool() {
     ),
     new WeightedModifierType(
       modifierTypes.LOADED_DICE,
-      (party: Pokemon[]) => party.some(hasLoadedDiceTarget) ? 8 : 0,
-      8,
+      (party: Pokemon[]) => party.some(hasLoadedDiceTarget) ? 10 : 0,
+      10,
     ),
     new WeightedModifierType(modifierTypes.REVIVER_SEED, 4),
     new WeightedModifierType(modifierTypes.CANDY_JAR, skipInLastClassicWaveOrDefault(5)),

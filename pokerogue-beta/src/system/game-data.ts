@@ -632,7 +632,10 @@ export class GameData {
     target.caughtCount = Math.max(target.caughtCount ?? 0, source.caughtCount ?? 0);
     target.hatchedCount = Math.max(target.hatchedCount ?? 0, source.hatchedCount ?? 0);
     target.ivs = Array.from({ length: 6 }, (_, i) => Math.max(target.ivs?.[i] ?? 0, source.ivs?.[i] ?? 0));
-    target.contestStats = GameData.mergeContestStatsProgress(target.contestStats, source.contestStats);
+    target.contestStats = GameData.mergeContestStatsProgress(
+      target.contestStats,
+      GameData.getDexEntryContestStats(source),
+    );
 
     const targetRibbons = target.ribbons?.getRibbons?.() ?? 0n;
     const sourceRibbons = source.ribbons?.getRibbons?.() ?? 0n;
@@ -649,6 +652,11 @@ export class GameData {
       merged[contestType] = Math.max(merged[contestType], sourceStats[contestType]);
     }
     return merged;
+  }
+
+  private static getDexEntryContestStats(entry: DexEntry): ContestStats {
+    const legacyStats = (entry as DexEntry & { caughtCounts?: PartialContestStats }).caughtCounts;
+    return GameData.mergeContestStatsProgress(entry.contestStats, legacyStats);
   }
 
   private static mergeStarterDataProgress(target: StarterData, source?: StarterData): void {
@@ -727,8 +735,11 @@ export class GameData {
     dataStr = dataStr.replace(/"secretId":\d+/g, `"secretId":${this.secretId}`);
     const fromKeys = shorten ? Object.keys(systemShortKeys) : Object.values(systemShortKeys);
     const toKeys = shorten ? Object.values(systemShortKeys) : Object.keys(systemShortKeys);
-    for (const k in fromKeys) {
-      dataStr = dataStr.replace(new RegExp(`${fromKeys[k].replace("$", "\\$")}`, "g"), toKeys[k]);
+    const replacements = fromKeys
+      .map((fromKey, index) => ({ fromKey, toKey: toKeys[index] }))
+      .sort((a, b) => b.fromKey.length - a.fromKey.length);
+    for (const { fromKey, toKey } of replacements) {
+      dataStr = dataStr.replace(new RegExp(`${fromKey.replace("$", "\\$")}`, "g"), toKey);
     }
 
     return dataStr;
@@ -2657,7 +2668,8 @@ export class GameData {
       if (!Object.hasOwn(entry, "ribbons")) {
         entry.ribbons = new RibbonData(0);
       }
-      entry.contestStats = normalizeContestStats(entry.contestStats);
+      entry.contestStats = GameData.getDexEntryContestStats(entry);
+      delete (entry as DexEntry & { caughtCounts?: PartialContestStats }).caughtCounts;
     }
   }
 

@@ -165,6 +165,7 @@ import { EnemyBattleInfo } from "#ui/enemy-battle-info";
 import type { PartyOption } from "#ui/party-ui-handler";
 import { PartyUiHandler } from "#ui/party-ui-handler";
 import { PlayerBattleInfo } from "#ui/player-battle-info";
+import { getAiMoveTargetData } from "#utils/ai-targeting";
 import { coerceArray } from "#utils/array";
 import { choosePlannerMove } from "#utils/battle-planner-ai";
 import { getEnemyBattlerIndex, getPlayerBattlerIndex } from "#utils/battler-index-utils";
@@ -199,6 +200,27 @@ import { getBaseLearnableMoveSource, getLevelMoves } from "./learnsets";
 
 function isBattleOpponentForTargeting(user: Pokemon, target: Pokemon): boolean {
   return user.isOpponent(target);
+}
+
+function getAiPassTurnMove(): TurnMove {
+  return {
+    move: MoveId.NONE,
+    targets: [],
+    useMode: MoveUseMode.NORMAL,
+  };
+}
+
+function getAiTurnMove(user: EnemyPokemon | PlayerPokemon, moveId: MoveId, useMode: MoveUseMode): TurnMove {
+  const targets = user.getNextTargets(moveId);
+  if (targets.length === 0) {
+    return getAiPassTurnMove();
+  }
+
+  return {
+    move: moveId,
+    targets,
+    useMode,
+  };
 }
 
 export abstract class Pokemon extends Phaser.GameObjects.Container {
@@ -6621,7 +6643,8 @@ export class EnemyPokemon extends Pokemon {
       }
     }
 
-    this.aiType = boss || this.hasTrainer() ? AiType.PLANNER : AiType.SMART_RANDOM;
+    this.aiType =
+      boss || this.hasTrainer() ? (globalScene.plannerAiEnabled ? AiType.PLANNER : AiType.SMART) : AiType.SMART_RANDOM;
   }
 
   initBattleInfo(): void {
@@ -6815,11 +6838,7 @@ export class EnemyPokemon extends Pokemon {
     if (movePool.length > 0) {
       // If there's only 1 move in the move pool, use it.
       if (movePool.length === 1) {
-        return {
-          move: movePool[0].moveId,
-          targets: this.getNextTargets(movePool[0].moveId),
-          useMode: MoveUseMode.NORMAL,
-        };
+        return getAiTurnMove(this, movePool[0].moveId, MoveUseMode.NORMAL);
       }
       // If a move is forced because of Encore, use it.
       // Said moves are executed normally
@@ -6827,18 +6846,16 @@ export class EnemyPokemon extends Pokemon {
       if (encoreTag) {
         const encoreMove = movePool.find(m => m.moveId === encoreTag.moveId);
         if (encoreMove) {
-          return {
-            move: encoreMove.moveId,
-            targets: this.getNextTargets(encoreMove.moveId),
-            useMode: MoveUseMode.NORMAL,
-          };
+          return getAiTurnMove(this, encoreMove.moveId, MoveUseMode.NORMAL);
         }
       }
-      switch (this.aiType) {
+      const resolvedAiType =
+        this.aiType === AiType.PLANNER && !globalScene.plannerAiEnabled ? AiType.SMART : this.aiType;
+      switch (resolvedAiType) {
         // No enemy should spawn with this AI type in-game
         case AiType.RANDOM: {
           const moveId = movePool[globalScene.randBattleSeedInt(movePool.length)].moveId;
-          return { move: moveId, targets: this.getNextTargets(moveId), useMode: MoveUseMode.NORMAL };
+          return getAiTurnMove(this, moveId, MoveUseMode.NORMAL);
         }
         case AiType.PLANNER: {
           return choosePlannerMove(this, movePool);
@@ -6901,8 +6918,13 @@ export class EnemyPokemon extends Pokemon {
            * best possible target(s) (as determined by {@linkcode getNextTargets}).
            * For more information on how benefit scores are calculated, see `docs/enemy-ai.md`.
            */
-          const moveScores = movePool.map(() => 0);
           const moveTargets = Object.fromEntries(movePool.map(m => [m.moveId, this.getNextTargets(m.moveId)]));
+          movePool = movePool.filter(m => moveTargets[m.moveId]?.length > 0);
+          if (movePool.length === 0) {
+            return getAiPassTurnMove();
+          }
+
+          const moveScores = movePool.map(() => 0);
           movePool.forEach((pokemonMove, moveIndex) => {
             const move = pokemonMove.getMove();
 
@@ -6988,12 +7010,12 @@ export class EnemyPokemon extends Pokemon {
             return scoreA < scoreB ? 1 : scoreA > scoreB ? -1 : 0;
           });
           let chosenMoveIndex = 0;
-          if (this.aiType === AiType.SMART_RANDOM) {
+          if (resolvedAiType === AiType.SMART_RANDOM) {
             // Has a 5/8 chance to select the best move, and a 3/8 chance to advance to the next best move (and repeat this roll)
             while (chosenMoveIndex < sortedMovePool.length - 1 && globalScene.randBattleSeedInt(8) >= 5) {
               chosenMoveIndex++;
             }
-          } else if (this.aiType === AiType.SMART) {
+          } else if (resolvedAiType === AiType.SMART) {
             // The chance to advance to the next best move increases when the compared moves' scores are closer to each other.
             while (
               chosenMoveIndex < sortedMovePool.length - 1
@@ -7030,11 +7052,7 @@ export class EnemyPokemon extends Pokemon {
     }
 
     // No moves left means struggle
-    return {
-      move: MoveId.STRUGGLE,
-      targets: this.getNextTargets(MoveId.STRUGGLE),
-      useMode: MoveUseMode.IGNORE_PP,
-    };
+    return getAiTurnMove(this, MoveId.STRUGGLE, MoveUseMode.IGNORE_PP);
   }
 
   /**
@@ -7043,8 +7061,13 @@ export class EnemyPokemon extends Pokemon {
    * @returns The indexes of the Pokemon the given move would target
    */
   getNextTargets(moveId: MoveId): BattlerIndex[] {
-    const moveTargets = getMoveTargets(this, moveId);
-    const targets = globalScene.getField(true).filter(p => moveTargets.targets.indexOf(p.getBattlerIndex()) > -1);
+    const targetData = getAiMoveTargetData(this, moveId);
+    if (targetData.lacksRequiredOpponent) {
+      return [];
+    }
+
+    const moveTargets = targetData.targetSet;
+    const targets = moveTargets.multiple ? targetData.allTargets : targetData.selectableTargets;
     // If the move is multi-target, return all targets' indexes
     if (moveTargets.multiple) {
       return targets.map(p => p.getBattlerIndex());

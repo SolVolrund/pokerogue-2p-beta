@@ -9,12 +9,12 @@ import { PokeballType } from "#enums/pokeball";
 import { Stat } from "#enums/stat";
 import type { EnemyPokemon, PlayerPokemon } from "#field/pokemon";
 import {
-  getBestComputerPartnerReplacementSlot,
-  getComputerPartnerProfileWithRolePreferences,
   type ComputerPartnerKey,
   type ComputerPartnerProfile,
   type ComputerPartnerRolePreferences,
   type ComputerPartnerSlotScore,
+  getBestComputerPartnerReplacementSlot,
+  getComputerPartnerProfileWithRolePreferences,
 } from "#utils/computer-partner-profile";
 
 export interface ComputerPartnerCaptureDecision {
@@ -36,6 +36,7 @@ export interface ComputerPartnerCaptureInterest {
 export interface ComputerPartnerCaptureDecisionOptions {
   allowedBossTargetIds?: number | readonly number[];
   forceThrowTargetIds?: number | readonly number[];
+  plannedDamageRatios?: ReadonlyMap<number, number>;
   preferredTargetIds?: number | readonly number[];
 }
 
@@ -201,7 +202,11 @@ export function getComputerPartnerCaptureDecisionsFromInterests(
 
       const weakeningMoveIndex =
         ballChoice.chance < PREFERRED_CATCH_CHANCE && !forceThrowTargetIdSet.has(target.id)
-          ? getSafestComputerPartnerWeakeningMoveIndex(activePokemon, target)
+          ? getSafestComputerPartnerWeakeningMoveIndex(
+              activePokemon,
+              target,
+              options.plannedDamageRatios?.get(target.id) ?? 0,
+            )
           : undefined;
       const shouldThrow =
         forceThrowTargetIdSet.has(target.id)
@@ -336,6 +341,7 @@ function getComputerPartnerModifiedCatchRate(pokemon: EnemyPokemon, pokeballType
 function getSafestComputerPartnerWeakeningMoveIndex(
   attacker: PlayerPokemon,
   target: EnemyPokemon,
+  plannedDamageRatio = 0,
 ): number | undefined {
   return attacker
     .getMoveset()
@@ -348,7 +354,7 @@ function getSafestComputerPartnerWeakeningMoveIndex(
       moveScore =>
         moveScore.isUsable
         && moveScore.damageRatio > 0
-        && moveScore.damageRatio < MAX_SAFE_WEAKENING_DAMAGE_RATIO,
+        && plannedDamageRatio + moveScore.damageRatio < MAX_SAFE_WEAKENING_DAMAGE_RATIO,
     )
     .sort((a, b) => b.damageRatio - a.damageRatio)[0]?.moveIndex;
 }
@@ -357,9 +363,10 @@ export function isComputerPartnerMoveSafeForCaptureTarget(
   attacker: PlayerPokemon,
   target: EnemyPokemon,
   move: Move,
+  plannedDamageRatio = 0,
 ): boolean {
   const damageRatio = estimateComputerPartnerMoveDamageRatio(attacker, target, move);
-  return damageRatio <= 0 || damageRatio < MAX_SAFE_WEAKENING_DAMAGE_RATIO;
+  return damageRatio <= 0 || plannedDamageRatio + damageRatio < MAX_SAFE_WEAKENING_DAMAGE_RATIO;
 }
 
 export function estimateComputerPartnerMoveDamageRatio(

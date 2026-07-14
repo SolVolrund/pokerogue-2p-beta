@@ -9,6 +9,21 @@ import { ContestType } from "./contest-type";
 
 const CONTEST_NPC_COUNT = 3;
 const CONTEST_TOTAL_CONTESTANTS = 4;
+const CONTEST_SETUP_SEED_OFFSET = 86413;
+const CONTEST_RANK_SEED_OFFSETS: Record<ContestRank, number> = {
+  [ContestRank.NORMAL]: 1,
+  [ContestRank.SUPER]: 2,
+  [ContestRank.HYPER]: 3,
+  [ContestRank.MASTER]: 4,
+  [ContestRank.GRAND]: 5,
+};
+const CONTEST_TYPE_SEED_OFFSETS: Record<ContestType, number> = {
+  [ContestType.COOL]: 1,
+  [ContestType.BEAUTY]: 2,
+  [ContestType.CUTE]: 3,
+  [ContestType.SMART]: 4,
+  [ContestType.TOUGH]: 5,
+};
 
 export interface ContestPlayerContestantOptions {
   playerIndex?: PlayerIndex;
@@ -28,12 +43,18 @@ export function createContestStateForRank(options: CreateContestStateOptions = {
   const contestType = options.contestType ?? ContestType.COOL;
   const rank = options.rank ?? ContestRank.NORMAL;
   const playerContestants = normalizePlayerContestants(options);
-  const opponents = selectContestOpponents(rank, contestType, CONTEST_TOTAL_CONTESTANTS - playerContestants.length);
+  let bgmKey = "";
+  let opponents: ContestOpponentEntry[] = [];
+
+  globalScene.executeWithSeedOffset(() => {
+    bgmKey = chooseContestStageBgm();
+    opponents = selectContestOpponents(rank, contestType, CONTEST_TOTAL_CONTESTANTS - playerContestants.length);
+  }, getContestSetupSeedOffset(contestType, rank, playerContestants.length));
 
   return new ContestState({
     contestType,
     rank,
-    bgmKey: chooseContestStageBgm(),
+    bgmKey,
     contestants: [
       ...playerContestants.map((contestant, index) =>
         createContestParticipant(
@@ -68,6 +89,16 @@ export function createContestStateForRank(options: CreateContestStateOptions = {
       ),
     ],
   });
+}
+
+function getContestSetupSeedOffset(contestType: ContestType, rank: ContestRank, playerContestantCount: number): number {
+  return (
+    CONTEST_SETUP_SEED_OFFSET
+    + (globalScene.currentBattle?.waveIndex ?? 0) * 131
+    + CONTEST_RANK_SEED_OFFSETS[rank] * 17
+    + CONTEST_TYPE_SEED_OFFSETS[contestType] * 31
+    + playerContestantCount * 7
+  );
 }
 
 export function createNormalRankContestState(playerPokemon?: PlayerPokemon): ContestState {

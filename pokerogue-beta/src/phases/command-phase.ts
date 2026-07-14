@@ -6,6 +6,7 @@ import { getPokemonNameWithAffix } from "#app/messages";
 import { TrappedTag } from "#data/battler-tags";
 import { getDailyEventSeedBoss } from "#data/daily-seed/daily-run";
 import { isDailyFinalBoss } from "#data/daily-seed/daily-seed-utils";
+import { allMoves } from "#data/data-lists";
 import { AbilityId } from "#enums/ability-id";
 import { AiType } from "#enums/ai-type";
 import { ArenaTagSide } from "#enums/arena-tag-side";
@@ -25,9 +26,11 @@ import { getMoveTargets } from "#moves/move-utils";
 import { FieldPhase } from "#phases/field-phase";
 import type { MoveTargetSet } from "#types/move-target-set";
 import type { TurnMove } from "#types/turn-move";
+import { shouldAiRepositionToCenter } from "#utils/ai-targeting";
 import { getComputerPartnerImprovedSwitchIndex, isComputerPartnerFieldIndex } from "#utils/computer-partner-ai";
 import {
   type ComputerPartnerCaptureDecisionOptions,
+  estimateComputerPartnerMoveDamageRatio,
   getComputerPartnerCaptureDecision,
   getComputerPartnerCaptureDecisionsFromInterests,
   isComputerPartnerMoveSafeForCaptureTarget,
@@ -95,6 +98,10 @@ export class CommandPhase extends FieldPhase {
   }
 
   private shouldComputerPartnerSwitch(): number | undefined {
+    if (!globalScene.plannerAiEnabled) {
+      return;
+    }
+
     const playerPokemon = this.getPokemon();
 
     if (playerPokemon.getMoveQueue().length > 0 || playerPokemon.isTrapped()) {
@@ -122,14 +129,16 @@ export class CommandPhase extends FieldPhase {
 
     const blockedTargetIds = this.getComputerPartnerBlockedCaptureTargetIds(playerIndex);
     const claimedTargetIds = this.getComputerPartnerClaimedCaptureTargetIds(playerIndex);
-    const captureDecisionOptions =
-      claimedTargetIds.length > 0
+    const captureDecisionOptions: ComputerPartnerCaptureDecisionOptions = {
+      plannedDamageRatios: this.getQueuedCaptureDamageRatios(playerPokemon.getBattlerIndex()),
+      ...(claimedTargetIds.length > 0
         ? {
             allowedBossTargetIds: claimedTargetIds,
             forceThrowTargetIds: claimedTargetIds,
             preferredTargetIds: claimedTargetIds,
           }
-        : undefined;
+        : {}),
+    };
     const captureDecision =
       globalScene.currentBattle.battleType === BattleType.WILD
         ? this.getCachedComputerPartnerCaptureDecision(
@@ -302,6 +311,7 @@ export class CommandPhase extends FieldPhase {
     playerPokemon: PlayerPokemon,
     turnMove: TurnMove,
     reservedTargets: EnemyPokemon[],
+    plannedDamageRatios = this.getQueuedCaptureDamageRatios(playerPokemon.getBattlerIndex()),
   ): boolean {
     const unsafeTargets = reservedTargets.filter(reservedTarget =>
       turnMove.targets.includes(reservedTarget.getBattlerIndex()),
@@ -317,13 +327,19 @@ export class CommandPhase extends FieldPhase {
 
     return unsafeTargets.some(
       reservedTarget =>
-        !isComputerPartnerMoveSafeForCaptureTarget(playerPokemon, reservedTarget, pokemonMove.getMove()),
+        !isComputerPartnerMoveSafeForCaptureTarget(
+          playerPokemon,
+          reservedTarget,
+          pokemonMove.getMove(),
+          plannedDamageRatios.get(reservedTarget.id) ?? 0,
+        ),
     );
   }
 
   private getReservedCaptureSafeMove(
     playerPokemon: PlayerPokemon,
     reservedTargets: EnemyPokemon[],
+    plannedDamageRatios = this.getQueuedCaptureDamageRatios(playerPokemon.getBattlerIndex()),
   ): TurnMove | undefined {
     const enemyBattlerIndexes = new Set(globalScene.getEnemyField().map(pokemon => pokemon.getBattlerIndex()));
     const reservedBattlerIndexes = new Set(reservedTargets.map(pokemon => pokemon.getBattlerIndex()));
@@ -340,7 +356,10 @@ export class CommandPhase extends FieldPhase {
         targets,
         useMode: MoveUseMode.NORMAL,
       };
-      if (targetsOnlyEnemies && !this.isUnsafeForReservedCaptureTarget(playerPokemon, turnMove, reservedTargets)) {
+      if (
+        targetsOnlyEnemies
+        && !this.isUnsafeForReservedCaptureTarget(playerPokemon, turnMove, reservedTargets, plannedDamageRatios)
+      ) {
         return turnMove;
       }
 
@@ -370,20 +389,77 @@ export class CommandPhase extends FieldPhase {
     turnMove: TurnMove,
   ): TurnMove {
     const reservedTargets = this.getComputerPartnerBlockedCaptureTargets(playerIndex);
+    const plannedDamageRatios = this.getQueuedCaptureDamageRatios(playerPokemon.getBattlerIndex());
     if (
       reservedTargets.length === 0
-      || !this.isUnsafeForReservedCaptureTarget(playerPokemon, turnMove, reservedTargets)
+      || !this.isUnsafeForReservedCaptureTarget(playerPokemon, turnMove, reservedTargets, plannedDamageRatios)
     ) {
       return turnMove;
     }
 
     return (
-      this.getReservedCaptureSafeMove(playerPokemon, reservedTargets) ?? {
+      this.getReservedCaptureSafeMove(playerPokemon, reservedTargets, plannedDamageRatios) ?? {
         move: MoveId.NONE,
         targets: [],
         useMode: MoveUseMode.NORMAL,
       }
     );
+  }
+
+  private getQueuedCaptureDamageRatios(excludedBattlerIndex: number): Map<number, number> {
+    const plannedDamageRatios = new Map<number, number>();
+    const enemyTargetsByBattlerIndex = new Map<number, EnemyPokemon>(
+      globalScene
+        .getEnemyField()
+        .filter(pokemon => pokemon.isActive(true) && !pokemon.isFainted())
+        .map(pokemon => [pokemon.getBattlerIndex(), pokemon] as const),
+    );
+
+    for (const [battlerIndexString, turnCommand] of Object.entries(globalScene.currentBattle.turnCommands)) {
+      const damageEntries = this.getQueuedCaptureDamageEntries(
+        battlerIndexString,
+        turnCommand,
+        excludedBattlerIndex,
+        enemyTargetsByBattlerIndex,
+      );
+      for (const [targetId, damageRatio] of damageEntries) {
+        plannedDamageRatios.set(targetId, (plannedDamageRatios.get(targetId) ?? 0) + damageRatio);
+      }
+    }
+
+    return plannedDamageRatios;
+  }
+
+  private getQueuedCaptureDamageEntries(
+    battlerIndexString: string,
+    turnCommand: TurnCommand | null,
+    excludedBattlerIndex: number,
+    enemyTargetsByBattlerIndex: ReadonlyMap<number, EnemyPokemon>,
+  ): [number, number][] {
+    if (!turnCommand || turnCommand.command !== Command.FIGHT || !turnCommand.move || turnCommand.skip) {
+      return [];
+    }
+
+    const battlerIndex = Number(battlerIndexString);
+    if (battlerIndex === excludedBattlerIndex) {
+      return [];
+    }
+
+    const attacker = globalScene.getField()[battlerIndex];
+    const move = allMoves[turnCommand.move.move];
+    if (!attacker?.isPlayer() || !move) {
+      return [];
+    }
+
+    return (turnCommand.targets ?? turnCommand.move.targets).flatMap(targetIndex => {
+      const target = enemyTargetsByBattlerIndex.get(targetIndex);
+      if (!target) {
+        return [];
+      }
+
+      const damageRatio = estimateComputerPartnerMoveDamageRatio(attacker as PlayerPokemon, target, move);
+      return damageRatio > 0 ? ([[target.id, damageRatio]] as [number, number][]) : [];
+    });
   }
 
   private handleComputerPartnerCommand(): boolean {
@@ -392,6 +468,16 @@ export class CommandPhase extends FieldPhase {
     const previousAiType = playerPokemon.aiType;
 
     if (this.handleComputerPartnerCaptureCommand(playerPokemon)) {
+      return true;
+    }
+
+    if (shouldAiRepositionToCenter(playerPokemon)) {
+      this.setTurnCommand({
+        command: Command.REPOSITION,
+        cursor: FieldPosition.CENTER,
+        playerIndex,
+      });
+      this.end();
       return true;
     }
 
@@ -408,7 +494,7 @@ export class CommandPhase extends FieldPhase {
       return true;
     }
 
-    playerPokemon.aiType = AiType.PLANNER;
+    playerPokemon.aiType = globalScene.plannerAiEnabled ? AiType.PLANNER : AiType.SMART;
     globalScene.aiCommandInProgress = true;
     try {
       const nextMove = this.protectReservedCaptureTargets(playerIndex, playerPokemon, playerPokemon.getNextMove());
