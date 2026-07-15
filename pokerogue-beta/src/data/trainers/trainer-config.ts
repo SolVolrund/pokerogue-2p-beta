@@ -5579,7 +5579,7 @@ export const trainerConfigs: TrainerConfigs = {
     )
     .setPartyMemberFunc(5, getDawnIllusionPairMemberFunc(false)),
 
-    [TrainerType.BIANCA]: new TrainerConfig(++t)
+  [TrainerType.BIANCA]: new TrainerConfig(++t)
     .setName("Bianca")
     .setSpriteKey("bianca")
     .setHasCharSprite()
@@ -7045,4 +7045,93 @@ export const trainerConfigs: TrainerConfigs = {
     .setVictoryBgm("mystery_encounter_weird_dream")
     .setLocalizedName("Alternate Player  F")
     .setPartyTemplates(new TrainerPartyTemplate(6, PartyMemberStrength.STRONG)),
+  [TrainerType.ANNIE]: new TrainerConfig(++t)
+    .setName("Annie")
+    .setSpriteKey("annie_alpha_gopokenohito_80px")
+    .setPartyTemplates(trainerPartyTemplates.ONE_STRONGER_ONE_AVG_TWO_STRONG_ONE_AVG_ONE_STRONGER)
+    .setBattleBgm("battle_trainer")
+    .setMixedBattleBgm("battle_trainer")
+    .setPartyMemberFunc(
+      0,
+      getRandomPartyMemberFunc([SpeciesId.GLIMMORA], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      1,
+      getRandomPartyMemberFunc([SpeciesId.LEDYBA], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      2,
+      getRandomPartyMemberFunc([SpeciesId.HISUI_SNEASEL], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      3,
+      getRandomPartyMemberFunc([SpeciesId.BELLOSSOM], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      4,
+      getRandomPartyMemberFunc([SpeciesId.ESPEON], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      5,
+      getRandomPartyMemberFunc([SpeciesId.KABUTO], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
+        p.generateAndPopulateMoveset();
+      }),
+    ),
+
+  [TrainerType.OAKLEY]: new TrainerConfig(++t)
+    .setName("Oakley")
+    .setSpriteKey("oakley_alpha_gopokenohito_80px")
+    .setPartyTemplates(trainerPartyTemplates.ONE_STRONGER_ONE_AVG_TWO_STRONG_ONE_AVG_ONE_STRONGER)
+    .setBattleBgm("battle_trainer")
+    .setMixedBattleBgm("battle_trainer")
+    .setPartyMemberFunc(
+      0,
+      getRandomPartyMemberFunc([SpeciesId.ARIADOS], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      1,
+      getRandomPartyMemberFunc([SpeciesId.GLISCOR], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      2,
+      getRandomPartyMemberFunc([SpeciesId.SNEASEL], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      3,
+      getRandomPartyMemberFunc([SpeciesId.VILEPLUME], TrainerSlot.TRAINER, true, p => {
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      4,
+      getRandomPartyMemberFunc([SpeciesId.UMBREON], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
+        p.generateAndPopulateMoveset();
+      }),
+    )
+    .setPartyMemberFunc(
+      5,
+      getRandomPartyMemberFunc([SpeciesId.AERODACTYL], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
+        p.generateAndPopulateMoveset();
+      }),
+    ),
 };

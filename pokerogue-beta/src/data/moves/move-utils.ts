@@ -153,14 +153,14 @@ function getOpponents(user: Pokemon): Pokemon[] {
   const normalOpponents = (user.isPlayer() ? globalScene.getEnemyField() : globalScene.getPlayerField()).filter(p =>
     p.isActive(false) && !isForcedDuelAlly(user, p),
   );
-  return uniquePokemon(normalOpponents.concat(getForcedDuelRelatedTargets(user, "opponent")));
+  return uniquePokemon([...normalOpponents, ...getForcedDuelRelatedTargets(user, "opponent")]);
 }
 
 function getAllies(user: Pokemon): Pokemon[] {
   const normalAllies = (user.isPlayer() ? globalScene.getPlayerField() : globalScene.getEnemyField()).filter(
     p => p !== user && p.isActive(false) && !isForcedDuelOpponent(user, p),
   );
-  return uniquePokemon(normalAllies.concat(getForcedDuelRelatedTargets(user, "ally")));
+  return uniquePokemon([...normalAllies, ...getForcedDuelRelatedTargets(user, "ally")]);
 }
 
 function uniquePokemon(pokemon: Pokemon[]): Pokemon[] {
@@ -251,7 +251,7 @@ function getForcedDuelRelation(user: Pokemon, target: Pokemon): "ally" | "oppone
     return "opponent";
   }
 
-  return getLegendaryConflictDuelRelation(user, target);
+  return getLegendaryConflictDuelRelation(user, target) ?? getPokePoachersDuelRelation(user, target);
 }
 
 function isShinyBadgeDuelOpponent(user: Pokemon, target: Pokemon): boolean {
@@ -333,6 +333,42 @@ function getLegendaryConflictDuelRelation(user: Pokemon, target: Pokemon): "ally
 function getLegendaryConflictPokemonIndex(pokemon: Pokemon, legendaryPokemonIds: number[]): 0 | 1 | undefined {
   const index = legendaryPokemonIds.indexOf(pokemon.id);
   return index === 0 || index === 1 ? index : undefined;
+}
+
+function getPokePoachersDuelRelation(user: Pokemon, target: Pokemon): "ally" | "opponent" | undefined {
+  const battle = globalScene.currentBattle;
+  if (
+    !battle?.isBattleMysteryEncounter()
+    || battle.mysteryEncounter?.encounterType !== MysteryEncounterType.POKE_POACHERS
+  ) {
+    return;
+  }
+
+  const misc = battle.mysteryEncounter.misc;
+  if (
+    !misc?.rescueActive
+    || misc.protectedLegendaryId == null
+    || !Array.isArray(misc.poacherPokemonIds)
+    || user === target
+  ) {
+    return;
+  }
+
+  const userIsProtectedLegendary = user.id === misc.protectedLegendaryId;
+  const targetIsProtectedLegendary = target.id === misc.protectedLegendaryId;
+  const userIsPoacher = misc.poacherPokemonIds.includes(user.id);
+  const targetIsPoacher = misc.poacherPokemonIds.includes(target.id);
+
+  if ((userIsProtectedLegendary && target.isPlayer()) || (targetIsProtectedLegendary && user.isPlayer())) {
+    return "ally";
+  }
+
+  if (
+    (userIsPoacher && (targetIsProtectedLegendary || target.isPlayer()))
+    || (targetIsPoacher && (userIsProtectedLegendary || user.isPlayer()))
+  ) {
+    return "opponent";
+  }
 }
 
 export const frenzyMissFunc: UserMoveConditionFunc = (user: Pokemon, move: Move) => {

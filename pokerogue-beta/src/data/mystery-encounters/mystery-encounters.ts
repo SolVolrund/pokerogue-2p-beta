@@ -25,6 +25,7 @@ import { MysteriousChallengersEncounter } from "#mystery-encounters/mysterious-c
 import { MysteriousChestEncounter } from "#mystery-encounters/mysterious-chest-encounter";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { PartTimerEncounter } from "#mystery-encounters/part-timer-encounter";
+import { PokePoachersEncounter } from "#mystery-encounters/poke-poachers-encounter";
 import { SafariZoneEncounter } from "#mystery-encounters/safari-zone-encounter";
 import { ShadyVitaminDealerEncounter } from "#mystery-encounters/shady-vitamin-dealer-encounter";
 import { ShinyBadgeEncounter } from "#mystery-encounters/shiny-badge-encounter";
@@ -193,6 +194,7 @@ const anyBiomeEncounters: MysteryEncounterType[] = [
   MysteryEncounterType.GTS_MALFUNCTION,
   MysteryEncounterType.SHINY_BADGE,
   MysteryEncounterType.LEGENDARY_CONFLICT,
+  MysteryEncounterType.POKE_POACHERS,
   MysteryEncounterType.CONTEST_HALL,
 ];
 
@@ -279,6 +281,7 @@ export function initMysteryEncounters() {
   allMysteryEncounters[MysteryEncounterType.SHINY_BADGE] = ShinyBadgeEncounter;
   allMysteryEncounters[MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE] = ItIsDangerousToGoAloneEncounter;
   allMysteryEncounters[MysteryEncounterType.LEGENDARY_CONFLICT] = LegendaryConflictEncounter;
+  allMysteryEncounters[MysteryEncounterType.POKE_POACHERS] = PokePoachersEncounter;
   allMysteryEncounters[MysteryEncounterType.FARAWAY_ISLAND_TREASURE] = FarawayIslandTreasureEncounter;
   allMysteryEncounters[MysteryEncounterType.CONTEST_HALL] = ContestHallEncounter;
 

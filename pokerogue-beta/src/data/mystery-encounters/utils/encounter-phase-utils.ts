@@ -971,7 +971,7 @@ export function handleMysteryEncounterVictory(addHealPhase = false, doNotContinu
     globalScene.phaseManager.pushNew("MysteryEncounterRewardsPhase", addHealPhase);
     globalScene.phaseManager.pushNew("EggLapsePhase");
   } else if (
-    isLegendaryConflictVictoryReady(encounter)
+    isMysteryEncounterVictoryReady(encounter)
     || !globalScene
       .getEnemyParty()
       .find(p =>
@@ -992,10 +992,10 @@ export function handleMysteryEncounterVictory(addHealPhase = false, doNotContinu
   }
 }
 
-function isLegendaryConflictVictoryReady(encounter: MysteryEncounter): boolean {
+function isMysteryEncounterVictoryReady(encounter: MysteryEncounter): boolean {
   return (
-    encounter.encounterType === MysteryEncounterType.LEGENDARY_CONFLICT
-    && !!encounter.misc?.rewardBlessing
+    (encounter.encounterType === MysteryEncounterType.LEGENDARY_CONFLICT && !!encounter.misc?.rewardBlessing)
+    || (encounter.encounterType === MysteryEncounterType.POKE_POACHERS && !!encounter.misc?.rewardEligible)
   );
 }
 

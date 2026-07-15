@@ -160,6 +160,8 @@ export enum TrainerType {
   EXPERT_POKEMON_BREEDER,
   PLAYER_M_ALTERNATE,
   PLAYER_F_ALTERNATE,
+  ANNIE,
+  OAKLEY,
 
   // #endregion ME trainers
 

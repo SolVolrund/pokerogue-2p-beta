@@ -214,8 +214,8 @@ const TWO_PLAYER_SESSION_SYSTEM_SAVE_KEYS = [
 ] as const;
 const TWO_PLAYER_PROFILE_HANDSHAKE_BUILD = "profile-handshake-2026-06-17c";
 const TWO_PLAYER_SYNC_SETTING_TYPES = new Set<SettingType>([SettingType.GENERAL, SettingType.DISPLAY]);
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = null;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.LOST_AT_SEA;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = 2;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.POKE_POACHERS;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = true;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_PLAYER_MONEY: number | null = null;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
@@ -252,6 +252,7 @@ const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
   MysteryEncounterType.SHINY_BADGE,
   MysteryEncounterType.LEGENDARY_CONFLICT,
+  MysteryEncounterType.POKE_POACHERS,
   MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE,
   MysteryEncounterType.FARAWAY_ISLAND_TREASURE,
   MysteryEncounterType.CONTEST_HALL,
@@ -288,6 +289,7 @@ const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] 
   MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
   MysteryEncounterType.SHINY_BADGE,
   MysteryEncounterType.LEGENDARY_CONFLICT,
+  MysteryEncounterType.POKE_POACHERS,
   MysteryEncounterType.FARAWAY_ISLAND_TREASURE,
   MysteryEncounterType.CONTEST_HALL,
 ];

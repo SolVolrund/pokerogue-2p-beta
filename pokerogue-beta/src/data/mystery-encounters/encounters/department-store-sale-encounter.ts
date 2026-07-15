@@ -122,6 +122,23 @@ function queueComputerPartnerDepartmentStoreChoiceMessage(
   globalScene.phaseManager.queueMessage(`${profile.name}: Chose ${optionLabel}.`, null, true);
 }
 
+function buildDepartmentStoreOption(optionIndex: DepartmentStoreOptionIndex, playerIndex?: PlayerIndex): MysteryEncounterOption {
+  return MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
+    .withDialogue({
+      buttonLabel: `${namespace}:option.${optionIndex}.label`,
+      buttonTooltip: `${namespace}:option.${optionIndex}.tooltip`,
+    })
+    .withPreOptionPhase(async () => storeDepartmentStoreChoice(optionIndex, playerIndex))
+    .withOptionPhase(async () => runDepartmentStoreSale())
+    .build();
+}
+
+function buildDepartmentStorePlayerOptions(playerIndex: PlayerIndex): MysteryEncounterOption[] {
+  return [1, 2, 3, 4].map(optionIndex =>
+    buildDepartmentStoreOption(optionIndex as DepartmentStoreOptionIndex, playerIndex),
+  );
+}
+
 async function storeDepartmentStoreChoice(
   optionIndex: DepartmentStoreOptionIndex,
   playerIndex: PlayerIndex = globalScene.activePlayerIndex,
@@ -143,6 +160,7 @@ async function storeDepartmentStoreChoice(
     if (nextPlayerIndex != null) {
       const result = await showMysteryEncounterPlayerMenu({
         playerIndex: nextPlayerIndex,
+        overrideOptions: buildDepartmentStorePlayerOptions(nextPlayerIndex),
         slideInDescription: false,
         overrideQuery: i18next.t(`${namespace}:query`),
         startingCursorIndex: optionIndex - 1,
@@ -265,46 +283,10 @@ export const DepartmentStoreSaleEncounter: MysteryEncounter = MysteryEncounterBu
   .withTitle(`${namespace}:title`)
   .withDescription(`${namespace}:description`)
   .withQuery(`${namespace}:query`)
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
-      .withDialogue({
-        buttonLabel: `${namespace}:option.1.label`,
-        buttonTooltip: `${namespace}:option.1.tooltip`,
-      })
-      .withPreOptionPhase(async () => storeDepartmentStoreChoice(1))
-      .withOptionPhase(async () => runDepartmentStoreSale())
-      .build(),
-  )
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
-      .withDialogue({
-        buttonLabel: `${namespace}:option.2.label`,
-        buttonTooltip: `${namespace}:option.2.tooltip`,
-      })
-      .withPreOptionPhase(async () => storeDepartmentStoreChoice(2))
-      .withOptionPhase(async () => runDepartmentStoreSale())
-      .build(),
-  )
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
-      .withDialogue({
-        buttonLabel: `${namespace}:option.3.label`,
-        buttonTooltip: `${namespace}:option.3.tooltip`,
-      })
-      .withPreOptionPhase(async () => storeDepartmentStoreChoice(3))
-      .withOptionPhase(async () => runDepartmentStoreSale())
-      .build(),
-  )
-  .withOption(
-    MysteryEncounterOptionBuilder.newOptionWithMode(MysteryEncounterOptionMode.DEFAULT)
-      .withDialogue({
-        buttonLabel: `${namespace}:option.4.label`,
-        buttonTooltip: `${namespace}:option.4.tooltip`,
-      })
-      .withPreOptionPhase(async () => storeDepartmentStoreChoice(4))
-      .withOptionPhase(async () => runDepartmentStoreSale())
-      .build(),
-  )
+  .withOption(buildDepartmentStoreOption(1))
+  .withOption(buildDepartmentStoreOption(2))
+  .withOption(buildDepartmentStoreOption(3))
+  .withOption(buildDepartmentStoreOption(4))
   .withOutroDialogue([
     {
       text: `${namespace}:outro`,

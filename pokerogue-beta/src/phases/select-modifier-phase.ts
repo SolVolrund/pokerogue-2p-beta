@@ -415,7 +415,7 @@ export class SelectModifierPhase extends BattlePhase {
     globalScene.ui.setModeWithoutClear(
       UiMode.PARTY,
       PartyUiMode.MODIFIER_TRANSFER,
-      -1,
+      this.getFieldSlotForPlayer(this.playerIndex),
       (fromSlotIndex: number, itemIndex: number, itemQuantity: number, toSlotIndex: number) => {
         if (
           toSlotIndex !== undefined
@@ -443,7 +443,11 @@ export class SelectModifierPhase extends BattlePhase {
         }
       },
       PartyUiHandler.FilterItemMaxStacks,
-    );
+    ).then(() => {
+      if (globalScene.twoPlayerMode) {
+        globalScene.waitForPlayerInput(this.playerIndex);
+      }
+    });
     return true;
   }
 
@@ -867,7 +871,7 @@ export class SelectModifierPhase extends BattlePhase {
     globalScene.ui.setModeWithoutClear(
       UiMode.PARTY,
       PartyUiMode.SPLICE,
-      -1,
+      this.getFieldSlotForPlayer(this.playerIndex),
       (fromSlotIndex: number, spliceSlotIndex: number) => {
         if (
           spliceSlotIndex !== undefined
@@ -884,7 +888,11 @@ export class SelectModifierPhase extends BattlePhase {
         }
       },
       modifierType.selectFilter,
-    );
+    ).then(() => {
+      if (globalScene.twoPlayerMode) {
+        globalScene.waitForPlayerInput(this.playerIndex);
+      }
+    });
   }
 
   // Opens the party menu to apply one of various modifiers
@@ -911,7 +919,7 @@ export class SelectModifierPhase extends BattlePhase {
     globalScene.ui.setModeWithoutClear(
       UiMode.PARTY,
       partyUiMode,
-      -1,
+      this.getFieldSlotForPlayer(this.playerIndex),
       (slotIndex: number, option: PartyOption) => {
         if (slotIndex < 6) {
           globalScene.ui.setMode(UiMode.MODIFIER_SELECT, this.isPlayer()).then(() => {
@@ -932,7 +940,11 @@ export class SelectModifierPhase extends BattlePhase {
         : undefined,
       tmMoveId,
       isPpRestoreModifier,
-    );
+    ).then(() => {
+      if (globalScene.twoPlayerMode) {
+        globalScene.waitForPlayerInput(this.playerIndex);
+      }
+    });
   }
 
   // Function that determines how many reward slots are available

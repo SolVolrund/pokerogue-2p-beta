@@ -36,4 +36,5 @@ export enum MysteryEncounterType {
   LEGENDARY_CONFLICT,
   FARAWAY_ISLAND_TREASURE,
   CONTEST_HALL,
+  POKE_POACHERS,
 }
