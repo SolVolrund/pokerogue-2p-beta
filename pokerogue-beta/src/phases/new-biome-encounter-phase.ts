@@ -19,6 +19,9 @@ export class NewBiomeEncounterPhase extends EncounterPhase {
         }
       }
     }
+    for (const pokemon of globalScene.getEonFluteGuests()) {
+      pokemon.resetBattleAndWaveData();
+    }
 
     const enemyField = globalScene.getEnemyField();
     const moveTargets: any[] = [globalScene.arenaEnemy, enemyField];

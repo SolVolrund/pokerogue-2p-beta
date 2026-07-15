@@ -1264,10 +1264,18 @@ export class TitlePhase extends Phase {
     if (this.loaded) {
       if (globalScene.twoPlayerMode) {
         const playerIndexes = globalScene.getPlayerFieldOwners();
+        const availablePartyMembersByField = playerIndexes.map(playerIndex =>
+          globalScene.getPokemonAllowedInBattle(playerIndex),
+        );
 
         globalScene.phaseManager.pushNew("ShowTrainerPhase");
-        playerIndexes.forEach((_playerIndex, fieldIndex) => {
-          globalScene.phaseManager.pushNew("SummonPhase", fieldIndex, true, true);
+        playerIndexes.forEach((playerIndex, fieldIndex) => {
+          const availablePartyMembers = availablePartyMembersByField[fieldIndex];
+          if (availablePartyMembers[0]) {
+            globalScene.phaseManager.pushNew("SummonPhase", fieldIndex, true, true);
+          } else if (globalScene.hasEonFluteProtection(playerIndex)) {
+            globalScene.phaseManager.pushNew("EonFluteSummonPhase", playerIndex);
+          }
         });
 
         if (
@@ -1275,7 +1283,7 @@ export class TitlePhase extends Phase {
           && (globalScene.currentBattle.waveIndex > 1 || !globalScene.gameMode.isDaily)
         ) {
           playerIndexes.forEach((playerIndex, fieldIndex) => {
-            if (globalScene.getPokemonAllowedInBattle(playerIndex).length > 1) {
+            if (availablePartyMembersByField[fieldIndex].length > 1) {
               globalScene.phaseManager.pushNew("CheckSwitchPhase", fieldIndex, true);
             }
           });
@@ -1283,9 +1291,13 @@ export class TitlePhase extends Phase {
       } else {
         const availablePartyMembers = globalScene.getPokemonAllowedInBattle().length;
 
-        globalScene.phaseManager.pushNew("SummonPhase", 0, true, true);
-        if (globalScene.currentBattle.double && availablePartyMembers > 1) {
-          globalScene.phaseManager.pushNew("SummonPhase", 1, true, true);
+        if (availablePartyMembers > 0) {
+          globalScene.phaseManager.pushNew("SummonPhase", 0, true, true);
+          if (globalScene.currentBattle.double && availablePartyMembers > 1) {
+            globalScene.phaseManager.pushNew("SummonPhase", 1, true, true);
+          }
+        } else if (globalScene.hasEonFluteProtection(0)) {
+          globalScene.phaseManager.pushNew("EonFluteSummonPhase", 0);
         }
 
         if (

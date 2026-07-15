@@ -11,8 +11,15 @@ import { BattlePhase } from "#phases/battle-phase";
 import { achvs } from "#system/achv";
 import { vouchers } from "#system/voucher";
 import type { ModifierTypeFunc } from "#types/modifier-types";
+import type { ComputerPartnerKey } from "#utils/computer-partner-profile";
 import { randSeedItem } from "#utils/common";
 import i18next from "i18next";
+
+const COMPUTER_PARTNER_UNLOCKS_BY_TRAINER_TYPE: Partial<Record<TrainerType, ComputerPartnerKey>> = {
+  [TrainerType.DAWN_ZORUA]: "dawn_zorua",
+  [TrainerType.BIANCA_LATIAS]: "bianca_latias",
+  [TrainerType.DUPLICA_DITTO]: "duplica_ditto",
+};
 
 export class TrainerVictoryPhase extends BattlePhase {
   public readonly phaseName = "TrainerVictoryPhase";
@@ -61,8 +68,9 @@ export class TrainerVictoryPhase extends BattlePhase {
       globalScene.validateAchv(achvs.BREEDERS_IN_SPACE);
     }
 
-    if (trainerType === TrainerType.DAWN_ZORUA) {
-      this.unlockDawnZoruaComputerPartner();
+    const computerPartnerUnlockKey = COMPUTER_PARTNER_UNLOCKS_BY_TRAINER_TYPE[trainerType];
+    if (computerPartnerUnlockKey) {
+      this.unlockComputerPartner(computerPartnerUnlockKey);
     }
 
     globalScene.ui.showText(
@@ -133,14 +141,14 @@ export class TrainerVictoryPhase extends BattlePhase {
     globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypeFunc);
   }
 
-  private unlockDawnZoruaComputerPartner(): void {
+  private unlockComputerPartner(key: ComputerPartnerKey): void {
     const playerIndexes = globalScene.twoPlayerMode
       ? globalScene.getActivePlayerIndexes().filter(playerIndex => !globalScene.isComputerPartnerPlayer(playerIndex))
       : ([0] as PlayerIndex[]);
 
     playerIndexes.forEach(playerIndex => {
       const gameData = globalScene.getPlayerGameData(playerIndex);
-      if (gameData.unlockComputerPartner("dawn_zorua")) {
+      if (gameData.unlockComputerPartner(key)) {
         globalScene.savePlayerSystemSaveLocal(playerIndex);
       }
     });

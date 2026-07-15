@@ -211,6 +211,7 @@ export abstract class Modifier {
 export abstract class PersistentModifier extends Modifier {
   public stackCount: number;
   public virtualStackCount: number;
+  public eonFluteGuestItem = false;
 
   /** This field does not exist at runtime and must not be used.
    * Its sole purpose is to ensure that typescript is able to properly narrow when the `is` method is called.
@@ -629,6 +630,24 @@ export class MapModifier extends PersistentModifier {
 export class OldSeaMapModifier extends PersistentModifier {
   clone(): OldSeaMapModifier {
     return new OldSeaMapModifier(this.type, this.stackCount);
+  }
+
+  override apply(..._args: unknown[]): boolean {
+    return true;
+  }
+
+  getMaxStackCount(): number {
+    return 1;
+  }
+}
+
+export class EonFluteModifier extends PersistentModifier {
+  match(modifier: Modifier): boolean {
+    return modifier instanceof EonFluteModifier;
+  }
+
+  clone(): EonFluteModifier {
+    return new EonFluteModifier(this.type, this.stackCount);
   }
 
   override apply(..._args: unknown[]): boolean {
@@ -4389,6 +4408,7 @@ const ModifierClassMap = Object.freeze({
   TempCritBoosterModifier,
   MapModifier,
   OldSeaMapModifier,
+  EonFluteModifier,
   LinkingCordGoldModifier,
   MegaEvolutionAccessModifier,
   GigantamaxAccessModifier,

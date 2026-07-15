@@ -546,6 +546,19 @@ export class MysteryEncounterBattlePhase extends Phase {
       globalScene.phaseManager.pushNew("SummonPhase", availablePartyMemberEntries[0].fieldIndex);
     }
 
+    if (globalScene.twoPlayerMode) {
+      const coveredPlayerIndexes = new Set(availablePartyMemberEntries.map(entry =>
+        globalScene.getPlayerIndexForFieldSlot(entry.fieldIndex),
+      ));
+      playerFieldOwners.forEach(playerIndex => {
+        if (!coveredPlayerIndexes.has(playerIndex) && globalScene.hasEonFluteProtection(playerIndex)) {
+          globalScene.phaseManager.pushNew("EonFluteSummonPhase", playerIndex);
+        }
+      });
+    } else if (availablePartyMemberEntries.length === 0 && globalScene.hasEonFluteProtection(0)) {
+      globalScene.phaseManager.pushNew("EonFluteSummonPhase", 0);
+    }
+
     if (globalScene.currentBattle.double) {
       if (availablePartyMembers.length > 1) {
         globalScene.phaseManager.pushNew("ToggleDoublePositionPhase", true);

@@ -22,6 +22,7 @@ const SESSION_SLOTS_COUNT = 5;
 const SLOTS_ON_SCREEN = 2;
 const SINGLE_PARTY_ICON_SCALE = 0.75;
 const DOUBLE_PARTY_ICON_SCALE = 0.55;
+const TRIPLE_PARTY_ICON_SCALE = 0.42;
 
 export enum SaveSlotUiMode {
   LOAD,
@@ -583,45 +584,59 @@ class SessionSlot extends Phaser.GameObjects.Container {
     const playTimeLabel = addTextObject(8, 47, getPlayTimeString(data.playTime), TextStyle.WINDOW);
     this.add(playTimeLabel);
 
-    const hasTwoPartyPreview = this.addPokemonPreview(data);
-    this.addModifierPreview(data, hasTwoPartyPreview);
+    const previewPartyCount = this.addPokemonPreview(data);
+    this.addModifierPreview(data, previewPartyCount);
   }
 
-  private addPokemonPreview(data: SessionSaveData): boolean {
+  private addPokemonPreview(data: SessionSaveData): number {
     const parties = this.getPreviewParties(data);
 
     if (parties.length > 1) {
-      const pokemonIconsContainer = globalScene.add.container(142, 7);
+      const isTriplePreview = parties.length > 2;
+      const pokemonIconsContainer = globalScene.add.container(142, isTriplePreview ? 4 : 7);
+      const rowSpacing = isTriplePreview ? 21 : 29;
+      const labelY = isTriplePreview ? 9 : 13;
+      const labelFontSize = isTriplePreview ? "34px" : "42px";
+      const labelStroke = isTriplePreview ? 8 : 10;
+      const iconScale = isTriplePreview ? TRIPLE_PARTY_ICON_SCALE : DOUBLE_PARTY_ICON_SCALE;
+      const iconSpacing = isTriplePreview ? 20 : 22;
+      const levelX = 24;
+      const levelY = isTriplePreview ? 12 : 16;
+      const levelFontSize = isTriplePreview ? 34 : 46;
+
       parties.forEach((party, partyIndex) => {
-        const rowContainer = globalScene.add.container(0, partyIndex * 29);
-        const playerLabel = addTextObject(-9, 13, `P${partyIndex + 1}`, TextStyle.WINDOW, {
-          fontSize: "42px",
+        const rowContainer = globalScene.add.container(0, partyIndex * rowSpacing);
+        const playerLabel = addTextObject(-9, labelY, `P${partyIndex + 1}`, TextStyle.WINDOW, {
+          fontSize: labelFontSize,
           color: "#f8f8f8",
         });
-        playerLabel.setShadow(0, 0, undefined).setStroke("#424242", 10).setOrigin(1, 0.5);
+        playerLabel.setShadow(0, 0, undefined).setStroke("#424242", labelStroke).setOrigin(1, 0.5);
         rowContainer.add(playerLabel);
 
-        this.addPokemonIconRow(rowContainer, party, DOUBLE_PARTY_ICON_SCALE, 22, 24, 16, 46);
+        this.addPokemonIconRow(rowContainer, party, iconScale, iconSpacing, levelX, levelY, levelFontSize);
         pokemonIconsContainer.add(rowContainer);
       });
 
       this.add(pokemonIconsContainer);
-      return true;
+      return parties.length;
     }
 
     const pokemonIconsContainer = globalScene.add.container(144, 16);
     this.addPokemonIconRow(pokemonIconsContainer, parties[0] ?? [], SINGLE_PARTY_ICON_SCALE, 26, 32, 20, 54);
     this.add(pokemonIconsContainer);
-    return false;
+    return 1;
   }
 
-  private addModifierPreview(data: SessionSaveData, compact: boolean): void {
-    if (compact) {
-      const modifierRowsContainer = globalScene.add.container(144, 29);
-      modifierRowsContainer.setScale(0.28);
+  private addModifierPreview(data: SessionSaveData, previewPartyCount: number): void {
+    if (previewPartyCount > 1) {
+      const isTriplePreview = previewPartyCount > 2;
+      const modifierRowsContainer = globalScene.add.container(144, isTriplePreview ? 18 : 29);
+      const modifierScale = isTriplePreview ? 0.2 : 0.28;
+      const rowSpacing = isTriplePreview ? 105 : 104;
+      modifierRowsContainer.setScale(modifierScale);
 
-      this.getPreviewModifierRows(data).forEach((modifiers, playerIndex) => {
-        const rowContainer = globalScene.add.container(0, playerIndex * 104);
+      this.getPreviewModifierRows(data).slice(0, previewPartyCount).forEach((modifiers, playerIndex) => {
+        const rowContainer = globalScene.add.container(0, playerIndex * rowSpacing);
         this.addModifierIconRow(rowContainer, modifiers);
         modifierRowsContainer.add(rowContainer);
       });
@@ -660,7 +675,7 @@ class SessionSlot extends Phaser.GameObjects.Container {
       return [data.modifiers ?? []];
     }
 
-    return data.players.slice(0, 2).map(player => player.modifiers ?? []);
+    return data.players.slice(0, 3).map(player => player.modifiers ?? []);
   }
 
   private addPokemonIconRow(
@@ -701,7 +716,7 @@ class SessionSlot extends Phaser.GameObjects.Container {
       .filter(party => party.length);
 
     if (savedPlayerParties && savedPlayerParties.length > 1) {
-      return savedPlayerParties.slice(0, 2);
+      return savedPlayerParties.slice(0, 3);
     }
 
     return [data.party ?? []];

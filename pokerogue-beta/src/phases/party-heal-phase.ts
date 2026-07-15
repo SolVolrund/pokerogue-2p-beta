@@ -43,6 +43,7 @@ export class PartyHealPhase extends BattlePhase {
           }
           pokemon.updateInfo(true);
         }
+        globalScene.dismissEonFluteGuestIfOwnerRevived(playerIndex ?? globalScene.activePlayerIndex);
       }
 
       const healSound = this.resumeBgm

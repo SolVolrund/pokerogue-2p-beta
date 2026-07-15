@@ -183,6 +183,12 @@ export class FaintPhase extends PokemonPhase {
       }
     }
 
+    const eonFluteGuestOwner = pokemon.isPlayer() ? globalScene.getEonFluteGuestOwner(pokemon) : undefined;
+    if (eonFluteGuestOwner !== undefined) {
+      globalScene.consumeEonFlute(eonFluteGuestOwner);
+      globalScene.phaseManager.queueMessage(i18next.t("battle:eonFluteLost"), null, true);
+    }
+
     if (this.player) {
       const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
       /** The total number of Pokemon in the player's party that can legally fight */
@@ -190,7 +196,9 @@ export class FaintPhase extends PokemonPhase {
       /** The total number of legal player Pokemon that aren't currently on the field */
       const legalPlayerPartyPokemon = legalPlayerPokemon.filter(p => !p.isActive(true));
       if (legalPlayerPokemon.length === 0) {
-        if (globalScene.areAllActivePlayersOutOfUsablePokemon()) {
+        if (globalScene.hasEonFluteProtection(playerIndex)) {
+          globalScene.phaseManager.pushNew("EonFluteSummonPhase", playerIndex);
+        } else if (globalScene.areAllActivePlayersOutOfUsablePokemon()) {
           /** If every active player is out of legal Pokemon, end the game. */
           globalScene.phaseManager.unshiftNew("GameOverPhase");
         } else if (
@@ -261,6 +269,9 @@ export class FaintPhase extends PokemonPhase {
             globalScene.currentBattle.addPostBattleLoot(pokemon as EnemyPokemon);
           }
           pokemon.leaveField();
+          if (eonFluteGuestOwner !== undefined) {
+            globalScene.clearEonFluteGuest(eonFluteGuestOwner, true);
+          }
           this.end();
         },
       });

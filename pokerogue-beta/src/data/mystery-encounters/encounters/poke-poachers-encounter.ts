@@ -1,8 +1,10 @@
-import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import type { PlayerIndex } from "#app/battle-scene";
+import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import { globalScene } from "#app/global-scene";
+import { modifierTypes } from "#data/data-lists";
 import { AiType } from "#enums/ai-type";
 import { BattlerIndex } from "#enums/battler-index";
+import { BerryType } from "#enums/berry-type";
 import { FieldPosition } from "#enums/field-position";
 import { MoveId } from "#enums/move-id";
 import { MoveUseMode } from "#enums/move-use-mode";
@@ -13,15 +15,12 @@ import { SpeciesId } from "#enums/species-id";
 import { TrainerSlot } from "#enums/trainer-slot";
 import { TrainerType } from "#enums/trainer-type";
 import type { Pokemon } from "#field/pokemon";
+import type { PokemonHeldItemModifierType } from "#modifiers/modifier-type";
 import { PokemonMove } from "#moves/pokemon-move";
 import { showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
-import {
-  getMysteryEncounterPlayerIndexes,
-  getNextMysteryEncounterPlayerIndex,
-  showMysteryEncounterPlayerMenu,
-} from "#mystery-encounters/encounter-player-utils";
 import type { EnemyPartyConfig, EnemyPokemonConfig } from "#mystery-encounters/encounter-phase-utils";
 import {
+  generateModifierType,
   handleMysteryEncounterBattleFailed,
   handleMysteryEncounterVictory,
   initBattleWithEnemyConfig,
@@ -30,6 +29,11 @@ import {
   setEncounterRewards,
   transitionMysteryEncounterIntroVisuals,
 } from "#mystery-encounters/encounter-phase-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
@@ -259,7 +263,7 @@ async function startPokePoachersBattle(playerIndexes: PlayerIndex[]): Promise<vo
   updateWindowType(playerIndexes[0] + 1);
   await initBattleWithEnemyConfig(createPokePoachersBattleConfig(data.scenario, playerIndexes.length));
 
-  data.protectedLegendaryPartyIndex = getProtectedLegendaryPartyIndex();
+  data.protectedLegendaryPartyIndex = getProtectedLegendaryPartyIndex(data.scenario, playerIndexes.length);
   const protectedLegendary = getProtectedLegendary(data);
   if (protectedLegendary) {
     data.protectedLegendaryId = protectedLegendary.id;
@@ -279,15 +283,19 @@ function createPokePoachersBattleConfig(scenario: PokePoachersScenario, playerCo
   const secondaryPoacher = scenario.poacherTrainerTypes[1];
   const pokemonConfigs = [
     createPoacherPokemonConfig(primaryPoacher, TrainerSlot.TRAINER, FieldPosition.LEFT),
-    createProtectedLegendaryConfig(
-      scenario.protectedSpeciesId,
-      playerCount > 2 ? FieldPosition.CENTER : FieldPosition.RIGHT,
-    ),
   ];
 
   if (secondaryPoacher != null) {
     pokemonConfigs.push(createPoacherPokemonConfig(secondaryPoacher, TrainerSlot.TRAINER_PARTNER, FieldPosition.RIGHT));
   }
+
+  pokemonConfigs.push(
+    createProtectedLegendaryConfig(
+      scenario.protectedSpeciesId,
+      playerCount > 2 ? FieldPosition.CENTER : FieldPosition.RIGHT,
+      playerCount,
+    ),
+  );
 
   return {
     trainerType: primaryPoacher,
@@ -319,6 +327,7 @@ function createPoacherPokemonConfig(
 function createProtectedLegendaryConfig(
   protectedSpeciesId: SpeciesId.LATIAS | SpeciesId.LATIOS,
   fieldPosition: FieldPosition,
+  playerCount: number,
 ): EnemyPokemonConfig {
   return {
     species: getPokemonSpecies(protectedSpeciesId),
@@ -327,15 +336,29 @@ function createProtectedLegendaryConfig(
     trainerSlot: TrainerSlot.NONE,
     fieldPosition,
     moveSet: protectedSpeciesId === SpeciesId.LATIAS ? [...LATIAS_MOVES] : [...LATIOS_MOVES],
+    modifierConfigs: [
+      {
+        modifier: generateModifierType(modifierTypes.BERRY, [BerryType.SITRUS]) as PokemonHeldItemModifierType,
+        stackCount: playerCount > 2 ? 2 : 1,
+        isTransferable: false,
+      },
+    ],
   };
 }
 
-function getProtectedLegendaryPartyIndex(): number {
-  return 1;
+function getProtectedLegendaryPartyIndex(scenario?: PokePoachersScenario, playerCount?: number): number {
+  return (playerCount ?? 0) > 2 && scenario?.poacherTrainerTypes[1] != null ? 2 : 1;
 }
 
 function getProtectedLegendary(data: PokePoachersData): Pokemon | undefined {
-  const partyIndex = data.protectedLegendaryPartyIndex ?? getProtectedLegendaryPartyIndex();
+  if (data.protectedLegendaryId != null) {
+    const protectedLegendary = globalScene.getEnemyParty().find(pokemon => pokemon.id === data.protectedLegendaryId);
+    if (protectedLegendary) {
+      return protectedLegendary;
+    }
+  }
+
+  const partyIndex = data.protectedLegendaryPartyIndex ?? getProtectedLegendaryPartyIndex(data.scenario, data.battlePlayerIndexes?.length);
   return globalScene.getEnemyParty()[partyIndex];
 }
 
@@ -451,13 +474,22 @@ function queuePokePoachersRewards(data: PokePoachersData): void {
 
   data.rewardQueued = true;
   for (const playerIndex of data.battlePlayerIndexes ?? getMysteryEncounterPlayerIndexes()) {
-    setEncounterRewards({ fillRemaining: true }, undefined, undefined, playerIndex);
+    setEncounterRewards(
+      {
+        guaranteedModifierTypeFuncs: [modifierTypes.EON_FLUTE],
+        fillRemaining: true,
+      },
+      undefined,
+      undefined,
+      playerIndex,
+    );
   }
 }
 
 async function applyPokePoachersRewards(): Promise<void> {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const data = getPokePoachersData();
+  encounter.onRewards = undefined;
 
   data.rescueActive = false;
   delete data.poacherPokemonIds;

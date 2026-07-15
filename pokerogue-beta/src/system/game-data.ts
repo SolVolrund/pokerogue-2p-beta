@@ -1035,7 +1035,7 @@ export class GameData {
           const player = globalScene.getPlayerState(playerIndex);
           return {
             party: player.party.map(p => new PokemonData(p)),
-            modifiers: player.modifiers.map(m => new PersistentModifierData(m, true)),
+            modifiers: player.modifiers.filter(m => !m.eonFluteGuestItem).map(m => new PersistentModifierData(m, true)),
             pokeballCounts: player.pokeballCounts,
             money: Math.floor(player.money),
           };
@@ -1051,7 +1051,7 @@ export class GameData {
         ? globalScene.players[0].party.map(p => new PokemonData(p))
         : globalScene.getPlayerParty().map(p => new PokemonData(p)),
       enemyParty: globalScene.getEnemyParty().map(p => new PokemonData(p)),
-      modifiers: globalScene.findModifiers(() => true).map(m => new PersistentModifierData(m, true)),
+      modifiers: globalScene.findModifiers(() => true).filter(m => !m.eonFluteGuestItem).map(m => new PersistentModifierData(m, true)),
       enemyModifiers: globalScene.findModifiers(() => true, false).map(m => new PersistentModifierData(m, false)),
       arena: new ArenaData(globalScene.arena),
       pokeballCounts: globalScene.pokeballCounts,
@@ -1484,6 +1484,10 @@ export class GameData {
       case SpeciesId.HISUI_ZORUA:
       case SpeciesId.HISUI_ZOROARK:
         return "dawn_zorua";
+      case SpeciesId.LATIOS:
+        return "bianca_latias";
+      case SpeciesId.DITTO:
+        return "duplica_ditto";
       default:
         return fromSession.twoPlayerComputerPartner ? "alex" : undefined;
     }

@@ -13,6 +13,7 @@ import { getTrainerSlotForFieldIndex } from "#enums/trainer-slot";
 import type { Pokemon } from "#field/pokemon";
 import { SwitchEffectTransferModifier } from "#modifiers/modifier";
 import { SummonPhase } from "#phases/summon-phase";
+import { isMysteryEncounterSwitchProtectedPokemon } from "#utils/mystery-encounter-switch-protection";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import i18next from "i18next";
 
@@ -62,12 +63,21 @@ export class SwitchSummonPhase extends SummonPhase {
   }
 
   preSummon(): void {
+    if (isMysteryEncounterSwitchProtectedPokemon(this.getPokemon())) {
+      this.end();
+      return;
+    }
+
     if (!this.player) {
       if (this.slotIndex === -1) {
         //@ts-expect-error
         this.slotIndex = globalScene.currentBattle.trainer?.getNextSummonIndex(
           getTrainerSlotForFieldIndex(this.fieldIndex),
         ); // TODO: what would be the default trainer-slot fallback?
+      }
+      if (isMysteryEncounterSwitchProtectedPokemon(globalScene.getEnemyParty()[this.slotIndex])) {
+        this.end();
+        return;
       }
       if (this.slotIndex > -1) {
         this.showEnemyTrainer(getTrainerSlotForFieldIndex(this.fieldIndex));
@@ -136,7 +146,7 @@ export class SwitchSummonPhase extends SummonPhase {
     const switchedInPokemon: Pokemon | undefined = party[this.slotIndex];
     this.lastPokemon = this.getPokemon();
     this.inheritedFieldPosition = this.lastPokemon.fieldPosition;
-    if (!switchedInPokemon) {
+    if (!switchedInPokemon || isMysteryEncounterSwitchProtectedPokemon(switchedInPokemon)) {
       if (!this.player) {
         if (globalScene.currentBattle.trainer) {
           this.hideEnemyTrainer();

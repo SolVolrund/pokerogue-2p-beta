@@ -9,6 +9,7 @@ import type { EnemyPokemon } from "#field/pokemon";
 import { FieldPhase } from "#phases/field-phase";
 import { shouldAiRepositionToCenter } from "#utils/ai-targeting";
 import { getPlannerSwitchIndex } from "#utils/battle-planner-ai";
+import { isMysteryEncounterSwitchProtectedPokemon } from "#utils/mystery-encounter-switch-protection";
 
 /**
  * Phase for determining an enemy AI's action for the next turn.
@@ -69,7 +70,11 @@ export class EnemyCommandPhase extends FieldPhase {
      * member's matchup score is 3x the active enemy's score (or 2x for "boss" trainers),
      * the enemy will switch to that Pokemon.
      */
-    if (trainer && enemyPokemon.getMoveQueue().length === 0) {
+    if (
+      trainer
+      && enemyPokemon.getMoveQueue().length === 0
+      && !isMysteryEncounterSwitchProtectedPokemon(enemyPokemon)
+    ) {
       const opponents = enemyPokemon.getOpponents();
 
       if (!enemyPokemon.isTrapped()) {

@@ -453,6 +453,9 @@ export class EncounterPhase extends BattlePhase {
         pokemon.resetWaveData();
       }
     }
+    for (const pokemon of globalScene.getEonFluteGuests()) {
+      pokemon.resetWaveData();
+    }
 
     const enemyField = globalScene.getEnemyField();
     const playerIndexes = globalScene.getPlayerFieldOwners();
@@ -992,6 +995,11 @@ export class EncounterPhase extends BattlePhase {
         availablePartyMembersByField.forEach((availablePartyMembers, fieldIndex) => {
           if (availablePartyMembers[0] && !availablePartyMembers[0].isOnField()) {
             globalScene.phaseManager.pushNew("SummonPhase", fieldIndex);
+          } else if (
+            availablePartyMembers.length === 0
+            && globalScene.hasEonFluteProtection(playerIndexes[fieldIndex])
+          ) {
+            globalScene.phaseManager.pushNew("EonFluteSummonPhase", playerIndexes[fieldIndex]);
           }
         });
 
@@ -1009,7 +1017,9 @@ export class EncounterPhase extends BattlePhase {
         const availablePartyMembers = globalScene.getPokemonAllowedInBattle();
 
         if (availablePartyMembers.length === 0) {
-          if (globalScene.areAllActivePlayersOutOfUsablePokemon()) {
+          if (globalScene.hasEonFluteProtection(0)) {
+            globalScene.phaseManager.pushNew("EonFluteSummonPhase", 0);
+          } else if (globalScene.areAllActivePlayersOutOfUsablePokemon()) {
             globalScene.phaseManager.unshiftNew("GameOverPhase");
           }
         } else if (!availablePartyMembers[0].isOnField()) {

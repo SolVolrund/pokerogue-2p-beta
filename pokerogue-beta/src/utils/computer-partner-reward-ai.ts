@@ -153,6 +153,7 @@ const REWARD_PRIORITY: Partial<Record<ComputerPartnerRecoveryItemId | string, nu
   MINI_BLACK_HOLE: 1,
   GAMMA_RAY_BURST: 2,
   GRAND_LAUREL: 3,
+  EON_FLUTE: 4,
   SHINY_CHARM: 4,
   MULTI_LENS: 5,
   HEALING_CHARM: 6,
@@ -1077,6 +1078,10 @@ function getRewardTarget(
   if (type instanceof TurnHeldItemTransferModifierType || itemId === "MINI_BLACK_HOLE" || itemId === "GAMMA_RAY_BURST") {
     return chooseAcePreferredTarget(type, party, context.computerPartnerProfile, () =>
       chooseBulkiestTarget(type, party, context.computerPartnerProfile, true));
+  }
+
+  if (itemId === "EON_FLUTE") {
+    return { targetScore: 0 };
   }
 
   if (itemId === "FLAME_ORB" || itemId === "TOXIC_ORB") {

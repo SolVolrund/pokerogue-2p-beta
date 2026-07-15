@@ -527,9 +527,7 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
       globalScene.getEnemyField(),
       battle.battleType === BattleType.TRAINER ? ModifierPoolType.TRAINER : ModifierPoolType.WILD,
     );
-    const customModifierTypes = partyConfig?.pokemonConfigs
-      ?.filter(config => config?.modifierConfigs)
-      .map(config => config.modifierConfigs!);
+    const customModifierTypes = partyConfig?.pokemonConfigs?.map(config => config?.modifierConfigs);
     globalScene.generateEnemyModifiers(customModifierTypes);
   }
 }
@@ -825,6 +823,10 @@ export function setEncounterRewards(
 
   encounter.doEncounterRewards = () => {
     const configs = ((encounter.misc?.[ENCOUNTER_REWARD_CONFIGS_KEY] ?? []) as EncounterRewardConfig[]).slice();
+    if (encounter.misc) {
+      delete encounter.misc[ENCOUNTER_REWARD_CONFIGS_KEY];
+    }
+    encounter.doEncounterRewards = undefined;
 
     for (const config of configs) {
       globalScene.setActivePlayerIndex(config.playerIndex);
@@ -965,6 +967,12 @@ export function handleMysteryEncounterVictory(addHealPhase = false, doNotContinu
   // Variant must eventually be swapped in order to handle "true" end of the encounter
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   if (encounter.continuousEncounter || doNotContinue) {
+    return;
+  }
+  if (
+    globalScene.phaseManager.hasPhaseOfType("MysteryEncounterRewardsPhase")
+    || globalScene.phaseManager.hasPhaseOfType("PostMysteryEncounterPhase")
+  ) {
     return;
   }
   if (encounter.encounterMode === MysteryEncounterMode.NO_BATTLE) {

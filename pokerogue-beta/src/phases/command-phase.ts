@@ -85,7 +85,7 @@ export class CommandPhase extends FieldPhase {
       return;
     }
 
-    if (this.isComputerPartnerCommand()) {
+    if (this.isComputerPartnerCommand() || this.isEonFluteGuestCommand()) {
       return;
     }
 
@@ -95,6 +95,11 @@ export class CommandPhase extends FieldPhase {
 
   private isComputerPartnerCommand(): boolean {
     return isComputerPartnerFieldIndex(this.fieldIndex);
+  }
+
+  private isEonFluteGuestCommand(): boolean {
+    const pokemon = globalScene.getPlayerPokemonForFieldSlot(this.fieldIndex);
+    return !!pokemon && globalScene.isEonFluteGuest(pokemon);
   }
 
   private shouldComputerPartnerSwitch(): number | undefined {
@@ -517,6 +522,38 @@ export class CommandPhase extends FieldPhase {
     return true;
   }
 
+  private handleEonFluteGuestCommand(playerPokemon: PlayerPokemon): boolean {
+    const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
+    const previousAiType = playerPokemon.aiType;
+
+    if (shouldAiRepositionToCenter(playerPokemon)) {
+      this.setTurnCommand({
+        command: Command.REPOSITION,
+        cursor: FieldPosition.CENTER,
+        playerIndex,
+      });
+      this.end();
+      return true;
+    }
+
+    playerPokemon.aiType = globalScene.plannerAiEnabled ? AiType.PLANNER : AiType.SMART;
+    globalScene.aiCommandInProgress = true;
+    try {
+      const nextMove = this.protectReservedCaptureTargets(playerIndex, playerPokemon, playerPokemon.getNextMove());
+      this.setTurnCommand({
+        command: Command.FIGHT,
+        move: nextMove,
+        skip: nextMove.move === MoveId.NONE,
+      });
+    } finally {
+      playerPokemon.aiType = previousAiType;
+      globalScene.aiCommandInProgress = false;
+    }
+
+    this.end();
+    return true;
+  }
+
   /**
    * Resets the cursor to the position of {@linkcode Command.FIGHT} if any of the following are true
    * - The setting to remember the last action is not enabled
@@ -661,6 +698,10 @@ export class CommandPhase extends FieldPhase {
     }
 
     if (this.tryExecuteQueuedMove()) {
+      return;
+    }
+
+    if (this.isEonFluteGuestCommand() && this.handleEonFluteGuestCommand(this.getPokemon())) {
       return;
     }
 

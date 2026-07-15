@@ -38,16 +38,19 @@ import { isContestHallScheduledEncounterDue } from "#data/contests/contest-hall-
 import { getDailyMysteryEncounter } from "#data/daily-seed/daily-run";
 import { allMoves, biomeDepths, modifierTypes } from "#data/data-lists";
 import { getClassicFinalBossDialogue } from "#data/dialogue";
+import { getLevelTotalExp } from "#data/exp";
 import type { SpeciesFormChangeTrigger } from "#data/form-change-triggers";
 import { SpeciesFormChangeManualTrigger, SpeciesFormChangeTimeOfDayTrigger } from "#data/form-change-triggers";
 import { Gender } from "#data/gender";
 import { SpeciesFormChange } from "#data/pokemon-forms";
 import type { PokemonSpecies, PokemonSpeciesFilter } from "#data/pokemon-species";
 import { getTypeDamageMultiplier, getTypeRgb } from "#data/type";
+import { AiType } from "#enums/ai-type";
 import { BattleStyle } from "#enums/battle-style";
 import { BattleType } from "#enums/battle-type";
 import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
+import { BerryType } from "#enums/berry-type";
 import { BiomeId } from "#enums/biome-id";
 import { EaseType } from "#enums/ease-type";
 import { ExpGainsSpeed } from "#enums/exp-gains-speed";
@@ -95,6 +98,7 @@ import {
   ConsumableModifier,
   ConsumablePokemonModifier,
   DoubleBattleChanceBoosterModifier,
+  EonFluteModifier,
   ExpBalanceModifier,
   ExpShareModifier,
   FusePokemonModifier,
@@ -111,6 +115,7 @@ import {
   ShinyBadgeModifier,
   TurnHeldItemTransferModifier,
 } from "#modifiers/modifier";
+import { PokemonMove } from "#moves/pokemon-move";
 import {
   getDefaultModifierTypeForTier,
   getEnemyModifierTypesForWave,
@@ -118,6 +123,7 @@ import {
   getLuckTextTint,
   getPartyLuckValue,
   type ModifierType,
+  ModifierTypeGenerator,
   PokemonHeldItemModifierType,
 } from "#modifiers/modifier-type";
 import { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
@@ -214,10 +220,34 @@ const TWO_PLAYER_SESSION_SYSTEM_SAVE_KEYS = [
 ] as const;
 const TWO_PLAYER_PROFILE_HANDSHAKE_BUILD = "profile-handshake-2026-06-17c";
 const TWO_PLAYER_SYNC_SETTING_TYPES = new Set<SettingType>([SettingType.GENERAL, SettingType.DISPLAY]);
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = 2;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.POKE_POACHERS;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = null;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = null;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = true;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_PLAYER_MONEY: number | null = null;
+const EON_FLUTE_HELPER_SPECIES = [SpeciesId.LATIAS, SpeciesId.LATIOS] as const;
+const EON_FLUTE_HELPER_MOVES: Record<(typeof EON_FLUTE_HELPER_SPECIES)[number], MoveId[]> = {
+  [SpeciesId.LATIAS]: [MoveId.MIST_BALL, MoveId.DRAGON_PULSE, MoveId.WISH, MoveId.RECOVER],
+  [SpeciesId.LATIOS]: [MoveId.LUSTER_PURGE, MoveId.DRAGON_PULSE, MoveId.CHILLING_WATER, MoveId.RECOVER],
+};
+const EON_FLUTE_FREE_LEPPA_BERRY_COUNT = 2;
+const EON_FLUTE_BERRY_COST = 5;
+const EON_FLUTE_TYPE_BOOSTER_COST = 10;
+const EON_FLUTE_ROGUE_ITEM_COST = 20;
+const EON_FLUTE_MASTER_ITEM_COST = 40;
+const EON_FLUTE_MAX_BERRIES = 8;
+const EON_FLUTE_MAX_TYPE_BOOSTERS = 6;
+const EON_FLUTE_MAX_ROGUE_ITEMS = 3;
+const EON_FLUTE_BERRY_LOADOUT = [
+  BerryType.SITRUS,
+  BerryType.LUM,
+  BerryType.PETAYA,
+  BerryType.APICOT,
+  BerryType.GANLON,
+  BerryType.SITRUS,
+  BerryType.LUM,
+  BerryType.PETAYA,
+] as const;
+const EON_FLUTE_ROGUE_LOADOUT = [modifierTypes.LEFTOVERS, modifierTypes.SHELL_BELL, modifierTypes.LEFTOVERS] as const;
 const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.MYSTERIOUS_CHEST,
   MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
@@ -299,6 +329,7 @@ export interface PlayerRunState {
   money: number;
   pokeballCounts: PokeballCounts;
   modifiers: PersistentModifier[];
+  eonFluteGuest?: PlayerPokemon;
 }
 
 export interface TwoPlayerDebugStateCheckpoint {
@@ -1939,6 +1970,359 @@ export class BattleScene extends SceneBase {
     return this.getPlayerState(playerIndex).modifiers;
   }
 
+  public getEonFluteGuest(playerIndex: PlayerIndex = this.activePlayerIndex): PlayerPokemon | undefined {
+    return this.getPlayerState(playerIndex).eonFluteGuest;
+  }
+
+  public getEonFluteGuests(): PlayerPokemon[] {
+    return this.getActivePlayerIndexes()
+      .map(playerIndex => this.getEonFluteGuest(playerIndex))
+      .filter((pokemon): pokemon is PlayerPokemon => !!pokemon);
+  }
+
+  public getEonFluteGuestOwner(pokemon: Pokemon): PlayerIndex | undefined {
+    const owner = this.getActivePlayerIndexes().find(
+      playerIndex => this.getEonFluteGuest(playerIndex) === pokemon,
+    );
+    return owner;
+  }
+
+  public isEonFluteGuest(pokemon: Pokemon): pokemon is PlayerPokemon {
+    return pokemon instanceof PlayerPokemon && this.getEonFluteGuestOwner(pokemon) !== undefined;
+  }
+
+  public hasEonFluteModifier(playerIndex: PlayerIndex = this.activePlayerIndex): boolean {
+    return !!this.findModifierForPlayer(m => m instanceof EonFluteModifier, playerIndex);
+  }
+
+  public hasEonFluteSummonedThisBattle(playerIndex: PlayerIndex = this.activePlayerIndex): boolean {
+    return this.currentBattle?.eonFluteSummonedPlayerIndexes.includes(playerIndex) ?? false;
+  }
+
+  public markEonFluteSummonedThisBattle(playerIndex: PlayerIndex = this.activePlayerIndex): void {
+    const summonedPlayerIndexes = this.currentBattle?.eonFluteSummonedPlayerIndexes;
+    if (summonedPlayerIndexes && !summonedPlayerIndexes.includes(playerIndex)) {
+      summonedPlayerIndexes.push(playerIndex);
+    }
+  }
+
+  public hasEonFluteProtection(playerIndex: PlayerIndex = this.activePlayerIndex): boolean {
+    const guest = this.getEonFluteGuest(playerIndex);
+    return (
+      (!!guest && !guest.isFainted())
+      || (!this.hasEonFluteSummonedThisBattle(playerIndex) && this.hasEonFluteModifier(playerIndex))
+    );
+  }
+
+  public hasPlayerUsablePokemonOrEonFlute(playerIndex: PlayerIndex): boolean {
+    return this.hasPlayerUsablePokemon(playerIndex) || this.hasEonFluteProtection(playerIndex);
+  }
+
+  public getEonFluteFieldIndex(playerIndex: PlayerIndex): number {
+    const fieldIndex = this.getPlayerFieldOwners().indexOf(playerIndex);
+    return fieldIndex > -1 ? fieldIndex : 0;
+  }
+
+  public createEonFluteGuest(playerIndex: PlayerIndex = this.activePlayerIndex): PlayerPokemon {
+    const existingGuest = this.getEonFluteGuest(playerIndex);
+    if (existingGuest && !existingGuest.isFainted()) {
+      this.syncEonFluteGuestLevel(existingGuest);
+      this.ensureEonFluteGuestLoadout(playerIndex, existingGuest);
+      this.markEonFluteSummonedThisBattle(playerIndex);
+      return existingGuest;
+    }
+
+    const level = this.getEonFluteGuestLevel(playerIndex);
+    let guest: PlayerPokemon | undefined;
+
+    this.executeWithSeedOffset(
+      () => {
+        const speciesId = randSeedItem(EON_FLUTE_HELPER_SPECIES) as (typeof EON_FLUTE_HELPER_SPECIES)[number];
+        const species = getPokemonSpecies(speciesId);
+        guest = this.addPlayerPokemon(
+          species,
+          level,
+          undefined,
+          undefined,
+          undefined,
+          false,
+          undefined,
+          new Array(6).fill(31),
+          undefined,
+          undefined,
+          pokemon => {
+            pokemon.aiType = AiType.SMART;
+            pokemon.eonFluteGuest = true;
+            pokemon.pokeball = PokeballType.POKEBALL;
+            pokemon.moveset = EON_FLUTE_HELPER_MOVES[speciesId].map(moveId => new PokemonMove(moveId));
+            pokemon.summonData.moveset = pokemon.moveset;
+          },
+        );
+      },
+      (this.currentBattle?.waveIndex ?? 0) * 67 + playerIndex + 1701,
+      this.waveSeed,
+    );
+
+    if (!guest) {
+      throw new Error("Failed to create Eon Flute helper Pokemon.");
+    }
+
+    this.setEonFluteGuest(playerIndex, guest);
+    this.grantEonFluteGuestLoadout(playerIndex, guest);
+    this.markEonFluteSummonedThisBattle(playerIndex);
+    return guest;
+  }
+
+  private syncEonFluteGuestLevel(pokemon: PlayerPokemon): void {
+    const owner = this.getEonFluteGuestOwner(pokemon) ?? this.activePlayerIndex;
+    const level = this.getEonFluteGuestLevel(owner);
+    if (pokemon.level === level) {
+      return;
+    }
+
+    const hpRatio = pokemon.getHpRatio(true);
+    pokemon.level = level;
+    pokemon.exp = getLevelTotalExp(level, pokemon.species.growthRate);
+    pokemon.calculateStats();
+    pokemon.hp = Math.max(1, Math.min(pokemon.getMaxHp(), Math.ceil(pokemon.getMaxHp() * hpRatio)));
+    pokemon.updateInfo();
+  }
+
+  private getEonFluteGuestLevel(playerIndex: PlayerIndex): number {
+    const levelCap = this.getMaxExpLevel();
+    if (levelCap < Number.MAX_SAFE_INTEGER) {
+      return levelCap;
+    }
+
+    const party = this.getPlayerParty(playerIndex);
+    return Math.max(this.currentBattle?.getLevelForWave() ?? 1, ...party.map(pokemon => pokemon.level));
+  }
+
+  private ensureEonFluteGuestLoadout(playerIndex: PlayerIndex, pokemon: PlayerPokemon): void {
+    const hasLoadout = this.findModifiersForPlayer(
+      modifier =>
+        modifier instanceof PokemonHeldItemModifier
+        && modifier.eonFluteGuestItem
+        && modifier.pokemonId === pokemon.id,
+      playerIndex,
+    ).length > 0;
+
+    if (!hasLoadout) {
+      this.grantEonFluteGuestLoadout(playerIndex, pokemon);
+    }
+  }
+
+  private grantEonFluteGuestLoadout(playerIndex: PlayerIndex, pokemon: PlayerPokemon): void {
+    this.clearEonFluteGuestLoadout(playerIndex, pokemon);
+
+    this.addEonFluteGuestBerry(playerIndex, pokemon, BerryType.LEPPA, EON_FLUTE_FREE_LEPPA_BERRY_COUNT);
+
+    let budget = Math.max(0, this.currentBattle?.waveIndex ?? 0);
+    const spend = (cost: number, grant: () => boolean): boolean => {
+      if (budget < cost || !grant()) {
+        return false;
+      }
+      budget -= cost;
+      return true;
+    };
+
+    spend(EON_FLUTE_MASTER_ITEM_COST, () =>
+      this.addEonFluteGuestHeldItemType(
+        playerIndex,
+        pokemon,
+        modifierTypes.MULTI_LENS().withIdFromFunc(modifierTypes.MULTI_LENS),
+      ),
+    );
+
+    let rogueItems = 0;
+    for (const modifierTypeFunc of EON_FLUTE_ROGUE_LOADOUT) {
+      if (
+        rogueItems >= EON_FLUTE_MAX_ROGUE_ITEMS
+        || !spend(EON_FLUTE_ROGUE_ITEM_COST, () =>
+          this.addEonFluteGuestHeldItemType(
+            playerIndex,
+            pokemon,
+            modifierTypeFunc().withIdFromFunc(modifierTypeFunc),
+          ),
+        )
+      ) {
+        break;
+      }
+      rogueItems++;
+    }
+
+    const typeBoosterLoadout = this.getEonFluteTypeBoosterLoadout(pokemon);
+    let typeBoosters = 0;
+    while (typeBoosterLoadout.length > 0 && typeBoosters < EON_FLUTE_MAX_TYPE_BOOSTERS) {
+      const moveType = typeBoosterLoadout[typeBoosters % typeBoosterLoadout.length];
+      if (!spend(EON_FLUTE_TYPE_BOOSTER_COST, () => this.addEonFluteGuestTypeBooster(playerIndex, pokemon, moveType))) {
+        break;
+      }
+      typeBoosters++;
+    }
+
+    let berries = 0;
+    for (const berryType of EON_FLUTE_BERRY_LOADOUT) {
+      if (
+        berries >= EON_FLUTE_MAX_BERRIES
+        || !spend(EON_FLUTE_BERRY_COST, () => this.addEonFluteGuestBerry(playerIndex, pokemon, berryType))
+      ) {
+        break;
+      }
+      berries++;
+    }
+
+    this.updateModifiers(true, true, playerIndex);
+  }
+
+  private getEonFluteTypeBoosterLoadout(pokemon: PlayerPokemon): PokemonType[] {
+    const attackingTypes = new Set<PokemonType>();
+    for (const pokemonMove of pokemon.getMoveset()) {
+      const move = pokemonMove.getMove();
+      if (move.is("AttackMove")) {
+        attackingTypes.add(move.type);
+      }
+    }
+
+    return [PokemonType.PSYCHIC, PokemonType.DRAGON, PokemonType.WATER].filter(type => attackingTypes.has(type));
+  }
+
+  private addEonFluteGuestBerry(
+    playerIndex: PlayerIndex,
+    pokemon: PlayerPokemon,
+    berryType: BerryType,
+    stackCount = 1,
+  ): boolean {
+    const modifierType = (
+      modifierTypes.BERRY().withIdFromFunc(modifierTypes.BERRY) as ModifierTypeGenerator
+    ).generateType([pokemon], [berryType]);
+    return this.addEonFluteGuestHeldItemType(playerIndex, pokemon, modifierType, stackCount);
+  }
+
+  private addEonFluteGuestTypeBooster(
+    playerIndex: PlayerIndex,
+    pokemon: PlayerPokemon,
+    moveType: PokemonType,
+  ): boolean {
+    const modifierType = (
+      modifierTypes.ATTACK_TYPE_BOOSTER().withIdFromFunc(modifierTypes.ATTACK_TYPE_BOOSTER) as ModifierTypeGenerator
+    ).generateType([pokemon], [moveType]);
+    return this.addEonFluteGuestHeldItemType(playerIndex, pokemon, modifierType);
+  }
+
+  private addEonFluteGuestHeldItemType(
+    playerIndex: PlayerIndex,
+    pokemon: PlayerPokemon,
+    modifierType: ModifierType | null,
+    stackCount = 1,
+  ): boolean {
+    if (!(modifierType instanceof PokemonHeldItemModifierType)) {
+      return false;
+    }
+
+    const modifier = modifierType.newModifier(pokemon);
+    if (!(modifier instanceof PokemonHeldItemModifier)) {
+      return false;
+    }
+
+    const maxStackCount = modifier.getMaxHeldItemCount(pokemon);
+    modifier.stackCount = Math.min(Math.max(1, stackCount), maxStackCount);
+    if (modifier.stackCount < 1) {
+      return false;
+    }
+
+    modifier.eonFluteGuestItem = true;
+    modifier.isTransferable = false;
+    return modifier.add(this.getPlayerModifiers(playerIndex), false);
+  }
+
+  private clearEonFluteGuestLoadout(playerIndex: PlayerIndex, pokemon: PlayerPokemon): void {
+    const loadoutModifiers = this.findModifiersForPlayer(
+      modifier =>
+        modifier instanceof PokemonHeldItemModifier
+        && modifier.eonFluteGuestItem
+        && modifier.pokemonId === pokemon.id,
+      playerIndex,
+    );
+
+    for (const modifier of loadoutModifiers) {
+      this.removeModifier(modifier, false, playerIndex);
+    }
+  }
+
+  public setEonFluteGuest(playerIndex: PlayerIndex, pokemon: PlayerPokemon): void {
+    const playerState = this.getPlayerState(playerIndex);
+    const existingGuest = playerState.eonFluteGuest;
+    if (existingGuest && existingGuest !== pokemon) {
+      this.clearEonFluteGuest(playerIndex, true);
+    }
+    pokemon.eonFluteGuest = true;
+    playerState.eonFluteGuest = pokemon;
+  }
+
+  public clearEonFluteGuest(playerIndex: PlayerIndex, destroy = true): PlayerPokemon | undefined {
+    const playerState = this.getPlayerState(playerIndex);
+    const guest = playerState.eonFluteGuest;
+    if (!guest) {
+      return undefined;
+    }
+
+    delete playerState.eonFluteGuest;
+    guest.eonFluteGuest = false;
+    this.clearEonFluteGuestLoadout(playerIndex, guest);
+
+    if (guest.isOnField()) {
+      this.field.remove(guest, destroy);
+    } else if (destroy) {
+      guest.destroy();
+    }
+
+    return guest;
+  }
+
+  public consumeEonFlute(playerIndex: PlayerIndex = this.activePlayerIndex): boolean {
+    const modifier = this.findModifierForPlayer(m => m instanceof EonFluteModifier, playerIndex);
+    if (!modifier) {
+      return false;
+    }
+
+    const removed = this.removeModifier(modifier, false, playerIndex);
+    if (removed) {
+      this.updateModifiers(true, undefined, playerIndex);
+    }
+    return removed;
+  }
+
+  public dismissEonFluteGuestIfOwnerRevived(
+    playerIndex: PlayerIndex = this.activePlayerIndex,
+    queuePhase = true,
+  ): boolean {
+    const guest = this.getEonFluteGuest(playerIndex);
+    if (!guest || !this.hasPlayerUsablePokemon(playerIndex)) {
+      return false;
+    }
+
+    if (queuePhase && guest.isOnField()) {
+      this.phaseManager.pushNew("EonFluteDismissPhase", playerIndex, true, true);
+    } else {
+      this.clearEonFluteGuest(playerIndex, true);
+    }
+    return true;
+  }
+
+  public queueEonFluteDismissalsForRevivedPlayers(): boolean {
+    const playerIndexes = this.getPlayerFieldOwners().filter(playerIndex => {
+      const guest = this.getEonFluteGuest(playerIndex);
+      return !!guest && guest.isOnField() && this.hasPlayerUsablePokemon(playerIndex);
+    });
+
+    for (const playerIndex of playerIndexes.toReversed()) {
+      this.phaseManager.unshiftNew("EonFluteDismissPhase", playerIndex, true, true);
+    }
+
+    return playerIndexes.length > 0;
+  }
+
   public getPlayerGameData(playerIndex: PlayerIndex = this.activePlayerIndex): GameData {
     if (!this.twoPlayerMode) {
       return this.gameData;
@@ -2050,13 +2434,21 @@ export class BattleScene extends SceneBase {
 
   public getPlayerPokemonForFieldSlot(fieldSlot: number): PlayerPokemon | undefined {
     if (!this.twoPlayerMode) {
-      return this.getPlayerField()[fieldSlot];
+      const guest = fieldSlot === 0 ? this.getEonFluteGuest(0) : undefined;
+      return guest && !guest.isFainted() ? guest : this.getPlayerParty()[fieldSlot];
     }
 
-    return this.getPlayerParty(this.getPlayerIndexForFieldSlot(fieldSlot))[0];
+    const playerIndex = this.getPlayerIndexForFieldSlot(fieldSlot);
+    const guest = this.getEonFluteGuest(playerIndex);
+    return guest && !guest.isFainted() ? guest : this.getPlayerParty(playerIndex)[0];
   }
 
   public getPlayerIndexForPokemon(pokemon: Pokemon): PlayerIndex | undefined {
+    const eonFluteGuestOwner = this.getEonFluteGuestOwner(pokemon);
+    if (eonFluteGuestOwner !== undefined) {
+      return eonFluteGuestOwner;
+    }
+
     if (!this.twoPlayerMode) {
       return this.getPlayerParty().includes(pokemon as PlayerPokemon) ? 0 : undefined;
     }
@@ -2078,11 +2470,11 @@ export class BattleScene extends SceneBase {
   }
 
   public areAllActivePlayersOutOfUsablePokemon(): boolean {
-    return this.getActivePlayerIndexes().every(playerIndex => !this.hasPlayerUsablePokemon(playerIndex));
+    return this.getActivePlayerIndexes().every(playerIndex => !this.hasPlayerUsablePokemonOrEonFlute(playerIndex));
   }
 
   public areAllPlayerFieldOwnersOutOfUsablePokemon(): boolean {
-    return this.getPlayerFieldOwners().every(playerIndex => !this.hasPlayerUsablePokemon(playerIndex));
+    return this.getPlayerFieldOwners().every(playerIndex => !this.hasPlayerUsablePokemonOrEonFlute(playerIndex));
   }
 
   /**
@@ -2107,6 +2499,11 @@ export class BattleScene extends SceneBase {
       return this.getPlayerFieldOwners()
         .map((_playerIndex, fieldSlot) => this.getPlayerPokemonForFieldSlot(fieldSlot))
         .filter((p): p is PlayerPokemon => !!p && (!active || p.isActive()));
+    }
+
+    const guest = this.getEonFluteGuest(0);
+    if (guest && !guest.isFainted()) {
+      return !active || guest.isActive() ? [guest] : [];
     }
 
     const party = this.getPlayerParty();
@@ -2223,6 +2620,7 @@ export class BattleScene extends SceneBase {
     const party = (this.twoPlayerMode
       ? this.getActivePlayerIndexes().flatMap(playerIndex => this.getPlayerParty(playerIndex))
       : this.getPlayerParty() as Pokemon[]).concat(this.getEnemyParty());
+    party.push(...this.getEonFluteGuests());
     return party.find(p => p.id === pokemonId);
   }
 
@@ -3036,6 +3434,13 @@ export class BattleScene extends SceneBase {
 
       playerField.forEach((pokemon, index) => {
         pokemon.lapseTag(BattlerTagType.COMMANDED);
+        const eonFluteGuestOwner = this.getEonFluteGuestOwner(pokemon);
+        if (eonFluteGuestOwner !== undefined) {
+          if (pokemon.isOnField()) {
+            this.phaseManager.pushNew("EonFluteDismissPhase", eonFluteGuestOwner, false, false);
+          }
+          return;
+        }
         if (pokemon.isOnField()) {
           this.phaseManager.pushNew("ReturnPhase", index);
         }
@@ -3049,6 +3454,10 @@ export class BattleScene extends SceneBase {
         if (pokemon.hasSpecies(SpeciesId.TERAPAGOS)) {
           this.arena.resetPlayerTerasUsed(this.getPlayerIndexForPokemon(pokemon) ?? 0);
         }
+      }
+      for (const pokemon of this.getEonFluteGuests()) {
+        pokemon.resetBattleAndWaveData();
+        pokemon.resetTera();
       }
 
       if (!this.trainer.visible) {
@@ -4197,7 +4606,7 @@ export class BattleScene extends SceneBase {
     });
   }
 
-  generateEnemyModifiers(heldModifiersConfigs?: HeldModifierConfig[][]): Promise<void> {
+  generateEnemyModifiers(heldModifiersConfigs?: (HeldModifierConfig[] | undefined)[]): Promise<void> {
     return new Promise(resolve => {
       if (this.currentBattle.isClassicFinalBoss) {
         return resolve();
@@ -4804,7 +5213,7 @@ export class BattleScene extends SceneBase {
     const playerPokemon: PlayerPokemon[] = this.twoPlayerMode
       ? this.getActivePlayerIndexes().flatMap(playerIndex => this.getPlayerParty(playerIndex))
       : this.getPlayerParty();
-    let activePokemon: (PlayerPokemon | EnemyPokemon)[] = playerPokemon;
+    let activePokemon: (PlayerPokemon | EnemyPokemon)[] = playerPokemon.concat(this.getEonFluteGuests());
     activePokemon = activePokemon.concat(this.getEnemyParty());
     for (const p of activePokemon) {
       keys.push(p.getSpriteKey(true));

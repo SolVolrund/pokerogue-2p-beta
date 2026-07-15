@@ -16,6 +16,8 @@ export enum PlayerTrainerSprite {
   MIRA,
   RILEY,
   SILVER,
+  BIANCA_LATIAS,
+  DUPLICA_DITTO,
 }
 
 export interface PlayerTrainerSpriteOption {
@@ -114,6 +116,20 @@ export const PLAYER_TRAINER_SPRITE_OPTIONS: PlayerTrainerSpriteOption[] = [
     gender: PlayerGender.MALE,
     yOffset: -54,
   },
+  {
+    sprite: PlayerTrainerSprite.BIANCA_LATIAS,
+    label: "Bianca?",
+    atlasKey: "bianca_latias_back",
+    gender: PlayerGender.FEMALE,
+    yOffset: -54,
+  },
+  {
+    sprite: PlayerTrainerSprite.DUPLICA_DITTO,
+    label: "Duplica",
+    atlasKey: "duplica_ditto_back_mid117",
+    gender: PlayerGender.FEMALE,
+    yOffset: -54,
+  },
 ];
 
 export const PLAYER_BOY_TRAINER_SPRITES: PlayerTrainerSprite[] = [
@@ -131,6 +147,8 @@ export const PLAYER_GIRL_TRAINER_SPRITES: PlayerTrainerSprite[] = [
   PlayerTrainerSprite.DAWN_DP,
   PlayerTrainerSprite.DAWN_PT,
   PlayerTrainerSprite.DAWN_ZORUA,
+  PlayerTrainerSprite.BIANCA_LATIAS,
+  PlayerTrainerSprite.DUPLICA_DITTO,
   PlayerTrainerSprite.CHERYL,
   PlayerTrainerSprite.LYRA,
   PlayerTrainerSprite.MARLEY,
@@ -153,6 +171,8 @@ const PLAYER_TRAINER_FRONT_SPRITE_KEYS: Record<PlayerTrainerSprite, string> = {
   [PlayerTrainerSprite.MIRA]: "mira",
   [PlayerTrainerSprite.RILEY]: "riley",
   [PlayerTrainerSprite.SILVER]: "silver",
+  [PlayerTrainerSprite.BIANCA_LATIAS]: "bianca_latias",
+  [PlayerTrainerSprite.DUPLICA_DITTO]: "duplica_ditto",
 };
 
 export function getPlayerTrainerSpriteOption(sprite: PlayerTrainerSprite): PlayerTrainerSpriteOption {

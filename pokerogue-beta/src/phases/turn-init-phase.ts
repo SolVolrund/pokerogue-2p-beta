@@ -66,6 +66,11 @@ export class TurnInitPhase extends FieldPhase {
       return;
     }
 
+    if (globalScene.queueEonFluteDismissalsForRevivedPlayers()) {
+      this.end();
+      return;
+    }
+
     globalScene.getField().forEach((pokemon, i) => {
       if (pokemon?.isActive()) {
         if (pokemon.isPlayer()) {

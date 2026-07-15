@@ -15,6 +15,7 @@ import {
   type ComputerPartnerSlotScore,
   getBestComputerPartnerReplacementSlot,
   getComputerPartnerProfileWithRolePreferences,
+  isComputerPartnerCandidateAllowed,
 } from "#utils/computer-partner-profile";
 
 export interface ComputerPartnerCaptureDecision {
@@ -257,7 +258,11 @@ function getForcedComputerPartnerCaptureSlotScore(
   target: EnemyPokemon,
   forceThrowTargetIdSet: Set<number>,
 ): ComputerPartnerSlotScore | undefined {
-  if (!forceThrowTargetIdSet.has(target.id) || party.length >= profile.roles.length) {
+  if (
+    !forceThrowTargetIdSet.has(target.id)
+    || party.length >= profile.roles.length
+    || !isComputerPartnerCandidateAllowed(profile, target)
+  ) {
     return undefined;
   }
 

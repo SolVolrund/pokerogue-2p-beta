@@ -5950,6 +5950,7 @@ export class PlayerPokemon extends Pokemon {
   protected declare battleInfo: PlayerBattleInfo;
   public aiType: AiType = AiType.SMART_RANDOM;
   public computerPartnerAce = false;
+  public eonFluteGuest = false;
 
   constructor(
     species: PokemonSpecies,

@@ -20,6 +20,9 @@ export class NextEncounterPhase extends EncounterPhase {
         pokemon.resetWaveData();
       }
     }
+    for (const pokemon of globalScene.getEonFluteGuests()) {
+      pokemon.resetWaveData();
+    }
 
     globalScene.arenaNextEnemy.setBiome(globalScene.arena.biomeId);
     globalScene.arenaNextEnemy.setVisible(true);

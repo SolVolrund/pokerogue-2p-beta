@@ -225,13 +225,13 @@ export class SelectStarterPhase extends Phase {
       loadPokemonAssets.push(starterPokemon.loadAssets());
     });
     overrideModifiers();
-    this.applyThreePlayerExpCharmBonus(playerIndex);
+    this.applyMultiplayerExpCharmBonus(playerIndex);
     overrideHeldItems(party[0]);
     return Promise.all(loadPokemonAssets).then(() => undefined);
   }
 
-  private applyThreePlayerExpCharmBonus(playerIndex: PlayerIndex): void {
-    if (!globalScene.twoPlayerMode || globalScene.multiplayerPlayerCount < 3) {
+  private applyMultiplayerExpCharmBonus(playerIndex: PlayerIndex): void {
+    if (!globalScene.twoPlayerMode) {
       return;
     }
 
@@ -240,7 +240,7 @@ export class SelectStarterPhase extends Phase {
       return;
     }
 
-    expCharm.stackCount = 2;
+    expCharm.stackCount = globalScene.multiplayerPlayerCount >= 3 ? 2 : 1;
     globalScene.addModifier(expCharm, true, false, false, true, undefined, playerIndex);
   }
 

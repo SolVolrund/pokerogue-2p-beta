@@ -20,6 +20,7 @@ import { TrainerPartyCompoundTemplate, type TrainerPartyTemplate } from "#traine
 import { getRandomTwoPlayerTrainerPartners } from "#trainers/two-player-trainer-partners";
 import { randSeedInt, randSeedItem } from "#utils/common";
 import { getRandomLocaleEntry } from "#utils/i18n";
+import { isMysteryEncounterSwitchProtectedPokemon } from "#utils/mystery-encounter-switch-protection";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import { toCamelCase } from "#utils/strings";
 import i18next from "i18next";
@@ -1133,6 +1134,7 @@ export class Trainer extends Phaser.GameObjects.Container {
     const nonFaintedLegalPartyMembers = party
       .slice(globalScene.currentBattle.getBattlerCount())
       .filter(p => p.isAllowedInBattle())
+      .filter(p => !forSwitch || !isMysteryEncounterSwitchProtectedPokemon(p))
       .filter(p => !trainerSlot || p.trainerSlot === trainerSlot);
     const partyMemberScores = nonFaintedLegalPartyMembers.map(p => {
       const playerField = globalScene.getPlayerField().filter(p => p.isAllowedInBattle());

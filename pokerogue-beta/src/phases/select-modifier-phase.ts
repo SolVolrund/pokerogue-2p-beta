@@ -809,6 +809,9 @@ export class SelectModifierPhase extends BattlePhase {
    */
   private applyModifier(modifier: Modifier, cost = -1, playSound = false): void {
     const result = globalScene.addModifier(modifier, false, playSound, undefined, undefined, cost, this.playerIndex);
+    if (result) {
+      globalScene.dismissEonFluteGuestIfOwnerRevived(this.playerIndex);
+    }
     // Queue a copy of this phase when applying a TM or Memory Mushroom.
     // If the player selects either of these, then escapes out of consuming them,
     // they are returned to a shop in the same state.
@@ -839,6 +842,9 @@ export class SelectModifierPhase extends BattlePhase {
 
   private applyPartnerModifier(modifier: Modifier, cost: number, targetPlayerIndex: PlayerIndex): void {
     const result = globalScene.addModifier(modifier, false, true, undefined, undefined, cost, targetPlayerIndex);
+    if (result) {
+      globalScene.dismissEonFluteGuestIfOwnerRevived(targetPlayerIndex);
+    }
 
     if (cost !== -1) {
       if (result) {

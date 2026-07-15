@@ -56,6 +56,7 @@ import {
   EnemyTurnHealModifier,
   EvolutionItemModifier,
   EvolutionStatBoosterModifier,
+  EonFluteModifier,
   EvoTrackerModifier,
   ExpBalanceModifier,
   ExpBoosterModifier,
@@ -1996,6 +1997,16 @@ const modifierTypeInitObj = Object.freeze({
   MAP: () => new ModifierType("modifierType:ModifierType.MAP", "map", (type, _args) => new MapModifier(type)),
 
   OLD_SEA_MAP: () => new ModifierType("modifierType:ModifierType.OLD_SEA_MAP", "old_sea_map", (type, _args) => new OldSeaMapModifier(type)),
+
+  EON_FLUTE: () => {
+    const ret = new ModifierType(
+      "modifierType:ModifierType.EON_FLUTE",
+      "eon_flute",
+      (type, _args) => new EonFluteModifier(type),
+    );
+    ret.setTier(ModifierTier.MASTER);
+    return ret;
+  },
 
   GRAND_LAUREL: () =>
     new ModifierType(

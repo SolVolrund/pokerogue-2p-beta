@@ -16,7 +16,16 @@ import { getSpeciesEntryHazardAccessScore } from "#utils/computer-partner-hazard
 import { getSpeciesHealingSupportAccessScore } from "#utils/computer-partner-healing-support";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 
-export type ComputerPartnerKey = "alex" | "cheryl" | "riley" | "mira" | "buck" | "marley" | "dawn_zorua";
+export type ComputerPartnerKey =
+  | "alex"
+  | "cheryl"
+  | "riley"
+  | "mira"
+  | "buck"
+  | "marley"
+  | "dawn_zorua"
+  | "bianca_latias"
+  | "duplica_ditto";
 
 export type ComputerPartnerRole =
   | "ace"
@@ -44,12 +53,13 @@ export interface ComputerPartnerProfile {
   starterMoveset?: Starter["moveset"];
   startingStarters?: ComputerPartnerStarterConfig[];
   aceStarterSpeciesIds?: SpeciesId[];
+  allowedReplacementSpeciesIds?: readonly SpeciesId[];
   requiresUnlock?: boolean;
 }
 
 export interface ComputerPartnerStarterConfig {
   speciesId: SpeciesId;
-  points: number;
+  points?: number;
   nature?: Nature;
   moveset?: Starter["moveset"];
 }
@@ -229,6 +239,52 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
       { speciesId: SpeciesId.HISUI_ZORUA, points: 0, nature: Nature.TIMID },
     ],
   },
+  bianca_latias: {
+    key: "bianca_latias",
+    name: "Bianca?",
+    starterSpeciesId: SpeciesId.LATIOS,
+    starterNature: Nature.TIMID,
+    trainerSprite: PlayerTrainerSprite.BIANCA_LATIAS,
+    trainerGender: PlayerGender.FEMALE,
+    roles: ["ace", "special", "speed", "bulk", "balanced", "balanced"],
+    personalityTypes: [
+      PokemonType.DRAGON,
+      PokemonType.PSYCHIC,
+      PokemonType.WATER,
+      PokemonType.GRASS,
+      PokemonType.BUG,
+      PokemonType.GROUND,
+    ],
+    requiresUnlock: true,
+    startingStarters: [
+      { speciesId: SpeciesId.LATIOS },
+      { speciesId: SpeciesId.CATERPIE },
+      { speciesId: SpeciesId.ODDISH },
+      { speciesId: SpeciesId.POLIWAG },
+      { speciesId: SpeciesId.YANMA },
+      { speciesId: SpeciesId.WOOPER },
+    ],
+  },
+  duplica_ditto: {
+    key: "duplica_ditto",
+    name: "Duplica",
+    starterSpeciesId: SpeciesId.DITTO,
+    starterNature: Nature.HARDY,
+    trainerSprite: PlayerTrainerSprite.DUPLICA_DITTO,
+    trainerGender: PlayerGender.FEMALE,
+    roles: ["ace", "balanced", "balanced", "balanced", "balanced", "balanced"],
+    personalityTypes: [PokemonType.NORMAL],
+    allowedReplacementSpeciesIds: [SpeciesId.DITTO],
+    requiresUnlock: true,
+    startingStarters: [
+      { speciesId: SpeciesId.DITTO },
+      { speciesId: SpeciesId.DITTO },
+      { speciesId: SpeciesId.DITTO },
+      { speciesId: SpeciesId.DITTO },
+      { speciesId: SpeciesId.DITTO },
+      { speciesId: SpeciesId.DITTO },
+    ],
+  },
 };
 
 export const COMPUTER_PARTNER_KEYS = Object.keys(COMPUTER_PARTNER_PROFILES) as ComputerPartnerKey[];
@@ -319,18 +375,23 @@ function buildComputerPartnerStarterTeam(starters: ComputerPartnerStarterConfig[
   }
 
   const selectedStarters = [ace];
-  let remainingPoints = COMPUTER_PARTNER_STARTER_POINT_LIMIT - ace.points;
+  let remainingPoints = COMPUTER_PARTNER_STARTER_POINT_LIMIT - getComputerPartnerStarterPoints(ace);
 
   for (const starter of randSeedShuffle([...candidates])) {
-    if (starter.points > remainingPoints) {
+    const points = getComputerPartnerStarterPoints(starter);
+    if (points > remainingPoints) {
       continue;
     }
 
     selectedStarters.push(starter);
-    remainingPoints -= starter.points;
+    remainingPoints -= points;
   }
 
   return selectedStarters;
+}
+
+function getComputerPartnerStarterPoints(starter: ComputerPartnerStarterConfig): number {
+  return starter.points ?? speciesDataRegistry.getStarterCost(starter.speciesId);
 }
 
 function getDefaultComputerPartnerStarterMoveset(speciesId: SpeciesId): StarterMoveset {
@@ -349,6 +410,10 @@ export function getComputerPartnerReplacementScores(
   party: PlayerPokemon[],
   candidate: ComputerPartnerScoringPokemon,
 ): ComputerPartnerSlotScore[] {
+  if (!isComputerPartnerCandidateAllowed(profile, candidate)) {
+    return [];
+  }
+
   const currentTeamScore = scoreComputerPartnerTeam(profile, party);
   const replacementOptions =
     party.length < profile.roles.length
@@ -418,6 +483,18 @@ export function isComputerPartnerAcePokemon(
     && pokemon.metBiome === -1
     && (pokemon.metSpecies === profile.starterSpeciesId || !!profile.aceStarterSpeciesIds?.includes(pokemon.metSpecies))
   );
+}
+
+export function isComputerPartnerCandidateAllowed(
+  profile: ComputerPartnerProfile,
+  candidate: ComputerPartnerScoringPokemon,
+): boolean {
+  const allowedSpeciesIds = profile.allowedReplacementSpeciesIds;
+  if (!allowedSpeciesIds?.length) {
+    return true;
+  }
+
+  return allowedSpeciesIds.includes(getPokemonSpeciesForScoring(candidate).speciesId);
 }
 
 function scoreComputerPartnerTeam(
