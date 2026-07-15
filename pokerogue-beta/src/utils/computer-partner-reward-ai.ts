@@ -1,24 +1,36 @@
+import { speciesDataRegistry } from "#app/global-species-data-registry";
+import { EvoCondKey } from "#balance/pokemon-evolutions";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { AbilityId } from "#enums/ability-id";
 import { allMoves } from "#data/data-lists";
+import { BerryType } from "#enums/berry-type";
 import { LearnMoveType } from "#enums/learn-move-type";
+import { MoveFlags } from "#enums/move-flags";
+import { MoveId } from "#enums/move-id";
 import { ModifierTier } from "#enums/modifier-tier";
 import { PokeballType } from "#enums/pokeball";
+import { SpeciesId } from "#enums/species-id";
 import { Stat, type PermanentStat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
 import type { PlayerPokemon } from "#field/pokemon";
 import {
   AttackTypeBoosterModifierType,
   BaseStatBoosterModifierType,
+  BerryModifierType,
+  ContactHeldItemTransferChanceModifierType,
   PokemonModifierType,
   PokemonMoveModifierType,
-  PokemonPpUpModifierType,
+  PokemonMoveAccuracyBoosterModifierType,
+  PokemonMultiHitModifierType,
+  SpeciesStatBoosterModifierType,
   TerastallizeModifierType,
   TmModifierType,
+  TurnHeldItemTransferModifierType,
   type ModifierType,
   type ModifierTypeOption,
 } from "#modifiers/modifier-type";
 import type { PokemonMove } from "#moves/pokemon-move";
+import { randSeedItem } from "#utils/common";
 import { getDawnStrategyMoveCapabilities } from "#utils/computer-partner-hazard-support";
 import { chooseComputerPartnerMoveLearningDecision } from "#utils/computer-partner-move-ai";
 import {
@@ -211,6 +223,7 @@ const REWARD_PRIORITY: Partial<Record<ComputerPartnerRecoveryItemId | string, nu
   FULL_RESTORE: 13,
   MAX_ELIXIR: 13,
   ELIXIR: 13,
+  SOOTHE_BELL: 14,
 
   POKEBALL: 1,
   TM_COMMON: 2,
@@ -221,6 +234,7 @@ const REWARD_PRIORITY: Partial<Record<ComputerPartnerRecoveryItemId | string, nu
   ETHER: 5,
   MAX_ETHER: 5,
   MIRROR_HERB: 6,
+  BERRY: 7,
 };
 
 const ZERO_BALL_REWARD_PRIORITY: Partial<Record<string, number>> = {
@@ -239,7 +253,6 @@ const IGNORED_REWARD_IDS = new Set<string>([
   "MAX_LURE",
   "IV_SCANNER",
   "SUPER_LURE",
-  "SOOTHE_BELL",
   "MAP",
   "MEMORY_MUSHROOM",
   "LURE",
@@ -267,6 +280,10 @@ function getRewardItemId(type: ModifierType): string | undefined {
       default:
         return "TM";
     }
+  }
+
+  if (type instanceof BerryModifierType) {
+    return "BERRY";
   }
 
   if (type.id) {
@@ -427,6 +444,329 @@ function chooseTeraShardTarget(type: TerastallizeModifierType, party: PlayerPoke
   return getTargetablePartyIndexes(type, party, pokemon =>
     pokemon.isOfType(teraType, { includeTeraType: false, returnOriginalTypesIfStellar: true }),
   )[0];
+}
+
+const STAT_BERRY_STATS: Partial<Record<BerryType, PermanentStat>> = {
+  [BerryType.LIECHI]: Stat.ATK,
+  [BerryType.GANLON]: Stat.DEF,
+  [BerryType.PETAYA]: Stat.SPATK,
+  [BerryType.APICOT]: Stat.SPDEF,
+  [BerryType.SALAC]: Stat.SPD,
+};
+
+const SPECIES_STAT_BOOSTER_SPECIES: Partial<Record<string, SpeciesId[]>> = {
+  LIGHT_BALL: [SpeciesId.PIKACHU],
+  THICK_CLUB: [SpeciesId.CUBONE, SpeciesId.MAROWAK, SpeciesId.ALOLA_MAROWAK],
+  METAL_POWDER: [SpeciesId.DITTO],
+  QUICK_POWDER: [SpeciesId.DITTO],
+  DEEP_SEA_SCALE: [SpeciesId.CLAMPERL],
+  DEEP_SEA_TOOTH: [SpeciesId.CLAMPERL],
+};
+
+const LEEK_SPECIES = [SpeciesId.FARFETCHD, SpeciesId.GALAR_FARFETCHD, SpeciesId.SIRFETCHD];
+
+const WEATHER_OR_TERRAIN_MOVE_IDS = new Set<MoveId>([
+  MoveId.SUNNY_DAY,
+  MoveId.RAIN_DANCE,
+  MoveId.SANDSTORM,
+  MoveId.SNOWSCAPE,
+  MoveId.HAIL,
+  MoveId.CHILLY_RECEPTION,
+  MoveId.ELECTRIC_TERRAIN,
+  MoveId.PSYCHIC_TERRAIN,
+  MoveId.GRASSY_TERRAIN,
+  MoveId.MISTY_TERRAIN,
+]);
+
+const WEATHER_OR_TERRAIN_ABILITY_IDS = [
+  AbilityId.DROUGHT,
+  AbilityId.ORICHALCUM_PULSE,
+  AbilityId.DRIZZLE,
+  AbilityId.SAND_STREAM,
+  AbilityId.SAND_SPIT,
+  AbilityId.SNOW_WARNING,
+  AbilityId.ELECTRIC_SURGE,
+  AbilityId.HADRON_ENGINE,
+  AbilityId.PSYCHIC_SURGE,
+  AbilityId.GRASSY_SURGE,
+  AbilityId.SEED_SOWER,
+  AbilityId.MISTY_SURGE,
+] as const;
+
+const SCREEN_MOVE_IDS = new Set<MoveId>([
+  MoveId.LIGHT_SCREEN,
+  MoveId.REFLECT,
+  MoveId.AURORA_VEIL,
+  MoveId.GLITZY_GLOW,
+  MoveId.BADDY_BAD,
+]);
+
+const SETUP_MOVE_IDS = new Set<MoveId>([
+  MoveId.SWORDS_DANCE,
+  MoveId.GROWTH,
+  MoveId.AGILITY,
+  MoveId.AMNESIA,
+  MoveId.COSMIC_POWER,
+  MoveId.IRON_DEFENSE,
+  MoveId.BULK_UP,
+  MoveId.CALM_MIND,
+  MoveId.DRAGON_DANCE,
+  MoveId.NASTY_PLOT,
+  MoveId.HONE_CLAWS,
+  MoveId.QUIVER_DANCE,
+  MoveId.COIL,
+  MoveId.SHELL_SMASH,
+  MoveId.WORK_UP,
+  MoveId.PSYSHIELD_BASH,
+  MoveId.MYSTICAL_POWER,
+  MoveId.VICTORY_DANCE,
+  MoveId.ESPER_WING,
+  MoveId.SHELTER,
+  MoveId.TAKE_HEART,
+  MoveId.TIDY_UP,
+  MoveId.TORCH_SONG,
+  MoveId.AQUA_STEP,
+  MoveId.TRAILBLAZE,
+  MoveId.ELECTRO_SHOT,
+]);
+
+function toRewardTarget(targetPokemonIndex: number, targetScore = 0): RewardTarget {
+  return { targetPokemonIndex, targetScore };
+}
+
+function getKnownMoves(pokemon: PlayerPokemon): PokemonMove[] {
+  return pokemon.getMoveset(true).filter((move): move is PokemonMove => move != null);
+}
+
+function hasMoveId(pokemon: PlayerPokemon, moveIds: ReadonlySet<MoveId>): boolean {
+  return getKnownMoves(pokemon).some(move => moveIds.has(move.moveId));
+}
+
+function hasSpeciesInList(pokemon: PlayerPokemon, speciesIds: readonly SpeciesId[]): boolean {
+  return (
+    speciesIds.includes(pokemon.getSpeciesForm(true).speciesId)
+    || (pokemon.isFusion() && speciesIds.includes(pokemon.getFusionSpeciesForm(true).speciesId))
+  );
+}
+
+function chooseRandomPokemonTarget(type: PokemonModifierType, party: PlayerPokemon[]): RewardTarget | undefined {
+  const indexes = getTargetablePartyIndexes(type, party);
+  return indexes.length ? toRewardTarget(randSeedItem(indexes)) : undefined;
+}
+
+function chooseScoredPokemonTarget(
+  type: PokemonModifierType,
+  party: PlayerPokemon[],
+  scorer: (pokemon: PlayerPokemon, targetPokemonIndex: number) => number | undefined,
+  predicate: (pokemon: PlayerPokemon) => boolean = () => true,
+  profile?: ComputerPartnerProfile,
+  excludeAce = false,
+): RewardTarget | undefined {
+  const bestTarget = getTargetablePartyIndexes(
+    type,
+    party,
+    pokemon => predicate(pokemon) && !(excludeAce && profile && isComputerPartnerAcePokemon(pokemon, profile)),
+  )
+    .map(targetPokemonIndex => ({
+      targetPokemonIndex,
+      targetScore: scorer(party[targetPokemonIndex], targetPokemonIndex),
+    }))
+    .filter((target): target is { targetPokemonIndex: number; targetScore: number } => target.targetScore !== undefined)
+    .sort((a, b) => b.targetScore - a.targetScore || a.targetPokemonIndex - b.targetPokemonIndex)[0];
+
+  return bestTarget;
+}
+
+function chooseAcePreferredTarget(
+  type: PokemonModifierType,
+  party: PlayerPokemon[],
+  profile: ComputerPartnerProfile | undefined,
+  fallback: () => RewardTarget | undefined = () => chooseRandomPokemonTarget(type, party),
+): RewardTarget | undefined {
+  const aceTargetPokemonIndex = chooseComputerPartnerAceTarget(type, party, profile);
+  if (aceTargetPokemonIndex !== undefined) {
+    return toRewardTarget(aceTargetPokemonIndex, 500);
+  }
+
+  return fallback();
+}
+
+function chooseStrongestTarget(
+  type: PokemonModifierType,
+  party: PlayerPokemon[],
+  profile?: ComputerPartnerProfile,
+  excludeAce = false,
+): RewardTarget | undefined {
+  return (
+    chooseScoredPokemonTarget(type, party, getAttackingStatScore, undefined, profile, excludeAce)
+    ?? (excludeAce ? chooseScoredPokemonTarget(type, party, getAttackingStatScore) : undefined)
+  );
+}
+
+function chooseBulkiestTarget(
+  type: PokemonModifierType,
+  party: PlayerPokemon[],
+  profile?: ComputerPartnerProfile,
+  excludeAce = false,
+): RewardTarget | undefined {
+  return (
+    chooseScoredPokemonTarget(type, party, getBulkScore, undefined, profile, excludeAce)
+    ?? (excludeAce ? chooseScoredPokemonTarget(type, party, getBulkScore) : undefined)
+  );
+}
+
+function getAttackingStatScore(pokemon: PlayerPokemon, targetPokemonIndex: number): number {
+  return Math.max(pokemon.getStat(Stat.ATK), pokemon.getStat(Stat.SPATK)) - targetPokemonIndex;
+}
+
+function getBulkScore(pokemon: PlayerPokemon, targetPokemonIndex: number): number {
+  return pokemon.getMaxHp() + pokemon.getStat(Stat.DEF) + pokemon.getStat(Stat.SPDEF) - targetPokemonIndex;
+}
+
+function getSlowestScore(pokemon: PlayerPokemon, targetPokemonIndex: number): number {
+  return -pokemon.getStat(Stat.SPD) - targetPokemonIndex / 100;
+}
+
+function getFastestScore(pokemon: PlayerPokemon, targetPokemonIndex: number): number {
+  return pokemon.getStat(Stat.SPD) - targetPokemonIndex;
+}
+
+function getLowestHealthScore(pokemon: PlayerPokemon, targetPokemonIndex: number): number | undefined {
+  if (pokemon.isFainted()) {
+    return undefined;
+  }
+  return -pokemon.getHpRatio() * 1000 - targetPokemonIndex;
+}
+
+function getLeastAccurateMoveScore(pokemon: PlayerPokemon, targetPokemonIndex: number): number | undefined {
+  const leastAccuracy = getKnownMoves(pokemon)
+    .map(move => move.getMove().accuracy)
+    .filter(accuracy => accuracy > 0)
+    .sort((a, b) => a - b)[0];
+
+  return leastAccuracy !== undefined ? 100 - leastAccuracy - targetPokemonIndex / 100 : undefined;
+}
+
+function hasMultiHitMove(pokemon: PlayerPokemon): boolean {
+  return getKnownMoves(pokemon).some(move => isLoadedDiceBoostedMove(move.getMove()));
+}
+
+function hasContactMove(pokemon: PlayerPokemon): boolean {
+  return getKnownMoves(pokemon).some(move => move.getMove().hasFlag(MoveFlags.MAKES_CONTACT));
+}
+
+function hasHighCritMoveOrAbility(pokemon: PlayerPokemon): boolean {
+  return (
+    [AbilityId.SUPER_LUCK, AbilityId.SNIPER, AbilityId.MERCILESS].some(ability => pokemon.hasAbility(ability, false, true))
+    || getKnownMoves(pokemon).some(move => move.getMove().hasAttr("HighCritAttr"))
+  );
+}
+
+function hasFriendshipEvolution(pokemon: PlayerPokemon): boolean {
+  const speciesIds = [
+    pokemon.getSpeciesForm(true).speciesId,
+    ...(pokemon.isFusion() ? [pokemon.getFusionSpeciesForm(true).speciesId] : []),
+  ];
+
+  return speciesIds.some(speciesId =>
+    speciesDataRegistry.hasEvolutions(speciesId)
+    && speciesDataRegistry
+      .getEvolutions(speciesId)
+      .some(evolution => evolution.condition?.data.some(condition => condition.key === EvoCondKey.FRIENDSHIP)),
+  );
+}
+
+function canBenefitFromEviolite(pokemon: PlayerPokemon): boolean {
+  return (
+    !pokemon.isMax()
+    && (
+      speciesDataRegistry.hasEvolutions(pokemon.getSpeciesForm(true).speciesId)
+      || (pokemon.isFusion() && speciesDataRegistry.hasEvolutions(pokemon.getFusionSpeciesForm(true).speciesId))
+    )
+  );
+}
+
+function hasWeatherOrTerrainSource(pokemon: PlayerPokemon): boolean {
+  return (
+    hasMoveId(pokemon, WEATHER_OR_TERRAIN_MOVE_IDS)
+    || WEATHER_OR_TERRAIN_ABILITY_IDS.some(ability => pokemon.hasAbility(ability, false, true))
+  );
+}
+
+function getSpeciesStatBoosterTarget(type: SpeciesStatBoosterModifierType, party: PlayerPokemon[]): RewardTarget | undefined {
+  const key = type.getPregenArgs()[0] as string | undefined;
+  const speciesIds = key ? SPECIES_STAT_BOOSTER_SPECIES[key] : undefined;
+  if (!speciesIds) {
+    return undefined;
+  }
+
+  const targetPokemonIndex = getTargetablePartyIndexes(type, party, pokemon => hasSpeciesInList(pokemon, speciesIds))[0];
+  return targetPokemonIndex !== undefined ? toRewardTarget(targetPokemonIndex, 250) : undefined;
+}
+
+function getBerryTarget(type: BerryModifierType, party: PlayerPokemon[], profile?: ComputerPartnerProfile): RewardTarget | undefined {
+  const berryType = type.getPregenArgs()[0] as BerryType | undefined;
+  const stat = berryType === undefined ? undefined : STAT_BERRY_STATS[berryType];
+  if (stat !== undefined) {
+    return chooseScoredPokemonTarget(type, party, (pokemon, targetPokemonIndex) => pokemon.getStat(stat) - targetPokemonIndex);
+  }
+
+  if (berryType === BerryType.LANSAT) {
+    return (
+      chooseAcePreferredTarget(type, party, profile, () =>
+        chooseScoredPokemonTarget(type, party, pokemon => hasHighCritMoveOrAbility(pokemon) ? 200 : undefined))
+      ?? chooseRandomPokemonTarget(type, party)
+    );
+  }
+
+  return chooseAcePreferredTarget(type, party, profile, () => chooseRandomPokemonTarget(type, party));
+}
+
+function getOrbTargetScore(itemId: string, pokemon: PlayerPokemon, targetPokemonIndex: number): number | undefined {
+  if (pokemon.getHeldItems().some(item => item.type.id === "FLAME_ORB" || item.type.id === "TOXIC_ORB")) {
+    return undefined;
+  }
+
+  const statusEffect = itemId === "FLAME_ORB" ? StatusEffect.BURN : StatusEffect.TOXIC;
+  const canSetStatus = pokemon.canSetStatus(statusEffect, true, true, null, true);
+  const moveset = getKnownMoves(pokemon).map(move => move.moveId);
+  const hasStatusMove = [MoveId.FACADE, MoveId.PSYCHO_SHIFT].some(move => moveset.includes(move));
+
+  if (!canSetStatus && !hasStatusMove) {
+    return undefined;
+  }
+
+  const hasGeneralAbility = [
+    AbilityId.QUICK_FEET,
+    AbilityId.GUTS,
+    AbilityId.MARVEL_SCALE,
+    AbilityId.MAGIC_GUARD,
+  ].some(ability => pokemon.hasAbility(ability, false, true));
+  const hasSpecificAbility =
+    itemId === "FLAME_ORB"
+      ? pokemon.hasAbility(AbilityId.FLARE_BOOST, false, true)
+      : [AbilityId.TOXIC_BOOST, AbilityId.POISON_HEAL].some(ability => pokemon.hasAbility(ability, false, true));
+  const hasOppositeAbility =
+    itemId === "FLAME_ORB"
+      ? [AbilityId.TOXIC_BOOST, AbilityId.POISON_HEAL].some(ability => pokemon.hasAbility(ability, false, true))
+      : pokemon.hasAbility(AbilityId.FLARE_BOOST, false, true);
+
+  if (hasSpecificAbility) {
+    return 400 - targetPokemonIndex;
+  }
+  if (hasGeneralAbility && !hasOppositeAbility) {
+    return 300 - targetPokemonIndex;
+  }
+  if (hasStatusMove) {
+    return 150 - targetPokemonIndex;
+  }
+
+  return undefined;
+}
+
+function chooseOrbTarget(type: PokemonModifierType, itemId: string, party: PlayerPokemon[]): RewardTarget | undefined {
+  return chooseScoredPokemonTarget(type, party, (pokemon, targetPokemonIndex) =>
+    getOrbTargetScore(itemId, pokemon, targetPokemonIndex));
 }
 
 function getBetterOffensiveStat(pokemon: PlayerPokemon): PermanentStat {
@@ -590,12 +930,8 @@ function getDawnTmPreferenceScore(
 }
 
 function hasUsefulOrbTarget(itemId: string, type: PokemonModifierType, party: PlayerPokemon[]): boolean {
-  if (itemId === "FLAME_ORB") {
-    return getTargetablePartyIndexes(type, party, pokemon => pokemon.hasAbility(AbilityId.GUTS, false, true)).length > 0;
-  }
-  if (itemId === "TOXIC_ORB") {
-    return getTargetablePartyIndexes(type, party, pokemon => pokemon.hasAbility(AbilityId.POISON_HEAL, false, true))
-      .length > 0;
+  if (itemId === "FLAME_ORB" || itemId === "TOXIC_ORB") {
+    return !!chooseOrbTarget(type, itemId, party);
   }
 
   return true;
@@ -620,6 +956,131 @@ function getRewardTarget(
     if (aceTargetPokemonIndex !== undefined) {
       return { targetPokemonIndex: aceTargetPokemonIndex };
     }
+  }
+
+  if (type instanceof BerryModifierType) {
+    return getBerryTarget(type, party, context.computerPartnerProfile);
+  }
+
+  if (itemId === "MIRROR_HERB") {
+    return chooseAcePreferredTarget(type, party, context.computerPartnerProfile);
+  }
+
+  if (type instanceof SpeciesStatBoosterModifierType) {
+    return getSpeciesStatBoosterTarget(type, party);
+  }
+
+  if (itemId === "SOOTHE_BELL") {
+    return (
+      chooseScoredPokemonTarget(type, party, pokemon => hasFriendshipEvolution(pokemon) ? 300 : undefined)
+      ?? chooseAcePreferredTarget(type, party, context.computerPartnerProfile)
+    );
+  }
+
+  if (itemId === "REVIVER_SEED") {
+    return chooseAcePreferredTarget(type, party, context.computerPartnerProfile, () =>
+      chooseStrongestTarget(type, party, context.computerPartnerProfile, true));
+  }
+
+  if (itemId === "EVIOLITE") {
+    return chooseScoredPokemonTarget(type, party, getBulkScore, canBenefitFromEviolite);
+  }
+
+  if (itemId === "LEEK") {
+    return chooseScoredPokemonTarget(type, party, getAttackingStatScore, pokemon => hasSpeciesInList(pokemon, LEEK_SPECIES));
+  }
+
+  if (itemId === "MYSTICAL_ROCK") {
+    return chooseScoredPokemonTarget(type, party, getBulkScore, hasWeatherOrTerrainSource);
+  }
+
+  if (itemId === "LIGHT_CLAY") {
+    return chooseScoredPokemonTarget(type, party, getBulkScore, pokemon => hasMoveId(pokemon, SCREEN_MOVE_IDS));
+  }
+
+  if (itemId === "GOLDEN_PUNCH") {
+    return chooseAcePreferredTarget(type, party, context.computerPartnerProfile, () =>
+      chooseStrongestTarget(type, party, context.computerPartnerProfile, true));
+  }
+
+  if (itemId === "QUICK_CLAW") {
+    return chooseAcePreferredTarget(type, party, context.computerPartnerProfile, () =>
+      chooseScoredPokemonTarget(type, party, getSlowestScore));
+  }
+
+  if (type instanceof PokemonMoveAccuracyBoosterModifierType || itemId === "WIDE_LENS") {
+    return chooseAcePreferredTarget(type, party, context.computerPartnerProfile, () =>
+      chooseScoredPokemonTarget(type, party, getLeastAccurateMoveScore));
+  }
+
+  if (itemId === "LEFTOVERS") {
+    return chooseAcePreferredTarget(type, party, context.computerPartnerProfile, () =>
+      chooseBulkiestTarget(type, party, context.computerPartnerProfile, true));
+  }
+
+  if (itemId === "SHELL_BELL") {
+    return chooseAcePreferredTarget(type, party, context.computerPartnerProfile, () =>
+      chooseStrongestTarget(type, party, context.computerPartnerProfile, true));
+  }
+
+  if (type instanceof ContactHeldItemTransferChanceModifierType || itemId === "GRIP_CLAW") {
+    return chooseAcePreferredTarget(type, party, context.computerPartnerProfile, () =>
+      chooseScoredPokemonTarget(
+        type,
+        party,
+        (pokemon, targetPokemonIndex) => {
+          if (hasMultiHitMove(pokemon)) {
+            return 300 - targetPokemonIndex;
+          }
+          if (hasContactMove(pokemon)) {
+            return 100 - targetPokemonIndex;
+          }
+          return undefined;
+        },
+      )
+      ?? chooseRandomPokemonTarget(type, party));
+  }
+
+  if (itemId === "SCOPE_LENS") {
+    return chooseAcePreferredTarget(type, party, context.computerPartnerProfile, () =>
+      chooseScoredPokemonTarget(type, party, (pokemon, targetPokemonIndex) =>
+        hasHighCritMoveOrAbility(pokemon) ? 250 - targetPokemonIndex : undefined)
+      ?? chooseRandomPokemonTarget(type, party));
+  }
+
+  if (itemId === "BATON") {
+    return chooseAcePreferredTarget(type, party, context.computerPartnerProfile, () =>
+      chooseScoredPokemonTarget(type, party, (pokemon, targetPokemonIndex) =>
+        hasMoveId(pokemon, SETUP_MOVE_IDS) ? 250 - targetPokemonIndex : undefined)
+      ?? chooseRandomPokemonTarget(type, party));
+  }
+
+  if (itemId === "SOUL_DEW") {
+    return chooseAcePreferredTarget(type, party, context.computerPartnerProfile);
+  }
+
+  if (itemId === "FOCUS_BAND") {
+    return chooseAcePreferredTarget(type, party, context.computerPartnerProfile, () =>
+      chooseScoredPokemonTarget(type, party, getLowestHealthScore));
+  }
+
+  if (itemId === "KINGS_ROCK") {
+    return chooseAcePreferredTarget(type, party, context.computerPartnerProfile, () =>
+      chooseScoredPokemonTarget(type, party, getFastestScore));
+  }
+
+  if (type instanceof PokemonMultiHitModifierType || itemId === "MULTI_LENS") {
+    return chooseAcePreferredTarget(type, party, context.computerPartnerProfile, () =>
+      chooseStrongestTarget(type, party, context.computerPartnerProfile, true));
+  }
+
+  if (type instanceof TurnHeldItemTransferModifierType || itemId === "MINI_BLACK_HOLE" || itemId === "GAMMA_RAY_BURST") {
+    return chooseAcePreferredTarget(type, party, context.computerPartnerProfile, () =>
+      chooseBulkiestTarget(type, party, context.computerPartnerProfile, true));
+  }
+
+  if (itemId === "FLAME_ORB" || itemId === "TOXIC_ORB") {
+    return chooseOrbTarget(type, itemId, party);
   }
 
   if (itemId === "LOADED_DICE") {
