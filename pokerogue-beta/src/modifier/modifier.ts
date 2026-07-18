@@ -9,6 +9,7 @@ import { FusionSpeciesFormEvolution } from "#balance/pokemon-evolutions";
 import { FRIENDSHIP_GAIN_FROM_RARE_CANDY } from "#balance/starters";
 import { getBerryEffectFunc, getBerryPredicate } from "#data/berry";
 import { allMoves, modifierTypes } from "#data/data-lists";
+import type { AlphLegendaryHelperId } from "#data/alph/legendary-helpers";
 import { CONTEST_STAT_MAX, type PartialContestStats } from "#data/contests/contest-stats";
 import { CONTEST_TYPES, ContestType } from "#data/contests/contest-type";
 import { getLevelTotalExp } from "#data/exp";
@@ -648,6 +649,40 @@ export class EonFluteModifier extends PersistentModifier {
 
   clone(): EonFluteModifier {
     return new EonFluteModifier(this.type, this.stackCount);
+  }
+
+  override apply(..._args: unknown[]): boolean {
+    return true;
+  }
+
+  getMaxStackCount(): number {
+    return 1;
+  }
+}
+
+export class LegendaryHelperModifier extends PersistentModifier {
+  constructor(
+    type: ModifierType,
+    private readonly helperId: AlphLegendaryHelperId,
+    stackCount?: number,
+  ) {
+    super(type, stackCount);
+  }
+
+  match(modifier: Modifier): boolean {
+    return modifier instanceof LegendaryHelperModifier && modifier.helperId === this.helperId;
+  }
+
+  clone(): LegendaryHelperModifier {
+    return new LegendaryHelperModifier(this.type, this.helperId, this.stackCount);
+  }
+
+  getArgs(): any[] {
+    return [this.helperId];
+  }
+
+  getHelperId(): AlphLegendaryHelperId {
+    return this.helperId;
   }
 
   override apply(..._args: unknown[]): boolean {
@@ -2307,6 +2342,24 @@ export class ScreenEffectModifier extends PokemonHeldItemModifier {
 
   override getMaxHeldItemCount(_pokemon?: Pokemon): number {
     return 2;
+  }
+}
+
+export class UnownBoxModifier extends PokemonHeldItemModifier {
+  override apply(_pokemon: Pokemon, ..._args: unknown[]): boolean {
+    return true;
+  }
+
+  override matchType(modifier: Modifier): boolean {
+    return modifier instanceof UnownBoxModifier;
+  }
+
+  override clone(): UnownBoxModifier {
+    return new UnownBoxModifier(this.type, this.pokemonId, this.stackCount);
+  }
+
+  override getMaxHeldItemCount(_pokemon?: Pokemon): number {
+    return 1;
   }
 }
 
@@ -4409,6 +4462,7 @@ const ModifierClassMap = Object.freeze({
   MapModifier,
   OldSeaMapModifier,
   EonFluteModifier,
+  LegendaryHelperModifier,
   LinkingCordGoldModifier,
   MegaEvolutionAccessModifier,
   GigantamaxAccessModifier,
@@ -4441,6 +4495,7 @@ const ModifierClassMap = Object.freeze({
   MirrorHerbModifier,
   FieldEffectModifier,
   ScreenEffectModifier,
+  UnownBoxModifier,
   ConsumablePokemonModifier,
   TerastallizeModifier,
   PokemonHpRestoreModifier,

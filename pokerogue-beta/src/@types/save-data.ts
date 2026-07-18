@@ -1,5 +1,7 @@
 import type { MultiplayerPlayerCount, PlayerIndex, PokeballCounts } from "#app/battle-scene";
 import type { Tutorial } from "#app/tutorial";
+import type { AlphTileCounts } from "#data/alph/alph-tiles";
+import type { AlphLegendaryHelperId } from "#data/alph/legendary-helpers";
 import type { BattleType } from "#enums/battle-type";
 import type { GameModes } from "#enums/game-modes";
 import type { MoveId } from "#enums/move-id";
@@ -17,9 +19,9 @@ import type { GameStats } from "#system/game-stats";
 import type { ModifierData } from "#system/modifier-data";
 import type { PokemonData } from "#system/pokemon-data";
 import type { TrainerData } from "#system/trainer-data";
+import type { ComputerPartnerKey, ComputerPartnerRolePreferences } from "#utils/computer-partner-profile";
 import type { SerializedDailyRunConfig } from "./daily-run";
 import type { DexData } from "./dex-data";
-import type { ComputerPartnerKey, ComputerPartnerRolePreferences } from "#utils/computer-partner-profile";
 
 export interface SystemSaveData {
   trainerId: number;
@@ -45,6 +47,8 @@ export interface PlayerSessionSaveData {
   modifiers: ModifierData[];
   pokeballCounts: PokeballCounts;
   money: number;
+  alphTiles?: AlphTileCounts;
+  alphLegendaryHelpersUsed?: AlphLegendaryHelperId[];
 }
 
 export interface SessionSaveData {
@@ -59,6 +63,8 @@ export interface SessionSaveData {
   arena: ArenaData;
   pokeballCounts: PokeballCounts;
   money: number;
+  alphTiles?: AlphTileCounts;
+  alphLegendaryHelpersUsed?: AlphLegendaryHelperId[];
   players?: PlayerSessionSaveData[];
   twoPlayerMode?: boolean;
   multiplayerPlayerCount?: MultiplayerPlayerCount;

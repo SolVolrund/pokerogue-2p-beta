@@ -11,6 +11,7 @@ import { CONTEST_TYPES, ContestType, contestTypeData } from "#data/contests/cont
 import { CONTEST_STAT_MAX, type PartialContestStats } from "#data/contests/contest-stats";
 import { getDailyEventSeedLuck } from "#data/daily-seed/daily-run";
 import { allMoves, modifierTypes } from "#data/data-lists";
+import type { AlphLegendaryHelperId } from "#data/alph/legendary-helpers";
 import { SpeciesFormChangeItemTrigger } from "#data/form-change-triggers";
 import { getNatureName, getNatureStatMultiplier } from "#data/nature";
 import { getPokeballCatchMultiplier, getPokeballName } from "#data/pokeball";
@@ -74,6 +75,7 @@ import {
   HitHealModifier,
   IvScannerModifier,
   LevelIncrementBoosterModifier,
+  LegendaryHelperModifier,
   LinkingCordGoldModifier,
   LoadedDiceModifier,
   LockModifierTiersModifier,
@@ -126,6 +128,7 @@ import {
   TurnHealModifier,
   TurnHeldItemTransferModifier,
   TurnStatusEffectModifier,
+  UnownBoxModifier,
 } from "#modifiers/modifier";
 import type { PokemonMove } from "#moves/pokemon-move";
 import { getVoucherTypeIcon, getVoucherTypeName, VoucherType } from "#system/voucher";
@@ -1243,6 +1246,22 @@ export class LoadedDiceModifierType extends PokemonHeldItemModifierType {
   }
 }
 
+export class UnownBoxModifierType extends PokemonHeldItemModifierType {
+  constructor(localeKey: string, iconImage: string) {
+    super(localeKey, iconImage, (type, args) => new UnownBoxModifier(type, (args[0] as Pokemon).id));
+
+    const heldItemSelectFilter = this.selectFilter;
+    this.selectFilter = (pokemon: PlayerPokemon) => {
+      const heldItemResult = heldItemSelectFilter?.(pokemon);
+      if (heldItemResult != null) {
+        return heldItemResult;
+      }
+
+      return pokemon.hasSpecies(SpeciesId.UNOWN) ? null : PartyUiHandler.NoEffectMessage;
+    };
+  }
+}
+
 export class TmModifierType extends PokemonModifierType {
   public moveId: MoveId;
 
@@ -2008,6 +2027,16 @@ const modifierTypeInitObj = Object.freeze({
     return ret;
   },
 
+  GLASS_BALL: () => {
+    const ret = new ModifierType(
+      "modifierType:ModifierType.GLASS_BALL",
+      "glass_ball",
+      (type, args) => new LegendaryHelperModifier(type, args[0] as AlphLegendaryHelperId),
+    );
+    ret.setTier(ModifierTier.MASTER);
+    return ret;
+  },
+
   GRAND_LAUREL: () =>
     new ModifierType(
       "modifierType:ModifierType.GRAND_LAUREL",
@@ -2346,6 +2375,8 @@ const modifierTypeInitObj = Object.freeze({
   WIDE_LENS: () => new PokemonMoveAccuracyBoosterModifierType("modifierType:ModifierType.WIDE_LENS", "wide_lens", 5),
 
   LOADED_DICE: () => new LoadedDiceModifierType("modifierType:ModifierType.LOADED_DICE", "loaded_dice"),
+
+  UNOWN_BOX: () => new UnownBoxModifierType("modifierType:ModifierType.UNOWN_BOX", "unown_box"),
 
   MULTI_LENS: () => new PokemonMultiHitModifierType("modifierType:ModifierType.MULTI_LENS", "zoom_lens"),
 

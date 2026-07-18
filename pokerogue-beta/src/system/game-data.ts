@@ -1,10 +1,10 @@
 import { pokerogueApi } from "#api/api";
 import { clientSessionId, getSessionDataLocalStorageKey, loggedInUser, updateUserInfo } from "#app/account";
+import type { PlayerIndex } from "#app/battle-scene";
 import { defaultStarterSpecies, saveKey } from "#app/constants";
 import { getGameMode } from "#app/game-mode";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
-import type { PlayerIndex } from "#app/battle-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { activeOverrides } from "#app/overrides";
 import { isIos } from "#app/touch-controls";
@@ -12,18 +12,19 @@ import { Tutorial } from "#app/tutorial";
 import { speciesEggMoves } from "#balance/moves/egg-moves";
 import { bypassLogin, isBeta, isDev } from "#constants/app-constants";
 import { MAX_STARTER_CANDY_COUNT } from "#constants/game-constants";
+import { createInitialAlphTileCounts } from "#data/alph/alph-tiles";
 import { EntryHazardTag } from "#data/arena-tag";
-import { getSerializedDailyRunConfig, parseDailySeed } from "#data/daily-seed/daily-seed-utils";
 import {
   addContestStatValue,
+  type ContestStats,
   createEmptyContestStats,
   getContestIntroJudgingScores,
   getContestStatValue,
   normalizeContestStats,
-  type ContestStats,
   type PartialContestStats,
 } from "#data/contests/contest-stats";
 import { CONTEST_TYPES, type ContestType } from "#data/contests/contest-type";
+import { getSerializedDailyRunConfig, parseDailySeed } from "#data/daily-seed/daily-seed-utils";
 import { allMoves } from "#data/data-lists";
 import type { Egg } from "#data/egg";
 import type { PokemonSpecies } from "#data/pokemon-species";
@@ -45,11 +46,6 @@ import { UiMode } from "#enums/ui-mode";
 import { Unlockables } from "#enums/unlockables";
 import { ArenaTagAddedEvent, TerrainChangedEvent, WeatherChangedEvent } from "#events/arena";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
-import type {
-  ComputerPartnerKey,
-  ComputerPartnerRole,
-  ComputerPartnerRolePreferences,
-} from "#utils/computer-partner-profile";
 // biome-ignore lint/performance/noNamespaceImport: Something weird is going on here and I don't want to touch it
 import * as Modifier from "#modifiers/modifier";
 import { MysteryEncounterSaveData } from "#mystery-encounters/mystery-encounter-save-data";
@@ -90,12 +86,17 @@ import type {
 } from "#types/save-data";
 import { RUN_HISTORY_LIMIT } from "#ui/run-history-ui-handler";
 import { applyChallenges } from "#utils/challenge-utils";
+import { fixedInt, NumberHolder, randInt, randSeedItem } from "#utils/common";
+import type {
+  ComputerPartnerKey,
+  ComputerPartnerRole,
+  ComputerPartnerRolePreferences,
+} from "#utils/computer-partner-profile";
 import {
   COMPUTER_PARTNER_KEYS,
-  isComputerPartnerKey as isKnownComputerPartnerKey,
   isComputerPartnerLockedByDefault,
+  isComputerPartnerKey as isKnownComputerPartnerKey,
 } from "#utils/computer-partner-profile";
-import { fixedInt, NumberHolder, randInt, randSeedItem } from "#utils/common";
 import { decrypt, encrypt } from "#utils/data";
 import { getEnumKeys } from "#utils/enums";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
@@ -1038,6 +1039,8 @@ export class GameData {
             modifiers: player.modifiers.filter(m => !m.eonFluteGuestItem).map(m => new PersistentModifierData(m, true)),
             pokeballCounts: player.pokeballCounts,
             money: Math.floor(player.money),
+            alphTiles: player.alphTiles,
+            alphLegendaryHelpersUsed: player.alphLegendaryHelpersUsed,
           };
         })
       : undefined;
@@ -1051,11 +1054,16 @@ export class GameData {
         ? globalScene.players[0].party.map(p => new PokemonData(p))
         : globalScene.getPlayerParty().map(p => new PokemonData(p)),
       enemyParty: globalScene.getEnemyParty().map(p => new PokemonData(p)),
-      modifiers: globalScene.findModifiers(() => true).filter(m => !m.eonFluteGuestItem).map(m => new PersistentModifierData(m, true)),
+      modifiers: globalScene
+        .findModifiers(() => true)
+        .filter(m => !m.eonFluteGuestItem)
+        .map(m => new PersistentModifierData(m, true)),
       enemyModifiers: globalScene.findModifiers(() => true, false).map(m => new PersistentModifierData(m, false)),
       arena: new ArenaData(globalScene.arena),
       pokeballCounts: globalScene.pokeballCounts,
       money: Math.floor(globalScene.money),
+      alphTiles: globalScene.getPlayerAlphTiles(0),
+      alphLegendaryHelpersUsed: globalScene.getPlayerAlphLegendaryHelpersUsed(0),
       players: playerSessionData,
       twoPlayerMode: globalScene.twoPlayerMode,
       multiplayerPlayerCount: globalScene.twoPlayerMode ? globalScene.multiplayerPlayerCount : undefined,
@@ -1250,6 +1258,13 @@ export class GameData {
         });
         player.money = Math.floor(playerSave?.money ?? fromSession.money ?? 0);
         player.modifiers = [];
+        player.alphTiles = {
+          ...createInitialAlphTileCounts(),
+          ...(playerSave?.alphTiles ?? fromSession.alphTiles ?? {}),
+        };
+        player.alphLegendaryHelpersUsed = [
+          ...(playerSave?.alphLegendaryHelpersUsed ?? fromSession.alphLegendaryHelpersUsed ?? []),
+        ];
       });
       globalScene.setActivePlayerIndex(0);
     } else {
@@ -1263,6 +1278,8 @@ export class GameData {
       }
 
       globalScene.money = Math.floor(fromSession.money || 0);
+      globalScene.getPlayerState(0).alphTiles = { ...createInitialAlphTileCounts(), ...(fromSession.alphTiles ?? {}) };
+      globalScene.getPlayerState(0).alphLegendaryHelpersUsed = [...(fromSession.alphLegendaryHelpersUsed ?? [])];
     }
     globalScene.updateMoneyText();
 
@@ -1339,7 +1356,8 @@ export class GameData {
           globalScene.setActivePlayerIndex(playerIndex);
         }
 
-        const playerModifiers = fromSession.players?.[playerIndex]?.modifiers ?? (playerIndex === 0 ? fromSession.modifiers : []);
+        const playerModifiers =
+          fromSession.players?.[playerIndex]?.modifiers ?? (playerIndex === 0 ? fromSession.modifiers : []);
         for (const modifierData of playerModifiers) {
           const modifier = modifierData.toModifier(Modifier[modifierData.className]);
           if (modifier) {
@@ -1389,7 +1407,9 @@ export class GameData {
       const shinyBadgePokemonIds = new Set(
         globalScene
           .getPlayerModifiers(playerIndex)
-          .filter((modifier): modifier is Modifier.ShinyBadgeModifier => modifier instanceof Modifier.ShinyBadgeModifier)
+          .filter(
+            (modifier): modifier is Modifier.ShinyBadgeModifier => modifier instanceof Modifier.ShinyBadgeModifier,
+          )
           .map(modifier => modifier.pokemonId),
       );
 
@@ -1411,7 +1431,9 @@ export class GameData {
     const computerPartnerKeys = this.getSessionComputerPartnerKeys(fromSession);
     const computerPartnerKey = computerPartnerKeys[1] ?? this.getSessionComputerPartnerKey(fromSession, 1);
     const isComputerPartnerSession =
-      !!fromSession.twoPlayerComputerPartner || Object.values(computerPartnerKeys).some(Boolean) || !!computerPartnerKey;
+      !!fromSession.twoPlayerComputerPartner
+      || Object.values(computerPartnerKeys).some(Boolean)
+      || !!computerPartnerKey;
     const isTwoPlayerSession = !!fromSession.twoPlayerMode || hasTwoPlayerSessionData || isComputerPartnerSession;
     const playerCount = fromSession.multiplayerPlayerCount ?? (hasThreePlayerSessionData ? 3 : 2);
 
@@ -1427,7 +1449,8 @@ export class GameData {
       activePlayerIndexes
         .filter(playerIndex => playerIndex > 0)
         .forEach(playerIndex => {
-          const key = computerPartnerKeys[playerIndex] ?? (playerIndex === 1 ? computerPartnerKey : undefined) ?? "alex";
+          const key =
+            computerPartnerKeys[playerIndex] ?? (playerIndex === 1 ? computerPartnerKey : undefined) ?? "alex";
           this.applySessionComputerPartner(playerIndex, key);
           globalScene.setComputerPartnerRolePreferences(
             playerIndex,
@@ -1437,7 +1460,9 @@ export class GameData {
     }
   }
 
-  private getSessionComputerPartnerKeys(fromSession: SessionSaveData): Partial<Record<PlayerIndex, ComputerPartnerKey>> {
+  private getSessionComputerPartnerKeys(
+    fromSession: SessionSaveData,
+  ): Partial<Record<PlayerIndex, ComputerPartnerKey>> {
     const keys: Partial<Record<PlayerIndex, ComputerPartnerKey>> = {};
     for (const [playerIndexValue, key] of Object.entries(fromSession.computerPartnerKeys ?? {})) {
       const playerIndex = Number(playerIndexValue) as PlayerIndex;
@@ -1449,13 +1474,19 @@ export class GameData {
     return keys;
   }
 
-  private getSessionComputerPartnerKey(fromSession: SessionSaveData, playerIndex: PlayerIndex): ComputerPartnerKey | undefined {
+  private getSessionComputerPartnerKey(
+    fromSession: SessionSaveData,
+    playerIndex: PlayerIndex,
+  ): ComputerPartnerKey | undefined {
     if (this.isComputerPartnerKey(fromSession.computerPartnerKey)) {
       return fromSession.computerPartnerKey;
     }
 
-    if (!fromSession.twoPlayerComputerPartner && !fromSession.players?.[playerIndex]?.party.some(pokemon => pokemon.computerPartnerAce)) {
-      return undefined;
+    if (
+      !fromSession.twoPlayerComputerPartner
+      && !fromSession.players?.[playerIndex]?.party.some(pokemon => pokemon.computerPartnerAce)
+    ) {
+      return;
     }
 
     const ace = fromSession.players?.[playerIndex]?.party.find(pokemon => pokemon.computerPartnerAce);
@@ -1503,7 +1534,7 @@ export class GameData {
   ): ComputerPartnerRolePreferences | undefined {
     const rolePreferences = fromSession.computerPartnerRolePreferences?.[playerIndex];
     if (!Array.isArray(rolePreferences)) {
-      return undefined;
+      return;
     }
 
     const validPreferences = rolePreferences.filter(rolePreference =>
@@ -1513,10 +1544,12 @@ export class GameData {
   }
 
   private isComputerPartnerRolePreference(rolePreference: unknown): rolePreference is ComputerPartnerRole {
-    return rolePreference === "bulk"
+    return (
+      rolePreference === "bulk"
       || rolePreference === "physical"
       || rolePreference === "special"
-      || rolePreference === "speed";
+      || rolePreference === "speed"
+    );
   }
 
   private applySessionComputerPartner(playerIndex: PlayerIndex, key: ComputerPartnerKey): void {

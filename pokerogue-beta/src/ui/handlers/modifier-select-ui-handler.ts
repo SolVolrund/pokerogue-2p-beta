@@ -10,10 +10,15 @@ import type { PokeballType } from "#enums/pokeball";
 import { ShopCursorTarget } from "#enums/shop-cursor-target";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
-import { HealShopCostModifier, LockModifierTiersModifier, PokemonHeldItemModifier } from "#modifiers/modifier";
+import {
+  HealShopCostModifier,
+  LockModifierTiersModifier,
+  PokemonHeldItemModifier,
+  UnownBoxModifier,
+} from "#modifiers/modifier";
 import type { ModifierTypeOption } from "#modifiers/modifier-type";
 import { getPlayerShopModifierTypeOptionsForWave, TmModifierType } from "#modifiers/modifier-type";
-import type { ModifierSelectCallback } from "#phases/select-modifier-phase";
+import type { AlphTileRewardOption, ModifierSelectCallback } from "#phases/select-modifier-phase";
 import { AwaitableUiHandler } from "#ui/awaitable-ui-handler";
 import { addModifierIconSprite } from "#ui/modifier-icon";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
@@ -26,16 +31,20 @@ export const SHOP_OPTIONS_ROW_LIMIT = 7;
 const SINGLE_SHOP_ROW_YOFFSET = 12;
 const DOUBLE_SHOP_ROW_YOFFSET = 24;
 const OPTION_BUTTON_YPOSITION = -62;
+const OPTION_BUTTON_LEFT_PADDING = 16;
+const OPTION_BUTTON_GAP = 14;
 
 export class ModifierSelectUiHandler extends AwaitableUiHandler {
   private modifierContainer: Phaser.GameObjects.Container;
   private rerollButtonContainer: Phaser.GameObjects.Container;
+  private alphButtonContainer: Phaser.GameObjects.Container;
   private lockRarityButtonContainer: Phaser.GameObjects.Container;
   private transferButtonContainer: Phaser.GameObjects.Container;
   private tradeButtonContainer: Phaser.GameObjects.Container;
   private checkButtonContainer: Phaser.GameObjects.Container;
   private continueButtonContainer: Phaser.GameObjects.Container;
   private rerollCostText: Phaser.GameObjects.Text;
+  private alphButtonText: Phaser.GameObjects.Text;
   private lockRarityButtonText: Phaser.GameObjects.Text;
   private moveInfoOverlay: MoveInfoOverlay;
   private moveInfoOverlayActive = false;
@@ -53,6 +62,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
   private checkButtonWidth: number;
 
   public options: ModifierOption[];
+  public alphTileOptions: AlphTileOption[];
   public shopOptionsRows: ModifierOption[][];
 
   private cursorObj: Phaser.GameObjects.Image | null;
@@ -61,6 +71,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     super(UiMode.CONFIRM);
 
     this.options = [];
+    this.alphTileOptions = [];
     this.shopOptionsRows = [];
   }
 
@@ -122,6 +133,14 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     this.rerollCostText.setOrigin(0, 0);
     this.rerollCostText.setPositionRelative(rerollButtonText, rerollButtonText.displayWidth + 5, 1);
     this.rerollButtonContainer.add(this.rerollCostText);
+
+    this.alphButtonContainer = globalScene.add.container(76, OPTION_BUTTON_YPOSITION);
+    this.alphButtonContainer.setVisible(false);
+    ui.add(this.alphButtonContainer);
+
+    this.alphButtonText = addTextObject(-4, -2, i18next.t("modifierSelectUiHandler:alph"), TextStyle.PARTY);
+    this.alphButtonText.setOrigin(0, 0);
+    this.alphButtonContainer.add(this.alphButtonText);
 
     this.lockRarityButtonContainer = globalScene.add.container(16, OPTION_BUTTON_YPOSITION);
     this.lockRarityButtonContainer.setVisible(false);
@@ -192,15 +211,14 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
 
     const partyHasHeldItem =
       this.player
-      && globalScene.findModifiersForPlayer(
-        m => m instanceof PokemonHeldItemModifier && m.isTransferable,
-        playerIndex,
-      ).length > 0;
+      && globalScene.findModifiersForPlayer(m => m instanceof PokemonHeldItemModifier && m.isTransferable, playerIndex)
+        .length > 0;
     const canLockRarities = !!globalScene.findModifierForPlayer(
       m => m instanceof LockModifierTiersModifier,
       playerIndex,
     );
     const canTrade = !!args[4];
+    const canUseAlphWall = !!globalScene.findModifierForPlayer(m => m instanceof UnownBoxModifier, playerIndex);
 
     this.transferButtonContainer.setVisible(false);
     this.transferButtonContainer.setAlpha(0);
@@ -214,6 +232,9 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     this.rerollButtonContainer.setVisible(false);
     this.rerollButtonContainer.setAlpha(0);
 
+    this.alphButtonContainer.setVisible(false);
+    this.alphButtonContainer.setAlpha(0);
+
     this.lockRarityButtonContainer.setVisible(false);
     this.lockRarityButtonContainer.setAlpha(0);
 
@@ -225,8 +246,10 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     this.rerollCost = args[3] as number;
 
     this.updateRerollCostText();
+    this.updateLeftButtonPositions();
 
     const typeOptions = args[1] as ModifierTypeOption[];
+    const alphTileRewardOptions = (args[6] ?? []) as AlphTileRewardOption[];
     const hasShop = globalScene.gameMode.getShopStatus();
     const baseShopCost = new NumberHolder(globalScene.getWaveMoneyAmount(1));
     globalScene.applyModifierForPlayer(HealShopCostModifier, playerIndex, baseShopCost);
@@ -236,17 +259,29 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     const optionsYOffset =
       shopTypeOptions.length > SHOP_OPTIONS_ROW_LIMIT ? -SINGLE_SHOP_ROW_YOFFSET : -DOUBLE_SHOP_ROW_YOFFSET;
 
+    const rewardRowY = -globalScene.scaledCanvas.height / 2 + optionsYOffset;
+    const alphTileRowY = rewardRowY + 34;
+
     for (let m = 0; m < typeOptions.length; m++) {
       const sliceWidth = globalScene.scaledCanvas.width / (typeOptions.length + 2);
-      const option = new ModifierOption(
-        sliceWidth * (m + 1) + sliceWidth * 0.5,
-        -globalScene.scaledCanvas.height / 2 + optionsYOffset,
-        typeOptions[m],
-      );
+      const option = new ModifierOption(sliceWidth * (m + 1) + sliceWidth * 0.5, rewardRowY, typeOptions[m]);
       option.setScale(0.5);
       globalScene.add.existing(option);
       this.modifierContainer.add(option);
       this.options.push(option);
+    }
+
+    for (let m = 0; m < alphTileRewardOptions.length; m++) {
+      const sliceWidth = globalScene.scaledCanvas.width / (alphTileRewardOptions.length + 2);
+      const option = new AlphTileOption(
+        sliceWidth * (m + 1) + sliceWidth * 0.5,
+        alphTileRowY,
+        alphTileRewardOptions[m],
+      );
+      option.setScale(0.375);
+      globalScene.add.existing(option);
+      this.modifierContainer.add(option);
+      this.alphTileOptions.push(option);
     }
 
     // Set "Continue" button height based on number of rows in healing items shop
@@ -338,7 +373,11 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
 
     /** Holds promises that resolve once each shop item has finished animating */
     const shopAnimPromises: Promise<void>[] = [];
+    const alphTileAnimPromises: Promise<void>[] = [];
     globalScene.time.delayedCall(1000 + maxUpgradeCount * 2000, () => {
+      for (const alphTileOption of this.alphTileOptions) {
+        alphTileOption.show(alphTileAnimPromises);
+      }
       for (const shopOption of this.shopOptionsRows.flat()) {
         // It is safe to skip awaiting the `show` method here,
         // as the promise it returns is also part of the promise appended to `shopAnimPromises`,
@@ -360,11 +399,13 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         }
 
         this.rerollButtonContainer.setAlpha(0);
+        this.alphButtonContainer.setAlpha(0);
         this.tradeButtonContainer.setAlpha(0);
         this.checkButtonContainer.setAlpha(0);
         this.lockRarityButtonContainer.setAlpha(0);
         this.continueButtonContainer.setAlpha(0);
         this.rerollButtonContainer.setVisible(true);
+        this.alphButtonContainer.setVisible(canUseAlphWall);
         this.tradeButtonContainer.setVisible(canTrade);
         this.checkButtonContainer.setVisible(true);
         this.continueButtonContainer.setVisible(this.rerollCost < 0);
@@ -377,7 +418,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         });
 
         globalScene.tweens.add({
-          targets: [this.rerollButtonContainer, this.lockRarityButtonContainer],
+          targets: [this.rerollButtonContainer, this.alphButtonContainer, this.lockRarityButtonContainer],
           alpha: this.rerollCost < 0 ? 0.5 : 1,
           duration: 250,
         });
@@ -386,7 +427,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         // Required to ensure that the user cannot interact with the UI before the animations
         // have completed, (which, among other things, would allow the GameObjects to be destroyed
         // before the animations have completed, causing errors).
-        Promise.allSettled([...shopAnimPromises, ...rewardAnimAllSettledPromises]).then(() => {
+        Promise.allSettled([...alphTileAnimPromises, ...shopAnimPromises, ...rewardAnimAllSettledPromises]).then(() => {
           const updateCursorTarget = () => {
             if (globalScene.shopCursorTarget === ShopCursorTarget.CHECK_TEAM) {
               this.setRowCursor(0);
@@ -461,19 +502,15 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         case Button.UP:
           if (this.rowCursor === 0 && this.cursor === 4) {
             success = this.setCursor(0);
-          } else if (this.rowCursor < this.shopOptionsRows.length + 1) {
-            success = this.setRowCursor(this.rowCursor + 1);
           } else {
-            success = this.setRowCursor(0);
+            success = this.setRowCursor(this.getRowCursorAbove(this.rowCursor));
           }
           break;
         case Button.DOWN:
-          if (this.rowCursor) {
-            success = this.setRowCursor(this.rowCursor - 1);
-          } else if (this.lockRarityButtonContainer.visible && this.cursor === 0) {
+          if (this.rowCursor === 0 && this.lockRarityButtonContainer.visible && this.cursor === 0) {
             success = this.setCursor(4);
           } else {
-            success = this.setRowCursor(this.shopOptionsRows.length + 1);
+            success = this.setRowCursor(this.getRowCursorBelow(this.rowCursor));
           }
           break;
         case Button.LEFT:
@@ -483,15 +520,19 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
                 success = this.lockRarityButtonContainer.visible ? this.setCursor(4) : this.setCursor(3);
                 break;
               case 1:
-                success = this.rerollButtonContainer.visible
-                  ? this.setCursor(0)
-                  : this.lockRarityButtonContainer.visible
-                    ? this.setCursor(4)
-                    : this.setCursor(3);
+                success = this.alphButtonContainer.visible
+                  ? this.setCursor(5)
+                  : this.rerollButtonContainer.visible
+                    ? this.setCursor(0)
+                    : this.lockRarityButtonContainer.visible
+                      ? this.setCursor(4)
+                      : this.setCursor(3);
                 break;
               case 2:
                 if (this.transferButtonContainer.visible) {
                   success = this.setCursor(1);
+                } else if (this.alphButtonContainer.visible) {
+                  success = this.setCursor(5);
                 } else if (this.rerollButtonContainer.visible) {
                   success = this.setCursor(0);
                 } else if (this.lockRarityButtonContainer.visible) {
@@ -517,6 +558,14 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
                 } else {
                   success = false;
                 }
+                break;
+              case 5:
+                success = this.rerollButtonContainer.visible
+                  ? this.setCursor(0)
+                  : this.lockRarityButtonContainer.visible
+                    ? this.setCursor(4)
+                    : this.setCursor(3);
+                break;
             }
           } else if (this.cursor) {
             success = this.setCursor(this.cursor - 1);
@@ -530,7 +579,9 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
           if (!this.rowCursor) {
             switch (this.cursor) {
               case 0:
-                if (this.transferButtonContainer.visible) {
+                if (this.alphButtonContainer.visible) {
+                  success = this.setCursor(5);
+                } else if (this.transferButtonContainer.visible) {
                   success = this.setCursor(1);
                 } else if (this.tradeButtonContainer.visible) {
                   success = this.setCursor(2);
@@ -552,6 +603,15 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
                   success = this.setCursor(0);
                 } else {
                   success = this.setCursor(0);
+                }
+                break;
+              case 5:
+                if (this.transferButtonContainer.visible) {
+                  success = this.setCursor(1);
+                } else if (this.tradeButtonContainer.visible) {
+                  success = this.setCursor(2);
+                } else {
+                  success = this.setCursor(3);
                 }
                 break;
             }
@@ -582,9 +642,11 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       this.modifierContainer.add(this.cursorObj);
     }
 
-    const options = this.rowCursor === 1 ? this.options : this.shopOptionsRows.at(-(this.rowCursor - 1))!;
+    const options = this.getSelectableOptionsForRow(this.rowCursor);
 
-    this.cursorObj.setScale(this.rowCursor === 1 ? 2 : this.rowCursor >= 2 ? 1.5 : 1);
+    this.cursorObj.setScale(
+      this.rowCursor === 1 ? 2 : this.isAlphTileRow(this.rowCursor) ? 1.25 : this.rowCursor >= 2 ? 1.5 : 1,
+    );
 
     // the modifier selection has been updated, always hide the overlay
     this.moveInfoOverlay.clear();
@@ -601,25 +663,28 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         return ret;
       }
 
-      const sliceWidth = globalScene.scaledCanvas.width / (options.length + 2);
-      if (this.rowCursor < 2) {
-        // Cursor on free items
-        this.cursorObj.setPosition(
-          sliceWidth * (cursor + 1) + sliceWidth * 0.5 - 20,
-          -globalScene.scaledCanvas.height / 2
-            - (this.shopOptionsRows.length > 1 ? SINGLE_SHOP_ROW_YOFFSET - 2 : DOUBLE_SHOP_ROW_YOFFSET - 2),
-        );
+      const selectedOption = options[this.cursor];
+      if (selectedOption instanceof AlphTileOption) {
+        this.cursorObj.setPosition(selectedOption.x - 10, selectedOption.y + 5);
       } else {
-        // Cursor on paying items
-        this.cursorObj.setPosition(
-          sliceWidth * (cursor + 1) + sliceWidth * 0.5 - 16,
-          -globalScene.scaledCanvas.height / 2
-            - globalScene.game.canvas.height / 32
-            - (-14 + 28 * (this.rowCursor - (this.shopOptionsRows.length - 1))),
-        );
+        if (this.rowCursor < 2) {
+          // Cursor on free items
+          this.cursorObj.setPosition(
+            selectedOption.x - 20,
+            selectedOption.y + 2,
+          );
+        } else {
+          // Cursor on paying items
+          this.cursorObj.setPosition(selectedOption.x - 16, selectedOption.y + 5);
+        }
       }
 
-      const type = options[this.cursor].modifierTypeOption.type;
+      if (selectedOption instanceof AlphTileOption) {
+        ui.showText(i18next.t("modifierSelectUiHandler:alphTileDesc"));
+        return ret;
+      }
+
+      const type = selectedOption.modifierTypeOption.type;
       type && ui.showText(type.getDescription());
       if (type instanceof TmModifierType) {
         // prepare the move overlay to be shown with the toggle
@@ -643,9 +708,12 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     } else if (cursor === 3) {
       this.cursorObj.setPosition(this.checkButtonContainer.x - this.checkButtonWidth - 10, OPTION_BUTTON_YPOSITION + 4);
       ui.showText(i18next.t("modifierSelectUiHandler:checkTeamDesc"));
-    } else {
+    } else if (cursor === 4) {
       this.cursorObj.setPosition(6, OPTION_BUTTON_YPOSITION + 4);
       ui.showText(i18next.t("modifierSelectUiHandler:lockRaritiesDesc"));
+    } else {
+      this.cursorObj.setPosition(this.alphButtonContainer.x - 10, OPTION_BUTTON_YPOSITION + 4);
+      ui.showText(i18next.t("modifierSelectUiHandler:alphDesc"));
     }
 
     return ret;
@@ -679,13 +747,16 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         if (newCursor === 4 && !this.lockRarityButtonContainer.visible) {
           newCursor = 3;
         }
+        if (newCursor === 5 && !this.alphButtonContainer.visible) {
+          newCursor = 3;
+        }
       }
       // Allows to find lock rarity button when looping from the top
       if (rowCursor === 0 && lastRowCursor > 1 && newCursor === 0 && this.lockRarityButtonContainer.visible) {
         newCursor = 4;
       }
       // Allows to loop to top when lock rarity button is shown
-      if (rowCursor === this.shopOptionsRows.length + 1 && lastRowCursor === 0 && this.cursor === 4) {
+      if (rowCursor === this.getMaxRowCursor() && lastRowCursor === 0 && this.cursor === 4) {
         newCursor = 0;
       }
       this.cursor = -1;
@@ -696,15 +767,116 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     return false;
   }
 
+  private hasAlphTileRow(): boolean {
+    return this.alphTileOptions.length > 0;
+  }
+
+  private isAlphTileRow(rowCursor: number): boolean {
+    return this.hasAlphTileRow() && rowCursor === 2;
+  }
+
+  private getFirstShopRowCursor(): number {
+    return this.hasAlphTileRow() ? 3 : 2;
+  }
+
+  private getMaxRowCursor(): number {
+    return this.shopOptionsRows.length + (this.hasAlphTileRow() ? 2 : 1);
+  }
+
+  private getTopRowCursor(): number {
+    if (this.shopOptionsRows.length > 0) {
+      return this.getMaxRowCursor();
+    }
+    if (this.options.length > 0) {
+      return 1;
+    }
+
+    return this.hasAlphTileRow() ? 2 : 0;
+  }
+
+  private getRowCursorAbove(rowCursor: number): number {
+    if (rowCursor === 0) {
+      return this.hasAlphTileRow() ? 2 : 1;
+    }
+    if (this.isAlphTileRow(rowCursor)) {
+      return 1;
+    }
+    if (rowCursor === 1) {
+      return this.shopOptionsRows.length > 0 ? this.getFirstShopRowCursor() : 0;
+    }
+    if (rowCursor < this.getMaxRowCursor()) {
+      return rowCursor + 1;
+    }
+
+    return 0;
+  }
+
+  private getRowCursorBelow(rowCursor: number): number {
+    const firstShopRowCursor = this.getFirstShopRowCursor();
+    if (rowCursor === 0) {
+      return this.getTopRowCursor();
+    }
+    if (rowCursor > firstShopRowCursor) {
+      return rowCursor - 1;
+    }
+    if (rowCursor === firstShopRowCursor) {
+      return 1;
+    }
+    if (rowCursor === 1) {
+      return this.hasAlphTileRow() ? 2 : 0;
+    }
+    if (this.isAlphTileRow(rowCursor)) {
+      return 0;
+    }
+
+    return 0;
+  }
+
+  private getSelectableOptionsForRow(rowCursor: number): Array<ModifierOption | AlphTileOption> {
+    if (rowCursor === 0) {
+      return [];
+    }
+    if (rowCursor === 1) {
+      return this.options;
+    }
+    if (this.isAlphTileRow(rowCursor)) {
+      return this.alphTileOptions;
+    }
+
+    return this.shopOptionsRows.at(-(rowCursor - (this.hasAlphTileRow() ? 2 : 1)))!;
+  }
+
   private getRowItems(rowCursor: number): number {
     switch (rowCursor) {
       case 0:
-        return 5;
+        return 6;
       case 1:
         return this.options.length;
       default:
-        return this.shopOptionsRows.at(-(rowCursor - 1))!.length;
+        return this.getSelectableOptionsForRow(rowCursor).length;
     }
+  }
+
+  clearAlphTileOptions(): void {
+    if (this.alphTileOptions.length === 0) {
+      return;
+    }
+
+    if (this.isAlphTileRow(this.rowCursor)) {
+      this.setRowCursor(this.options.length > 0 ? 1 : 0);
+    }
+
+    const options = this.alphTileOptions.splice(0, this.alphTileOptions.length);
+    globalScene.tweens.add({
+      targets: options,
+      scale: 0.01,
+      alpha: 0,
+      duration: 200,
+      ease: "Cubic.easeIn",
+      onComplete: () => {
+        options.forEach(option => option.destroy());
+      },
+    });
   }
 
   setRerollCost(rerollCost: number): void {
@@ -724,6 +896,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     const rerollDisabled = this.rerollCost < 0;
     if (rerollDisabled) {
       this.rerollCostText.setVisible(false);
+      this.updateLeftButtonPositions();
       return;
     }
     this.rerollCostText.setVisible(true);
@@ -734,6 +907,17 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     this.rerollCostText.setText(i18next.t("modifierSelectUiHandler:rerollCost", { formattedMoney }));
     this.rerollCostText.setColor(getTextColor(canReroll ? TextStyle.MONEY : TextStyle.PARTY_RED));
     this.rerollCostText.setShadowColor(getTextColor(canReroll ? TextStyle.MONEY : TextStyle.PARTY_RED, true));
+    this.updateLeftButtonPositions();
+  }
+
+  private updateLeftButtonPositions(): void {
+    const rerollRightEdge = this.rerollCostText.visible
+      ? this.rerollButtonContainer.x + this.rerollCostText.x + this.rerollCostText.displayWidth
+      : this.rerollButtonContainer.x + OPTION_BUTTON_LEFT_PADDING;
+    this.alphButtonContainer.setX(rerollRightEdge + OPTION_BUTTON_GAP);
+    this.transferButtonContainer.setX(
+      this.alphButtonContainer.x + this.alphButtonText.displayWidth + this.transferButtonWidth + OPTION_BUTTON_GAP,
+    );
   }
 
   updateLockRaritiesText(): void {
@@ -763,8 +947,13 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     /* Normally already called just after the shop, but not sure if it happens in 100% of cases */
     globalScene.refreshPlayerModifierBar();
 
-    const options = this.options.concat(this.shopOptionsRows.flat());
+    const options: Phaser.GameObjects.Container[] = [
+      ...this.options,
+      ...this.alphTileOptions,
+      ...this.shopOptionsRows.flat(),
+    ];
     this.options.splice(0, this.options.length);
+    this.alphTileOptions.splice(0, this.alphTileOptions.length);
     this.shopOptionsRows.splice(0, this.shopOptionsRows.length);
 
     globalScene.tweens.add({
@@ -781,6 +970,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
 
     [
       this.rerollButtonContainer,
+      this.alphButtonContainer,
       this.checkButtonContainer,
       this.transferButtonContainer,
       this.tradeButtonContainer,
@@ -810,6 +1000,58 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       this.cursorObj.destroy();
     }
     this.cursorObj = null;
+  }
+}
+
+class AlphTileOption extends Phaser.GameObjects.Container {
+  public alphTileRewardOption: AlphTileRewardOption;
+  private itemContainer: Phaser.GameObjects.Container;
+  private itemText: Phaser.GameObjects.Text;
+
+  constructor(x: number, y: number, alphTileRewardOption: AlphTileRewardOption) {
+    super(globalScene, x, y);
+
+    this.alphTileRewardOption = alphTileRewardOption;
+    this.setup();
+  }
+
+  setup(): void {
+    this.itemContainer = globalScene.add.container(0, 0);
+    this.itemContainer.setScale(0.5);
+    this.itemContainer.setAlpha(0);
+    this.add(this.itemContainer);
+
+    const item = addModifierIconSprite(0, 0, this.alphTileRewardOption.iconImage);
+    this.itemContainer.add(item);
+
+    this.itemText = addTextObject(0, 24, this.alphTileRewardOption.name, TextStyle.PARTY, { align: "center" });
+    this.itemText.setOrigin(0.5, 0);
+    this.itemText.setAlpha(0);
+    this.add(this.itemText);
+  }
+
+  show(promiseHolder: Promise<void>[]): void {
+    const { resolve: itemResolve, promise: itemPromise } = Promise.withResolvers<void>();
+    globalScene.tweens.add({
+      targets: this.itemContainer,
+      duration: 400,
+      ease: "Elastic.Out",
+      scale: 1.5,
+      alpha: 1,
+      onComplete: () => itemResolve(),
+    });
+    promiseHolder.push(itemPromise);
+
+    const { resolve: textResolve, promise: textPromise } = Promise.withResolvers<void>();
+    globalScene.tweens.add({
+      targets: this.itemText,
+      duration: 350,
+      alpha: 1,
+      y: 18,
+      ease: "Cubic.easeInOut",
+      onComplete: () => textResolve(),
+    });
+    promiseHolder.push(textPromise);
   }
 }
 

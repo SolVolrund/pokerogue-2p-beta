@@ -3,8 +3,19 @@ import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { activeOverrides } from "#app/overrides";
+import {
+  ALPH_MAX_TILE_COUNT,
+  ALPH_TILE_CHARACTERS,
+  type AlphFiniteTileCharacter,
+  addAlphTile,
+  getAlphTileCount,
+  getAlphTileDisplayCharacter,
+  getAlphTileItemIconKey,
+} from "#data/alph/alph-tiles";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import type { ModifierTier } from "#enums/modifier-tier";
+import { LearnMoveType } from "#enums/learn-move-type";
+import type { MoveId } from "#enums/move-id";
 import { UiMode } from "#enums/ui-mode";
 import type { Modifier } from "#modifiers/modifier";
 import {
@@ -15,13 +26,14 @@ import {
   PokeblockKitModifier,
   PokemonHeldItemModifier,
   TempExtraModifierModifier,
+  UnownBoxModifier,
 } from "#modifiers/modifier";
 import type { CustomModifierSettings, ModifierType } from "#modifiers/modifier-type";
 import {
   FusePokemonModifierType,
-  getPokeblockModifierTypeOption,
   getPlayerModifierTypeOptions,
   getPlayerShopModifierTypeOptionsForWave,
+  getPokeblockModifierTypeOption,
   ModifierTypeOption,
   PartnerPokemonReviveModifierType,
   PokemonModifierType,
@@ -37,17 +49,26 @@ import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-s
 import type { ModifierSelectUiHandler } from "#ui/modifier-select-ui-handler";
 import { SHOP_OPTIONS_ROW_LIMIT } from "#ui/modifier-select-ui-handler";
 import { PartyOption, PartyUiHandler, PartyUiMode, type PokemonSelectFilter } from "#ui/party-ui-handler";
+import { NumberHolder, randSeedInt } from "#utils/common";
 import {
-  chooseComputerPartnerRecoveryOption,
-  chooseComputerPartnerRewardOption,
+  getComputerPartnerProfile,
+  getComputerPartnerProfileWithRolePreferences,
+} from "#utils/computer-partner-profile";
+import {
   type ComputerPartnerRecoveryChoice,
   type ComputerPartnerRewardChoice,
+  chooseComputerPartnerRecoveryOption,
+  chooseComputerPartnerRewardOption,
 } from "#utils/computer-partner-reward-ai";
-import { getComputerPartnerProfile, getComputerPartnerProfileWithRolePreferences } from "#utils/computer-partner-profile";
-import { NumberHolder, randSeedInt } from "#utils/common";
 import i18next from "i18next";
 
 export type ModifierSelectCallback = (rowCursor: number, cursor: number) => boolean;
+
+export interface AlphTileRewardOption {
+  character: AlphFiniteTileCharacter;
+  iconImage: string;
+  name: string;
+}
 
 export class SelectModifierPhase extends BattlePhase {
   public readonly phaseName = "SelectModifierPhase";
@@ -56,8 +77,10 @@ export class SelectModifierPhase extends BattlePhase {
   private customModifierSettings?: CustomModifierSettings | undefined;
   private isCopy: boolean;
   private playerIndex: PlayerIndex;
+  private readonly presetAlphTileOptions?: AlphTileRewardOption[] | undefined;
 
   private typeOptions: ModifierTypeOption[];
+  private alphTileOptions: AlphTileRewardOption[] = [];
 
   constructor(
     rerollCount = 0,
@@ -65,6 +88,7 @@ export class SelectModifierPhase extends BattlePhase {
     customModifierSettings?: CustomModifierSettings,
     isCopy = false,
     playerIndex: PlayerIndex = globalScene.activePlayerIndex,
+    alphTileOptions?: AlphTileRewardOption[],
   ) {
     super();
 
@@ -73,6 +97,7 @@ export class SelectModifierPhase extends BattlePhase {
     this.customModifierSettings = customModifierSettings;
     this.isCopy = isCopy;
     this.playerIndex = playerIndex;
+    this.presetAlphTileOptions = alphTileOptions;
   }
 
   start() {
@@ -97,6 +122,7 @@ export class SelectModifierPhase extends BattlePhase {
     const modifierCount = this.getModifierCount();
 
     this.typeOptions = this.getModifierTypeOptions(modifierCount);
+    this.alphTileOptions = this.presetAlphTileOptions?.slice() ?? this.getAlphTileRewardOptions(modifierCount);
     globalScene.recordTwoPlayerRewardDebugState(
       this.playerIndex,
       this.rerollCount,
@@ -140,12 +166,20 @@ export class SelectModifierPhase extends BattlePhase {
               return this.openCheckTeamScreen(modifierSelectCallback);
             case 4:
               return this.toggleRerollLock();
+            case 5:
+              return this.openAlphWallScreen(modifierSelectCallback);
             default:
               return false;
           }
         // Pick an option from the rewards
         case 1:
           return this.selectRewardModifierOption(cursor, modifierSelectCallback);
+        // Pick an option from the Alph tile row
+        case 2:
+          if (this.alphTileOptions.length > 0) {
+            return this.selectAlphTileRewardOption(cursor);
+          }
+          return this.selectShopModifierOption(rowCursor, cursor, modifierSelectCallback);
         // Pick an option from the shop
         default: {
           return this.selectShopModifierOption(rowCursor, cursor, modifierSelectCallback);
@@ -154,6 +188,33 @@ export class SelectModifierPhase extends BattlePhase {
     };
 
     this.resetModifierSelect(modifierSelectCallback);
+  }
+
+  private getAlphTileRewardOptions(modifierCount: number): AlphTileRewardOption[] {
+    if (!globalScene.findModifierForPlayer(m => m instanceof UnownBoxModifier, this.playerIndex)) {
+      return [];
+    }
+
+    const counts = globalScene.getPlayerAlphTiles(this.playerIndex);
+    const availableCharacters = ALPH_TILE_CHARACTERS.filter(
+      character => getAlphTileCount(counts, character) < ALPH_MAX_TILE_COUNT,
+    );
+    const optionCount = Math.min(Math.max(modifierCount, 1), availableCharacters.length);
+    const characters = availableCharacters.slice();
+    const options: AlphTileRewardOption[] = [];
+
+    for (let i = 0; i < optionCount; i++) {
+      const characterIndex = randSeedInt(characters.length);
+      const character = characters.splice(characterIndex, 1)[0];
+      const displayCharacter = getAlphTileDisplayCharacter(character);
+      options.push({
+        character,
+        iconImage: getAlphTileItemIconKey(character),
+        name: i18next.t("modifierSelectUiHandler:alphTileName", { tile: displayCharacter }),
+      });
+    }
+
+    return options;
   }
 
   private isComputerPartnerRewardPlayer(): boolean {
@@ -185,7 +246,9 @@ export class SelectModifierPhase extends BattlePhase {
       const choice = chooseComputerPartnerRecoveryOption(
         shopOptions,
         party,
-        activeOverrides.WAIVE_ROLL_FEE_OVERRIDE ? Number.MAX_SAFE_INTEGER : globalScene.getPlayerMoney(this.playerIndex),
+        activeOverrides.WAIVE_ROLL_FEE_OVERRIDE
+          ? Number.MAX_SAFE_INTEGER
+          : globalScene.getPlayerMoney(this.playerIndex),
       );
 
       if (!choice) {
@@ -200,13 +263,17 @@ export class SelectModifierPhase extends BattlePhase {
       purchases++;
     }
 
-    const rewardChoice = chooseComputerPartnerRewardOption(this.typeOptions, globalScene.getPlayerParty(this.playerIndex), {
-      pokeballCounts: globalScene.getPlayerPokeballCounts(this.playerIndex),
-      computerPartnerProfile: getComputerPartnerProfileWithRolePreferences(
-        globalScene.getComputerPartnerKey(this.playerIndex),
-        globalScene.getComputerPartnerRolePreferences(this.playerIndex),
-      ),
-    });
+    const rewardChoice = chooseComputerPartnerRewardOption(
+      this.typeOptions,
+      globalScene.getPlayerParty(this.playerIndex),
+      {
+        pokeballCounts: globalScene.getPlayerPokeballCounts(this.playerIndex),
+        computerPartnerProfile: getComputerPartnerProfileWithRolePreferences(
+          globalScene.getComputerPartnerKey(this.playerIndex),
+          globalScene.getComputerPartnerRolePreferences(this.playerIndex),
+        ),
+      },
+    );
     const rewardModifier = rewardChoice ? this.createComputerPartnerChoiceModifier(rewardChoice) : null;
     if (rewardChoice && rewardModifier) {
       messages.push(this.getComputerPartnerChoiceMessage(rewardChoice, rewardModifier, false));
@@ -230,11 +297,11 @@ export class SelectModifierPhase extends BattlePhase {
   private applyComputerPartnerRecoveryChoice(choice: ComputerPartnerRecoveryChoice): string | undefined {
     const modifier = this.createComputerPartnerChoiceModifier(choice);
     if (!modifier) {
-      return undefined;
+      return;
     }
     const result = globalScene.addModifier(modifier, false, true, undefined, undefined, choice.cost, this.playerIndex);
     if (!result) {
-      return undefined;
+      return;
     }
 
     if (!activeOverrides.WAIVE_ROLL_FEE_OVERRIDE) {
@@ -255,15 +322,12 @@ export class SelectModifierPhase extends BattlePhase {
     choice: ComputerPartnerRecoveryChoice | ComputerPartnerRewardChoice,
   ): Modifier | null {
     const party = globalScene.getPlayerParty(this.playerIndex);
-    const targetPokemon =
-      choice.targetPokemonIndex !== undefined ? party[choice.targetPokemonIndex] : undefined;
-    return (
-      targetPokemon && choice.targetMoveIndex !== undefined
-        ? choice.option.type.newModifier(targetPokemon, choice.targetMoveIndex)
-        : targetPokemon
-          ? choice.option.type.newModifier(targetPokemon)
-          : choice.option.type.newModifier()
-    );
+    const targetPokemon = choice.targetPokemonIndex === undefined ? undefined : party[choice.targetPokemonIndex];
+    return targetPokemon && choice.targetMoveIndex !== undefined
+      ? choice.option.type.newModifier(targetPokemon, choice.targetMoveIndex)
+      : targetPokemon
+        ? choice.option.type.newModifier(targetPokemon)
+        : choice.option.type.newModifier();
   }
 
   private getComputerPartnerChoiceMessage(
@@ -292,19 +356,21 @@ export class SelectModifierPhase extends BattlePhase {
     choice: ComputerPartnerRecoveryChoice | ComputerPartnerRewardChoice,
   ): string | undefined {
     if (choice.targetPokemonIndex === undefined) {
-      return undefined;
+      return;
     }
 
     const targetPokemon = globalScene.getPlayerParty(this.playerIndex)[choice.targetPokemonIndex];
     return targetPokemon ? getPokemonNameWithAffix(targetPokemon) : undefined;
   }
 
-  private isComputerPartnerTeamWideChoice(choice: ComputerPartnerRecoveryChoice | ComputerPartnerRewardChoice): boolean {
+  private isComputerPartnerTeamWideChoice(
+    choice: ComputerPartnerRecoveryChoice | ComputerPartnerRewardChoice,
+  ): boolean {
     return choice.itemId === "SACRED_ASH" || choice.itemId === "RARER_CANDY";
   }
 
   private queueComputerPartnerChoiceMessages(messages: string[]): void {
-    if (!messages.length) {
+    if (messages.length === 0) {
       return;
     }
     globalScene.waitForPlayerInput(0);
@@ -332,20 +398,47 @@ export class SelectModifierPhase extends BattlePhase {
     return this.applyChosenModifier(modifierType, -1, modifierSelectCallback);
   }
 
+  private selectAlphTileRewardOption(cursor: number): boolean {
+    const tileOption = this.alphTileOptions[cursor];
+    if (!tileOption) {
+      globalScene.ui.playError();
+      return false;
+    }
+
+    if (!addAlphTile(globalScene.getPlayerAlphTiles(this.playerIndex), tileOption.character)) {
+      globalScene.ui.playError();
+      return false;
+    }
+
+    this.alphTileOptions = [];
+    audioManager.playSound("se/buy");
+    (globalScene.ui.getHandler() as ModifierSelectUiHandler).clearAlphTileOptions();
+    globalScene.ui.showText(
+      i18next.t("modifierSelectUiHandler:alphTileGain", {
+        tile: getAlphTileDisplayCharacter(tileOption.character),
+      }),
+      0,
+      undefined,
+      0,
+      true,
+    );
+    globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("alph-tile-collected");
+    return false;
+  }
+
   // Pick a modifier from the shop and apply it
   private selectShopModifierOption(
     rowCursor: number,
     cursor: number,
     modifierSelectCallback: ModifierSelectCallback,
   ): boolean {
+    const firstShopRowCursor = this.alphTileOptions.length > 0 ? 3 : 2;
     const shopOptions = getPlayerShopModifierTypeOptionsForWave(
       globalScene.currentBattle.waveIndex,
       globalScene.getWaveMoneyAmount(1),
     );
-    const shopOption =
-      shopOptions[
-        rowCursor > 2 || shopOptions.length <= SHOP_OPTIONS_ROW_LIMIT ? cursor : cursor + SHOP_OPTIONS_ROW_LIMIT
-      ];
+    const useSecondShopRow = shopOptions.length > SHOP_OPTIONS_ROW_LIMIT && rowCursor === firstShopRowCursor;
+    const shopOption = shopOptions[useSecondShopRow ? cursor + SHOP_OPTIONS_ROW_LIMIT : cursor];
     const modifierType = shopOption.type;
     // Apply Black Sludge to healing item cost
     const healingItemCost = new NumberHolder(shopOption.cost);
@@ -412,42 +505,44 @@ export class SelectModifierPhase extends BattlePhase {
   // Transfer modifiers among party pokemon
   private openModifierTransferScreen(modifierSelectCallback: ModifierSelectCallback) {
     const party = globalScene.getPlayerParty(this.playerIndex);
-    globalScene.ui.setModeWithoutClear(
-      UiMode.PARTY,
-      PartyUiMode.MODIFIER_TRANSFER,
-      this.getFieldSlotForPlayer(this.playerIndex),
-      (fromSlotIndex: number, itemIndex: number, itemQuantity: number, toSlotIndex: number) => {
-        if (
-          toSlotIndex !== undefined
-          && fromSlotIndex < 6
-          && toSlotIndex < 6
-          && fromSlotIndex !== toSlotIndex
-          && itemIndex > -1
-        ) {
-          const itemModifiers = globalScene.findModifiersForPlayer(
-            m => m instanceof PokemonHeldItemModifier && m.isTransferable && m.pokemonId === party[fromSlotIndex].id,
-            this.playerIndex,
-          ) as PokemonHeldItemModifier[];
-          const itemModifier = itemModifiers[itemIndex];
-          globalScene.tryTransferHeldItemModifier(
-            itemModifier,
-            party[toSlotIndex],
-            true,
-            itemQuantity,
-            undefined,
-            undefined,
-            false,
-          );
-        } else {
-          this.resetModifierSelect(modifierSelectCallback);
+    globalScene.ui
+      .setModeWithoutClear(
+        UiMode.PARTY,
+        PartyUiMode.MODIFIER_TRANSFER,
+        this.getFieldSlotForPlayer(this.playerIndex),
+        (fromSlotIndex: number, itemIndex: number, itemQuantity: number, toSlotIndex: number) => {
+          if (
+            toSlotIndex !== undefined
+            && fromSlotIndex < 6
+            && toSlotIndex < 6
+            && fromSlotIndex !== toSlotIndex
+            && itemIndex > -1
+          ) {
+            const itemModifiers = globalScene.findModifiersForPlayer(
+              m => m instanceof PokemonHeldItemModifier && m.isTransferable && m.pokemonId === party[fromSlotIndex].id,
+              this.playerIndex,
+            ) as PokemonHeldItemModifier[];
+            const itemModifier = itemModifiers[itemIndex];
+            globalScene.tryTransferHeldItemModifier(
+              itemModifier,
+              party[toSlotIndex],
+              true,
+              itemQuantity,
+              undefined,
+              undefined,
+              false,
+            );
+          } else {
+            this.resetModifierSelect(modifierSelectCallback);
+          }
+        },
+        PartyUiHandler.FilterItemMaxStacks,
+      )
+      .then(() => {
+        if (globalScene.twoPlayerMode) {
+          globalScene.waitForPlayerInput(this.playerIndex);
         }
-      },
-      PartyUiHandler.FilterItemMaxStacks,
-    ).then(() => {
-      if (globalScene.twoPlayerMode) {
-        globalScene.waitForPlayerInput(this.playerIndex);
-      }
-    });
+      });
     return true;
   }
 
@@ -470,13 +565,16 @@ export class SelectModifierPhase extends BattlePhase {
           return true;
         },
       },
-      ...partnerPlayerIndexes.map(partnerPlayerIndex => ({
-        label: `Check ${this.getPlayerDisplayName(partnerPlayerIndex)}'s team`,
-        handler: () => {
-          this.openCheckTeamParty(partnerPlayerIndex, restoreRewardScreen, this.playerIndex);
-          return true;
-        },
-      }) satisfies OptionSelectItem),
+      ...partnerPlayerIndexes.map(
+        partnerPlayerIndex =>
+          ({
+            label: `Check ${this.getPlayerDisplayName(partnerPlayerIndex)}'s team`,
+            handler: () => {
+              this.openCheckTeamParty(partnerPlayerIndex, restoreRewardScreen, this.playerIndex);
+              return true;
+            },
+          }) satisfies OptionSelectItem,
+      ),
       {
         label: i18next.t("menu:cancel"),
         handler: () => {
@@ -490,11 +588,30 @@ export class SelectModifierPhase extends BattlePhase {
     return true;
   }
 
-  private openCheckTeamParty(
-    playerIndex: PlayerIndex,
-    onComplete: () => void,
-    inputPlayerIndex = playerIndex,
-  ): void {
+  private openAlphWallScreen(modifierSelectCallback: ModifierSelectCallback): boolean {
+    globalScene.ui.setModeWithoutClear(UiMode.ALPH_WALL, {
+      playerIndex: this.playerIndex,
+      onClose: () => this.resetModifierSelect(modifierSelectCallback),
+      onMoveSpell: (partyMemberIndex: number, moveId: MoveId) => this.applyAlphMoveSpell(partyMemberIndex, moveId),
+    });
+    return true;
+  }
+
+  private applyAlphMoveSpell(partyMemberIndex: number, moveId: MoveId): void {
+    globalScene.phaseManager.unshiftNew(
+      "LearnMovePhase",
+      partyMemberIndex,
+      moveId,
+      LearnMoveType.LEARN_MOVE,
+      -1,
+      this.playerIndex,
+    );
+    globalScene.phaseManager.unshiftPhase(this.copy());
+    globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("alph-spell-learn-move");
+    super.end();
+  }
+
+  private openCheckTeamParty(playerIndex: PlayerIndex, onComplete: () => void, inputPlayerIndex = playerIndex): void {
     globalScene.ui
       .setModeWithoutClear(UiMode.PARTY, PartyUiMode.CHECK, this.getFieldSlotForPlayer(playerIndex), () => {
         onComplete();
@@ -515,13 +632,16 @@ export class SelectModifierPhase extends BattlePhase {
     const sourcePlayerIndex = this.playerIndex;
     const restoreRewardScreen = () => this.resetModifierSelect(modifierSelectCallback);
     const tradeTargets = this.getAvailableTradeTargetPlayerIndexes(sourcePlayerIndex);
-    const options: OptionSelectItem[] = tradeTargets.map(targetPlayerIndex => ({
-      label: `Trade with ${this.getPlayerDisplayName(targetPlayerIndex)}`,
-      handler: () => {
-        this.openTradeScreenWithTarget(sourcePlayerIndex, targetPlayerIndex, restoreRewardScreen);
-        return true;
-      },
-    }) satisfies OptionSelectItem);
+    const options: OptionSelectItem[] = tradeTargets.map(
+      targetPlayerIndex =>
+        ({
+          label: `Trade with ${this.getPlayerDisplayName(targetPlayerIndex)}`,
+          handler: () => {
+            this.openTradeScreenWithTarget(sourcePlayerIndex, targetPlayerIndex, restoreRewardScreen);
+            return true;
+          },
+        }) satisfies OptionSelectItem,
+    );
     options.push({
       label: i18next.t("menu:cancel"),
       handler: () => {
@@ -614,13 +734,16 @@ export class SelectModifierPhase extends BattlePhase {
       return false;
     }
 
-    const options: OptionSelectItem[] = partnerPlayerIndexes.map(partnerPlayerIndex => ({
-      label: `Use on ${this.getPlayerDisplayName(partnerPlayerIndex)}'s team`,
-      handler: () => {
-        this.openPartnerReviveParty(modifierType, cost, partnerPlayerIndex, restoreRewardScreen);
-        return true;
-      },
-    }) satisfies OptionSelectItem);
+    const options: OptionSelectItem[] = partnerPlayerIndexes.map(
+      partnerPlayerIndex =>
+        ({
+          label: `Use on ${this.getPlayerDisplayName(partnerPlayerIndex)}'s team`,
+          handler: () => {
+            this.openPartnerReviveParty(modifierType, cost, partnerPlayerIndex, restoreRewardScreen);
+            return true;
+          },
+        }) satisfies OptionSelectItem,
+    );
     options.push({
       label: i18next.t("menu:cancel"),
       handler: () => {
@@ -686,7 +809,9 @@ export class SelectModifierPhase extends BattlePhase {
       .getActivePlayerIndexes()
       .filter(playerIndex => playerIndex !== sourcePlayerIndex)
       .filter(playerIndex =>
-        globalScene.getPlayerParty(playerIndex).some(pokemon => (modifierType.selectFilter?.(pokemon) ?? null) === null),
+        globalScene
+          .getPlayerParty(playerIndex)
+          .some(pokemon => (modifierType.selectFilter?.(pokemon) ?? null) === null),
       );
   }
 
@@ -846,24 +971,22 @@ export class SelectModifierPhase extends BattlePhase {
       globalScene.dismissEonFluteGuestIfOwnerRevived(targetPlayerIndex);
     }
 
-    if (cost !== -1) {
-      if (result) {
-        if (!activeOverrides.WAIVE_ROLL_FEE_OVERRIDE) {
-          globalScene.setPlayerMoney(globalScene.getPlayerMoney(this.playerIndex) - cost, this.playerIndex);
-          globalScene.updateMoneyText();
-          globalScene.animateMoneyChanged(false);
-        }
-        audioManager.playSound("se/buy");
-        (globalScene.ui.getHandler() as ModifierSelectUiHandler).updateCostText();
-        globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("shop-purchased");
-      } else {
-        globalScene.ui.playError();
-      }
-    } else {
+    if (cost === -1) {
       globalScene.ui.clearText();
       globalScene.ui.setMode(UiMode.MESSAGE);
       globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("reward-picked");
       super.end();
+    } else if (result) {
+      if (!activeOverrides.WAIVE_ROLL_FEE_OVERRIDE) {
+        globalScene.setPlayerMoney(globalScene.getPlayerMoney(this.playerIndex) - cost, this.playerIndex);
+        globalScene.updateMoneyText();
+        globalScene.animateMoneyChanged(false);
+      }
+      audioManager.playSound("se/buy");
+      (globalScene.ui.getHandler() as ModifierSelectUiHandler).updateCostText();
+      globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("shop-purchased");
+    } else {
+      globalScene.ui.playError();
     }
   }
 
@@ -874,31 +997,33 @@ export class SelectModifierPhase extends BattlePhase {
     modifierSelectCallback: ModifierSelectCallback,
   ): void {
     const party = globalScene.getPlayerParty(this.playerIndex);
-    globalScene.ui.setModeWithoutClear(
-      UiMode.PARTY,
-      PartyUiMode.SPLICE,
-      this.getFieldSlotForPlayer(this.playerIndex),
-      (fromSlotIndex: number, spliceSlotIndex: number) => {
-        if (
-          spliceSlotIndex !== undefined
-          && fromSlotIndex < 6
-          && spliceSlotIndex < 6
-          && fromSlotIndex !== spliceSlotIndex
-        ) {
-          globalScene.ui.setMode(UiMode.MODIFIER_SELECT, this.isPlayer()).then(() => {
-            const modifier = modifierType.newModifier(party[fromSlotIndex], party[spliceSlotIndex])!; //TODO: is the bang correct?
-            this.applyModifier(modifier, cost, true);
-          });
-        } else {
-          this.resetModifierSelect(modifierSelectCallback);
+    globalScene.ui
+      .setModeWithoutClear(
+        UiMode.PARTY,
+        PartyUiMode.SPLICE,
+        this.getFieldSlotForPlayer(this.playerIndex),
+        (fromSlotIndex: number, spliceSlotIndex: number) => {
+          if (
+            spliceSlotIndex !== undefined
+            && fromSlotIndex < 6
+            && spliceSlotIndex < 6
+            && fromSlotIndex !== spliceSlotIndex
+          ) {
+            globalScene.ui.setMode(UiMode.MODIFIER_SELECT, this.isPlayer()).then(() => {
+              const modifier = modifierType.newModifier(party[fromSlotIndex], party[spliceSlotIndex])!; //TODO: is the bang correct?
+              this.applyModifier(modifier, cost, true);
+            });
+          } else {
+            this.resetModifierSelect(modifierSelectCallback);
+          }
+        },
+        modifierType.selectFilter,
+      )
+      .then(() => {
+        if (globalScene.twoPlayerMode) {
+          globalScene.waitForPlayerInput(this.playerIndex);
         }
-      },
-      modifierType.selectFilter,
-    ).then(() => {
-      if (globalScene.twoPlayerMode) {
-        globalScene.waitForPlayerInput(this.playerIndex);
-      }
-    });
+      });
   }
 
   // Opens the party menu to apply one of various modifiers
@@ -922,35 +1047,37 @@ export class SelectModifierPhase extends BattlePhase {
           ? PartyUiMode.REMEMBER_MOVE_MODIFIER
           : PartyUiMode.MODIFIER;
     const tmMoveId = isTmModifier ? (modifierType as TmModifierType).moveId : undefined;
-    globalScene.ui.setModeWithoutClear(
-      UiMode.PARTY,
-      partyUiMode,
-      this.getFieldSlotForPlayer(this.playerIndex),
-      (slotIndex: number, option: PartyOption) => {
-        if (slotIndex < 6) {
-          globalScene.ui.setMode(UiMode.MODIFIER_SELECT, this.isPlayer()).then(() => {
-            const modifier = isMoveModifier
-              ? modifierType.newModifier(party[slotIndex], option - PartyOption.MOVE_1)
-              : isRememberMoveModifier
-                ? modifierType.newModifier(party[slotIndex], option as number)
-                : modifierType.newModifier(party[slotIndex]);
-            this.applyModifier(modifier!, cost, true); // TODO: is the bang correct?
-          });
-        } else {
-          this.resetModifierSelect(modifierSelectCallback);
+    globalScene.ui
+      .setModeWithoutClear(
+        UiMode.PARTY,
+        partyUiMode,
+        this.getFieldSlotForPlayer(this.playerIndex),
+        (slotIndex: number, option: PartyOption) => {
+          if (slotIndex < 6) {
+            globalScene.ui.setMode(UiMode.MODIFIER_SELECT, this.isPlayer()).then(() => {
+              const modifier = isMoveModifier
+                ? modifierType.newModifier(party[slotIndex], option - PartyOption.MOVE_1)
+                : isRememberMoveModifier
+                  ? modifierType.newModifier(party[slotIndex], option as number)
+                  : modifierType.newModifier(party[slotIndex]);
+              this.applyModifier(modifier!, cost, true); // TODO: is the bang correct?
+            });
+          } else {
+            this.resetModifierSelect(modifierSelectCallback);
+          }
+        },
+        pokemonModifierType.selectFilter,
+        modifierType instanceof PokemonMoveModifierType
+          ? (modifierType as PokemonMoveModifierType).moveSelectFilter
+          : undefined,
+        tmMoveId,
+        isPpRestoreModifier,
+      )
+      .then(() => {
+        if (globalScene.twoPlayerMode) {
+          globalScene.waitForPlayerInput(this.playerIndex);
         }
-      },
-      pokemonModifierType.selectFilter,
-      modifierType instanceof PokemonMoveModifierType
-        ? (modifierType as PokemonMoveModifierType).moveSelectFilter
-        : undefined,
-      tmMoveId,
-      isPpRestoreModifier,
-    ).then(() => {
-      if (globalScene.twoPlayerMode) {
-        globalScene.waitForPlayerInput(this.playerIndex);
-      }
-    });
+      });
   }
 
   // Function that determines how many reward slots are available
@@ -988,6 +1115,7 @@ export class SelectModifierPhase extends BattlePhase {
       this.getRerollCost(this.shouldLockRarities()),
       globalScene.twoPlayerMode && this.hasAvailableTradeTarget(this.playerIndex),
       this.playerIndex,
+      this.alphTileOptions,
     );
   }
 
@@ -1090,6 +1218,7 @@ export class SelectModifierPhase extends BattlePhase {
       },
       true,
       this.playerIndex,
+      this.alphTileOptions,
     );
   }
 

@@ -68,6 +68,7 @@ import { UnavailableModalUiHandler } from "#ui/unavailable-modal-ui-handler";
 import { executeIf } from "#utils/common";
 import i18next from "i18next";
 import { AdminUiHandler } from "./handlers/admin-ui-handler";
+import { AlphWallUiHandler } from "./handlers/alph-wall-ui-handler";
 import { RenameRunFormUiHandler } from "./handlers/rename-run-ui-handler";
 
 const transitionModes = [
@@ -198,6 +199,7 @@ export class UI extends Phaser.GameObjects.Container {
       new ChangePasswordFormUiHandler(),
       new SettingsEventsUiHandler(),
       new ContestInputUiHandler(),
+      new AlphWallUiHandler(),
     ];
   }
 

@@ -33,7 +33,7 @@ export class EonFluteSummonPhase extends FieldPhase {
     void pokemon.loadAssets().then(() => {
       globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
         globalScene.ui.showText(
-          i18next.t("battle:eonFluteSummon", {
+          i18next.t(globalScene.isLegendaryHelperGuest(pokemon) ? "battle:glassBallSummon" : "battle:eonFluteSummon", {
             pokemonName: getPokemonNameWithAffix(pokemon),
           }),
           null,

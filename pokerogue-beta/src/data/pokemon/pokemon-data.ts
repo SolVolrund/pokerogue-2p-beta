@@ -10,6 +10,7 @@ import type { MoveId } from "#enums/move-id";
 import type { Nature } from "#enums/nature";
 import type { PokemonType, RegularPokemonType } from "#enums/pokemon-type";
 import type { SpeciesId } from "#enums/species-id";
+import type { PermanentStat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
 import type { Pokemon } from "#field/pokemon";
 import type { ObtainStatusEffectPhase } from "#phases/obtain-status-effect-phase";
@@ -32,6 +33,7 @@ export class CustomPokemonData {
   public passive: AbilityId | -1;
   public nature: Nature | -1;
   public types: (RegularPokemonType | null)[];
+  public alphBaseStatBoosts: Partial<Record<PermanentStat, number>>;
 
   constructor(data?: CustomPokemonData | Partial<CustomPokemonData>) {
     this.spriteScale = data?.spriteScale ?? -1;
@@ -39,6 +41,7 @@ export class CustomPokemonData {
     this.passive = data?.passive ?? -1;
     this.nature = data?.nature ?? -1;
     this.types = data?.types ?? [];
+    this.alphBaseStatBoosts = { ...(data?.alphBaseStatBoosts ?? {}) };
   }
 }
 

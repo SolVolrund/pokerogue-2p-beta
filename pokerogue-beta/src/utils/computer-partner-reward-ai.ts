@@ -196,6 +196,7 @@ const REWARD_PRIORITY: Partial<Record<ComputerPartnerRecoveryItemId | string, nu
   MYSTICAL_ROCK: 16,
   LIGHT_CLAY: 16,
   LOADED_DICE: 17,
+  UNOWN_BOX: 17,
   TM_ULTRA: 17,
   MINT: 18,
   PP_MAX: 19,
@@ -989,6 +990,11 @@ function getRewardTarget(
 
   if (itemId === "LEEK") {
     return chooseScoredPokemonTarget(type, party, getAttackingStatScore, pokemon => hasSpeciesInList(pokemon, LEEK_SPECIES));
+  }
+
+  if (itemId === "UNOWN_BOX") {
+    return chooseScoredPokemonTarget(type, party, (_pokemon, targetPokemonIndex) => 300 - targetPokemonIndex, pokemon =>
+      hasSpeciesInList(pokemon, [SpeciesId.UNOWN]));
   }
 
   if (itemId === "MYSTICAL_ROCK") {

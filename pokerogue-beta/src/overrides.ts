@@ -53,14 +53,16 @@ import type { IntClosedRange, TupleOf } from "type-fest";
  */
 //const overrides = {} satisfies Partial<InstanceType<OverridesType>>;
 
-const overrides = {
-//  STARTING_WAVE_OVERRIDE: 1,
+const overrides: Partial<InstanceType<OverridesType>> = {
+//  STARTING_WAVE_OVERRIDE: 2,
 //  STARTING_BIOME_OVERRIDE: BiomeId.FARAWAY_ISLAND,
-//  BATTLE_TYPE_OVERRIDE: BattleType.TRAINER,
+//  BATTLE_TYPE_OVERRIDE: BattleType.WILD,
 //  RANDOM_TRAINER_OVERRIDE: {trainerType: TrainerType.DAWN_ZORUA},
-//  ENEMY_SPECIES_OVERRIDE: SpeciesId.ZORUA,
-//  ENEMY_LEVEL_OVERRIDE: 1,
-} satisfies Partial<InstanceType<OverridesType>>;
+//  ENEMY_SPECIES_OVERRIDE: SpeciesId.UNOWN,
+//  ENEMY_LEVEL_OVERRIDE: 5,
+//  ENEMY_HELD_ITEMS_OVERRIDE: [{ name: "UNOWN_BOX" }],
+//  ALPH_TILE_STOCKPILE_OVERRIDE: false,
+};
 
 /**
  * If you need to add Overrides values for local testing do that inside {@linkcode overrides}
@@ -157,6 +159,8 @@ class DefaultOverrides {
   };
   /** Forces an item to be UNLOCKED */
   readonly ITEM_UNLOCK_OVERRIDE: Unlockables[] = [];
+  /** If `true`, fills every finite Alph tile to its max count whenever the tile inventory is read. */
+  readonly ALPH_TILE_STOCKPILE_OVERRIDE: boolean = false;
   /** Set to `true` to show all tutorials */
   readonly BYPASS_TUTORIAL_SKIP_OVERRIDE: boolean = false;
   /** Set to `true` to be able to re-earn already unlocked achievements */

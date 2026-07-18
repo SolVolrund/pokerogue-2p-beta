@@ -185,8 +185,9 @@ export class FaintPhase extends PokemonPhase {
 
     const eonFluteGuestOwner = pokemon.isPlayer() ? globalScene.getEonFluteGuestOwner(pokemon) : undefined;
     if (eonFluteGuestOwner !== undefined) {
+      const lostMessageKey = globalScene.isLegendaryHelperGuest(pokemon) ? "battle:glassBallLost" : "battle:eonFluteLost";
       globalScene.consumeEonFlute(eonFluteGuestOwner);
-      globalScene.phaseManager.queueMessage(i18next.t("battle:eonFluteLost"), null, true);
+      globalScene.phaseManager.queueMessage(i18next.t(lostMessageKey), null, true);
     }
 
     if (this.player) {

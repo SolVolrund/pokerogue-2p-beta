@@ -1737,6 +1737,12 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
         baseStats[s] = Math.ceil(baseStats[s] / 2);
       }
     }
+    for (const s of PERMANENT_STATS) {
+      const alphBoost = this.customPokemonData.alphBaseStatBoosts?.[s] ?? 0;
+      if (alphBoost > 0) {
+        baseStats[s] = Math.min(baseStats[s] + alphBoost, 999999);
+      }
+    }
     // Vitamins
     globalScene.applyModifiersForPokemon(BaseStatModifier, this, this, baseStats);
     // Grand Laurel

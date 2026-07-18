@@ -65,7 +65,7 @@ export class EonFluteDismissPhase extends FieldPhase {
 
     if (this.summonRealPokemon) {
       globalScene.ui.showText(
-        i18next.t("battle:eonFluteReturn", {
+        i18next.t(globalScene.isLegendaryHelperGuest(pokemon) ? "battle:glassBallReturn" : "battle:eonFluteReturn", {
           pokemonName: getPokemonNameWithAffix(pokemon),
         }),
         null,

@@ -33,6 +33,18 @@ import type {
 import { UiInputs } from "#app/ui-inputs";
 import { STARTING_WAVE } from "#balance/misc";
 import { FRIENDSHIP_GAIN_FROM_BATTLE } from "#balance/starters";
+import {
+  ALPH_INFINITE_TILE_CHARACTERS,
+  ALPH_MAX_TILE_COUNT,
+  ALPH_TILE_CHARACTERS,
+  type AlphTileCounts,
+  createInitialAlphTileCounts,
+  getAlphTileTextureKey,
+} from "#data/alph/alph-tiles";
+import {
+  ALPH_LEGENDARY_HELPER_CONFIGS,
+  type AlphLegendaryHelperId,
+} from "#data/alph/legendary-helpers";
 import { initCommonAnims, initMoveAnim, loadCommonAnimAssets, loadMoveAnimAssets } from "#data/battle-anims";
 import { isContestHallScheduledEncounterDue } from "#data/contests/contest-hall-schedule";
 import { getDailyMysteryEncounter } from "#data/daily-seed/daily-run";
@@ -48,7 +60,7 @@ import { getTypeDamageMultiplier, getTypeRgb } from "#data/type";
 import { AiType } from "#enums/ai-type";
 import { BattleStyle } from "#enums/battle-style";
 import { BattleType } from "#enums/battle-type";
-import { BattlerIndex } from "#enums/battler-index";
+import type { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BerryType } from "#enums/berry-type";
 import { BiomeId } from "#enums/biome-id";
@@ -67,9 +79,9 @@ import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { Nature } from "#enums/nature";
 import { PlayerGender } from "#enums/player-gender";
 import {
-  PlayerTrainerSprite,
   getPlayerTrainerSpriteBackTextureKey,
   getPlayerTrainerSpriteYOffset,
+  PlayerTrainerSprite,
 } from "#enums/player-trainer-sprite";
 import { PokeballType } from "#enums/pokeball";
 import type { PokemonAnimType } from "#enums/pokemon-anim-type";
@@ -103,6 +115,7 @@ import {
   ExpShareModifier,
   FusePokemonModifier,
   HealingBoosterModifier,
+  LegendaryHelperModifier,
   ModifierBar,
   MultipleParticipantExpBonusModifier,
   PersistentModifier,
@@ -113,9 +126,8 @@ import {
   PokemonIncrementingStatModifier,
   RememberMoveModifier,
   ShinyBadgeModifier,
-  TurnHeldItemTransferModifier,
+  type TurnHeldItemTransferModifier,
 } from "#modifiers/modifier";
-import { PokemonMove } from "#moves/pokemon-move";
 import {
   getDefaultModifierTypeForTier,
   getEnemyModifierTypesForWave,
@@ -123,9 +135,10 @@ import {
   getLuckTextTint,
   getPartyLuckValue,
   type ModifierType,
-  ModifierTypeGenerator,
+  type ModifierTypeGenerator,
   PokemonHeldItemModifierType,
 } from "#modifiers/modifier-type";
+import { PokemonMove } from "#moves/pokemon-move";
 import { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterSaveData } from "#mystery-encounters/mystery-encounter-save-data";
 import { allMysteryEncounters, mysteryEncountersByBiome } from "#mystery-encounters/mystery-encounters";
@@ -139,10 +152,7 @@ import { GameData } from "#system/game-data";
 import { initGameSpeed } from "#system/game-speed";
 import type { PokemonData } from "#system/pokemon-data";
 import { MusicPreference, Setting, SettingType, setSetting } from "#system/settings";
-import {
-  getMysteryEncounterEventSettings,
-  isMysteryEncounterEnabledBySettings,
-} from "#system/settings-events";
+import { getMysteryEncounterEventSettings, isMysteryEncounterEnabledBySettings } from "#system/settings-events";
 import type { Voucher } from "#system/voucher";
 import { vouchers } from "#system/voucher";
 import { trainerConfigs } from "#trainers/trainer-config";
@@ -167,6 +177,8 @@ import { addTextObject, getTextColor, RAINBOW_TINT } from "#ui/text";
 import { UI } from "#ui/ui";
 import { addUiThemeOverrides, updateWindowType } from "#ui/ui-theme";
 import { playTween } from "#utils/anim-utils";
+import { getEnemyBattlerIndex, getFieldIndexFromBattlerIndex, getPlayerBattlerIndex } from "#utils/battler-index-utils";
+import { isClassicFinalBossPhaseTwo } from "#utils/classic-final-boss-utils";
 import {
   BooleanHolder,
   fixedInt,
@@ -180,23 +192,17 @@ import {
   randSeedItem,
   shiftCharCodes,
 } from "#utils/common";
+import {
+  type ComputerPartnerKey,
+  type ComputerPartnerRolePreferences,
+  getComputerPartnerProfile,
+} from "#utils/computer-partner-profile";
 import { deepMergeSpriteData } from "#utils/data";
 import { getEnumValues } from "#utils/enums";
 import { cachedFetch } from "#utils/fetch-utils";
 import { getModifierPoolForType, getModifierType } from "#utils/modifier-utils";
 import { decodeNickname, getPokemonSpecies } from "#utils/pokemon-utils";
 import { capitalizeFirstLetterOnly } from "#utils/strings";
-import {
-  getComputerPartnerProfile,
-  type ComputerPartnerKey,
-  type ComputerPartnerRolePreferences,
-} from "#utils/computer-partner-profile";
-import { isClassicFinalBossPhaseTwo } from "#utils/classic-final-boss-utils";
-import {
-  getEnemyBattlerIndex,
-  getFieldIndexFromBattlerIndex,
-  getPlayerBattlerIndex,
-} from "#utils/battler-index-utils";
 import i18next from "i18next";
 import Phaser from "phaser";
 export type PokeballCounts = Record<Exclude<PokeballType, PokeballType.LUXURY_BALL>, number>;
@@ -224,6 +230,8 @@ const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = null;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = null;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = true;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_PLAYER_MONEY: number | null = null;
+const EON_FLUTE_HELPER_SOURCE_ID = "eon_flute" as const;
+type LegendaryHelperSourceId = typeof EON_FLUTE_HELPER_SOURCE_ID | AlphLegendaryHelperId;
 const EON_FLUTE_HELPER_SPECIES = [SpeciesId.LATIAS, SpeciesId.LATIOS] as const;
 const EON_FLUTE_HELPER_MOVES: Record<(typeof EON_FLUTE_HELPER_SPECIES)[number], MoveId[]> = {
   [SpeciesId.LATIAS]: [MoveId.MIST_BALL, MoveId.DRAGON_PULSE, MoveId.WISH, MoveId.RECOVER],
@@ -329,7 +337,10 @@ export interface PlayerRunState {
   money: number;
   pokeballCounts: PokeballCounts;
   modifiers: PersistentModifier[];
+  alphTiles: AlphTileCounts;
+  alphLegendaryHelpersUsed: AlphLegendaryHelperId[];
   eonFluteGuest?: PlayerPokemon;
+  eonFluteGuestSource?: LegendaryHelperSourceId;
 }
 
 export interface TwoPlayerDebugStateCheckpoint {
@@ -342,8 +353,8 @@ interface TwoPlayerRewardDebugState {
   playerIndex: PlayerIndex;
   rerollCount: number;
   rewardSeedOffset: number;
-  party: Array<Record<string, unknown>>;
-  modifiers: Array<Record<string, unknown>>;
+  party: Record<string, unknown>[];
+  modifiers: Record<string, unknown>[];
   rewards: string[];
 }
 
@@ -372,6 +383,8 @@ function createPlayerRunState(): PlayerRunState {
     money: 0,
     pokeballCounts: createInitialPokeballCounts(),
     modifiers: [],
+    alphTiles: createInitialAlphTileCounts(),
+    alphLegendaryHelpersUsed: [],
   };
 }
 
@@ -404,7 +417,9 @@ function getTwoPlayerPlayerCount(): MultiplayerPlayerCount {
 }
 
 function isTwoPlayerComputerPartnerEnabled(): boolean {
-  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("twoPlayerComputerPartner") === "1";
+  return (
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("twoPlayerComputerPartner") === "1"
+  );
 }
 
 function getTwoPlayerLocalInputSeat(): LocalInputSeat {
@@ -438,7 +453,7 @@ function getTwoPlayerLocalInputSeat(): LocalInputSeat {
 
 function getTwoPlayerRunSeedOverride(): string | undefined {
   if (typeof window === "undefined") {
-    return undefined;
+    return;
   }
 
   return new URLSearchParams(window.location.search).get("twoPlayerRunSeed") ?? undefined;
@@ -714,6 +729,11 @@ export class BattleScene extends SceneBase {
    * Called by Phaser on new game start.
    */
   public async preload(): Promise<void> {
+    this.load.image("alph_wall", "images/ui/alph/alph_wall.png");
+    [...ALPH_TILE_CHARACTERS, ...ALPH_INFINITE_TILE_CHARACTERS].forEach(character => {
+      this.load.image(getAlphTileTextureKey(character), `images/ui/alph/tile_${character}.png`);
+    });
+
     /**
      * These moves serve as fallback animations for other moves without loaded animations, and
      * must be loaded prior to game start.
@@ -947,19 +967,11 @@ export class BattleScene extends SceneBase {
     this.trainer = this.addFieldSprite(0, 0, this.getTrainerBackTextureKey(0))
       .setOrigin(0.5, 1)
       .setName("sprite-trainer");
-    this.trainerPartner = this.addFieldSprite(
-      0,
-      0,
-      this.getTrainerBackTextureKey(1),
-    )
+    this.trainerPartner = this.addFieldSprite(0, 0, this.getTrainerBackTextureKey(1))
       .setOrigin(0.5, 1)
       .setName("sprite-trainer-partner")
       .setVisible(false);
-    this.trainerGuest2 = this.addFieldSprite(
-      0,
-      0,
-      this.getTrainerBackTextureKey(2),
-    )
+    this.trainerGuest2 = this.addFieldSprite(0, 0, this.getTrainerBackTextureKey(2))
       .setOrigin(0.5, 1)
       .setName("sprite-trainer-guest-2")
       .setVisible(false);
@@ -1109,7 +1121,9 @@ export class BattleScene extends SceneBase {
         return localSystemSave;
       }
 
-      return this.loadSessionSystemSave(playerIndex) ?? (playerIndex === 1 ? this.loadGuestSystemSave() : new GameData(true));
+      return (
+        this.loadSessionSystemSave(playerIndex) ?? (playerIndex === 1 ? this.loadGuestSystemSave() : new GameData(true))
+      );
     });
   }
 
@@ -1247,12 +1261,12 @@ export class BattleScene extends SceneBase {
 
   public getLocalTwoPlayerProfileSnapshot(): TwoPlayerProfileSnapshot | undefined {
     if (!this.twoPlayerMode || !this.gameData || !this.localPlayerSystemSaveLoaded) {
-      return undefined;
+      return;
     }
 
     const localSeat = this.getLocalSystemSaveSeat();
     if (localSeat === "host-and-guest-local") {
-      return undefined;
+      return;
     }
 
     this.syncLocalPlayerSystemSaveSlot();
@@ -1265,7 +1279,7 @@ export class BattleScene extends SceneBase {
 
   public getTwoPlayerSettingsSnapshot(): TwoPlayerSettingsSnapshot | undefined {
     if (!this.twoPlayerMode || this.twoPlayerLocalInputSeat !== 0) {
-      return undefined;
+      return;
     }
 
     const savedSettings = this.getSavedSettings();
@@ -1349,9 +1363,11 @@ export class BattleScene extends SceneBase {
   }
 
   private getSettingDefaultValue(key: string): number {
-    return Setting.find(setting => setting.key === key)?.default
+    return (
+      Setting.find(setting => setting.key === key)?.default
       ?? getMysteryEncounterEventSettings().find(setting => setting.key === key)?.default
-      ?? 0;
+      ?? 0
+    );
   }
 
   public applyTwoPlayerProfileSnapshot(profileSnapshot: TwoPlayerProfileSnapshot): boolean {
@@ -1437,7 +1453,7 @@ export class BattleScene extends SceneBase {
   }
 
   private resolveTwoPlayerProfileReadyWaiters(): void {
-    if (!this.isTwoPlayerProfileExchangeComplete() || !this.twoPlayerProfileReadyResolvers.length) {
+    if (!this.isTwoPlayerProfileExchangeComplete() || this.twoPlayerProfileReadyResolvers.length === 0) {
       return;
     }
 
@@ -1483,14 +1499,17 @@ export class BattleScene extends SceneBase {
   private loadSessionSystemSave(playerIndex: PlayerIndex): GameData | undefined {
     const systemSave = localStorage.getItem(TWO_PLAYER_SESSION_SYSTEM_SAVE_KEYS[playerIndex]);
     if (!systemSave) {
-      return undefined;
+      return;
     }
 
     try {
       return GameData.fromRawSystem(systemSave, false, playerIndex);
     } catch (err) {
-      console.warn(`Failed to load temporary 2P session profile for player ${playerIndex}; creating a fresh profile.`, err);
-      return undefined;
+      console.warn(
+        `Failed to load temporary 2P session profile for player ${playerIndex}; creating a fresh profile.`,
+        err,
+      );
+      return;
     }
   }
 
@@ -1518,11 +1537,11 @@ export class BattleScene extends SceneBase {
 
   private getTwoPlayerSystemSavePlayerIndex(gameData: GameData): PlayerIndex | undefined {
     if (!this.systemSaves) {
-      return undefined;
+      return;
     }
 
     const playerIndex = this.systemSaves.indexOf(gameData);
-    return playerIndex >= 0 && playerIndex < 3 ? playerIndex as PlayerIndex : undefined;
+    return playerIndex >= 0 && playerIndex < 3 ? (playerIndex as PlayerIndex) : undefined;
   }
 
   private syncActiveSystemSaveForActivePlayer(): void {
@@ -1588,9 +1607,7 @@ export class BattleScene extends SceneBase {
     const tieBreakKey = participants.join("-");
     const currentPriority = this.playerDecisionTieBreakPriorities[tieBreakKey];
     const winningPlayerIndex =
-      currentPriority !== undefined && participants.includes(currentPriority)
-        ? currentPriority
-        : participants[0];
+      currentPriority !== undefined && participants.includes(currentPriority) ? currentPriority : participants[0];
     const nextPriorityIndex = (participants.indexOf(winningPlayerIndex) + 1) % participants.length;
     this.playerDecisionTieBreakPriorities[tieBreakKey] = participants[nextPriorityIndex];
 
@@ -1603,8 +1620,8 @@ export class BattleScene extends SceneBase {
 
   public resolveAIReservationTieBreak(playerIndexes: PlayerIndex[]): PlayerIndex {
     const participants = [...new Set(playerIndexes)]
-      .filter(playerIndex =>
-        this.getActivePlayerIndexes().includes(playerIndex) && this.isComputerPartnerPlayer(playerIndex),
+      .filter(
+        playerIndex => this.getActivePlayerIndexes().includes(playerIndex) && this.isComputerPartnerPlayer(playerIndex),
       )
       .sort((a, b) => a - b);
     if (participants.length === 0) {
@@ -1617,9 +1634,7 @@ export class BattleScene extends SceneBase {
     const tieBreakKey = participants.join("-");
     const currentPriority = this.aiReservationTieBreakPriorities[tieBreakKey];
     const winningPlayerIndex =
-      currentPriority !== undefined && participants.includes(currentPriority)
-        ? currentPriority
-        : participants[0];
+      currentPriority !== undefined && participants.includes(currentPriority) ? currentPriority : participants[0];
     const nextPriorityIndex = (participants.indexOf(winningPlayerIndex) + 1) % participants.length;
     this.aiReservationTieBreakPriorities[tieBreakKey] = participants[nextPriorityIndex];
 
@@ -1737,7 +1752,7 @@ export class BattleScene extends SceneBase {
 
   public getTwoPlayerDebugStateCheckpoint(): TwoPlayerDebugStateCheckpoint | undefined {
     if (!this.twoPlayerMode) {
-      return undefined;
+      return;
     }
 
     const uiMode = this.ui?.getMode() ?? null;
@@ -1758,8 +1773,9 @@ export class BattleScene extends SceneBase {
       players: this.getActivePlayerIndexes().map(playerIndex => ({
         playerIndex,
         money: this.getPlayerMoney(playerIndex),
-        pokeballs: [...Object.entries(this.getPlayerPokeballCounts(playerIndex))]
-          .sort(([left], [right]) => Number(left) - Number(right)),
+        pokeballs: [...Object.entries(this.getPlayerPokeballCounts(playerIndex))].sort(
+          ([left], [right]) => Number(left) - Number(right),
+        ),
         party: this.getPlayerParty(playerIndex).map(pokemon => this.getTwoPlayerDebugPokemonState(pokemon)),
         modifiers: this.getPlayerModifiers(playerIndex).map(modifier => this.getTwoPlayerDebugModifierState(modifier)),
       })),
@@ -1888,10 +1904,10 @@ export class BattleScene extends SceneBase {
     }
 
     const profile = getComputerPartnerProfile(key);
-    const fallbackGender = this.getPlayerGameData(0).gender === PlayerGender.FEMALE ? PlayerGender.MALE : PlayerGender.FEMALE;
-    const fallbackSprite = fallbackGender === PlayerGender.FEMALE
-      ? PlayerTrainerSprite.BASE_GIRL
-      : PlayerTrainerSprite.BASE_BOY;
+    const fallbackGender =
+      this.getPlayerGameData(0).gender === PlayerGender.FEMALE ? PlayerGender.MALE : PlayerGender.FEMALE;
+    const fallbackSprite =
+      fallbackGender === PlayerGender.FEMALE ? PlayerTrainerSprite.BASE_GIRL : PlayerTrainerSprite.BASE_BOY;
 
     if (playerIndex === 1) {
       this.twoPlayerGuestGender = profile.trainerGender ?? fallbackGender;
@@ -1917,7 +1933,7 @@ export class BattleScene extends SceneBase {
     playerIndex: PlayerIndex,
     rolePreferences?: ComputerPartnerRolePreferences,
   ): void {
-    if (rolePreferences?.length) {
+    if (rolePreferences && rolePreferences.length > 0) {
       this.computerPartnerRolePreferences[playerIndex] = [...rolePreferences];
     } else {
       delete this.computerPartnerRolePreferences[playerIndex];
@@ -1966,6 +1982,39 @@ export class BattleScene extends SceneBase {
     return this.getPlayerState(playerIndex).pokeballCounts;
   }
 
+  public getPlayerAlphTiles(playerIndex: PlayerIndex = this.activePlayerIndex): AlphTileCounts {
+    const alphTiles = this.getPlayerState(playerIndex).alphTiles;
+    if (activeOverrides.ALPH_TILE_STOCKPILE_OVERRIDE) {
+      for (const character of ALPH_TILE_CHARACTERS) {
+        alphTiles[character] = ALPH_MAX_TILE_COUNT;
+      }
+    }
+    return alphTiles;
+  }
+
+  public getPlayerAlphLegendaryHelpersUsed(
+    playerIndex: PlayerIndex = this.activePlayerIndex,
+  ): AlphLegendaryHelperId[] {
+    return this.getPlayerState(playerIndex).alphLegendaryHelpersUsed;
+  }
+
+  public hasUsedAlphLegendaryHelper(
+    helperId: AlphLegendaryHelperId,
+    playerIndex: PlayerIndex = this.activePlayerIndex,
+  ): boolean {
+    return this.getPlayerAlphLegendaryHelpersUsed(playerIndex).includes(helperId);
+  }
+
+  public markAlphLegendaryHelperUsed(
+    helperId: AlphLegendaryHelperId,
+    playerIndex: PlayerIndex = this.activePlayerIndex,
+  ): void {
+    const usedHelpers = this.getPlayerAlphLegendaryHelpersUsed(playerIndex);
+    if (!usedHelpers.includes(helperId)) {
+      usedHelpers.push(helperId);
+    }
+  }
+
   public getPlayerModifiers(playerIndex: PlayerIndex = this.activePlayerIndex): PersistentModifier[] {
     return this.getPlayerState(playerIndex).modifiers;
   }
@@ -1981,9 +2030,7 @@ export class BattleScene extends SceneBase {
   }
 
   public getEonFluteGuestOwner(pokemon: Pokemon): PlayerIndex | undefined {
-    const owner = this.getActivePlayerIndexes().find(
-      playerIndex => this.getEonFluteGuest(playerIndex) === pokemon,
-    );
+    const owner = this.getActivePlayerIndexes().find(playerIndex => this.getEonFluteGuest(playerIndex) === pokemon);
     return owner;
   }
 
@@ -1991,8 +2038,31 @@ export class BattleScene extends SceneBase {
     return pokemon instanceof PlayerPokemon && this.getEonFluteGuestOwner(pokemon) !== undefined;
   }
 
+  public isLegendaryHelperGuest(pokemon: Pokemon): pokemon is PlayerPokemon {
+    const owner = this.getEonFluteGuestOwner(pokemon);
+    if (owner === undefined) {
+      return false;
+    }
+
+    const sourceId = this.getPlayerState(owner).eonFluteGuestSource;
+    return sourceId !== undefined && sourceId !== EON_FLUTE_HELPER_SOURCE_ID;
+  }
+
   public hasEonFluteModifier(playerIndex: PlayerIndex = this.activePlayerIndex): boolean {
     return !!this.findModifierForPlayer(m => m instanceof EonFluteModifier, playerIndex);
+  }
+
+  public getLegendaryHelperModifier(
+    playerIndex: PlayerIndex = this.activePlayerIndex,
+  ): LegendaryHelperModifier | undefined {
+    return this.findModifierForPlayer(
+      m => m instanceof LegendaryHelperModifier,
+      playerIndex,
+    ) as LegendaryHelperModifier | undefined;
+  }
+
+  public hasLegendaryHelperModifier(playerIndex: PlayerIndex = this.activePlayerIndex): boolean {
+    return !!this.getLegendaryHelperModifier(playerIndex);
   }
 
   public hasEonFluteSummonedThisBattle(playerIndex: PlayerIndex = this.activePlayerIndex): boolean {
@@ -2010,7 +2080,8 @@ export class BattleScene extends SceneBase {
     const guest = this.getEonFluteGuest(playerIndex);
     return (
       (!!guest && !guest.isFainted())
-      || (!this.hasEonFluteSummonedThisBattle(playerIndex) && this.hasEonFluteModifier(playerIndex))
+      || (!this.hasEonFluteSummonedThisBattle(playerIndex)
+        && (this.hasLegendaryHelperModifier(playerIndex) || this.hasEonFluteModifier(playerIndex)))
     );
   }
 
@@ -2032,12 +2103,17 @@ export class BattleScene extends SceneBase {
       return existingGuest;
     }
 
+    const sourceId = this.getLegendaryHelperSourceId(playerIndex);
     const level = this.getEonFluteGuestLevel(playerIndex);
     let guest: PlayerPokemon | undefined;
 
     this.executeWithSeedOffset(
       () => {
-        const speciesId = randSeedItem(EON_FLUTE_HELPER_SPECIES) as (typeof EON_FLUTE_HELPER_SPECIES)[number];
+        const helperConfig = sourceId && sourceId !== EON_FLUTE_HELPER_SOURCE_ID
+          ? ALPH_LEGENDARY_HELPER_CONFIGS[sourceId]
+          : undefined;
+        const speciesId = helperConfig?.species
+          ?? (randSeedItem(EON_FLUTE_HELPER_SPECIES) as (typeof EON_FLUTE_HELPER_SPECIES)[number]);
         const species = getPokemonSpecies(speciesId);
         guest = this.addPlayerPokemon(
           species,
@@ -2054,7 +2130,12 @@ export class BattleScene extends SceneBase {
             pokemon.aiType = AiType.SMART;
             pokemon.eonFluteGuest = true;
             pokemon.pokeball = PokeballType.POKEBALL;
-            pokemon.moveset = EON_FLUTE_HELPER_MOVES[speciesId].map(moveId => new PokemonMove(moveId));
+            if (helperConfig) {
+              pokemon.nickname = btoa(unescape(encodeURIComponent(helperConfig.nickname)));
+            }
+            const moves =
+              helperConfig?.moves ?? EON_FLUTE_HELPER_MOVES[speciesId as (typeof EON_FLUTE_HELPER_SPECIES)[number]];
+            pokemon.moveset = moves.map(moveId => new PokemonMove(moveId));
             pokemon.summonData.moveset = pokemon.moveset;
           },
         );
@@ -2067,10 +2148,19 @@ export class BattleScene extends SceneBase {
       throw new Error("Failed to create Eon Flute helper Pokemon.");
     }
 
-    this.setEonFluteGuest(playerIndex, guest);
+    this.setEonFluteGuest(playerIndex, guest, sourceId ?? EON_FLUTE_HELPER_SOURCE_ID);
     this.grantEonFluteGuestLoadout(playerIndex, guest);
     this.markEonFluteSummonedThisBattle(playerIndex);
     return guest;
+  }
+
+  private getLegendaryHelperSourceId(playerIndex: PlayerIndex): LegendaryHelperSourceId | undefined {
+    const legendaryHelper = this.getLegendaryHelperModifier(playerIndex);
+    if (legendaryHelper) {
+      return legendaryHelper.getHelperId();
+    }
+
+    return this.hasEonFluteModifier(playerIndex) ? EON_FLUTE_HELPER_SOURCE_ID : undefined;
   }
 
   private syncEonFluteGuestLevel(pokemon: PlayerPokemon): void {
@@ -2099,13 +2189,14 @@ export class BattleScene extends SceneBase {
   }
 
   private ensureEonFluteGuestLoadout(playerIndex: PlayerIndex, pokemon: PlayerPokemon): void {
-    const hasLoadout = this.findModifiersForPlayer(
-      modifier =>
-        modifier instanceof PokemonHeldItemModifier
-        && modifier.eonFluteGuestItem
-        && modifier.pokemonId === pokemon.id,
-      playerIndex,
-    ).length > 0;
+    const hasLoadout =
+      this.findModifiersForPlayer(
+        modifier =>
+          modifier instanceof PokemonHeldItemModifier
+          && modifier.eonFluteGuestItem
+          && modifier.pokemonId === pokemon.id,
+        playerIndex,
+      ).length > 0;
 
     if (!hasLoadout) {
       this.grantEonFluteGuestLoadout(playerIndex, pokemon);
@@ -2139,11 +2230,7 @@ export class BattleScene extends SceneBase {
       if (
         rogueItems >= EON_FLUTE_MAX_ROGUE_ITEMS
         || !spend(EON_FLUTE_ROGUE_ITEM_COST, () =>
-          this.addEonFluteGuestHeldItemType(
-            playerIndex,
-            pokemon,
-            modifierTypeFunc().withIdFromFunc(modifierTypeFunc),
-          ),
+          this.addEonFluteGuestHeldItemType(playerIndex, pokemon, modifierTypeFunc().withIdFromFunc(modifierTypeFunc)),
         )
       ) {
         break;
@@ -2176,6 +2263,12 @@ export class BattleScene extends SceneBase {
   }
 
   private getEonFluteTypeBoosterLoadout(pokemon: PlayerPokemon): PokemonType[] {
+    const owner = this.getEonFluteGuestOwner(pokemon);
+    const sourceId = owner !== undefined ? this.getPlayerState(owner).eonFluteGuestSource : undefined;
+    if (sourceId && sourceId !== EON_FLUTE_HELPER_SOURCE_ID) {
+      return [...ALPH_LEGENDARY_HELPER_CONFIGS[sourceId].typeBoosters];
+    }
+
     const attackingTypes = new Set<PokemonType>();
     for (const pokemonMove of pokemon.getMoveset()) {
       const move = pokemonMove.getMove();
@@ -2239,9 +2332,7 @@ export class BattleScene extends SceneBase {
   private clearEonFluteGuestLoadout(playerIndex: PlayerIndex, pokemon: PlayerPokemon): void {
     const loadoutModifiers = this.findModifiersForPlayer(
       modifier =>
-        modifier instanceof PokemonHeldItemModifier
-        && modifier.eonFluteGuestItem
-        && modifier.pokemonId === pokemon.id,
+        modifier instanceof PokemonHeldItemModifier && modifier.eonFluteGuestItem && modifier.pokemonId === pokemon.id,
       playerIndex,
     );
 
@@ -2250,7 +2341,11 @@ export class BattleScene extends SceneBase {
     }
   }
 
-  public setEonFluteGuest(playerIndex: PlayerIndex, pokemon: PlayerPokemon): void {
+  public setEonFluteGuest(
+    playerIndex: PlayerIndex,
+    pokemon: PlayerPokemon,
+    sourceId: LegendaryHelperSourceId = EON_FLUTE_HELPER_SOURCE_ID,
+  ): void {
     const playerState = this.getPlayerState(playerIndex);
     const existingGuest = playerState.eonFluteGuest;
     if (existingGuest && existingGuest !== pokemon) {
@@ -2258,16 +2353,18 @@ export class BattleScene extends SceneBase {
     }
     pokemon.eonFluteGuest = true;
     playerState.eonFluteGuest = pokemon;
+    playerState.eonFluteGuestSource = sourceId;
   }
 
   public clearEonFluteGuest(playerIndex: PlayerIndex, destroy = true): PlayerPokemon | undefined {
     const playerState = this.getPlayerState(playerIndex);
     const guest = playerState.eonFluteGuest;
     if (!guest) {
-      return undefined;
+      return;
     }
 
     delete playerState.eonFluteGuest;
+    delete playerState.eonFluteGuestSource;
     guest.eonFluteGuest = false;
     this.clearEonFluteGuestLoadout(playerIndex, guest);
 
@@ -2281,7 +2378,14 @@ export class BattleScene extends SceneBase {
   }
 
   public consumeEonFlute(playerIndex: PlayerIndex = this.activePlayerIndex): boolean {
-    const modifier = this.findModifierForPlayer(m => m instanceof EonFluteModifier, playerIndex);
+    const sourceId = this.getPlayerState(playerIndex).eonFluteGuestSource ?? this.getLegendaryHelperSourceId(playerIndex);
+    const modifier = this.findModifierForPlayer(
+      m =>
+        sourceId && sourceId !== EON_FLUTE_HELPER_SOURCE_ID
+          ? m instanceof LegendaryHelperModifier && m.getHelperId() === sourceId
+          : m instanceof EonFluteModifier,
+      playerIndex,
+    );
     if (!modifier) {
       return false;
     }
@@ -2409,9 +2513,10 @@ export class BattleScene extends SceneBase {
       return;
     }
 
-    this.currentBattle.mysteryEncounterEnemySidePlayerIndexes = playerIndexes?.length
-      ? [...new Set(playerIndexes)].filter(playerIndex => this.getActivePlayerIndexes().includes(playerIndex))
-      : undefined;
+    this.currentBattle.mysteryEncounterEnemySidePlayerIndexes =
+      (playerIndexes?.length ?? 0) > 0
+        ? [...new Set(playerIndexes)].filter(playerIndex => this.getActivePlayerIndexes().includes(playerIndex))
+        : undefined;
   }
 
   public isMysteryEncounterEnemySidePlayer(playerIndex: PlayerIndex): boolean {
@@ -2423,9 +2528,11 @@ export class BattleScene extends SceneBase {
       return [0];
     }
 
-    return (this.currentBattle?.playerFieldOwners?.length
-      ? this.currentBattle.playerFieldOwners
-      : this.fieldSlotOwners.slice(0, this.multiplayerPlayerCount)) as PlayerIndex[];
+    return (
+      (this.currentBattle?.playerFieldOwners?.length ?? 0) > 0
+        ? this.currentBattle.playerFieldOwners
+        : this.fieldSlotOwners.slice(0, this.multiplayerPlayerCount)
+    ) as PlayerIndex[];
   }
 
   public getPlayerIndexForFieldSlot(fieldSlot: number): PlayerIndex {
@@ -2617,9 +2724,11 @@ export class BattleScene extends SceneBase {
       return undefined;
     }
 
-    const party = (this.twoPlayerMode
-      ? this.getActivePlayerIndexes().flatMap(playerIndex => this.getPlayerParty(playerIndex))
-      : this.getPlayerParty() as Pokemon[]).concat(this.getEnemyParty());
+    const party = (
+      this.twoPlayerMode
+        ? this.getActivePlayerIndexes().flatMap(playerIndex => this.getPlayerParty(playerIndex))
+        : (this.getPlayerParty() as Pokemon[])
+    ).concat(this.getEnemyParty());
     party.push(...this.getEonFluteGuests());
     return party.find(p => p.id === pokemonId);
   }
@@ -2996,7 +3105,9 @@ export class BattleScene extends SceneBase {
     // Reset RNG after end of game or save & quit.
     // This needs to happen after clearing this.currentBattle or the seed will be affected by the last wave played
     const existingTwoPlayerSeed = this.twoPlayerMode ? this.seed : undefined;
-    this.setSeed(activeOverrides.SEED_OVERRIDE || getTwoPlayerRunSeedOverride() || existingTwoPlayerSeed || randomString(24));
+    this.setSeed(
+      activeOverrides.SEED_OVERRIDE || getTwoPlayerRunSeedOverride() || existingTwoPlayerSeed || randomString(24),
+    );
     console.log("Seed:", this.seed);
     this.resetSeed();
     this.uiInputs?.broadcastTwoPlayerRunBootstrap(this.seed);
@@ -4355,7 +4466,15 @@ export class BattleScene extends SceneBase {
           false,
           3000,
         );
-        return this.addModifier(defaultModifierType.newModifier(), ignoreUpdate, playSound, false, instant, undefined, playerIndex);
+        return this.addModifier(
+          defaultModifierType.newModifier(),
+          ignoreUpdate,
+          playSound,
+          false,
+          instant,
+          undefined,
+          playerIndex,
+        );
       }
 
       for (const rm of modifiersToRemove) {
@@ -4543,7 +4662,11 @@ export class BattleScene extends SceneBase {
     }
 
     const source = itemModifier.pokemonId ? itemModifier.getPokemon() : null;
-    return this.removeModifier(itemModifier, false, source?.isPlayer() ? this.getPlayerIndexForPokemon(source) : undefined);
+    return this.removeModifier(
+      itemModifier,
+      false,
+      source?.isPlayer() ? this.getPlayerIndexForPokemon(source) : undefined,
+    );
   }
 
   canTransferHeldItemModifier(itemModifier: PokemonHeldItemModifier, target: Pokemon, transferQuantity = 1): boolean {
@@ -4587,11 +4710,18 @@ export class BattleScene extends SceneBase {
     return (
       !removeOld
       || !source
-      || this.hasModifier(itemModifier, !source.isPlayer(), source.isPlayer() ? this.getPlayerIndexForPokemon(source) : undefined)
+      || this.hasModifier(
+        itemModifier,
+        !source.isPlayer(),
+        source.isPlayer() ? this.getPlayerIndexForPokemon(source) : undefined,
+      )
     );
   }
 
-  removePartyMemberModifiers(partyMemberIndex: number, playerIndex: PlayerIndex = this.activePlayerIndex): Promise<void> {
+  removePartyMemberModifiers(
+    partyMemberIndex: number,
+    playerIndex: PlayerIndex = this.activePlayerIndex,
+  ): Promise<void> {
     return new Promise(resolve => {
       const modifiers = this.getPlayerModifiers(playerIndex);
       const pokemonId = this.getPlayerParty(playerIndex)[partyMemberIndex].id;
@@ -5229,7 +5359,6 @@ export class BattleScene extends SceneBase {
   }
 
   private getMewGauntletNextSpeciesId(activePlayerPokemon: Pokemon[], usedSpeciesIds: SpeciesId[]): SpeciesId {
-
     const MEW_GAUNTLET_OPTIONS = [
       SpeciesId.MEWTWO,
       SpeciesId.LUGIA,
@@ -5255,13 +5384,13 @@ export class BattleScene extends SceneBase {
       SpeciesId.MIRAIDON,
       SpeciesId.TERAPAGOS,
       SpeciesId.MARSHADOW,
-      SpeciesId.JIRACHI
+      SpeciesId.JIRACHI,
     ];
 
     const usedSpeciesIdSet = new Set(usedSpeciesIds);
-    const availableOptions = MEW_GAUNTLET_OPTIONS.filter(speciesId => !usedSpeciesIdSet.has(speciesId),);
+    const availableOptions = MEW_GAUNTLET_OPTIONS.filter(speciesId => !usedSpeciesIdSet.has(speciesId));
 
-    if (!availableOptions.length) {
+    if (availableOptions.length === 0) {
       return SpeciesId.MEWTWO;
     }
     const scoredOptions = availableOptions.map(speciesId => {
@@ -5276,129 +5405,131 @@ export class BattleScene extends SceneBase {
         });
         const bestMultiplier = Math.max(
           ...types.map(type =>
-            playerTypes.reduce(
-              (multiplier, playerType) => multiplier * getTypeDamageMultiplier(type, playerType),
-              1,
-            ),
+            playerTypes.reduce((multiplier, playerType) => multiplier * getTypeDamageMultiplier(type, playerType), 1),
           ),
         );
         return total + bestMultiplier;
       }, 0);
-      return {speciesId, score};
-      });
-      const bestScore = Math.max(...scoredOptions.map(option => option.score));
-      const bestOptions = scoredOptions.filter(option => option.score === bestScore);
+      return { speciesId, score };
+    });
+    const bestScore = Math.max(...scoredOptions.map(option => option.score));
+    const bestOptions = scoredOptions.filter(option => option.score === bestScore);
 
-      return bestOptions[randSeedInt(bestOptions.length)].speciesId;
-    }
-    //return availableOptions[randSeedInt(availableOptions.length)];
+    return bestOptions[randSeedInt(bestOptions.length)].speciesId;
+  }
+  //return availableOptions[randSeedInt(availableOptions.length)];
   /**
    * Initialized the 2nd phase of the final boss (e.g. form-change for Eternatus)
    * @param pokemon The (enemy) pokemon
    */
   initFinalBossPhaseTwo(pokemon: Pokemon): void {
-    if (!this.currentBattle.isClassicFinalBoss 
-      || !pokemon.isEnemy() 
-      || !pokemon.isBoss() 
+    if (
+      !this.currentBattle.isClassicFinalBoss
+      || !pokemon.isEnemy()
+      || !pokemon.isBoss()
       || pokemon.bossSegmentIndex >= 1
     ) {
       this.phaseManager.shiftPhase();
       return;
     }
 
-      const mewGauntletState = this.currentBattle.mewGauntletState;
-      if ( mewGauntletState?.pokemonId === pokemon.id){
-        this.initMewGauntletNextPhase(pokemon);
-        return;
-      }
-      if (isClassicFinalBossPhaseTwo(pokemon)){
-        this.phaseManager.shiftPhase();
-        return;
-      }
-
-    
-    audioManager.fadeOutBgm(2000, true);
-    this.ui.showDialogue(getClassicFinalBossDialogue(pokemon.species.speciesId).firstStageWin, pokemon.species.name, undefined, () => {
-      switch (pokemon.species.speciesId) {
-        case SpeciesId.ETERNATUS: {
-          const finalBossMBH = getModifierType(modifierTypes.MINI_BLACK_HOLE).newModifier(
-            pokemon,
-          ) as TurnHeldItemTransferModifier;
-          finalBossMBH.setTransferrableFalse();
-          this.addEnemyModifier(finalBossMBH, false, true);
-          pokemon.generateAndPopulateMoveset(false, 1);
-          this.setFieldScale(0.75);
-          this.triggerPokemonFormChange(pokemon, SpeciesFormChangeManualTrigger, false);
-          break;
-        }
-        case SpeciesId.NECROZMA: {
-          const currentFormKey = pokemon.species.forms[pokemon.formIndex]?.formKey ?? "";
-          const ultraFormIndex = pokemon.species.forms.findIndex(form => form.formKey === "ultra");
-          if (ultraFormIndex < 0) {
-            this.phaseManager.shiftPhase();
-            return;
-          }
-          const finalBossMBH = getModifierType(modifierTypes.MINI_BLACK_HOLE).newModifier(
-            pokemon,
-          ) as TurnHeldItemTransferModifier;
-          finalBossMBH.setTransferrableFalse();
-          this.addEnemyModifier(finalBossMBH, false, true);
-          pokemon.getStatStages().fill(0);
-          pokemon.generateAndPopulateMoveset(false, ultraFormIndex);
-          this.setFieldScale(0.75);
-          this.phaseManager.unshiftNew(
-            "QuietFormChangePhase",
-            pokemon,
-            new SpeciesFormChange({
-              speciesId: SpeciesId.NECROZMA,
-              preFormKey: currentFormKey,
-              evoFormKey: "ultra",
-              trigger: new SpeciesFormChangeManualTrigger(),
-              quiet: true,
-            }),
-          );
-          break;
-        }
-        case SpeciesId.ARCEUS: {
-          const currentFormKey = pokemon.species.forms[pokemon.formIndex]?.formKey ?? "";
-          const legendFormIndex = pokemon.species.forms.findIndex(form => form.formKey === "legend");
-          if (legendFormIndex < 0) {
-            this.phaseManager.shiftPhase();
-            return;
-          }
-          pokemon.getStatStages().fill(0);
-          pokemon.generateAndPopulateMoveset(false, legendFormIndex);
-          this.setFieldScale(0.75);
-          this.phaseManager.unshiftNew(
-            "QuietFormChangePhase",
-            pokemon,
-            new SpeciesFormChange({
-              speciesId: SpeciesId.ARCEUS,
-              preFormKey: currentFormKey,
-              evoFormKey: "legend",
-              trigger: new SpeciesFormChangeManualTrigger(),
-              quiet: true,
-            }),
-          );
-          break;
-        }
-        default:
-          this.phaseManager.shiftPhase();
-          return;
-      }
-
-      this.currentBattle.double = true;
-      const availablePartyMembers = this.getPlayerParty().filter(p => p.isAllowedInBattle());
-      if (availablePartyMembers.length > 1) {
-        this.phaseManager.pushNew("ToggleDoublePositionPhase", true);
-        if (!availablePartyMembers[1].isOnField()) {
-          this.phaseManager.pushNew("SummonPhase", 1);
-          this.phaseManager.pushNew("PostSummonPhase", 1);
-        }
-      }
-
+    const mewGauntletState = this.currentBattle.mewGauntletState;
+    if (mewGauntletState?.pokemonId === pokemon.id) {
+      this.initMewGauntletNextPhase(pokemon);
+      return;
+    }
+    if (isClassicFinalBossPhaseTwo(pokemon)) {
       this.phaseManager.shiftPhase();
-    });
+      return;
+    }
+
+    audioManager.fadeOutBgm(2000, true);
+    this.ui.showDialogue(
+      getClassicFinalBossDialogue(pokemon.species.speciesId).firstStageWin,
+      pokemon.species.name,
+      undefined,
+      () => {
+        switch (pokemon.species.speciesId) {
+          case SpeciesId.ETERNATUS: {
+            const finalBossMBH = getModifierType(modifierTypes.MINI_BLACK_HOLE).newModifier(
+              pokemon,
+            ) as TurnHeldItemTransferModifier;
+            finalBossMBH.setTransferrableFalse();
+            this.addEnemyModifier(finalBossMBH, false, true);
+            pokemon.generateAndPopulateMoveset(false, 1);
+            this.setFieldScale(0.75);
+            this.triggerPokemonFormChange(pokemon, SpeciesFormChangeManualTrigger, false);
+            break;
+          }
+          case SpeciesId.NECROZMA: {
+            const currentFormKey = pokemon.species.forms[pokemon.formIndex]?.formKey ?? "";
+            const ultraFormIndex = pokemon.species.forms.findIndex(form => form.formKey === "ultra");
+            if (ultraFormIndex < 0) {
+              this.phaseManager.shiftPhase();
+              return;
+            }
+            const finalBossMBH = getModifierType(modifierTypes.MINI_BLACK_HOLE).newModifier(
+              pokemon,
+            ) as TurnHeldItemTransferModifier;
+            finalBossMBH.setTransferrableFalse();
+            this.addEnemyModifier(finalBossMBH, false, true);
+            pokemon.getStatStages().fill(0);
+            pokemon.generateAndPopulateMoveset(false, ultraFormIndex);
+            this.setFieldScale(0.75);
+            this.phaseManager.unshiftNew(
+              "QuietFormChangePhase",
+              pokemon,
+              new SpeciesFormChange({
+                speciesId: SpeciesId.NECROZMA,
+                preFormKey: currentFormKey,
+                evoFormKey: "ultra",
+                trigger: new SpeciesFormChangeManualTrigger(),
+                quiet: true,
+              }),
+            );
+            break;
+          }
+          case SpeciesId.ARCEUS: {
+            const currentFormKey = pokemon.species.forms[pokemon.formIndex]?.formKey ?? "";
+            const legendFormIndex = pokemon.species.forms.findIndex(form => form.formKey === "legend");
+            if (legendFormIndex < 0) {
+              this.phaseManager.shiftPhase();
+              return;
+            }
+            pokemon.getStatStages().fill(0);
+            pokemon.generateAndPopulateMoveset(false, legendFormIndex);
+            this.setFieldScale(0.75);
+            this.phaseManager.unshiftNew(
+              "QuietFormChangePhase",
+              pokemon,
+              new SpeciesFormChange({
+                speciesId: SpeciesId.ARCEUS,
+                preFormKey: currentFormKey,
+                evoFormKey: "legend",
+                trigger: new SpeciesFormChangeManualTrigger(),
+                quiet: true,
+              }),
+            );
+            break;
+          }
+          default:
+            this.phaseManager.shiftPhase();
+            return;
+        }
+
+        this.currentBattle.double = true;
+        const availablePartyMembers = this.getPlayerParty().filter(p => p.isAllowedInBattle());
+        if (availablePartyMembers.length > 1) {
+          this.phaseManager.pushNew("ToggleDoublePositionPhase", true);
+          if (!availablePartyMembers[1].isOnField()) {
+            this.phaseManager.pushNew("SummonPhase", 1);
+            this.phaseManager.pushNew("PostSummonPhase", 1);
+          }
+        }
+
+        this.phaseManager.shiftPhase();
+      },
+    );
   }
   private initMewGauntletNextPhase(pokemon: Pokemon): void {
     const mewGauntletState = this.currentBattle.mewGauntletState;
@@ -5406,16 +5537,17 @@ export class BattleScene extends SceneBase {
       this.phaseManager.shiftPhase();
       return;
     }
-    if (mewGauntletState.phase >= 7){
+    if (mewGauntletState.phase >= 7) {
       this.phaseManager.shiftPhase();
       return;
     }
 
     const activePlayerPokemon = this.getPlayerField().filter(pokemon => pokemon && !pokemon.isFainted());
 
-    const nextSpeciesId = mewGauntletState.phase === 6
-    ? SpeciesId.MEW
-    : this.getMewGauntletNextSpeciesId(activePlayerPokemon, mewGauntletState.usedSpeciesIds,);
+    const nextSpeciesId =
+      mewGauntletState.phase === 6
+        ? SpeciesId.MEW
+        : this.getMewGauntletNextSpeciesId(activePlayerPokemon, mewGauntletState.usedSpeciesIds);
 
     mewGauntletState.phase++;
     mewGauntletState.usedSpeciesIds.push(nextSpeciesId);
@@ -5423,7 +5555,6 @@ export class BattleScene extends SceneBase {
     this.phaseManager.shiftPhase();
   }
 
-  
   /**
    * Updates Exp and level values for Player's party, adding new level up phases as required
    * @param expValue raw value of exp to split among participants, OR the base multiplier to use with waveIndex
@@ -5456,8 +5587,14 @@ export class BattleScene extends SceneBase {
 
     // TODO: make this code actually not insane
     const party = this.getPlayerParty(expPlayerIndex);
-    const expShareModifier = this.findModifierForPlayer(m => m instanceof ExpShareModifier, expPlayerIndex) as ExpShareModifier;
-    const expBalanceModifier = this.findModifierForPlayer(m => m instanceof ExpBalanceModifier, expPlayerIndex) as ExpBalanceModifier;
+    const expShareModifier = this.findModifierForPlayer(
+      m => m instanceof ExpShareModifier,
+      expPlayerIndex,
+    ) as ExpShareModifier;
+    const expBalanceModifier = this.findModifierForPlayer(
+      m => m instanceof ExpBalanceModifier,
+      expPlayerIndex,
+    ) as ExpBalanceModifier;
     const multipleParticipantExpBonusModifier = this.findModifierForPlayer(
       m => m instanceof MultipleParticipantExpBonusModifier,
       expPlayerIndex,
@@ -5781,9 +5918,10 @@ export class BattleScene extends SceneBase {
       }
     }
 
-    const forcedDebugEncounter = DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE != null
-      ? allMysteryEncounters[DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE]
-      : undefined;
+    const forcedDebugEncounter =
+      DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE == null
+        ? undefined
+        : allMysteryEncounters[DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE];
     if (
       forcedDebugEncounter
       && this.isDebugForcedMysteryEncounterWave(BattleType.WILD, this.currentBattle.waveIndex)
@@ -5900,9 +6038,9 @@ export class BattleScene extends SceneBase {
         : isMysteryEncounterEnabledBySettings(MysteryEncounterType.MYSTERIOUS_CHALLENGERS)
           ? MysteryEncounterType.MYSTERIOUS_CHALLENGERS
           : (Object.values(MysteryEncounterType).find(
-            (type): type is MysteryEncounterType =>
-              typeof type === "number" && isMysteryEncounterEnabledBySettings(type),
-          ) ?? MysteryEncounterType.MYSTERIOUS_CHALLENGERS);
+              (type): type is MysteryEncounterType =>
+                typeof type === "number" && isMysteryEncounterEnabledBySettings(type),
+            ) ?? MysteryEncounterType.MYSTERIOUS_CHALLENGERS);
       console.log(`No Mystery Encounters found, falling back to ${MysteryEncounterType[fallbackEncounterType]}.`);
       encounter = new MysteryEncounter(allMysteryEncounters[fallbackEncounterType]);
       encounter.populateDialogueTokensFromRequirements();

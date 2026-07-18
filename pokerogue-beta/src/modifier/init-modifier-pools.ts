@@ -374,6 +374,12 @@ function hasLoadedDiceTarget(pokemon: Pokemon): boolean {
   return !isHoldingMax && pokemon.getMoveset(true).some(move => move && isLoadedDiceBoostedMove(move.getMove()));
 }
 
+function hasUnownBoxTarget(pokemon: Pokemon): boolean {
+  const isHoldingUnownBox = pokemon.getHeldItems().some(item => item.type.id === "UNOWN_BOX");
+
+  return !isHoldingUnownBox && pokemon.hasSpecies(SpeciesId.UNOWN);
+}
+
 function initUltraModifierPool() {
   modifierPool[ModifierTier.ULTRA] = [
     new WeightedModifierType(modifierTypes.ULTRA_BALL, () => (hasMaximumBalls(PokeballType.ULTRA_BALL) ? 0 : 15), 15),
@@ -633,6 +639,11 @@ function initUltraModifierPool() {
     new WeightedModifierType(
       modifierTypes.LOADED_DICE,
       (party: Pokemon[]) => party.some(hasLoadedDiceTarget) ? 10 : 0,
+      10,
+    ),
+    new WeightedModifierType(
+      modifierTypes.UNOWN_BOX,
+      (party: Pokemon[]) => party.some(hasUnownBoxTarget) ? 10 : 0,
       10,
     ),
     new WeightedModifierType(modifierTypes.REVIVER_SEED, 4),
