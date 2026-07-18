@@ -10,6 +10,7 @@ import { activeOverrides } from "#app/overrides";
 import { isIos } from "#app/touch-controls";
 import { Tutorial } from "#app/tutorial";
 import { speciesEggMoves } from "#balance/moves/egg-moves";
+import { getStarterValueFriendshipCap } from "#balance/starters";
 import { bypassLogin, isBeta, isDev } from "#constants/app-constants";
 import { MAX_STARTER_CANDY_COUNT } from "#constants/game-constants";
 import { createInitialAlphTileCounts } from "#data/alph/alph-tiles";
@@ -72,6 +73,9 @@ import { VoucherType, vouchers } from "#system/voucher";
 import type { DexData, DexEntry } from "#types/dex-data";
 import type {
   AchvUnlocks,
+  ComputerPartnerDexProgressEntry,
+  ComputerPartnerProgressData,
+  ComputerPartnerStarterProgressEntry,
   DexAttrProps,
   RunHistoryData,
   SeenDialogues,
@@ -165,6 +169,7 @@ export class GameData {
 
   public voucherUnlocks: VoucherUnlocks;
   public computerPartnerUnlocks: Partial<Record<ComputerPartnerKey, number>>;
+  public computerPartnerProgress: Partial<Record<ComputerPartnerKey, ComputerPartnerProgressData>>;
   public voucherCounts: VoucherCounts;
   public eggs: Egg[];
   public eggPity: number[];
@@ -199,6 +204,7 @@ export class GameData {
     this.achvUnlocks = {};
     this.voucherUnlocks = {};
     this.computerPartnerUnlocks = {};
+    this.computerPartnerProgress = {};
     this.voucherCounts = {
       [VoucherType.REGULAR]: 0,
       [VoucherType.PLUS]: 0,
@@ -224,6 +230,7 @@ export class GameData {
       achvUnlocks: this.achvUnlocks,
       voucherUnlocks: this.voucherUnlocks,
       computerPartnerUnlocks: this.computerPartnerUnlocks,
+      computerPartnerProgress: this.computerPartnerProgress,
       voucherCounts: this.voucherCounts,
       eggs: this.eggs.map(e => new EggData(e)),
       gameVersion: globalScene.game.config.gameVersion,
@@ -435,6 +442,16 @@ export class GameData {
       }
     }
 
+    this.computerPartnerProgress = {};
+    if (systemData.computerPartnerProgress) {
+      for (const key of COMPUTER_PARTNER_KEYS) {
+        const progress = systemData.computerPartnerProgress[key];
+        if (progress) {
+          this.computerPartnerProgress[key] = GameData.normalizeComputerPartnerProgress(progress);
+        }
+      }
+    }
+
     if (systemData.voucherCounts) {
       getEnumKeys(VoucherType).forEach(key => {
         const index = VoucherType[key];
@@ -595,6 +612,11 @@ export class GameData {
       }
     }
 
+    if (source.computerPartnerProgress) {
+      target.computerPartnerProgress ??= {};
+      GameData.mergeComputerPartnerProgress(target.computerPartnerProgress, source.computerPartnerProgress);
+    }
+
     return target;
   }
 
@@ -724,6 +746,136 @@ export class GameData {
 
     for (const key of Object.keys(source)) {
       target[key] = Math.max(target[key] ?? 0, source[key] ?? 0);
+    }
+  }
+
+  private static createComputerPartnerDexProgressEntry(): ComputerPartnerDexProgressEntry {
+    return {
+      caughtAttr: 0n,
+      natureAttr: 0,
+      caughtCount: 0,
+      hatchedCount: 0,
+      ivs: [0, 0, 0, 0, 0, 0],
+    };
+  }
+
+  private static createComputerPartnerStarterProgressEntry(): ComputerPartnerStarterProgressEntry {
+    return {
+      eggMoves: 0,
+      candyCount: 0,
+      friendship: 0,
+      abilityAttr: AbilityAttr.ABILITY_1,
+      passiveAttr: 0,
+      valueReduction: 0,
+    };
+  }
+
+  private static createComputerPartnerProgressData(): ComputerPartnerProgressData {
+    return {
+      dexData: {},
+      starterData: {},
+      eggPurchases: 0,
+    };
+  }
+
+  private static normalizeComputerPartnerProgress(
+    progress: Partial<ComputerPartnerProgressData>,
+  ): ComputerPartnerProgressData {
+    const normalized = GameData.createComputerPartnerProgressData();
+
+    for (const speciesId of Object.keys(progress.dexData ?? {})) {
+      const sourceEntry = progress.dexData?.[speciesId];
+      if (!sourceEntry) {
+        continue;
+      }
+
+      normalized.dexData[speciesId] = {
+        caughtAttr: BigInt(sourceEntry.caughtAttr ?? 0n),
+        natureAttr: sourceEntry.natureAttr ?? 0,
+        caughtCount: sourceEntry.caughtCount ?? 0,
+        hatchedCount: sourceEntry.hatchedCount ?? 0,
+        ivs: Array.from({ length: 6 }, (_, i) => sourceEntry.ivs?.[i] ?? 0),
+      };
+    }
+
+    for (const speciesId of Object.keys(progress.starterData ?? {})) {
+      const sourceEntry = progress.starterData?.[speciesId];
+      if (!sourceEntry) {
+        continue;
+      }
+
+      normalized.starterData[speciesId] = {
+        eggMoves: sourceEntry.eggMoves ?? 0,
+        candyCount: sourceEntry.candyCount ?? 0,
+        friendship: sourceEntry.friendship ?? 0,
+        abilityAttr: sourceEntry.abilityAttr ?? AbilityAttr.ABILITY_1,
+        passiveAttr: sourceEntry.passiveAttr ?? 0,
+        valueReduction: sourceEntry.valueReduction ?? 0,
+      };
+    }
+
+    normalized.eggPurchases = progress.eggPurchases ?? 0;
+    return normalized;
+  }
+
+  private static mergeComputerPartnerProgress(
+    target: Partial<Record<ComputerPartnerKey, ComputerPartnerProgressData>>,
+    source: Partial<Record<ComputerPartnerKey, ComputerPartnerProgressData>>,
+  ): void {
+    for (const key of COMPUTER_PARTNER_KEYS) {
+      const sourceProgress = source[key];
+      if (!sourceProgress) {
+        continue;
+      }
+
+      const targetProgress = GameData.normalizeComputerPartnerProgress(
+        target[key] ?? GameData.createComputerPartnerProgressData(),
+      );
+      GameData.mergeComputerPartnerProgressData(
+        targetProgress,
+        GameData.normalizeComputerPartnerProgress(sourceProgress),
+      );
+      target[key] = targetProgress;
+    }
+  }
+
+  private static mergeComputerPartnerProgressData(
+    target: ComputerPartnerProgressData,
+    source: ComputerPartnerProgressData,
+  ): void {
+    target.eggPurchases = Math.max(target.eggPurchases ?? 0, source.eggPurchases ?? 0);
+
+    for (const speciesId of Object.keys(source.dexData)) {
+      const sourceEntry = source.dexData[speciesId];
+      if (!sourceEntry) {
+        continue;
+      }
+
+      target.dexData[speciesId] ??= GameData.createComputerPartnerDexProgressEntry();
+      const targetEntry = target.dexData[speciesId]!;
+      targetEntry.caughtAttr = (targetEntry.caughtAttr ?? 0n) | (sourceEntry.caughtAttr ?? 0n);
+      targetEntry.natureAttr = (targetEntry.natureAttr ?? 0) | (sourceEntry.natureAttr ?? 0);
+      targetEntry.caughtCount = Math.max(targetEntry.caughtCount ?? 0, sourceEntry.caughtCount ?? 0);
+      targetEntry.hatchedCount = Math.max(targetEntry.hatchedCount ?? 0, sourceEntry.hatchedCount ?? 0);
+      targetEntry.ivs = Array.from({ length: 6 }, (_, i) =>
+        Math.max(targetEntry.ivs?.[i] ?? 0, sourceEntry.ivs?.[i] ?? 0),
+      );
+    }
+
+    for (const speciesId of Object.keys(source.starterData)) {
+      const sourceEntry = source.starterData[speciesId];
+      if (!sourceEntry) {
+        continue;
+      }
+
+      target.starterData[speciesId] ??= GameData.createComputerPartnerStarterProgressEntry();
+      const targetEntry = target.starterData[speciesId]!;
+      targetEntry.eggMoves |= sourceEntry.eggMoves ?? 0;
+      targetEntry.candyCount = Math.max(targetEntry.candyCount ?? 0, sourceEntry.candyCount ?? 0);
+      targetEntry.friendship = Math.max(targetEntry.friendship ?? 0, sourceEntry.friendship ?? 0);
+      targetEntry.abilityAttr |= sourceEntry.abilityAttr ?? 0;
+      targetEntry.passiveAttr |= sourceEntry.passiveAttr ?? 0;
+      targetEntry.valueReduction = Math.max(targetEntry.valueReduction ?? 0, sourceEntry.valueReduction ?? 0);
     }
   }
 
@@ -2410,6 +2562,96 @@ export class GameData {
     globalScene.candyBar.showStarterSpeciesCandy(speciesId, numCandiesToAdd);
 
     return true;
+  }
+
+  public getComputerPartnerProgress(key: ComputerPartnerKey): ComputerPartnerProgressData {
+    this.computerPartnerProgress[key] = GameData.normalizeComputerPartnerProgress(
+      this.computerPartnerProgress[key] ?? GameData.createComputerPartnerProgressData(),
+    );
+    return this.computerPartnerProgress[key]!;
+  }
+
+  public getComputerPartnerDexProgressEntry(
+    key: ComputerPartnerKey,
+    speciesId: SpeciesId,
+  ): ComputerPartnerDexProgressEntry {
+    const progress = this.getComputerPartnerProgress(key);
+    progress.dexData[speciesId] ??= GameData.createComputerPartnerDexProgressEntry();
+    return progress.dexData[speciesId]!;
+  }
+
+  public getComputerPartnerStarterProgressEntry(
+    key: ComputerPartnerKey,
+    speciesId: SpeciesId,
+  ): ComputerPartnerStarterProgressEntry {
+    const progress = this.getComputerPartnerProgress(key);
+    progress.starterData[speciesId] ??= GameData.createComputerPartnerStarterProgressEntry();
+    return progress.starterData[speciesId]!;
+  }
+
+  public addComputerPartnerStarterCandy(
+    key: ComputerPartnerKey,
+    speciesId: SpeciesId,
+    numCandiesToAdd: number,
+  ): boolean {
+    const starterEntry = this.getComputerPartnerStarterProgressEntry(key, speciesId);
+    if (starterEntry.candyCount >= MAX_STARTER_CANDY_COUNT) {
+      return false;
+    }
+
+    starterEntry.candyCount = Math.min(starterEntry.candyCount + numCandiesToAdd, MAX_STARTER_CANDY_COUNT);
+    return true;
+  }
+
+  public addComputerPartnerStarterFriendship(
+    key: ComputerPartnerKey,
+    speciesId: SpeciesId,
+    friendship: number,
+  ): boolean {
+    const starterEntry = this.getComputerPartnerStarterProgressEntry(key, speciesId);
+    starterEntry.friendship = (starterEntry.friendship || 0) + friendship;
+
+    const friendshipCap = getStarterValueFriendshipCap(speciesDataRegistry.getStarterCost(speciesId));
+    if (starterEntry.friendship < friendshipCap) {
+      return false;
+    }
+
+    const wasCandyIncremented = this.addComputerPartnerStarterCandy(
+      key,
+      speciesId,
+      Math.floor(starterEntry.friendship / friendshipCap),
+    );
+    if (wasCandyIncremented) {
+      starterEntry.friendship %= friendshipCap;
+    } else {
+      starterEntry.friendship = friendshipCap - 1;
+    }
+
+    return wasCandyIncremented;
+  }
+
+  public recordComputerPartnerPokemonCaught(key: ComputerPartnerKey, pokemon: Pokemon, fromEgg = false): void {
+    const speciesId = pokemon.species.getRootSpeciesId(true);
+    const species = getPokemonSpecies(speciesId);
+    const dexEntry = this.getComputerPartnerDexProgressEntry(key, speciesId);
+    const starterEntry = this.getComputerPartnerStarterProgressEntry(key, speciesId);
+    const dexAttr = pokemon.getDexAttr() & species.getFullUnlocksData();
+
+    dexEntry.caughtAttr |= dexAttr;
+    dexEntry.natureAttr |= 1 << (pokemon.nature + 1);
+    if (fromEgg) {
+      dexEntry.hatchedCount++;
+    } else {
+      dexEntry.caughtCount++;
+    }
+    dexEntry.ivs = Array.from({ length: 6 }, (_, i) => Math.max(dexEntry.ivs?.[i] ?? 0, pokemon.ivs?.[i] ?? 0));
+
+    starterEntry.abilityAttr |=
+      pokemon.abilityIndex !== 1 || pokemon.species.ability2 ? 1 << pokemon.abilityIndex : AbilityAttr.ABILITY_HIDDEN;
+
+    const shinyBonus = pokemon.isShiny() ? 5 * Math.pow(2, pokemon.variant ?? 0) : 1;
+    const eggOrBossBonus = fromEgg || pokemon.isBoss() ? 2 : 1;
+    this.addComputerPartnerStarterCandy(key, speciesId, shinyBonus * eggOrBossBonus);
   }
 
   /**

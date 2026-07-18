@@ -1,13 +1,13 @@
-import { globalScene } from "#app/global-scene";
 import type { PlayerIndex } from "#app/battle-scene";
+import { globalScene } from "#app/global-scene";
 import { Gender } from "#data/gender";
 import type { PlayerPokemon } from "#field/pokemon";
 import type { Starter } from "#types/save-data";
 import {
+  type ComputerPartnerKey,
   createComputerPartnerStarter,
   getComputerPartnerProfile,
   isComputerPartnerStarterAce,
-  type ComputerPartnerKey,
 } from "#utils/computer-partner-profile";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 
@@ -20,7 +20,7 @@ export function getNextComputerPartnerInviteIndex(): PlayerIndex | undefined {
     return 1;
   }
   if (!globalScene.twoPlayerComputerPartner || globalScene.multiplayerPlayerCount >= 3) {
-    return undefined;
+    return;
   }
 
   return 2;
@@ -33,11 +33,14 @@ export async function inviteComputerPartnerToRun(key: ComputerPartnerKey): Promi
   }
 
   const profile = getComputerPartnerProfile(key);
-  const starters = createComputerPartnerStarter(profile);
+  const hostGameData = globalScene.getPlayerGameData(0);
+  const starters = createComputerPartnerStarter(profile, hostGameData.getComputerPartnerProgress(key));
 
-  if (!starters.length) {
+  if (starters.length === 0) {
     return;
   }
+
+  hostGameData.saveSystemLocal();
 
   globalScene.configureTwoPlayerMode(true, 6, true, playerIndex === 2 ? 3 : 2);
   applyComputerPartnerIdentity(profile, playerIndex);
@@ -63,7 +66,8 @@ export function dismissComputerPartnerFromRun(playerIndex: PlayerIndex = 1): str
   }
 
   globalScene.clearMysteryEncounterBattlePlayerFieldOwners();
-  globalScene.getActivePlayerIndexes()
+  globalScene
+    .getActivePlayerIndexes()
     .filter(partnerIndex => globalScene.isComputerPartnerPlayer(partnerIndex))
     .forEach(partnerIndex => {
       globalScene.getPlayerParty(partnerIndex).forEach(pokemon => {
@@ -80,7 +84,10 @@ export function dismissComputerPartnerFromRun(playerIndex: PlayerIndex = 1): str
   return profile.name;
 }
 
-function applyComputerPartnerIdentity(profile: ReturnType<typeof getComputerPartnerProfile>, playerIndex: PlayerIndex): void {
+function applyComputerPartnerIdentity(
+  profile: ReturnType<typeof getComputerPartnerProfile>,
+  playerIndex: PlayerIndex,
+): void {
   globalScene.setComputerPartnerKey(playerIndex, profile.key);
 }
 
@@ -133,9 +140,9 @@ function getStarterGender(starter: Starter): Gender {
 function getComputerPartnerJoinLevel(): number {
   const party = globalScene.getPlayerParty(0);
   const activeParty = party.filter(pokemon => !pokemon.isFainted());
-  const referenceParty = activeParty.length ? activeParty : party;
+  const referenceParty = activeParty.length > 0 ? activeParty : party;
 
-  if (!referenceParty.length) {
+  if (referenceParty.length === 0) {
     return globalScene.gameMode.getStartingLevel();
   }
 

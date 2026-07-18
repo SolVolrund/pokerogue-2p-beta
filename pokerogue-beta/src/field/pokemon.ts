@@ -6174,6 +6174,15 @@ export class PlayerPokemon extends Pokemon {
         gameData.addStarterCandy(id, activeOverrides.IMMEDIATE_ADD_CANDY_OVERRIDE);
       }
     });
+
+    if (playerIndex !== undefined && globalScene.isComputerPartnerPlayer(playerIndex)) {
+      const partnerKey = globalScene.getComputerPartnerKey(playerIndex);
+      const hostGameData = globalScene.getPlayerGameData(0);
+      starterData.forEach(([, id]: [StarterDataEntry, SpeciesId]) => {
+        hostGameData.addComputerPartnerStarterFriendship(partnerKey, id, candyFriendshipAmount);
+      });
+      globalScene.savePlayerSystemSaveLocal(0);
+    }
   }
 
   getPossibleEvolution(evolution: SpeciesFormEvolution | null): Promise<Pokemon> {

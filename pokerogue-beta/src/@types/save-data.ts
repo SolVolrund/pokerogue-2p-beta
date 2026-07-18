@@ -34,12 +34,36 @@ export interface SystemSaveData {
   achvUnlocks: AchvUnlocks;
   voucherUnlocks: VoucherUnlocks;
   computerPartnerUnlocks?: Partial<Record<ComputerPartnerKey, number>>;
+  computerPartnerProgress?: Partial<Record<ComputerPartnerKey, ComputerPartnerProgressData>>;
   voucherCounts: VoucherCounts;
   eggs: EggData[];
   gameVersion: string;
   timestamp: number;
   eggPity: number[];
   unlockPity: number[];
+}
+
+export interface ComputerPartnerDexProgressEntry {
+  caughtAttr: bigint;
+  natureAttr: number;
+  caughtCount: number;
+  hatchedCount: number;
+  ivs: number[];
+}
+
+export interface ComputerPartnerStarterProgressEntry {
+  eggMoves: number;
+  candyCount: number;
+  friendship: number;
+  abilityAttr: number;
+  passiveAttr: number;
+  valueReduction: number;
+}
+
+export interface ComputerPartnerProgressData {
+  dexData: Partial<Record<SpeciesId, ComputerPartnerDexProgressEntry>>;
+  starterData: Partial<Record<SpeciesId, ComputerPartnerStarterProgressEntry>>;
+  eggPurchases: number;
 }
 
 export interface PlayerSessionSaveData {

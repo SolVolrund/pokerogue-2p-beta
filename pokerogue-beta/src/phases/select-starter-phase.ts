@@ -245,8 +245,11 @@ export class SelectStarterPhase extends Phase {
   }
 
   private initComputerPartnerStarters(playerIndex: PlayerIndex): Promise<void> {
-    const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
-    const starters = createComputerPartnerStarter(profile);
+    const partnerKey = globalScene.getComputerPartnerKey(playerIndex);
+    const profile = getComputerPartnerProfile(partnerKey);
+    const hostGameData = globalScene.getPlayerGameData(0);
+    const starters = createComputerPartnerStarter(profile, hostGameData.getComputerPartnerProgress(partnerKey));
+    globalScene.savePlayerSystemSaveLocal(0);
     return this.initPlayerStarters(starters, playerIndex);
   }
 

@@ -290,6 +290,16 @@ export class AttemptCapturePhase extends PokemonPhase {
 
     const capturingPlayerGameData = globalScene.getPlayerGameData(this.playerIndex);
     capturingPlayerGameData.updateSpeciesDexIvs(pokemon.species.getRootSpeciesId(true), pokemon.ivs);
+    const recordComputerPartnerCatch = () => {
+      if (!globalScene.isComputerPartnerPlayer(this.playerIndex)) {
+        return;
+      }
+
+      const partnerKey = globalScene.getComputerPartnerKey(this.playerIndex);
+      const hostGameData = globalScene.getPlayerGameData(0);
+      hostGameData.recordComputerPartnerPokemonCaught(partnerKey, pokemon);
+      globalScene.savePlayerSystemSaveLocal(0);
+    };
 
     const addStatus = new BooleanHolder(true);
     applyChallenges(ChallengeType.POKEMON_ADD_TO_PARTY, pokemon, addStatus);
@@ -383,6 +393,7 @@ export class AttemptCapturePhase extends PokemonPhase {
           );
         };
         Promise.all([pokemon.hideInfo(), capturingPlayerGameData.setPokemonCaught(pokemon)]).then(() => {
+          recordComputerPartnerCatch();
           void globalScene.savePlayerSystemSave(this.playerIndex);
           if (!addStatus.value) {
             removePokemon();
