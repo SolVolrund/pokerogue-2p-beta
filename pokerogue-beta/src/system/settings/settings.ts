@@ -213,6 +213,7 @@ export const SettingKeys = {
   Egg_Skip: "EGG_SKIP",
   Battle_Style: "BATTLE_STYLE",
   Planner_AI_Enable: "PLANNER_AI_ENABLE",
+  Two_Player_Input_Lockout: "TWO_PLAYER_INPUT_LOCKOUT",
   Enable_Retries: "ENABLE_RETRIES",
   Hide_IVs: "HIDE_IVS",
   Hide_Move_Skip_Confirm: "HIDE_MOVE_SKIP_CONFIRM",
@@ -419,6 +420,21 @@ export const Setting: Setting[] = [
     options: OFF_ON,
     default: 0,
     type: SettingType.GENERAL,
+  },
+  {
+    key: SettingKeys.Two_Player_Input_Lockout,
+    label: i18next.t("settings:twoPlayerInputLockout"),
+    options: [
+      { value: "0", label: "0 ms" },
+      { value: "100", label: "100 ms" },
+      { value: "200", label: "200 ms" },
+      { value: "300", label: "300 ms" },
+      { value: "400", label: "400 ms" },
+      { value: "500", label: "500 ms" },
+    ],
+    default: 1,
+    type: SettingType.GENERAL,
+    clamp: true,
   },
   {
     key: SettingKeys.Command_Cursor_Memory,
@@ -992,6 +1008,9 @@ export function setSetting(setting: string, value: number): boolean {
       break;
     case SettingKeys.Planner_AI_Enable:
       globalScene.plannerAiEnabled = Setting[index].options[value].value === "On";
+      break;
+    case SettingKeys.Two_Player_Input_Lockout:
+      globalScene.twoPlayerInputLockoutMs = Number.parseInt(Setting[index].options[value].value);
       break;
     case SettingKeys.Show_BGM_Bar:
       globalScene.showBgmBar = Setting[index].options[value].value === "On";

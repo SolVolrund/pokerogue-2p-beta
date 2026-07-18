@@ -94,6 +94,7 @@ export interface SessionSaveData {
   multiplayerPlayerCount?: MultiplayerPlayerCount;
   twoPlayerPartySize?: 3 | 6;
   twoPlayerComputerPartner?: boolean;
+  computerPartnerPlayerIndexes?: PlayerIndex[];
   computerPartnerKey?: ComputerPartnerKey;
   computerPartnerKeys?: Partial<Record<PlayerIndex, ComputerPartnerKey>>;
   computerPartnerRolePreferences?: Partial<Record<PlayerIndex, ComputerPartnerRolePreferences>>;

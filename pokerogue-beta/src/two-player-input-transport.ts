@@ -1,8 +1,11 @@
 import type { InputOwner, LocalInputSeat, PlayerIndex } from "#app/battle-scene";
 import { Button } from "#enums/buttons";
+import type { ComputerPartnerKey, ComputerPartnerRolePreferences } from "#utils/computer-partner-profile";
 
 const LOCAL_INPUT_PROTOCOL = "pokerogue-2p-local-input";
 const LOCAL_INPUT_PROTOCOL_VERSION = 1;
+const DEFAULT_STRICT_INPUT_CONTEXT_GRACE_MS = 100;
+const POST_INPUT_CHECKPOINT_DELAY_MS = 50;
 
 type TwoPlayerInputMessageKind =
   | "input"
@@ -16,9 +19,17 @@ type TwoPlayerInputMessageKind =
 
 export type TwoPlayerNetworkRole = "peer" | "host" | "guest";
 
+export interface TwoPlayerInputContext {
+  id: string;
+  promptId?: string;
+  strict: boolean;
+  key: Record<string, unknown>;
+}
+
 export interface TwoPlayerStateCheckpoint {
   fingerprint: string;
   summary: Record<string, unknown>;
+  inputContext?: TwoPlayerInputContext;
 }
 
 export interface TwoPlayerRunBootstrap {
@@ -30,6 +41,9 @@ export interface TwoPlayerTitleStart {
   gameMode?: number;
   partySize?: 3 | 6;
   playerCount?: 2 | 3;
+  computerPartnerPlayerIndexes?: PlayerIndex[];
+  computerPartnerKeys?: Partial<Record<PlayerIndex, ComputerPartnerKey>>;
+  computerPartnerRolePreferences?: Partial<Record<PlayerIndex, ComputerPartnerRolePreferences>>;
   slotId?: number;
   seed?: string;
 }
@@ -84,6 +98,7 @@ export type TwoPlayerSettingsSnapshotProvider = () => TwoPlayerSettingsSnapshot 
 export type TwoPlayerProfileSnapshotHandler = (profileSnapshot: TwoPlayerProfileSnapshot) => boolean;
 export type TwoPlayerProfileSnapshotProvider = () => TwoPlayerProfileSnapshot | undefined;
 export type TwoPlayerStateCheckpointProvider = () => TwoPlayerStateCheckpoint | undefined;
+export type TwoPlayerInputLockoutMsProvider = () => number;
 export type TwoPlayerInputDebugAction =
   | "accepted"
   | "rejected"
@@ -118,12 +133,23 @@ export interface TwoPlayerInputDebugEvent {
   checkpointFingerprint?: string;
   localFingerprint?: string;
   remoteFingerprint?: string;
+  localInputContextId?: string;
+  remoteInputContextId?: string;
   checkpointSummary?: Record<string, unknown>;
   profilePlayerIndex?: PlayerIndex;
   settingsKeys?: string[];
 }
 
 export type TwoPlayerInputDebugLogger = (event: Omit<TwoPlayerInputDebugEvent, "at">) => void;
+
+interface RemoteCheckpointEntry {
+  playerIndex: PlayerIndex;
+  label: string;
+  sequence: number;
+  checkpoint: TwoPlayerStateCheckpoint;
+  inputContextPromptId?: string;
+  inputContextPromptSeenAt: number;
+}
 
 function getLocalTransportMode(): string | undefined {
   if (typeof window === "undefined") {
@@ -234,6 +260,30 @@ function isValidCheckpoint(checkpoint: unknown): checkpoint is TwoPlayerStateChe
     && typeof (checkpoint as Partial<TwoPlayerStateCheckpoint>).summary === "object";
 }
 
+function getStrictInputContext(checkpoint: TwoPlayerStateCheckpoint | undefined): TwoPlayerInputContext | undefined {
+  const inputContext = checkpoint?.inputContext;
+  if (
+    !inputContext
+    || !inputContext.strict
+    || typeof inputContext.id !== "string"
+    || (inputContext.promptId !== undefined && typeof inputContext.promptId !== "string")
+    || !inputContext.key
+    || typeof inputContext.key !== "object"
+  ) {
+    return undefined;
+  }
+
+  return inputContext;
+}
+
+function getInputContextPromptId(inputContext: TwoPlayerInputContext): string {
+  return inputContext.promptId ?? inputContext.id;
+}
+
+function isTitlePhaseCheckpoint(checkpoint: TwoPlayerStateCheckpoint | undefined): boolean {
+  return checkpoint?.summary?.phase === "TitlePhase";
+}
+
 function isValidProfileSnapshot(profileSnapshot: unknown): profileSnapshot is TwoPlayerProfileSnapshot {
   return !!profileSnapshot
     && typeof profileSnapshot === "object"
@@ -314,6 +364,10 @@ export class TwoPlayerInputTransport {
   private authoritySequence = 0;
   private latestRemoteCheckpoint: TwoPlayerStateCheckpoint | undefined;
   private latestHostCheckpoint: TwoPlayerStateCheckpoint | undefined;
+  private readonly latestRemoteCheckpointsByPlayerIndex = new Map<PlayerIndex, RemoteCheckpointEntry>();
+  private latestHostCheckpointEntry: RemoteCheckpointEntry | undefined;
+  private localInputContextId: string | undefined;
+  private localInputContextEnteredAt = 0;
   private pendingRunBootstrap: TwoPlayerRunBootstrap | undefined;
   private pendingTitleStart: TwoPlayerTitleStart | undefined;
   private pendingSettingsSnapshot: TwoPlayerSettingsSnapshot | undefined;
@@ -332,6 +386,7 @@ export class TwoPlayerInputTransport {
     private readonly getCheckpoint?: TwoPlayerStateCheckpointProvider,
     private readonly onProfileSnapshot?: TwoPlayerProfileSnapshotHandler,
     private readonly getProfileSnapshot?: TwoPlayerProfileSnapshotProvider,
+    private readonly getInputLockoutMs?: TwoPlayerInputLockoutMsProvider,
   ) {
     this.mode = mode;
   }
@@ -347,6 +402,7 @@ export class TwoPlayerInputTransport {
     getCheckpoint?: TwoPlayerStateCheckpointProvider,
     onProfileSnapshot?: TwoPlayerProfileSnapshotHandler,
     getProfileSnapshot?: TwoPlayerProfileSnapshotProvider,
+    getInputLockoutMs?: TwoPlayerInputLockoutMsProvider,
   ): TwoPlayerInputTransport | undefined {
     const mode = getLocalTransportMode();
     if (localSeat === "both") {
@@ -370,6 +426,7 @@ export class TwoPlayerInputTransport {
         getCheckpoint,
         onProfileSnapshot,
         getProfileSnapshot,
+        getInputLockoutMs,
       );
       transport.startLocal();
       return transport;
@@ -392,6 +449,7 @@ export class TwoPlayerInputTransport {
         getCheckpoint,
         onProfileSnapshot,
         getProfileSnapshot,
+        getInputLockoutMs,
       );
       transport.startWebSocket();
       return transport;
@@ -409,24 +467,189 @@ export class TwoPlayerInputTransport {
       return "local-checkpoint-unavailable";
     }
 
-    const remoteCheckpoint = this.getReadinessCheckpoint();
-    if (!remoteCheckpoint) {
-      return "remote-checkpoint-unavailable";
+    const localContextBlockedReason = this.getLocalInputContextGraceBlockReason(checkpoint);
+    if (localContextBlockedReason) {
+      return localContextBlockedReason;
     }
 
-    if (checkpoint.summary.phase !== remoteCheckpoint.summary.phase) {
-      return "remote-checkpoint-phase-mismatch";
+    if (isTitlePhaseCheckpoint(checkpoint)) {
+      return undefined;
     }
 
-    if (checkpoint.summary.uiMode !== remoteCheckpoint.summary.uiMode) {
-      return "remote-checkpoint-ui-mode-mismatch";
+    const readinessEntries = this.getReadinessCheckpointEntries(checkpoint);
+    if (typeof readinessEntries === "string") {
+      return readinessEntries;
+    }
+
+    for (const entry of readinessEntries) {
+      if (checkpoint.summary.phase !== entry.checkpoint.summary.phase) {
+        return `${entry.label}-checkpoint-phase-mismatch`;
+      }
+
+      if (checkpoint.summary.uiMode !== entry.checkpoint.summary.uiMode) {
+        return `${entry.label}-checkpoint-ui-mode-mismatch`;
+      }
+
+      const inputContextMismatchReason = this.getInputContextMismatchReason(checkpoint, entry.checkpoint, entry.label);
+      if (inputContextMismatchReason) {
+        return inputContextMismatchReason;
+      }
+
+      const remoteContextBlockedReason = this.getRemoteInputContextGraceBlockReason(entry);
+      if (remoteContextBlockedReason) {
+        return remoteContextBlockedReason;
+      }
     }
 
     return undefined;
   }
 
-  private getReadinessCheckpoint(): TwoPlayerStateCheckpoint | undefined {
-    return this.networkRole === "guest" ? this.latestHostCheckpoint : this.latestRemoteCheckpoint;
+  private getReadinessCheckpointEntries(
+    localCheckpoint: TwoPlayerStateCheckpoint,
+  ): RemoteCheckpointEntry[] | string {
+    if (this.networkRole === "guest") {
+      return this.latestHostCheckpointEntry ? [this.latestHostCheckpointEntry] : "remote-checkpoint-unavailable";
+    }
+
+    const remotePlayerIndexes = this.getRemotePlayerIndexesForCheckpoint(localCheckpoint);
+    if (remotePlayerIndexes.length === 0) {
+      return this.latestRemoteCheckpoint
+        ? [...this.latestRemoteCheckpointsByPlayerIndex.values()].slice(-1)
+        : "remote-checkpoint-unavailable";
+    }
+
+    const entries: RemoteCheckpointEntry[] = [];
+    for (const playerIndex of remotePlayerIndexes) {
+      const entry = this.latestRemoteCheckpointsByPlayerIndex.get(playerIndex);
+      if (!entry) {
+        return `remote-p${playerIndex + 1}-checkpoint-unavailable`;
+      }
+      entries.push(entry);
+    }
+
+    return entries;
+  }
+
+  private getRemotePlayerIndexesForCheckpoint(checkpoint: TwoPlayerStateCheckpoint): PlayerIndex[] {
+    const players = checkpoint.summary.players;
+    if (!Array.isArray(players)) {
+      return [];
+    }
+
+    return players
+      .map(player => {
+        if (!player || typeof player !== "object") {
+          return undefined;
+        }
+
+        const playerSummary = player as { computerPartner?: unknown; playerIndex?: unknown };
+        if (playerSummary.computerPartner === true) {
+          return undefined;
+        }
+
+        return playerSummary.playerIndex;
+      })
+      .filter(isValidPlayerIndex)
+      .filter(playerIndex => playerIndex !== this.localSeat);
+  }
+
+  private getLocalInputContextGraceBlockReason(checkpoint: TwoPlayerStateCheckpoint): string | undefined {
+    const inputContext = getStrictInputContext(checkpoint);
+    if (!inputContext) {
+      this.localInputContextId = undefined;
+      this.localInputContextEnteredAt = 0;
+      return undefined;
+    }
+
+    this.noteLocalInputContext(checkpoint);
+
+    const graceMs = this.getStrictInputContextGraceMs();
+    return graceMs > 0 && Date.now() - this.localInputContextEnteredAt < graceMs
+      ? "local-input-context-grace-period"
+      : undefined;
+  }
+
+  private getStrictInputContextGraceMs(): number {
+    const configuredValue = this.getInputLockoutMs?.() ?? DEFAULT_STRICT_INPUT_CONTEXT_GRACE_MS;
+    return Number.isFinite(configuredValue)
+      ? Math.max(0, configuredValue)
+      : DEFAULT_STRICT_INPUT_CONTEXT_GRACE_MS;
+  }
+
+  private noteLocalInputContext(checkpoint: TwoPlayerStateCheckpoint | undefined): void {
+    const inputContext = getStrictInputContext(checkpoint);
+    if (!inputContext) {
+      this.localInputContextId = undefined;
+      this.localInputContextEnteredAt = 0;
+      return;
+    }
+
+    const promptId = getInputContextPromptId(inputContext);
+    if (this.localInputContextId !== promptId) {
+      this.localInputContextId = promptId;
+      this.localInputContextEnteredAt = Date.now();
+    }
+  }
+
+  private getRemoteInputContextGraceBlockReason(entry: RemoteCheckpointEntry): string | undefined {
+    const inputContext = getStrictInputContext(entry.checkpoint);
+    if (!inputContext) {
+      return undefined;
+    }
+
+    const receivedAt = entry.inputContextPromptSeenAt;
+    const graceMs = this.getStrictInputContextGraceMs();
+    return graceMs > 0 && receivedAt > 0 && Date.now() - receivedAt < graceMs
+      ? `${entry.label}-input-context-grace-period`
+      : undefined;
+  }
+
+  private createRemoteCheckpointEntry(
+    playerIndex: PlayerIndex,
+    label: string,
+    sequence: number,
+    checkpoint: TwoPlayerStateCheckpoint,
+    receivedAt: number,
+    previousEntry?: RemoteCheckpointEntry,
+  ): RemoteCheckpointEntry {
+    const inputContext = getStrictInputContext(checkpoint);
+    const promptId = inputContext ? getInputContextPromptId(inputContext) : undefined;
+    const inputContextPromptSeenAt = previousEntry && previousEntry.inputContextPromptId === promptId
+      ? previousEntry.inputContextPromptSeenAt
+      : promptId
+        ? receivedAt
+        : 0;
+
+    return {
+      playerIndex,
+      label,
+      sequence,
+      checkpoint,
+      ...(promptId ? { inputContextPromptId: promptId } : {}),
+      inputContextPromptSeenAt,
+    };
+  }
+
+  private getInputContextMismatchReason(
+    localCheckpoint: TwoPlayerStateCheckpoint,
+    remoteCheckpoint: TwoPlayerStateCheckpoint,
+    remoteLabel = "remote",
+  ): string | undefined {
+    const localInputContext = getStrictInputContext(localCheckpoint);
+    const remoteInputContext = getStrictInputContext(remoteCheckpoint);
+    if (!localInputContext && !remoteInputContext) {
+      return undefined;
+    }
+
+    if (localInputContext && !remoteInputContext) {
+      return `${remoteLabel}-input-context-unavailable`;
+    }
+
+    if (!localInputContext && remoteInputContext) {
+      return "local-input-context-unavailable";
+    }
+
+    return localInputContext!.id === remoteInputContext!.id ? undefined : `${remoteLabel}-input-context-mismatch`;
   }
 
   public requestInput(button: Button, pressed: boolean, checkpoint = this.getInputCheckpoint()): boolean {
@@ -556,7 +779,7 @@ export class TwoPlayerInputTransport {
     const sent = this.sendMessage(message);
     this.logMessageSend(sent, message, sent ? undefined : "transport-not-open");
     if (sent) {
-      this.sendCheckpointForMessage(message);
+      this.sendCheckpointForMessageAfterStateSettles(message);
     }
   }
 
@@ -587,6 +810,11 @@ export class TwoPlayerInputTransport {
     return this.getCheckpoint?.();
   }
 
+  private isStaleRemoteTitleCheckpoint(checkpoint: TwoPlayerStateCheckpoint): boolean {
+    const localCheckpoint = this.getInputCheckpoint();
+    return isTitlePhaseCheckpoint(checkpoint) && !!localCheckpoint && !isTitlePhaseCheckpoint(localCheckpoint);
+  }
+
   private logMessageSend(sent: boolean, message: TwoPlayerInputMessage, reason?: string): void {
     this.logDebug?.({
       action: sent ? "sent" : "rejected",
@@ -609,6 +837,9 @@ export class TwoPlayerInputTransport {
         ? {
             checkpointFingerprint: message.checkpoint.fingerprint,
             checkpointSummary: message.checkpoint.summary,
+            ...(getStrictInputContext(message.checkpoint)
+              ? { localInputContextId: getStrictInputContext(message.checkpoint)!.id }
+              : {}),
           }
         : {}),
       ...(message.profileSnapshot ? { profilePlayerIndex: message.profileSnapshot.playerIndex } : {}),
@@ -621,6 +852,7 @@ export class TwoPlayerInputTransport {
     if (!checkpoint) {
       return undefined;
     }
+    this.noteLocalInputContext(checkpoint);
 
     return {
       protocol: LOCAL_INPUT_PROTOCOL,
@@ -633,7 +865,7 @@ export class TwoPlayerInputTransport {
       ...(triggerMessage.authoritySequence === undefined
         ? {}
         : { authoritySequence: triggerMessage.authoritySequence }),
-      playerIndex: triggerMessage.playerIndex,
+      playerIndex: this.localSeat,
       button: triggerMessage.button,
       pressed: triggerMessage.pressed,
       checkpoint,
@@ -650,11 +882,22 @@ export class TwoPlayerInputTransport {
     this.logMessageSend(sent, checkpointMessage, sent ? undefined : "transport-not-open");
   }
 
+  private sendCheckpointForMessageAfterStateSettles(triggerMessage: TwoPlayerInputMessage): void {
+    const sendCheckpoint = () => this.sendCheckpointForMessage(triggerMessage);
+    if (typeof window !== "undefined") {
+      window.setTimeout(sendCheckpoint, POST_INPUT_CHECKPOINT_DELAY_MS);
+      return;
+    }
+
+    setTimeout(sendCheckpoint, POST_INPUT_CHECKPOINT_DELAY_MS);
+  }
+
   public sendCheckpoint(reason = "manual-checkpoint"): boolean {
     const checkpoint = this.getCheckpoint?.();
     if (!checkpoint) {
       return false;
     }
+    this.noteLocalInputContext(checkpoint);
 
     const message = {
       ...this.createMessage("state-checkpoint", this.localSeat, Button.ACTION, true),
@@ -726,6 +969,8 @@ export class TwoPlayerInputTransport {
     this.webSocket.addEventListener("close", () => {
       this.latestRemoteCheckpoint = undefined;
       this.latestHostCheckpoint = undefined;
+      this.latestRemoteCheckpointsByPlayerIndex.clear();
+      this.latestHostCheckpointEntry = undefined;
       this.logDebug?.({
         action: "disconnected",
         source: "transport",
@@ -737,6 +982,8 @@ export class TwoPlayerInputTransport {
     this.webSocket.addEventListener("error", () => {
       this.latestRemoteCheckpoint = undefined;
       this.latestHostCheckpoint = undefined;
+      this.latestRemoteCheckpointsByPlayerIndex.clear();
+      this.latestHostCheckpointEntry = undefined;
       this.logDebug?.({
         action: "error",
         source: "transport",
@@ -789,10 +1036,39 @@ export class TwoPlayerInputTransport {
       return;
     }
 
-    if (message.checkpoint) {
-      this.latestRemoteCheckpoint = message.checkpoint;
+    if (
+      message.kind === "state-checkpoint"
+      && message.checkpoint
+      && !this.isStaleRemoteTitleCheckpoint(message.checkpoint)
+    ) {
+      const receivedAt = Date.now();
+      const previousEntry = this.latestRemoteCheckpointsByPlayerIndex.get(message.playerIndex);
+      if (!previousEntry || message.sequence >= previousEntry.sequence) {
+        this.latestRemoteCheckpoint = message.checkpoint;
+        this.latestRemoteCheckpointsByPlayerIndex.set(
+          message.playerIndex,
+          this.createRemoteCheckpointEntry(
+            message.playerIndex,
+            `remote-p${message.playerIndex + 1}`,
+            message.sequence,
+            message.checkpoint,
+            receivedAt,
+            previousEntry,
+          ),
+        );
+      }
       if (message.senderRole === "host") {
-        this.latestHostCheckpoint = message.checkpoint;
+        if (!this.latestHostCheckpointEntry || message.sequence >= this.latestHostCheckpointEntry.sequence) {
+          this.latestHostCheckpoint = message.checkpoint;
+          this.latestHostCheckpointEntry = this.createRemoteCheckpointEntry(
+            message.playerIndex,
+            "host",
+            message.sequence,
+            message.checkpoint,
+            receivedAt,
+            this.latestHostCheckpointEntry,
+          );
+        }
       }
     }
 
@@ -878,6 +1154,9 @@ export class TwoPlayerInputTransport {
       buttonName: Button[message.button] as keyof typeof Button,
       pressed: message.pressed,
     });
+    if (accepted) {
+      this.sendCheckpointForMessageAfterStateSettles(message);
+    }
   }
 
   private handleInputRequest(message: TwoPlayerInputMessage): void {
@@ -890,6 +1169,12 @@ export class TwoPlayerInputTransport {
     const checkpointMismatchReason = this.getInputCheckpointMismatchReason(message, acceptedCheckpoint);
     if (checkpointMismatchReason) {
       this.logIgnoredMessage(message, checkpointMismatchReason);
+      return;
+    }
+
+    const inputReadinessBlockReason = this.getInputReadinessBlockReason(acceptedCheckpoint);
+    if (inputReadinessBlockReason) {
+      this.logIgnoredMessage(message, inputReadinessBlockReason);
       return;
     }
 
@@ -938,7 +1223,7 @@ export class TwoPlayerInputTransport {
       const sent = this.sendMessage(acceptedMessage);
       this.logMessageSend(sent, acceptedMessage, sent ? undefined : "transport-not-open");
       if (sent) {
-        this.sendCheckpointForMessage(acceptedMessage);
+        this.sendCheckpointForMessageAfterStateSettles(acceptedMessage);
       }
     }
   }
@@ -966,6 +1251,10 @@ export class TwoPlayerInputTransport {
       return "local-checkpoint-unavailable";
     }
 
+    if (isTitlePhaseCheckpoint(message.checkpoint) && isTitlePhaseCheckpoint(localCheckpoint)) {
+      return undefined;
+    }
+
     const remotePhase = message.checkpoint.summary.phase;
     const localPhase = localCheckpoint.summary.phase;
     if (remotePhase !== localPhase) {
@@ -976,6 +1265,20 @@ export class TwoPlayerInputTransport {
     const localUiMode = localCheckpoint.summary.uiMode;
     if (remoteUiMode !== localUiMode) {
       return "checkpoint-ui-mode-mismatch";
+    }
+
+    const inputContextMismatchReason = this.getInputContextMismatchReason(
+      localCheckpoint,
+      message.checkpoint,
+      "checkpoint",
+    );
+    if (inputContextMismatchReason) {
+      return inputContextMismatchReason;
+    }
+
+    const localContextBlockedReason = this.getLocalInputContextGraceBlockReason(localCheckpoint);
+    if (localContextBlockedReason) {
+      return localContextBlockedReason;
     }
 
     return undefined;
@@ -1078,12 +1381,21 @@ export class TwoPlayerInputTransport {
     const localCheckpoint = this.getCheckpoint?.();
     const remoteFingerprint = remoteCheckpoint?.fingerprint;
     const localFingerprint = localCheckpoint?.fingerprint;
-    const isDesynced = !!localFingerprint && !!remoteFingerprint && localFingerprint !== remoteFingerprint;
+    const isStaleTitleCheckpoint = !!remoteCheckpoint && this.isStaleRemoteTitleCheckpoint(remoteCheckpoint);
+    const isDesynced = !isStaleTitleCheckpoint
+      && !!localFingerprint
+      && !!remoteFingerprint
+      && localFingerprint !== remoteFingerprint;
+    const reason = !localCheckpoint
+      ? "checkpoint-unavailable"
+      : isStaleTitleCheckpoint
+        ? "stale-title-checkpoint"
+        : undefined;
 
     this.logDebug?.({
       action: isDesynced ? "desync" : "checkpoint",
       source: "transport",
-      ...(localCheckpoint ? {} : { reason: "checkpoint-unavailable" }),
+      ...(reason ? { reason } : {}),
       sessionId: message.sessionId,
       channelName: this.channelName,
       ...(this.mode === "websocket" ? { webSocketUrl: this.webSocketUrl } : {}),
@@ -1097,7 +1409,13 @@ export class TwoPlayerInputTransport {
       buttonName: Button[message.button] as keyof typeof Button,
       pressed: message.pressed,
       ...(remoteFingerprint ? { checkpointFingerprint: remoteFingerprint, remoteFingerprint } : {}),
+      ...(remoteCheckpoint && getStrictInputContext(remoteCheckpoint)
+        ? { remoteInputContextId: getStrictInputContext(remoteCheckpoint)!.id }
+        : {}),
       ...(localFingerprint ? { localFingerprint } : {}),
+      ...(localCheckpoint && getStrictInputContext(localCheckpoint)
+        ? { localInputContextId: getStrictInputContext(localCheckpoint)!.id }
+        : {}),
       ...(remoteCheckpoint ? { checkpointSummary: remoteCheckpoint.summary } : {}),
     });
   }
@@ -1157,10 +1475,20 @@ export class TwoPlayerInputTransport {
         ? {
             checkpointFingerprint: message.checkpoint.fingerprint,
             remoteFingerprint: message.checkpoint.fingerprint,
+            ...(getStrictInputContext(message.checkpoint)
+              ? { remoteInputContextId: getStrictInputContext(message.checkpoint)!.id }
+              : {}),
             checkpointSummary: message.checkpoint.summary,
           }
         : {}),
-      ...(localCheckpoint ? { localFingerprint: localCheckpoint.fingerprint } : {}),
+      ...(localCheckpoint
+        ? {
+            localFingerprint: localCheckpoint.fingerprint,
+            ...(getStrictInputContext(localCheckpoint)
+              ? { localInputContextId: getStrictInputContext(localCheckpoint)!.id }
+              : {}),
+          }
+        : {}),
     });
   }
 

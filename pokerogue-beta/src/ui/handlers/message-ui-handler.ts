@@ -7,6 +7,7 @@ import { getFrameMs } from "#utils/common";
 export abstract class MessageUiHandler extends AwaitableUiHandler {
   protected textTimer: Phaser.Time.TimerEvent | null;
   protected textCallbackTimer: Phaser.Time.TimerEvent | null;
+  private promptSequence = 0;
   public pendingPrompt: boolean;
 
   public message: Phaser.GameObjects.Text;
@@ -221,6 +222,7 @@ export abstract class MessageUiHandler extends AwaitableUiHandler {
   }
 
   showPrompt(callback?: (() => void) | null, callbackDelay?: number | null) {
+    this.promptSequence++;
     const wrappedTextLines = this.message.runWordWrap(this.message.text).split(/\n/g);
     const textLinesCount = wrappedTextLines.length;
     const lastTextLine = wrappedTextLines.at(-1) ?? "";
@@ -254,6 +256,19 @@ export abstract class MessageUiHandler extends AwaitableUiHandler {
           callback();
         }
       }
+    };
+    globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("message-prompt-ready");
+  }
+
+  getTwoPlayerMessageInputContextKey(): Record<string, unknown> | undefined {
+    if (!this.awaitingActionInput || !this.onActionInput || this.pendingPrompt) {
+      return;
+    }
+
+    return {
+      promptSequence: this.promptSequence,
+      messageText: this.message.text,
+      messageLength: this.message.text.length,
     };
   }
 

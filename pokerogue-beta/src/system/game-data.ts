@@ -1,6 +1,6 @@
 import { pokerogueApi } from "#api/api";
 import { clientSessionId, getSessionDataLocalStorageKey, loggedInUser, updateUserInfo } from "#app/account";
-import type { PlayerIndex } from "#app/battle-scene";
+import type { MultiplayerPlayerCount, PlayerIndex } from "#app/battle-scene";
 import { defaultStarterSpecies, saveKey } from "#app/constants";
 import { getGameMode } from "#app/game-mode";
 import { audioManager } from "#app/global-audio-manager";
@@ -1221,6 +1221,9 @@ export class GameData {
       multiplayerPlayerCount: globalScene.twoPlayerMode ? globalScene.multiplayerPlayerCount : undefined,
       twoPlayerPartySize: globalScene.twoPlayerPartySize,
       twoPlayerComputerPartner: globalScene.twoPlayerComputerPartner,
+      computerPartnerPlayerIndexes: globalScene.twoPlayerComputerPartner
+        ? globalScene.getComputerPartnerPlayerIndexes()
+        : undefined,
       computerPartnerKey: globalScene.twoPlayerComputerPartner ? globalScene.computerPartnerKey : undefined,
       computerPartnerKeys: globalScene.twoPlayerComputerPartner
         ? Object.fromEntries(
@@ -1582,27 +1585,38 @@ export class GameData {
       || (!!fromSession.players?.[2]?.party && fromSession.players[2].party.length > 0);
     const computerPartnerKeys = this.getSessionComputerPartnerKeys(fromSession);
     const computerPartnerKey = computerPartnerKeys[1] ?? this.getSessionComputerPartnerKey(fromSession, 1);
+    const playerCount = fromSession.multiplayerPlayerCount ?? (hasThreePlayerSessionData ? 3 : 2);
     const isComputerPartnerSession =
       !!fromSession.twoPlayerComputerPartner
+      || this.getSessionComputerPartnerPlayerIndexes(fromSession, playerCount).length > 0
       || Object.values(computerPartnerKeys).some(Boolean)
       || !!computerPartnerKey;
     const isTwoPlayerSession = !!fromSession.twoPlayerMode || hasTwoPlayerSessionData || isComputerPartnerSession;
-    const playerCount = fromSession.multiplayerPlayerCount ?? (hasThreePlayerSessionData ? 3 : 2);
+    const computerPartnerPlayerIndexes = this.getSessionComputerPartnerPlayerIndexes(
+      fromSession,
+      playerCount,
+      isComputerPartnerSession,
+      computerPartnerKeys,
+    );
 
     globalScene.configureTwoPlayerMode(
       isTwoPlayerSession,
       fromSession.twoPlayerPartySize ?? 6,
       isComputerPartnerSession,
       playerCount,
+      computerPartnerPlayerIndexes,
     );
 
     if (isComputerPartnerSession) {
       const activePlayerIndexes = globalScene.getActivePlayerIndexes();
       activePlayerIndexes
-        .filter(playerIndex => playerIndex > 0)
+        .filter(playerIndex => globalScene.isComputerPartnerPlayer(playerIndex))
         .forEach(playerIndex => {
           const key =
-            computerPartnerKeys[playerIndex] ?? (playerIndex === 1 ? computerPartnerKey : undefined) ?? "alex";
+            computerPartnerKeys[playerIndex]
+            ?? this.getSessionComputerPartnerKey(fromSession, playerIndex)
+            ?? (playerIndex === 1 ? computerPartnerKey : undefined)
+            ?? "alex";
           this.applySessionComputerPartner(playerIndex, key);
           globalScene.setComputerPartnerRolePreferences(
             playerIndex,
@@ -1610,6 +1624,39 @@ export class GameData {
           );
         });
     }
+  }
+
+  private getSessionComputerPartnerPlayerIndexes(
+    fromSession: SessionSaveData,
+    playerCount: MultiplayerPlayerCount,
+    isComputerPartnerSession = !!fromSession.twoPlayerComputerPartner,
+    computerPartnerKeys: Partial<Record<PlayerIndex, ComputerPartnerKey>> = this.getSessionComputerPartnerKeys(
+      fromSession,
+    ),
+  ): PlayerIndex[] {
+    const activeComputerSeats = ([1, 2] as PlayerIndex[]).filter(playerIndex => playerIndex < playerCount);
+    const normalize = (playerIndexes: PlayerIndex[]): PlayerIndex[] =>
+      [...new Set(playerIndexes)]
+        .filter(playerIndex => playerIndex > 0 && activeComputerSeats.includes(playerIndex))
+        .sort((a, b) => a - b);
+
+    if (Array.isArray(fromSession.computerPartnerPlayerIndexes)) {
+      const savedIndexes = normalize(fromSession.computerPartnerPlayerIndexes);
+      if (savedIndexes.length > 0) {
+        return savedIndexes;
+      }
+    }
+
+    const keyedIndexes = normalize(
+      Object.keys(computerPartnerKeys)
+        .map(playerIndex => Number(playerIndex))
+        .filter((playerIndex): playerIndex is PlayerIndex => playerIndex === 1 || playerIndex === 2),
+    );
+    if (keyedIndexes.length > 0) {
+      return keyedIndexes;
+    }
+
+    return isComputerPartnerSession ? activeComputerSeats : [];
   }
 
   private getSessionComputerPartnerKeys(

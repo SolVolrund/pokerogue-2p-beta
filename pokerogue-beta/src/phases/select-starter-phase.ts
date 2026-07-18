@@ -26,22 +26,12 @@ export class SelectStarterPhase extends Phase {
     super.start();
 
     audioManager.playBgm("menu");
-    if (globalScene.twoPlayerMode) {
-      globalScene.waitForPlayerInput(0);
-    } else {
-      globalScene.setActivePlayerIndex(0);
-    }
-
     this.selectStartersForPlayer(0);
   }
 
   private selectStartersForPlayer(playerIndex: PlayerIndex): void {
-    if (globalScene.twoPlayerMode) {
-      globalScene.waitForPlayerInput(playerIndex);
-    } else {
-      globalScene.setActivePlayerIndex(playerIndex);
-    }
-    globalScene.ui.setMode(UiMode.STARTER_SELECT, (starters: Starter[]) => {
+    this.setStarterSelectionOwner(playerIndex);
+    void globalScene.ui.setMode(UiMode.STARTER_SELECT, (starters: Starter[]) => {
       globalScene.ui.clearText();
       if (globalScene.twoPlayerMode) {
         this.initPlayerStarters(starters, playerIndex).then(() => {
@@ -83,7 +73,18 @@ export class SelectStarterPhase extends Phase {
       }
 
       this.selectSaveSlot(() => this.initPlayerStarters(starters, 0).then(() => this.beginBattle()));
+    }).then(() => {
+      if (globalScene.twoPlayerMode) {
+        globalScene.waitForPlayerInput(playerIndex);
+      }
     });
+  }
+
+  private setStarterSelectionOwner(playerIndex: PlayerIndex): void {
+    globalScene.setActivePlayerIndex(playerIndex);
+    if (globalScene.twoPlayerMode) {
+      globalScene.setInputOwner(playerIndex);
+    }
   }
 
   private advanceAfterStarterSelection(playerIndex: PlayerIndex): void {
@@ -147,11 +148,7 @@ export class SelectStarterPhase extends Phase {
    * @param starters - Array of {@linkcode Starter}s with which to start the battle
    */
   initPlayerStarters(starters: Starter[], playerIndex: PlayerIndex): Promise<void> {
-    if (globalScene.twoPlayerMode) {
-      globalScene.waitForPlayerInput(playerIndex);
-    } else {
-      globalScene.setActivePlayerIndex(playerIndex);
-    }
+    this.setStarterSelectionOwner(playerIndex);
     const party = globalScene.getPlayerParty(playerIndex);
     party.splice(0, party.length);
     const loadPokemonAssets: Promise<void>[] = [];

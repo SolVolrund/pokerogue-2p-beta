@@ -25,6 +25,7 @@ import { SpritePipeline } from "#app/pipelines/sprite";
 import { SceneBase } from "#app/scene-base";
 import { TurnCommandManager } from "#app/turn-command-manager";
 import type {
+  TwoPlayerInputContext,
   TwoPlayerProfileSnapshot,
   TwoPlayerRunBootstrap,
   TwoPlayerSettingsSnapshot,
@@ -176,6 +177,7 @@ import { PokemonInfoContainer } from "#ui/pokemon-info-container";
 import { addTextObject, getTextColor, RAINBOW_TINT } from "#ui/text";
 import { UI } from "#ui/ui";
 import { addUiThemeOverrides, updateWindowType } from "#ui/ui-theme";
+import { MessageUiHandler } from "#ui/message-ui-handler";
 import { playTween } from "#utils/anim-utils";
 import { getEnemyBattlerIndex, getFieldIndexFromBattlerIndex, getPlayerBattlerIndex } from "#utils/battler-index-utils";
 import { isClassicFinalBossPhaseTwo } from "#utils/classic-final-boss-utils";
@@ -346,7 +348,27 @@ export interface PlayerRunState {
 export interface TwoPlayerDebugStateCheckpoint {
   fingerprint: string;
   summary: Record<string, unknown>;
+  inputContext?: TwoPlayerInputContext;
 }
+
+const STRICT_TWO_PLAYER_INPUT_CONTEXT_UI_MODES = new Set<UiMode>([
+  UiMode.MESSAGE,
+  UiMode.COMMAND,
+  UiMode.FIGHT,
+  UiMode.BALL,
+  UiMode.TARGET_SELECT,
+  UiMode.MODIFIER_SELECT,
+  UiMode.SAVE_SLOT,
+  UiMode.PARTY,
+  UiMode.STARTER_SELECT,
+  UiMode.CONFIRM,
+  UiMode.OPTION_SELECT,
+  UiMode.MENU_OPTION_SELECT,
+  UiMode.CHALLENGE_SELECT,
+  UiMode.MYSTERY_ENCOUNTER,
+  UiMode.CONTEST_INPUT,
+  UiMode.ALPH_WALL,
+]);
 
 interface TwoPlayerRewardDebugState {
   waveIndex: number | null;
@@ -396,6 +418,45 @@ function getPlayerIndexes(count: MultiplayerPlayerCount): PlayerIndex[] {
   return [0, 1, 2].slice(0, count) as PlayerIndex[];
 }
 
+function normalizeComputerPartnerPlayerIndexes(
+  playerCount: MultiplayerPlayerCount,
+  computerPartner: boolean,
+  playerIndexes?: PlayerIndex[],
+): PlayerIndex[] {
+  if (!computerPartner) {
+    return [];
+  }
+
+  const activeComputerSeats = getPlayerIndexes(playerCount).filter(playerIndex => playerIndex > 0);
+  const normalizedIndexes = [...new Set(playerIndexes ?? activeComputerSeats)]
+    .filter(playerIndex => playerIndex > 0 && activeComputerSeats.includes(playerIndex))
+    .sort((a, b) => a - b);
+
+  return normalizedIndexes.length > 0 ? normalizedIndexes : activeComputerSeats;
+}
+
+function parseComputerPartnerPlayerToken(token: string): PlayerIndex | undefined {
+  switch (token.trim().toLowerCase()) {
+    case "2":
+    case "p2":
+    case "player2":
+    case "guest":
+    case "guest1":
+    case "guest-1":
+    case "guest_1":
+      return 1;
+    case "3":
+    case "p3":
+    case "player3":
+    case "guest2":
+    case "guest-2":
+    case "guest_2":
+      return 2;
+    default:
+      return;
+  }
+}
+
 function isTwoPlayerPrototypeEnabled(): boolean {
   return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("twoPlayer") === "1";
 }
@@ -420,6 +481,23 @@ function isTwoPlayerComputerPartnerEnabled(): boolean {
   return (
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("twoPlayerComputerPartner") === "1"
   );
+}
+
+function getTwoPlayerComputerPartnerPlayerIndexes(
+  playerCount: MultiplayerPlayerCount,
+  computerPartner = isTwoPlayerComputerPartnerEnabled(),
+): PlayerIndex[] {
+  if (typeof window === "undefined") {
+    return normalizeComputerPartnerPlayerIndexes(playerCount, computerPartner);
+  }
+
+  const partnerPlayerParam = new URLSearchParams(window.location.search).get("twoPlayerComputerPartnerPlayers");
+  const parsedPlayerIndexes = partnerPlayerParam
+    ?.split(/[,\s]+/g)
+    .map(parseComputerPartnerPlayerToken)
+    .filter((playerIndex): playerIndex is PlayerIndex => playerIndex !== undefined);
+
+  return normalizeComputerPartnerPlayerIndexes(playerCount, computerPartner, parsedPlayerIndexes);
 }
 
 function getTwoPlayerLocalInputSeat(): LocalInputSeat {
@@ -548,6 +626,7 @@ export class BattleScene extends SceneBase {
   /** Determines the selected battle style. */
   public battleStyle: BattleStyle = BattleStyle.SWITCH;
   public plannerAiEnabled = false;
+  public twoPlayerInputLockoutMs = 100;
   /**
    * Defines whether or not to show type effectiveness hints
    * - true: Show hints for moves
@@ -619,6 +698,10 @@ export class BattleScene extends SceneBase {
   public inputOwner: InputOwner = "none";
   public twoPlayerLocalInputSeat: LocalInputSeat = getTwoPlayerLocalInputSeat();
   public multiplayerPlayerCount: MultiplayerPlayerCount = this.twoPlayerMode ? getTwoPlayerPlayerCount() : 1;
+  public computerPartnerPlayerIndexes: PlayerIndex[] = getTwoPlayerComputerPartnerPlayerIndexes(
+    this.multiplayerPlayerCount,
+    this.twoPlayerComputerPartner,
+  );
   public threePlayerLocalMode =
     this.twoPlayerMode && this.multiplayerPlayerCount === 3 && this.twoPlayerLocalInputSeat === "both";
   public playerTrainerSprite: PlayerTrainerSprite = PlayerTrainerSprite.BASE_BOY;
@@ -1149,6 +1232,7 @@ export class BattleScene extends SceneBase {
     partySize: 3 | 6 = 6,
     computerPartner = false,
     playerCount: MultiplayerPlayerCount = enabled ? 2 : 1,
+    computerPartnerPlayerIndexes?: PlayerIndex[],
   ): void {
     if (!this.twoPlayerMode) {
       this.localPlayerSystemSave = this.gameData;
@@ -1170,7 +1254,12 @@ export class BattleScene extends SceneBase {
       this.twoPlayerProfileSlotsReady = [false, false, false];
     }
     this.twoPlayerPartySize = enabled ? partySize : 6;
-    this.twoPlayerComputerPartner = enabled && computerPartner;
+    this.computerPartnerPlayerIndexes = normalizeComputerPartnerPlayerIndexes(
+      this.multiplayerPlayerCount,
+      enabled && computerPartner,
+      computerPartnerPlayerIndexes,
+    );
+    this.twoPlayerComputerPartner = this.computerPartnerPlayerIndexes.length > 0;
     if (!this.twoPlayerComputerPartner) {
       this.computerPartnerKey = "alex";
       this.computerPartnerKeys = ["alex", "alex", "alex"];
@@ -1186,7 +1275,7 @@ export class BattleScene extends SceneBase {
       }
       this.syncLocalPlayerSystemSaveSlot();
       this.syncLegacyStateForActivePlayer();
-      if (!this.twoPlayerComputerPartner) {
+      if (!this.threePlayerLocalMode) {
         this.uiInputs?.broadcastTwoPlayerProfileSnapshot();
         this.uiInputs?.broadcastTwoPlayerSettingsSnapshot();
       }
@@ -1403,7 +1492,7 @@ export class BattleScene extends SceneBase {
       return;
     }
 
-    if (this.twoPlayerComputerPartner || this.threePlayerLocalMode) {
+    if (this.threePlayerLocalMode) {
       this.twoPlayerProfileSlotsReady = [true, true, true];
       this.resolveTwoPlayerProfileReadyWaiters();
       return;
@@ -1413,6 +1502,10 @@ export class BattleScene extends SceneBase {
     const activePlayerIndexes = this.getActivePlayerIndexes();
     this.twoPlayerProfileSlotsReady = ([0, 1, 2] as PlayerIndex[]).map(playerIndex => {
       if (!activePlayerIndexes.includes(playerIndex)) {
+        return true;
+      }
+
+      if (this.isComputerPartnerPlayer(playerIndex)) {
         return true;
       }
 
@@ -1593,6 +1686,10 @@ export class BattleScene extends SceneBase {
     return this.twoPlayerMode ? getPlayerIndexes(this.multiplayerPlayerCount) : [0];
   }
 
+  public getComputerPartnerPlayerIndexes(): PlayerIndex[] {
+    return this.computerPartnerPlayerIndexes.filter(playerIndex => this.isComputerPartnerPlayer(playerIndex));
+  }
+
   public resolvePlayerTieBreak(playerIndexes: PlayerIndex[]): PlayerIndex {
     const participants = [...new Set(playerIndexes)]
       .filter(playerIndex => this.getActivePlayerIndexes().includes(playerIndex))
@@ -1756,6 +1853,8 @@ export class BattleScene extends SceneBase {
     }
 
     const uiMode = this.ui?.getMode() ?? null;
+    const currentPhase = this.phaseManager.getCurrentPhase();
+    const inputContext = this.getTwoPlayerInputContext(uiMode, currentPhase);
     const summary = {
       waveIndex: this.currentBattle?.waveIndex ?? null,
       battleType: this.currentBattle?.battleType ?? null,
@@ -1763,15 +1862,17 @@ export class BattleScene extends SceneBase {
       seed: this.seed ?? null,
       waveSeed: this.waveSeed ?? null,
       biome: this.arena?.biomeId ?? null,
-      phase: this.phaseManager.getCurrentPhase()?.phaseName ?? null,
+      phase: currentPhase?.phaseName ?? null,
       uiMode,
       uiModeName: uiMode === null ? null : UiMode[uiMode],
       activePlayerIndex: this.activePlayerIndex,
       inputOwner: this.inputOwner,
+      inputContext,
       lastReward: this.twoPlayerLastRewardDebugState ?? null,
       fieldOwners: this.getPlayerFieldOwners(),
       players: this.getActivePlayerIndexes().map(playerIndex => ({
         playerIndex,
+        computerPartner: this.isComputerPartnerPlayer(playerIndex),
         money: this.getPlayerMoney(playerIndex),
         pokeballs: [...Object.entries(this.getPlayerPokeballCounts(playerIndex))].sort(
           ([left], [right]) => Number(left) - Number(right),
@@ -1786,6 +1887,52 @@ export class BattleScene extends SceneBase {
     return {
       fingerprint: getTwoPlayerDebugHash(JSON.stringify(summary)),
       summary,
+      ...(inputContext ? { inputContext } : {}),
+    };
+  }
+
+  private getTwoPlayerInputContext(
+    uiMode: UiMode | null,
+    currentPhase: Phase | undefined,
+  ): TwoPlayerInputContext | undefined {
+    if (uiMode === null || !STRICT_TWO_PLAYER_INPUT_CONTEXT_UI_MODES.has(uiMode)) {
+      return;
+    }
+
+    const handler = this.ui?.getHandler();
+    const messageInputContextKey = uiMode === UiMode.MESSAGE && handler instanceof MessageUiHandler
+      ? handler.getTwoPlayerMessageInputContextKey()
+      : undefined;
+    if (uiMode === UiMode.MESSAGE && !messageInputContextKey) {
+      return;
+    }
+
+    const phaseWithFieldIndex = currentPhase as (Phase & { getFieldIndex?: () => number }) | undefined;
+    const promptKey = {
+      waveIndex: this.currentBattle?.waveIndex ?? null,
+      battleType: this.currentBattle?.battleType ?? null,
+      phase: currentPhase?.phaseName ?? null,
+      phaseFieldIndex: phaseWithFieldIndex?.getFieldIndex?.() ?? null,
+      uiMode,
+      uiModeName: UiMode[uiMode],
+      handlerActive: handler?.active ?? false,
+      activePlayerIndex: this.activePlayerIndex,
+      inputOwner: this.inputOwner,
+      fieldOwners: this.getPlayerFieldOwners(),
+      playerFieldPokemonIds: this.getPlayerField().map(pokemon => pokemon?.id ?? null),
+      enemyFieldPokemonIds: this.getEnemyField().map(pokemon => pokemon?.id ?? null),
+      message: messageInputContextKey ?? null,
+    };
+    const contextKey = {
+      ...promptKey,
+      cursor: handler?.getCursor?.() ?? null,
+    };
+
+    return {
+      id: getTwoPlayerDebugHash(JSON.stringify(contextKey)),
+      promptId: getTwoPlayerDebugHash(JSON.stringify(promptKey)),
+      strict: true,
+      key: contextKey,
     };
   }
 
@@ -1885,8 +2032,8 @@ export class BattleScene extends SceneBase {
     return (
       this.twoPlayerComputerPartner
       && this.twoPlayerMode
-      && playerIndex > 0
       && this.getActivePlayerIndexes().includes(playerIndex)
+      && this.computerPartnerPlayerIndexes.includes(playerIndex)
     );
   }
 

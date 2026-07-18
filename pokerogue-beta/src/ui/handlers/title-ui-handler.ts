@@ -56,11 +56,14 @@ export class TitleUiHandler extends OptionSelectUiHandler {
       return undefined;
     }
 
-    if (globalScene.twoPlayerComputerPartner) {
-      return "Player 1";
-    }
-
     if (globalScene.twoPlayerLocalInputSeat === "both") {
+      if (globalScene.twoPlayerComputerPartner) {
+        const humanPlayerIndexes = globalScene
+          .getActivePlayerIndexes()
+          .filter(playerIndex => !globalScene.isComputerPartnerPlayer(playerIndex));
+        return humanPlayerIndexes.length > 1 ? "Local Players 1-2" : "Player 1";
+      }
+
       return globalScene.multiplayerPlayerCount === 3 ? "Local Players 1-3" : "Local Players 1-2";
     }
 

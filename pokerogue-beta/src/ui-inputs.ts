@@ -105,6 +105,7 @@ export class UiInputs {
       () => globalScene.getTwoPlayerDebugStateCheckpoint(),
       profileSnapshot => this.applyProfileSnapshot(profileSnapshot),
       () => globalScene.getLocalTwoPlayerProfileSnapshot(),
+      () => globalScene.twoPlayerInputLockoutMs,
     );
     this.exposeDebugRemoteInput();
     this.listenSyncRepairHotkey();
