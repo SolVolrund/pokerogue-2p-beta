@@ -29,6 +29,10 @@ export class MessagePhase extends Phase {
   start() {
     super.start();
 
+    if (globalScene.twoPlayerMode && this.prompt) {
+      globalScene.waitForSharedInput();
+    }
+
     if (this.text.indexOf("$") > -1) {
       const pokename: string[] = [];
       const repname = ["#POKEMON1", "#POKEMON2", "#POKEMON3"];

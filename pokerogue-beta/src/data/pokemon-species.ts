@@ -70,6 +70,19 @@ export const normalForm: SpeciesId[] = [
   SpeciesId.CALYREX,
 ];
 
+const COSPLAY_PIKACHU_FORM_KEYS = new Set([
+  "cosplay",
+  "cool-cosplay",
+  "beauty-cosplay",
+  "cute-cosplay",
+  "smart-cosplay",
+  "tough-cosplay",
+]);
+
+export function isCosplayPikachuForm(speciesId: SpeciesId, formKey?: string | null): boolean {
+  return speciesId === SpeciesId.PIKACHU && !!formKey && COSPLAY_PIKACHU_FORM_KEYS.has(formKey);
+}
+
 export type PokemonSpeciesFilter = (species: PokemonSpecies) => boolean;
 
 interface PokemonSpeciesFormConstructor {
@@ -353,9 +366,11 @@ export abstract class PokemonSpeciesForm {
     }
 
     const formSpriteKey = this.getFormSpriteKey(formIndex);
+    const forceFemaleCosplaySprite = isCosplayPikachuForm(this.speciesId, formSpriteKey);
+    const useFemaleSprite = female || forceFemaleCosplaySprite;
     const showGenderDiffs =
-      this.genderDiffs
-      && female
+      (this.genderDiffs || forceFemaleCosplaySprite)
+      && useFemaleSprite
       && ![
         SpeciesFormKey.MEGA,
         SpeciesFormKey.MEGA_X,
@@ -377,9 +392,15 @@ export abstract class PokemonSpeciesForm {
         replacement.formIndex
       ]?.getFormSpriteKey(replacement.formIndex);
 
+      const replacementForceFemaleCosplaySprite = isCosplayPikachuForm(
+        replacement.speciesId,
+        replacementFormSpriteKey,
+      );
+      const replacementUseFemaleSprite =
+        female || replacementForceFemaleCosplaySprite;
       const replacementShowGenderDiffs =
-        getPokemonSpecies(replacement.speciesId).genderDiffs
-        && female
+        (getPokemonSpecies(replacement.speciesId).genderDiffs || replacementForceFemaleCosplaySprite)
+        && replacementUseFemaleSprite
         && ![
           SpeciesFormKey.MEGA,
           SpeciesFormKey.MEGA_X,

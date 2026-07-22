@@ -24,6 +24,11 @@ const MAX_CONDITION_STARS = 3;
 const BASE_NERVOUS_CHANCE = 0.6;
 const NERVOUS_CHANCE_CONDITION_STAR_REDUCTION = 0.1;
 const NERVOUS_CHANCE_COMBO_STANDBY_REDUCTION = 0.1;
+const GOOD_APPEAL_JAM_THRESHOLDS = [
+  { minAppeal: 8, jam: 4 },
+  { minAppeal: 6, jam: 3 },
+  { minAppeal: 4, jam: 1 },
+] as const;
 
 export interface ContestMoveResolutionOptions {
   random?: () => number;
@@ -438,6 +443,10 @@ function applyJamBehavior(
 
   for (const target of jamTargets) {
     const targetJam = getRequestedJamForTarget(target, behavior, requestedJam);
+    if (targetJam <= 0) {
+      continue;
+    }
+
     const appliedJam = contestState.applyJam(target.id, targetJam);
     jamResults.push({
       contestantId: target.id,
@@ -457,6 +466,11 @@ function getRequestedJamForTarget(
     && target.comboStandbyMoveId !== undefined
   ) {
     return HIGH_EXPECTATION_JAM;
+  }
+
+  if (behavior === ContestSpectacularEffectBehavior.STARTLE_GOOD_APPEALS) {
+    const appealHearts = contestScoreToHearts(target.roundScore);
+    return GOOD_APPEAL_JAM_THRESHOLDS.find(threshold => appealHearts >= threshold.minAppeal)?.jam ?? 0;
   }
 
   return requestedJam;

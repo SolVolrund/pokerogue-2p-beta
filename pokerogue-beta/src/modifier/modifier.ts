@@ -12,6 +12,7 @@ import { allMoves, modifierTypes } from "#data/data-lists";
 import type { AlphLegendaryHelperId } from "#data/alph/legendary-helpers";
 import { CONTEST_STAT_MAX, type PartialContestStats } from "#data/contests/contest-stats";
 import { CONTEST_TYPES, ContestType } from "#data/contests/contest-type";
+import { isCosplayPikachuScarfItem } from "#data/cosplay-pikachu";
 import { getLevelTotalExp } from "#data/exp";
 import { SpeciesFormChangeItemTrigger, SpeciesFormChangeManualTrigger } from "#data/form-change-triggers";
 import { MAX_PER_TYPE_POKEBALLS } from "#data/pokeball";
@@ -3423,6 +3424,8 @@ export class PokemonFormChangeItemModifier extends PokemonHeldItemModifier {
 
     if (switchActive) {
       this.active = false;
+    } else if (active) {
+      this.deactivateOtherCosplayScarfItems(pokemon);
     }
 
     let ret = globalScene.triggerPokemonFormChange(pokemon, SpeciesFormChangeItemTrigger);
@@ -3453,6 +3456,26 @@ export class PokemonFormChangeItemModifier extends PokemonHeldItemModifier {
     }
 
     return ret;
+  }
+
+  private deactivateOtherCosplayScarfItems(pokemon: Pokemon): void {
+    if (!pokemon.hasSpecies(SpeciesId.PIKACHU) || !isCosplayPikachuScarfItem(this.formChangeItem)) {
+      return;
+    }
+
+    const otherActiveScarves = globalScene.findModifiersForPokemon(
+      m =>
+        m instanceof PokemonFormChangeItemModifier
+        && m !== this
+        && m.pokemonId === pokemon.id
+        && m.active
+        && isCosplayPikachuScarfItem(m.formChangeItem),
+      pokemon,
+    ) as PokemonFormChangeItemModifier[];
+
+    for (const modifier of otherActiveScarves) {
+      modifier.active = false;
+    }
   }
 
   getMaxHeldItemCount(_pokemon: Pokemon): number {

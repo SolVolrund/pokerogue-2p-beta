@@ -258,6 +258,7 @@ export class UiInputs {
 
   private processLocalButtonInput(button: Button, pressed: boolean): boolean {
     const inputCheckpoint = this.getInputCheckpoint();
+    const inputPlayerIndex = globalScene.getLocalInputPlayerIndex();
     const inputReadinessBlockReason = this.twoPlayerInputTransport?.getInputReadinessBlockReason(inputCheckpoint);
     if (inputReadinessBlockReason) {
       this.recordInputDebugEvent({
@@ -294,6 +295,10 @@ export class UiInputs {
       return requested;
     }
 
+    if (globalScene.inputOwner === inputPlayerIndex) {
+      globalScene.setActivePlayerIndex(inputPlayerIndex);
+    }
+
     const processed = this.processButtonInput(button, pressed);
     this.recordInputDebugEvent({
       action: processed ? "accepted" : "rejected",
@@ -301,13 +306,14 @@ export class UiInputs {
       ...(processed ? {} : { reason: "unknown-button" }),
       localSeat: globalScene.twoPlayerLocalInputSeat,
       inputOwner: globalScene.inputOwner,
+      playerIndex: inputPlayerIndex,
       button,
       buttonName: Button[button] as keyof typeof Button,
       pressed,
     });
 
     if (processed) {
-      this.twoPlayerInputTransport?.send(button, pressed, inputCheckpoint);
+      this.twoPlayerInputTransport?.send(button, pressed, inputCheckpoint, inputPlayerIndex);
     }
 
     return processed;

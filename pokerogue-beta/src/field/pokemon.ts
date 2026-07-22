@@ -40,6 +40,7 @@ import {
 } from "#data/battler-tags";
 import { getDailyEventSeedBoss, isDailyForcedWaveHiddenAbility } from "#data/daily-seed/daily-run";
 import { isDailyEventSeed, isDailyFinalBoss } from "#data/daily-seed/daily-seed-utils";
+import { COSPLAY_PIKACHU_FORM_MOVES, COSPLAY_PIKACHU_MOVE_IDS } from "#data/cosplay-pikachu";
 import { allAbilities, allMoves } from "#data/data-lists";
 import { getLevelTotalExp } from "#data/exp";
 import {
@@ -60,7 +61,7 @@ import {
 } from "#data/pokemon-data";
 import type { SpeciesFormChange } from "#data/pokemon-forms";
 import type { PokemonSpeciesForm } from "#data/pokemon-species";
-import { PokemonSpecies } from "#data/pokemon-species";
+import { isCosplayPikachuForm, PokemonSpecies } from "#data/pokemon-species";
 import { getRandomStatus, getStatusEffectHealText, getStatusEffectOverlapText, Status } from "#data/status-effect";
 import { getTerrainBlockMessage, TerrainType } from "#data/terrain";
 import type { TypeDamageMultiplier } from "#data/type";
@@ -197,6 +198,10 @@ import Phaser from "phaser";
 import SoundFade from "phaser3-rex-plugins/plugins/soundfade";
 import type { NonEmptyTuple } from "type-fest";
 import { getBaseLearnableMoveSource, getLevelMoves } from "./learnsets";
+
+function isCosplayPikachuSpeciesForm(species: PokemonSpecies, formIndex?: number): boolean {
+  return isCosplayPikachuForm(species.speciesId, species.forms?.[formIndex ?? 0]?.getFormKey());
+}
 
 function isBattleOpponentForTargeting(user: Pokemon, target: Pokemon): boolean {
   return user.isOpponent(target);
@@ -350,6 +355,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
   /** Stat stages queued by berry eating to be run in a single phase */
   public queuedBerryStatChanges: Mutable<StatChange>[] = []; // todo Doing it this way to touch modifiers as little as possible, may not be ideal permanent solution
+  public pendingCosplayFormMoveLearn: MoveId | null = null;
 
   // TODO: Rework this eventually
   constructor(
@@ -485,6 +491,10 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       );
       this.isTerastallized = false;
       this.stellarTypesBoosted = [];
+    }
+
+    if (isCosplayPikachuSpeciesForm(this.species, this.formIndex)) {
+      this.gender = Gender.FEMALE;
     }
 
     this.summonData = new PokemonSummonData(dataSource?.summonData);
@@ -1816,11 +1826,17 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * @returns the {@linkcode Gender} of this {@linkcode Pokemon}.
    */
   getGender(ignoreOverride = false, useIllusion = false): Gender {
-    if (useIllusion && this.summonData.illusion) {
-      return this.summonData.illusion.gender;
-    }
-    if (!ignoreOverride && this.summonData.gender != null) {
-      return this.summonData.gender;
+    if (this.summonData) {
+      const speciesForm = this.getSpeciesForm(ignoreOverride, useIllusion);
+      if (isCosplayPikachuForm(speciesForm.speciesId, this.getFormKey())) {
+        return Gender.FEMALE;
+      }
+      if (useIllusion && this.summonData.illusion) {
+        return this.summonData.illusion.gender;
+      }
+      if (!ignoreOverride && this.summonData.gender != null) {
+        return this.summonData.gender;
+      }
     }
     return this.gender;
   }
@@ -2985,6 +3001,45 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     if (this.summonData.moveset) {
       this.summonData.moveset[moveIndex] = move;
     }
+  }
+
+  protected syncCosplayPikachuFormMove(previousFormKey?: string): void {
+    this.pendingCosplayFormMoveLearn = null;
+    if (this.species.speciesId !== SpeciesId.PIKACHU) {
+      return;
+    }
+
+    const formMove = COSPLAY_PIKACHU_FORM_MOVES[this.getFormKey()];
+    if (formMove == null || this.getMoveset(true).some(move => move?.moveId === formMove)) {
+      return;
+    }
+
+    const previousFormMove = previousFormKey ? COSPLAY_PIKACHU_FORM_MOVES[previousFormKey] : undefined;
+    const replacementMoves = [
+      previousFormMove,
+      MoveId.THUNDER_SHOCK,
+      ...COSPLAY_PIKACHU_MOVE_IDS,
+    ].filter((moveId, index, moves): moveId is MoveId =>
+      moveId != null && moveId !== formMove && moves.indexOf(moveId) === index,
+    );
+    const moveIndex = this.moveset.findIndex(move => move != null && replacementMoves.includes(move.moveId));
+    if (moveIndex >= 0) {
+      this.setMove(moveIndex, formMove);
+      return;
+    }
+
+    if (this.isPlayer()) {
+      this.pendingCosplayFormMoveLearn = formMove;
+      return;
+    }
+
+    this.setMove(Math.min(this.moveset.length, 3), formMove);
+  }
+
+  public consumePendingCosplayFormMoveLearn(): MoveId | null {
+    const moveId = this.pendingCosplayFormMoveLearn;
+    this.pendingCosplayFormMoveLearn = null;
+    return moveId;
   }
 
   /**
@@ -4600,11 +4655,16 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * @returns A Promise that resolves once the form change has completed.
    */
   public async changeForm(formChange: SpeciesFormChange): Promise<void> {
+    const previousFormKey = this.getFormKey();
     this.formIndex = Math.max(
       this.species.forms.findIndex(f => f.formKey === formChange.formKey),
       0,
     );
+    if (isCosplayPikachuSpeciesForm(this.species, this.formIndex)) {
+      this.gender = Gender.FEMALE;
+    }
     this.generateName();
+    this.syncCosplayPikachuFormMove(previousFormKey);
 
     const abilityCount = this.getSpeciesForm().getAbilityCount();
     if (this.abilityIndex >= abilityCount) {
@@ -6401,11 +6461,16 @@ export class PlayerPokemon extends Pokemon {
 
   changeForm(formChange: SpeciesFormChange): Promise<void> {
     return new Promise(resolve => {
+      const previousFormKey = this.getFormKey();
       this.formIndex = Math.max(
         this.species.forms.findIndex(f => f.formKey === formChange.formKey),
         0,
       );
+      if (isCosplayPikachuSpeciesForm(this.species, this.formIndex)) {
+        this.gender = Gender.FEMALE;
+      }
       this.generateName();
+      this.syncCosplayPikachuFormMove(previousFormKey);
       const abilityCount = this.getSpeciesForm().getAbilityCount();
       if (this.abilityIndex >= abilityCount) {
         // Shouldn't happen
@@ -6617,6 +6682,9 @@ export class EnemyPokemon extends Pokemon {
       && this.species.forms[activeOverrides.ENEMY_FORM_OVERRIDES[speciesId]]
     ) {
       this.formIndex = activeOverrides.ENEMY_FORM_OVERRIDES[speciesId];
+    }
+    if (isCosplayPikachuSpeciesForm(this.species, this.formIndex)) {
+      this.gender = Gender.FEMALE;
     }
 
     if (!dataSource) {

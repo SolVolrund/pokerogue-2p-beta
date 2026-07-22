@@ -767,10 +767,15 @@ export class TwoPlayerInputTransport {
     return sent;
   }
 
-  public send(button: Button, pressed: boolean, checkpoint = this.getInputCheckpoint()): void {
+  public send(
+    button: Button,
+    pressed: boolean,
+    checkpoint = this.getInputCheckpoint(),
+    playerIndex: PlayerIndex = this.localSeat,
+  ): void {
     const message = this.createMessage(
       this.networkRole === "host" ? "input-accepted" : "input",
-      this.localSeat,
+      playerIndex,
       button,
       pressed,
       checkpoint,
@@ -1232,7 +1237,7 @@ export class TwoPlayerInputTransport {
     return message.kind === "input-accepted"
       && this.networkRole === "host"
       && message.senderRole === "host"
-      && message.playerIndex === this.localSeat;
+      && message.senderId === this.senderId;
   }
 
   private getInputCheckpointMismatchReason(

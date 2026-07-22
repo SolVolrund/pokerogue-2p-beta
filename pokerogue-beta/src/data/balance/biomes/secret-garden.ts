@@ -62,27 +62,27 @@ const pokemonPool: BiomePokemonPools = {
     [TimeOfDay.DAY]: [],
     [TimeOfDay.DUSK]: [],
     [TimeOfDay.NIGHT]: [],
-    [TimeOfDay.ALL]: [],
+    [TimeOfDay.ALL]: [SpeciesId.LATIAS,SpeciesId.LATIOS],
   },
   [BiomePoolTier.BOSS_ULTRA_RARE]: {
     [TimeOfDay.DAWN]: [],
     [TimeOfDay.DAY]: [],
     [TimeOfDay.DUSK]: [],
     [TimeOfDay.NIGHT]: [],
-    [TimeOfDay.ALL]: [],
+    [TimeOfDay.ALL]: [SpeciesId.LATIAS,SpeciesId.LATIOS],
   },
 };
 
 const trainerPool: TrainerPools = {
-  [BiomePoolTier.COMMON]: [],
-  [BiomePoolTier.UNCOMMON]: [],
+  [BiomePoolTier.COMMON]: [TrainerType.BIANCA],
+  [BiomePoolTier.UNCOMMON]: [TrainerType.BIANCA],
   [BiomePoolTier.RARE]: [TrainerType.BIANCA],
-  [BiomePoolTier.SUPER_RARE]: [],
-  [BiomePoolTier.ULTRA_RARE]: [],
-  [BiomePoolTier.BOSS]: [],
+  [BiomePoolTier.SUPER_RARE]: [TrainerType.BIANCA],
+  [BiomePoolTier.ULTRA_RARE]: [TrainerType.BIANCA_LATIAS],
+  [BiomePoolTier.BOSS]: [TrainerType.BIANCA],
   [BiomePoolTier.BOSS_RARE]: [TrainerType.BIANCA_LATIAS],
-  [BiomePoolTier.BOSS_SUPER_RARE]: [],
-  [BiomePoolTier.BOSS_ULTRA_RARE]: [],
+  [BiomePoolTier.BOSS_SUPER_RARE]: [TrainerType.BIANCA_LATIAS],
+  [BiomePoolTier.BOSS_ULTRA_RARE]: [TrainerType.BIANCA_LATIAS],
 };
 
 const weatherPool: WeatherPool = {
@@ -100,7 +100,7 @@ export const secretGardenBiome: Biome = {
   biomeId: BiomeId.SECRET_GARDEN,
   pokemonPool,
   trainerPool,
-  trainerChance: 64,
+  trainerChance: 6,
   weatherPool,
   terrainPool,
   bgm: "island",

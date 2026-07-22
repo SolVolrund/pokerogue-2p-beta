@@ -24,6 +24,10 @@ export class ExpPhase extends PlayerPartyMemberPokemonPhase {
   public override start(): void {
     super.start();
 
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForSharedInput();
+    }
+
     const pokemon = this.getPlayerPokemon();
     const exp = new ValueHolder(this.expValue);
     globalScene.applyModifiersForPlayer(ExpBoosterModifier, this.playerIndex, exp);

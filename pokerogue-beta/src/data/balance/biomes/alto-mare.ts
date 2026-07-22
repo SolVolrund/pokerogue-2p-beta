@@ -100,7 +100,7 @@ export const altoMareBiome: Biome = {
   biomeId: BiomeId.ALTO_MARE,
   pokemonPool,
   trainerPool,
-  trainerChance: 12,
+  trainerChance: 4,
   weatherPool,
   terrainPool,
   bgm: "island",

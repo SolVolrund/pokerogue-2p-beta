@@ -1,5 +1,5 @@
-import { globalScene } from "#app/global-scene";
 import type { PlayerIndex } from "#app/battle-scene";
+import { globalScene } from "#app/global-scene";
 import { allMoves } from "#data/data-lists";
 import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
@@ -298,39 +298,65 @@ function getLegendaryConflictDuelRelation(user: Pokemon, target: Pokemon): "ally
   const misc = battle.mysteryEncounter.misc;
   if (
     !misc?.legendaryConflictDuelActive
-    || !Array.isArray(misc.legendaryConflictPokemonIds)
-    || misc.helpedIndex == null
-    || misc.phaseTwoIndex == null
     || user === target
   ) {
     return;
   }
 
-  const userLegendaryIndex = getLegendaryConflictPokemonIndex(user, misc.legendaryConflictPokemonIds);
-  const targetLegendaryIndex = getLegendaryConflictPokemonIndex(target, misc.legendaryConflictPokemonIds);
+  const helpedLegendaryId = misc.helpedLegendaryId;
+  const hostileLegendaryId = misc.hostileLegendaryId;
+  if (helpedLegendaryId != null && hostileLegendaryId != null) {
+    const userIsHelpedLegendary = user.id === helpedLegendaryId;
+    const targetIsHelpedLegendary = target.id === helpedLegendaryId;
+    const userIsHostileLegendary = user.id === hostileLegendaryId;
+    const targetIsHostileLegendary = target.id === hostileLegendaryId;
 
+    if (
+      (userIsHelpedLegendary && targetIsHostileLegendary)
+      || (userIsHostileLegendary && targetIsHelpedLegendary)
+    ) {
+      return "opponent";
+    }
+
+    if ((userIsHelpedLegendary && target.isPlayer()) || (targetIsHelpedLegendary && user.isPlayer())) {
+      return "ally";
+    }
+
+    if ((userIsHostileLegendary && target.isPlayer()) || (targetIsHostileLegendary && user.isPlayer())) {
+      return "opponent";
+    }
+
+    return;
+  }
+
+  if (
+    !Array.isArray(misc.legendaryConflictPokemonIds)
+    || misc.helpedIndex == null
+    || misc.phaseTwoIndex == null
+  ) {
+    return;
+  }
+
+  const userLegendaryIndex = getLegacyLegendaryConflictPokemonIndex(user, misc.legendaryConflictPokemonIds);
+  const targetLegendaryIndex = getLegacyLegendaryConflictPokemonIndex(target, misc.legendaryConflictPokemonIds);
   if (userLegendaryIndex != null && targetLegendaryIndex != null) {
-    return userLegendaryIndex !== targetLegendaryIndex ? "opponent" : undefined;
+    return userLegendaryIndex === targetLegendaryIndex ? undefined : "opponent";
   }
-
-  if (userLegendaryIndex === misc.helpedIndex && target.isPlayer()) {
+  if (
+    (userLegendaryIndex === misc.helpedIndex && target.isPlayer())
+    || (targetLegendaryIndex === misc.helpedIndex && user.isPlayer())
+  ) {
     return "ally";
   }
-
-  if (targetLegendaryIndex === misc.helpedIndex && user.isPlayer()) {
-    return "ally";
-  }
-
-  if (userLegendaryIndex === misc.phaseTwoIndex && target.isPlayer()) {
-    return "opponent";
-  }
-
-  if (targetLegendaryIndex === misc.phaseTwoIndex && user.isPlayer()) {
+  if (
+    (userLegendaryIndex === misc.phaseTwoIndex && target.isPlayer())
+    || (targetLegendaryIndex === misc.phaseTwoIndex && user.isPlayer())
+  ) {
     return "opponent";
   }
 }
 
-function getLegendaryConflictPokemonIndex(pokemon: Pokemon, legendaryPokemonIds: number[]): 0 | 1 | undefined {
+function getLegacyLegendaryConflictPokemonIndex(pokemon: Pokemon, legendaryPokemonIds: number[]): 0 | 1 | undefined {
   const index = legendaryPokemonIds.indexOf(pokemon.id);
   return index === 0 || index === 1 ? index : undefined;
 }

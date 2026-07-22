@@ -1,10 +1,9 @@
-import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import type { PlayerIndex } from "#app/battle-scene";
+import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import { globalScene } from "#app/global-scene";
 import { SpeciesFormChangeManualTrigger } from "#data/form-change-triggers";
 import { SpeciesFormChange } from "#data/pokemon-forms";
 import { AiType } from "#enums/ai-type";
-import { BattlerIndex } from "#enums/battler-index";
 import { FieldPosition } from "#enums/field-position";
 import { MoveId } from "#enums/move-id";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
@@ -14,25 +13,25 @@ import { SpeciesId } from "#enums/species-id";
 import { BATTLE_STATS } from "#enums/stat";
 import type { Pokemon } from "#field/pokemon";
 import { showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
-import {
-  getMysteryEncounterPlayerIndexes,
-  getNextMysteryEncounterPlayerIndex,
-  showMysteryEncounterPlayerMenu,
-} from "#mystery-encounters/encounter-player-utils";
 import type { EnemyPartyConfig, EnemyPokemonConfig } from "#mystery-encounters/encounter-phase-utils";
 import {
   initBattleWithEnemyConfig,
   leaveEncounterWithoutBattle,
   transitionMysteryEncounterIntroVisuals,
 } from "#mystery-encounters/encounter-phase-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { updateWindowType } from "#ui/ui-theme";
+import { randSeedItem } from "#utils/common";
 import type { FieldBlessing } from "#utils/field-blessings";
 import { getFieldBlessingName, setPersistentFieldBlessing } from "#utils/field-blessings";
-import { randSeedItem } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -66,7 +65,8 @@ interface LegendaryConflictData {
   rewardBlessing?: FieldBlessing;
   declined?: boolean;
   legendaryConflictDuelActive?: boolean;
-  legendaryConflictPokemonIds?: number[];
+  helpedLegendaryId?: number;
+  hostileLegendaryId?: number;
   skipSelectedDialogueOnce?: boolean;
 }
 
@@ -391,7 +391,18 @@ async function startLegendaryConflictBattle(
   await initBattleWithEnemyConfig(createLegendaryConflictBattleConfig(data.pair, phaseTwoIndex, playerIndexes.length));
 
   data.legendaryConflictDuelActive = true;
-  data.legendaryConflictPokemonIds = globalScene.getEnemyField().map(pokemon => pokemon.id);
+  const helpedLegendary = getLegendaryConflictPokemon(data, helpedIndex);
+  const hostileLegendary = getLegendaryConflictPokemon(data, phaseTwoIndex);
+  if (helpedLegendary) {
+    data.helpedLegendaryId = helpedLegendary.id;
+  } else {
+    delete data.helpedLegendaryId;
+  }
+  if (hostileLegendary) {
+    data.hostileLegendaryId = hostileLegendary.id;
+  } else {
+    delete data.hostileLegendaryId;
+  }
 }
 
 function createLegendaryConflictBattleConfig(
@@ -414,13 +425,16 @@ function createLegendaryPokemonConfig(
   hostileIndex: 0 | 1,
   playerCount: number,
 ): EnemyPokemonConfig {
-  return {
+  const config: EnemyPokemonConfig = {
     species: getPokemonSpecies(member.speciesId),
     isBoss: false,
     moveSet: member.moves,
     aiType: AiType.SMART,
-    fieldPosition: playerCount > 2 && index === hostileIndex ? FieldPosition.CENTER : undefined,
   };
+  if (playerCount > 2 && index === hostileIndex) {
+    config.fieldPosition = FieldPosition.CENTER;
+  }
+  return config;
 }
 
 function alignLegendaryConflictPlayerField(playerIndexes: PlayerIndex[]): void {
@@ -452,19 +466,18 @@ function handleLegendaryConflictFaint(pokemon: Pokemon): boolean {
   }
 
   const data = getLegendaryConflictData();
-  const enemyIndex = (pokemon.getBattlerIndex() - BattlerIndex.ENEMY) as 0 | 1;
-  if (enemyIndex === data.helpedIndex) {
+  if (data.helpedIndex != null && isLegendaryConflictPokemon(data, pokemon, data.helpedIndex)) {
     data.blessingEligible = false;
     data.legendaryConflictDuelActive = false;
     return false;
   }
 
-  if (enemyIndex !== data.phaseTwoIndex) {
+  if (data.phaseTwoIndex == null || !isLegendaryConflictPokemon(data, pokemon, data.phaseTwoIndex)) {
     return false;
   }
 
   if (!data.phaseTwoUsed) {
-    startPhaseTwo(pokemon, data.pair.members[enemyIndex]);
+    startPhaseTwo(pokemon, data.pair.members[data.phaseTwoIndex]);
     data.phaseTwoUsed = true;
     return true;
   }
@@ -535,7 +548,23 @@ function getHelpedLegendary(data: LegendaryConflictData): Pokemon | undefined {
     return undefined;
   }
 
-  return globalScene.getEnemyParty()[data.helpedIndex];
+  return getLegendaryConflictPokemon(data, data.helpedIndex);
+}
+
+function getLegendaryConflictPokemon(data: LegendaryConflictData, index: 0 | 1): Pokemon | undefined {
+  const expectedId = index === data.helpedIndex ? data.helpedLegendaryId : data.hostileLegendaryId;
+  if (expectedId != null) {
+    const pokemon = globalScene.getEnemyParty().find(enemyPokemon => enemyPokemon.id === expectedId);
+    if (pokemon) {
+      return pokemon;
+    }
+  }
+
+  return globalScene.getEnemyParty()[index];
+}
+
+function isLegendaryConflictPokemon(data: LegendaryConflictData, pokemon: Pokemon, index: 0 | 1): boolean {
+  return getLegendaryConflictPokemon(data, index) === pokemon;
 }
 
 function markLegendaryConflictBattleWon(data: LegendaryConflictData): void {
@@ -546,7 +575,8 @@ async function awardLegendaryConflictBlessing(): Promise<void> {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const data = getLegendaryConflictData();
   data.legendaryConflictDuelActive = false;
-  delete data.legendaryConflictPokemonIds;
+  delete data.helpedLegendaryId;
+  delete data.hostileLegendaryId;
 
   if (data.declined) {
     encounter.dialogue.outro = [];

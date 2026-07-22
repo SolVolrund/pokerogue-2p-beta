@@ -777,16 +777,10 @@ export class TitlePhase extends Phase {
       {
         label: "2P+1C",
         handler: () => {
-          if (gameMode === GameModes.DAILY) {
-            globalScene.ui.setMode(UiMode.MESSAGE);
-            globalScene.ui.showText(i18next.t("menu:twoPlayerDailyUnavailable"), null, () =>
-              this.showPlayerCountSelect(gameMode),
-            );
-          } else {
-            this.showComputerPartnerSelect(gameMode, 3, undefined, undefined, [2]);
-          }
           return true;
         },
+        disabled: true,
+        style: TextStyle.SETTINGS_LOCKED,
         keepOpen: true,
       },
       {

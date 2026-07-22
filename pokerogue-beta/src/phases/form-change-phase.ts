@@ -97,7 +97,10 @@ export class FormChangePhase extends EvolutionPhase {
         globalScene.ui.showText(
           getSpeciesFormChangeMessage(this.pokemon, this.formChange, preName),
           null,
-          () => this.end(),
+          () => {
+            this.queuePendingCosplayMoveLearn();
+            this.end();
+          },
           null,
           true,
           fixedInt(delay),
@@ -105,6 +108,20 @@ export class FormChangePhase extends EvolutionPhase {
         globalScene.time.delayedCall(fixedInt(delay + 250), () => audioManager.playBgm());
       },
     });
+  }
+
+  private queuePendingCosplayMoveLearn(): void {
+    const moveId = this.pokemon.consumePendingCosplayFormMoveLearn();
+    if (moveId == null) {
+      return;
+    }
+
+    const partyMemberIndex = globalScene.getPlayerParty(this.playerIndex).indexOf(this.pokemon);
+    if (partyMemberIndex < 0) {
+      return;
+    }
+
+    globalScene.phaseManager.unshiftNew("LearnMovePhase", partyMemberIndex, moveId, undefined, -1, this.playerIndex);
   }
 
   /**

@@ -20,7 +20,7 @@ import { Egg } from "#data/egg";
 import { GrowthRate, getGrowthRateColor } from "#data/exp";
 import { Gender, getGenderColor, getGenderSymbol } from "#data/gender";
 import { getNatureName } from "#data/nature";
-import type { PokemonSpecies } from "#data/pokemon-species";
+import { isCosplayPikachuForm, type PokemonSpecies } from "#data/pokemon-species";
 import { AbilityAttr } from "#enums/ability-attr";
 import { AbilityId } from "#enums/ability-id";
 import { Button } from "#enums/buttons";
@@ -226,6 +226,10 @@ const languageSettings: { [key: string]: LanguageSetting } = {
     instructionTextSize: "28px",
   },
 };
+
+function isCosplayPikachuStarterForm(species: PokemonSpecies | null | undefined, formIndex?: number): boolean {
+  return !!species && isCosplayPikachuForm(species.speciesId, species.forms?.[formIndex ?? 0]?.getFormKey());
+}
 
 const valueReductionMax = 2;
 
@@ -2585,6 +2589,10 @@ export class StarterSelectUiHandler extends MessageUiHandler {
               originalStarterAttributes.form = newFormIndex;
               starterAttributes.tera = this.lastSpecies.forms[newFormIndex].type1;
               originalStarterAttributes.tera = starterAttributes.tera;
+              if (isCosplayPikachuStarterForm(this.lastSpecies, newFormIndex)) {
+                starterAttributes.female = true;
+                originalStarterAttributes.female = true;
+              }
               this.setSpeciesDetails(this.lastSpecies, {
                 formIndex: newFormIndex,
                 teraType: starterAttributes.tera,
@@ -3955,6 +3963,11 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     }
 
     if (species) {
+      formIndex = formIndex === undefined ? oldProps!.formIndex : formIndex;
+      if (isCosplayPikachuStarterForm(species, formIndex)) {
+        female = true;
+      }
+
       this.dexAttrCursor |= (shiny === undefined ? !(shiny = oldProps?.shiny) : !shiny)
         ? DexAttr.NON_SHINY
         : DexAttr.SHINY;
@@ -3966,9 +3979,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
         : variant === 1
           ? DexAttr.VARIANT_2
           : DexAttr.VARIANT_3;
-      this.dexAttrCursor |= globalScene.gameData.getFormAttr(
-        formIndex === undefined ? (formIndex = oldProps!.formIndex) : formIndex,
-      ); // TODO: is this bang correct?
+      this.dexAttrCursor |= globalScene.gameData.getFormAttr(formIndex);
       this.abilityCursor = abilityIndex === undefined ? (abilityIndex = oldAbilityIndex) : abilityIndex;
       this.natureCursor = natureIndex === undefined ? (natureIndex = oldNatureIndex) : natureIndex;
       this.teraCursor = teraType == null ? (teraType = oldTeraType) : teraType;
@@ -4014,6 +4025,9 @@ export class StarterSelectUiHandler extends MessageUiHandler {
         }
         if (variant === undefined || variant !== props.variant) {
           variant = props.variant;
+        }
+        if (isCosplayPikachuStarterForm(species, formIndex)) {
+          female = true;
         }
         if (abilityIndex === undefined || abilityIndex !== defaultAbilityIndex) {
           abilityIndex = defaultAbilityIndex;
@@ -4091,7 +4105,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
 
         const isMaleCaught = !!(caughtAttr & DexAttr.MALE);
         const isFemaleCaught = !!(caughtAttr & DexAttr.FEMALE);
-        this.canCycleGender = isMaleCaught && isFemaleCaught;
+        this.canCycleGender = isMaleCaught && isFemaleCaught && !isCosplayPikachuStarterForm(species, formIndex);
 
         const hasAbility1 = abilityAttr & AbilityAttr.ABILITY_1;
         let hasAbility2 = abilityAttr & AbilityAttr.ABILITY_2;

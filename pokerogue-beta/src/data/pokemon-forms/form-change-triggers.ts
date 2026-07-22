@@ -79,7 +79,7 @@ export class SpeciesFormChangeItemTrigger extends SpeciesFormChangeTrigger {
   }
 
   canChange(pokemon: Pokemon): boolean {
-    return !!globalScene.findModifier(r => {
+    return !!globalScene.findModifierForPokemon(r => {
       // Assume that if m has the `formChangeItem` property, then it is a PokemonFormChangeItemModifier
       const m = r as PokemonFormChangeItemModifier;
       return (
@@ -88,7 +88,7 @@ export class SpeciesFormChangeItemTrigger extends SpeciesFormChangeTrigger {
         && m.formChangeItem === this.item
         && m.active === this.active
       );
-    });
+    }, pokemon);
   }
 }
 

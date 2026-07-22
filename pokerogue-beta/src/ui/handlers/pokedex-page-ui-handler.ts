@@ -1124,10 +1124,7 @@ export class PokedexPageUiHandler extends MessageUiHandler {
    */
   private getStarterSpeciesId(speciesId: SpeciesId): SpeciesId {
     if (speciesId === SpeciesId.PIKACHU) {
-      if ([0, 1, 8].includes(this.formIndex)) {
-        return SpeciesId.PICHU;
-      }
-      return SpeciesId.PIKACHU;
+      return SpeciesId.PICHU;
     }
     return speciesDataRegistry.getSpeciesData(speciesId).starter;
   }
@@ -2712,13 +2709,8 @@ export class PokedexPageUiHandler extends MessageUiHandler {
         this.pokemonCaughtHatchedContainer.setY(25);
         this.pokemonCandyIcon.setTint(argbFromRgba(rgbHexToRgba(colorScheme[0])));
         this.pokemonCandyOverlayIcon.setTint(argbFromRgba(rgbHexToRgba(colorScheme[1])));
-        this.pokemonCandyCountText.setText(
-          `×${species.speciesId === SpeciesId.PIKACHU ? 0 : globalScene.gameData.starterData[this.starterId].candyCount}`,
-        );
-        updateCandyCountTextStyle(
-          this.pokemonCandyCountText,
-          species.speciesId === SpeciesId.PIKACHU ? 0 : globalScene.gameData.starterData[this.starterId].candyCount,
-        );
+        this.pokemonCandyCountText.setText(`×${globalScene.gameData.starterData[this.starterId].candyCount}`);
+        updateCandyCountTextStyle(this.pokemonCandyCountText, globalScene.gameData.starterData[this.starterId].candyCount);
         this.pokemonCandyContainer.setVisible(true);
 
         if (speciesDataRegistry.hasPrevolution(species.speciesId)) {

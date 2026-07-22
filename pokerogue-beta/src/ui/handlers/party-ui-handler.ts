@@ -1,6 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
+import { isCosplayPikachuScarfItem } from "#data/cosplay-pikachu";
 import { allMoves } from "#data/data-lists";
 import { SpeciesFormChangeItemTrigger } from "#data/form-change-triggers";
 import { Gender, getGenderColor, getGenderSymbol } from "#data/gender";
@@ -827,6 +828,21 @@ export class PartyUiHandler extends MessageUiHandler {
     ) {
       const formChangeItemModifiers = this.getFormChangeItemsModifiers(pokemon);
       const modifier = formChangeItemModifiers[option - PartyOption.FORM_CHANGE_ITEM];
+      if (
+        !modifier.active
+        && pokemon.hasSpecies(SpeciesId.PIKACHU)
+        && isCosplayPikachuScarfItem(modifier.formChangeItem)
+      ) {
+        for (const otherModifier of formChangeItemModifiers) {
+          if (
+            otherModifier !== modifier
+            && otherModifier.active
+            && isCosplayPikachuScarfItem(otherModifier.formChangeItem)
+          ) {
+            otherModifier.active = false;
+          }
+        }
+      }
       modifier.active = !modifier.active;
       globalScene.triggerPokemonFormChange(pokemon, SpeciesFormChangeItemTrigger, false, true);
     }
@@ -1875,6 +1891,12 @@ export class PartyUiHandler extends MessageUiHandler {
     if (ultraNecrozmaModifiers.length > 0) {
       // ULTRANECROZIUM_Z is active and deactivating it should be the only option
       return ultraNecrozmaModifiers;
+    }
+    if (
+      pokemon.hasSpecies(SpeciesId.PIKACHU)
+      && formChangeItemModifiers.find(m => m.active && isCosplayPikachuScarfItem(m.formChangeItem))
+    ) {
+      return formChangeItemModifiers.filter(m => isCosplayPikachuScarfItem(m.formChangeItem));
     }
     if (formChangeItemModifiers.find(m => m.active)) {
       // a form is currently active. the user has to disable the form or activate ULTRANECROZIUM_Z

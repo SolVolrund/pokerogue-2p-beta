@@ -101,7 +101,7 @@ export const farawayIslandBiome: Biome = {
   biomeId: BiomeId.FARAWAY_ISLAND,
   pokemonPool,
   trainerPool,
-  trainerChance: 64,
+  trainerChance: 8,
   weatherPool,
   terrainPool,
   biomeLinks,

@@ -1,5 +1,6 @@
 import { EVOLVE_MOVE, RELEARN_MOVE } from "#app/constants";
 import { EvoCondKey, EvolutionItem, SpeciesEvolution, SpeciesFormEvolution } from "#balance/pokemon-evolutions";
+import { COSPLAY_PIKACHU_BASE_FORM_KEY, COSPLAY_PIKACHU_SCARF_FORMS } from "#data/cosplay-pikachu";
 import { GrowthRate } from "#data/exp";
 import { SpeciesFormChangeItemTrigger } from "#data/form-change-triggers";
 import { SpeciesFormChange } from "#data/pokemon-forms";
@@ -13,6 +14,23 @@ import { SpeciesFormKey } from "#enums/species-form-key";
 import { SpeciesId } from "#enums/species-id";
 import { TimeOfDay } from "#enums/time-of-day";
 import type { SpeciesDataMapConfig } from "#types/pokemon-species";
+
+function createCosplayPikachuScarfFormChanges(): SpeciesFormChange[] {
+  const sourceForms = [COSPLAY_PIKACHU_BASE_FORM_KEY, ...COSPLAY_PIKACHU_SCARF_FORMS.map(form => form.formKey)];
+
+  return sourceForms.flatMap(preFormKey =>
+    COSPLAY_PIKACHU_SCARF_FORMS.filter(target => preFormKey !== target.formKey).map(
+      target =>
+        new SpeciesFormChange({
+          speciesId: SpeciesId.PIKACHU,
+          preFormKey,
+          evoFormKey: target.formKey,
+          trigger: new SpeciesFormChangeItemTrigger(target.item),
+          conditions: [],
+        }),
+    ),
+  );
+}
 
 export function initGenerationOne(): SpeciesDataMapConfig {
   const generationOneSpeciesData: SpeciesDataMapConfig = {} as SpeciesDataMapConfig;
@@ -2405,7 +2423,7 @@ export function initGenerationOne(): SpeciesDataMapConfig {
           formName: "Cool Cosplay",
           formKey: "cool-cosplay",
           type1: PokemonType.ELECTRIC,
-          type2: null,
+          type2: PokemonType.STEEL,
           height: 0.4,
           weight: 6,
           ability1: AbilityId.STATIC,
@@ -2429,7 +2447,7 @@ export function initGenerationOne(): SpeciesDataMapConfig {
           formName: "Beauty Cosplay",
           formKey: "beauty-cosplay",
           type1: PokemonType.ELECTRIC,
-          type2: null,
+          type2: PokemonType.ICE,
           height: 0.4,
           weight: 6,
           ability1: AbilityId.STATIC,
@@ -2453,7 +2471,7 @@ export function initGenerationOne(): SpeciesDataMapConfig {
           formName: "Cute Cosplay",
           formKey: "cute-cosplay",
           type1: PokemonType.ELECTRIC,
-          type2: null,
+          type2: PokemonType.FAIRY,
           height: 0.4,
           weight: 6,
           ability1: AbilityId.STATIC,
@@ -2477,7 +2495,7 @@ export function initGenerationOne(): SpeciesDataMapConfig {
           formName: "Smart Cosplay",
           formKey: "smart-cosplay",
           type1: PokemonType.ELECTRIC,
-          type2: null,
+          type2: PokemonType.PSYCHIC,
           height: 0.4,
           weight: 6,
           ability1: AbilityId.STATIC,
@@ -2501,7 +2519,7 @@ export function initGenerationOne(): SpeciesDataMapConfig {
           formName: "Tough Cosplay",
           formKey: "tough-cosplay",
           type1: PokemonType.ELECTRIC,
-          type2: null,
+          type2: PokemonType.FIGHTING,
           height: 0.4,
           weight: 6,
           ability1: AbilityId.STATIC,
@@ -2595,6 +2613,7 @@ export function initGenerationOne(): SpeciesDataMapConfig {
         trigger: new SpeciesFormChangeItemTrigger(FormChangeItem.MAX_MUSHROOMS),
         conditions: [],
       }),
+      ...createCosplayPikachuScarfFormChanges(),
     ],
     passives: {
       0: AbilityId.TRANSISTOR,
@@ -2665,7 +2684,7 @@ export function initGenerationOne(): SpeciesDataMapConfig {
         [55, MoveId.WILD_CHARGE],
       ],
       "smart-cosplay": [
-        [1, MoveId.ELECTRIC_TERRAIN],
+        [1, MoveId.PSYCHIC],
         [50, MoveId.PIKA_PAPOW],
         [55, MoveId.WILD_CHARGE],
       ],

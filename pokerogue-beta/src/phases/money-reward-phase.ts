@@ -35,6 +35,7 @@ export class MoneyRewardPhase extends BattlePhase {
         moneyAmount: formattedMoneyAmount,
       });
 
+      globalScene.waitForSharedInput();
       globalScene.ui.showText(message, null, () => this.end(), null, true);
       return;
     }
@@ -48,6 +49,10 @@ export class MoneyRewardPhase extends BattlePhase {
     const message = i18next.t("battle:moneyWon", {
       moneyAmount: formattedMoneyAmount,
     });
+
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForSharedInput();
+    }
 
     globalScene.ui.showText(message, null, () => this.end(), null, true);
   }

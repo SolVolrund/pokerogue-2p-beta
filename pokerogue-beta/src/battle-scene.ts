@@ -1836,7 +1836,28 @@ export class BattleScene extends SceneBase {
       return true;
     }
 
+    if (this.canProxyComputerPartnerInput()) {
+      return true;
+    }
+
     return this.inputOwner === "none" || this.inputOwner === "both" || this.inputOwner === this.twoPlayerLocalInputSeat;
+  }
+
+  public canProxyComputerPartnerInput(): boolean {
+    return (
+      this.twoPlayerMode
+      && this.twoPlayerLocalInputSeat === 0
+      && typeof this.inputOwner === "number"
+      && this.isComputerPartnerPlayer(this.inputOwner)
+    );
+  }
+
+  public getLocalInputPlayerIndex(): PlayerIndex {
+    if (this.canProxyComputerPartnerInput()) {
+      return this.inputOwner as PlayerIndex;
+    }
+
+    return this.twoPlayerLocalInputSeat === "both" ? this.activePlayerIndex : this.twoPlayerLocalInputSeat;
   }
 
   public canAcceptRemoteInput(playerIndex: PlayerIndex): boolean {
@@ -3546,10 +3567,11 @@ export class BattleScene extends SceneBase {
     // Can only occur in place of a standard (non-boss) wild battle, waves 10-180
     // NB: battle type checks are offloaded to `isWaveMysteryEncounter`
     // TODO: This means MEs can generate when the override is set to `BattleType.WILD`
+    const forcedMysteryEncounterType = this.getForcedMysteryEncounterTypeForWave(resolved.battleType, waveIndex);
     const isMysteryEncounterWave =
       (!this.twoPlayerMode || this.getMultiplayerMysteryEncounterAllowlist().length > 0)
       && !activeOverrides.BATTLE_TYPE_OVERRIDE
-      && this.isWaveMysteryEncounter(resolved.battleType, waveIndex);
+      && (forcedMysteryEncounterType != null || this.isWaveMysteryEncounter(resolved.battleType, waveIndex));
 
     if (isMysteryEncounterWave) {
       const shouldResetEncounterSpawnChance = !this.isScheduledContestHallMysteryEncounterWave(
@@ -3557,6 +3579,7 @@ export class BattleScene extends SceneBase {
         waveIndex,
       );
       resolved.battleType = BattleType.MYSTERY_ENCOUNTER;
+      resolved.mysteryEncounterType = forcedMysteryEncounterType;
       if (shouldResetEncounterSpawnChance) {
         // Reset to base spawn weight
         this.mysteryEncounterSaveData.encounterSpawnChance = BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT;
@@ -5866,6 +5889,10 @@ export class BattleScene extends SceneBase {
       return false;
     }
 
+    if (this.arena.biomeId === BiomeId.SECRET_GARDEN) {
+      return this.getForcedMysteryEncounterTypeForWave(battleType, waveIndex) != null;
+    }
+
     if (this.isScheduledContestHallMysteryEncounterWave(battleType, waveIndex)) {
       return true;
     }
@@ -5904,6 +5931,40 @@ export class BattleScene extends SceneBase {
       roll = randSeedInt(MYSTERY_ENCOUNTER_SPAWN_MAX_WEIGHT);
     }, waveIndex * 3000);
     return roll < successRate;
+  }
+
+  private getForcedMysteryEncounterTypeForWave(
+    battleType: BattleType,
+    waveIndex: number,
+  ): MysteryEncounterType | undefined {
+    if (
+      this.arena.biomeId === BiomeId.SECRET_GARDEN
+      && this.isMysteryEncounterValidForWave(battleType, waveIndex)
+      && this.isSecretGardenPokePoachersAvailable()
+    ) {
+      return MysteryEncounterType.POKE_POACHERS;
+    }
+    return undefined;
+  }
+
+  private isSecretGardenPokePoachersAvailable(): boolean {
+    const encounterType = MysteryEncounterType.POKE_POACHERS;
+    const encounter = allMysteryEncounters[encounterType];
+    if (
+      !encounter
+      || !this.isMysteryEncounterEnabled(encounterType)
+      || timedEventManager.getEventMysteryEncountersDisabled().includes(encounterType)
+      || !encounter.meetsRequirements()
+    ) {
+      return false;
+    }
+
+    const maxAllowedEncounters = encounter.maxAllowedEncounters ?? 0;
+    return (
+      maxAllowedEncounters <= 0
+      || this.mysteryEncounterSaveData.encounteredEvents.filter(event => event.type === encounterType).length
+        < maxAllowedEncounters
+    );
   }
 
   private isScheduledContestHallMysteryEncounterWave(battleType: BattleType, waveIndex: number): boolean {
