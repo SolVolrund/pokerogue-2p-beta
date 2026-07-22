@@ -573,7 +573,7 @@ function buildCheckTradeOffersOption(playerIndex: PlayerIndex): MysteryEncounter
         });
       };
 
-      const selected = await selectPokemonForOption(onPokemonSelected);
+      const selected = await selectPokemonForOption(onPokemonSelected, undefined, undefined, playerIndex);
       return selected && (await (storedChoiceResult ?? Promise.resolve(isLastGlobalTradeSystemPlayer(playerIndex))));
     })
     .withOptionPhase(async () => {
@@ -610,7 +610,7 @@ function buildWonderTradeOption(playerIndex: PlayerIndex): MysteryEncounterOptio
         return true;
       };
 
-      const selected = await selectPokemonForOption(onPokemonSelected);
+      const selected = await selectPokemonForOption(onPokemonSelected, undefined, undefined, playerIndex);
       return selected && (await (storedChoiceResult ?? Promise.resolve(isLastGlobalTradeSystemPlayer(playerIndex))));
     })
     .withOptionPhase(async () => {
@@ -663,7 +663,7 @@ function buildTradeItemOption(playerIndex: PlayerIndex): MysteryEncounterOption 
           : getEncounterText(`${namespace}:option.3.invalidSelection`) ?? null;
       };
 
-      const selected = await selectPokemonForOption(onPokemonSelected, undefined, selectableFilter);
+      const selected = await selectPokemonForOption(onPokemonSelected, undefined, selectableFilter, playerIndex);
       return selected && (await (storedChoiceResult ?? Promise.resolve(isLastGlobalTradeSystemPlayer(playerIndex))));
     })
     .withOptionPhase(async () => {

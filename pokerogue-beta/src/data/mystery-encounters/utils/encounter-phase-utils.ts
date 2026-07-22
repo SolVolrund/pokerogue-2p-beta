@@ -618,12 +618,20 @@ export function generateModifierTypeOption(
  */
 export function selectPokemonForOption(
   // biome-ignore lint/suspicious/noConfusingVoidType: Takes a function that either returns void or an array of OptionSelectItem
-  onPokemonSelected: (pokemon: PlayerPokemon) => void | OptionSelectItem[],
+  onPokemonSelected: (pokemon: PlayerPokemon) => void | boolean | OptionSelectItem[],
   onPokemonNotSelected?: () => void,
   selectablePokemonFilter?: PokemonSelectFilter,
+  playerIndex: PlayerIndex = globalScene.activePlayerIndex,
 ): Promise<boolean> {
   return new Promise(resolve => {
     const modeToSetOnExit = globalScene.ui.getMode();
+    const getParty = () => globalScene.getPlayerParty(playerIndex);
+
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForPlayerInput(playerIndex);
+    } else {
+      globalScene.setActivePlayerIndex(playerIndex);
+    }
 
     // Open party screen to choose pokemon
     globalScene.ui.setMode(
@@ -632,23 +640,35 @@ export function selectPokemonForOption(
       -1,
       async (slotIndex: number, _option: PartyOption) => {
         await globalScene.ui.setMode(modeToSetOnExit);
-        if (slotIndex >= globalScene.getPlayerParty().length) {
+        const party = getParty();
+        if (slotIndex >= party.length) {
           onPokemonNotSelected?.();
           resolve(false);
           return;
         }
 
-        const pokemon = globalScene.getPlayerParty()[slotIndex];
-        const secondaryOptions = onPokemonSelected(pokemon);
-        if (!secondaryOptions) {
+        const pokemon = party[slotIndex];
+        const selectionResult = onPokemonSelected(pokemon);
+        if (!Array.isArray(selectionResult)) {
           globalScene.currentBattle.mysteryEncounter!.setDialogueToken("selectedPokemon", pokemon.getNameToRender());
-          resolve(true);
+          resolve(selectionResult !== false);
+          return;
+        }
+
+        const secondaryOptions = selectionResult;
+        if (secondaryOptions.length === 0) {
+          onPokemonNotSelected?.();
+          resolve(false);
           return;
         }
 
         // There is a second option to choose after selecting the Pokemon
         await globalScene.ui.setMode(UiMode.MESSAGE);
-        // TODO: fix this
+        if (globalScene.twoPlayerMode) {
+          globalScene.waitForPlayerInput(playerIndex);
+        } else {
+          globalScene.setActivePlayerIndex(playerIndex);
+        }
         const displayOptions = () => {
           // Always appends a cancel option to bottom of options
           const fullOptions = secondaryOptions
@@ -679,6 +699,12 @@ export function selectPokemonForOption(
               },
             });
 
+          if (globalScene.twoPlayerMode) {
+            globalScene.waitForPlayerInput(playerIndex);
+          } else {
+            globalScene.setActivePlayerIndex(playerIndex);
+          }
+
           const config: OptionSelectConfig = {
             options: fullOptions,
             maxOptions: 7,
@@ -695,6 +721,11 @@ export function selectPokemonForOption(
 
         const textPromptKey = globalScene.currentBattle.mysteryEncounter?.selectedOption?.dialogue?.secondOptionPrompt;
         if (textPromptKey) {
+          if (globalScene.twoPlayerMode) {
+            globalScene.waitForPlayerInput(playerIndex);
+          } else {
+            globalScene.setActivePlayerIndex(playerIndex);
+          }
           await showEncounterText(textPromptKey);
         }
         displayOptions();
