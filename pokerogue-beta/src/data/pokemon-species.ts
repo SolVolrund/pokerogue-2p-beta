@@ -392,12 +392,8 @@ export abstract class PokemonSpeciesForm {
         replacement.formIndex
       ]?.getFormSpriteKey(replacement.formIndex);
 
-      const replacementForceFemaleCosplaySprite = isCosplayPikachuForm(
-        replacement.speciesId,
-        replacementFormSpriteKey,
-      );
-      const replacementUseFemaleSprite =
-        female || replacementForceFemaleCosplaySprite;
+      const replacementForceFemaleCosplaySprite = isCosplayPikachuForm(replacement.speciesId, replacementFormSpriteKey);
+      const replacementUseFemaleSprite = female || replacementForceFemaleCosplaySprite;
       const replacementShowGenderDiffs =
         (getPokemonSpecies(replacement.speciesId).genderDiffs || replacementForceFemaleCosplaySprite)
         && replacementUseFemaleSprite
@@ -502,18 +498,27 @@ export abstract class PokemonSpeciesForm {
     switch (this.speciesId) {
       case SpeciesId.DODUO:
       case SpeciesId.DODRIO:
-      case SpeciesId.MEGANIUM:
       case SpeciesId.TORCHIC:
       case SpeciesId.COMBUSKEN:
-      case SpeciesId.BLAZIKEN:
+      case SpeciesId.GIBLE:
+      case SpeciesId.GABITE:
       case SpeciesId.HIPPOPOTAS:
       case SpeciesId.HIPPOWDON:
       case SpeciesId.UNFEZANT:
       case SpeciesId.FRILLISH:
       case SpeciesId.JELLICENT:
-      case SpeciesId.PYROAR:
         ret += female ? "-f" : "";
         break;
+      case SpeciesId.MEGANIUM:
+      case SpeciesId.BLAZIKEN:
+      case SpeciesId.GARCHOMP:
+      case SpeciesId.PYROAR: {
+        const formKey = this.getFormKey();
+        if (formKey !== SpeciesFormKey.MEGA && formKey !== SpeciesFormKey.MEGA_Z) {
+          ret += female ? "-f" : "";
+        }
+        break;
+      }
     }
 
     let formSpriteKey = this.getFormSpriteKey(formIndex);

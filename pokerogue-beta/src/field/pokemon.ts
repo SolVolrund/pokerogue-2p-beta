@@ -38,9 +38,9 @@ import {
   TrappedTag,
   TypeImmuneTag,
 } from "#data/battler-tags";
+import { COSPLAY_PIKACHU_FORM_MOVES, COSPLAY_PIKACHU_MOVE_IDS } from "#data/cosplay-pikachu";
 import { getDailyEventSeedBoss, isDailyForcedWaveHiddenAbility } from "#data/daily-seed/daily-run";
 import { isDailyEventSeed, isDailyFinalBoss } from "#data/daily-seed/daily-seed-utils";
-import { COSPLAY_PIKACHU_FORM_MOVES, COSPLAY_PIKACHU_MOVE_IDS } from "#data/cosplay-pikachu";
 import { allAbilities, allMoves } from "#data/data-lists";
 import { getLevelTotalExp } from "#data/exp";
 import {
@@ -1269,7 +1269,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   async updateSpritePipelineData(): Promise<void> {
     [this.getSprite(), this.getTintSprite()]
       .filter(s => !!s)
-      .map(s => {
+      .forEach(s => {
         s.pipelineData["teraColor"] = getTypeRgb(this.getTeraType());
         s.pipelineData["isTerastallized"] = this.isTerastallized;
       });
@@ -1288,27 +1288,17 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   /**
    * Attempts to animate a given {@linkcode Phaser.GameObjects.Sprite}
    * @see {@linkcode Phaser.GameObjects.Sprite.play}
-   * @param sprite - Sprite to animate
-   * @param tintSprite - Sprite placed on top of the sprite to add a color tint
-   * @param animConfig - String to pass to the sprite's {@linkcode Phaser.GameObjects.Sprite.play | play} method
-   * @returns true if the sprite was able to be animated
+   * @param sprite - The sprite to animate
+   * @param tintSprite - A sprite placed on top of the original sprite to add a color tint
+   * @param key - The animation key
    */
-  tryPlaySprite(sprite: Phaser.GameObjects.Sprite, tintSprite: Phaser.GameObjects.Sprite, key: string): boolean {
-    // Catch errors when trying to play an animation that doesn't exist
-    try {
-      sprite.play(key);
-      tintSprite.play(key);
-    } catch (error: unknown) {
-      console.error(`Couldn't play animation for '${key}'!\nIs the image for this Pokemon missing?\n`, error);
-
-      return false;
-    }
-
-    return true;
+  playSprite(sprite: Phaser.GameObjects.Sprite, tintSprite: Phaser.GameObjects.Sprite | null, key: string): void {
+    sprite.play(key);
+    tintSprite?.play(key);
   }
 
   playAnim(): void {
-    this.tryPlaySprite(this.getSprite(), this.getTintSprite()!, this.getBattleSpriteKey()); // TODO: is the bang correct?
+    this.playSprite(this.getSprite(), this.getTintSprite(), this.getBattleSpriteKey());
   }
 
   getFieldPositionOffset(): [number, number] {
@@ -2517,10 +2507,13 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   public isGrounded(): boolean {
+    const isLevitating = new ValueHolder(false);
+    applyAbAttrs("LevitatingAbAttr", { pokemon: this, isLevitating });
+
     return (
       !!this.getTag(GroundedTag)
       || (!this.isOfType(PokemonType.FLYING, { returnOriginalTypesIfStellar: true })
-        && !this.hasAbility(AbilityId.LEVITATE)
+        && !isLevitating.value
         && !this.getTag(BattlerTagType.FLOATING)
         && !this.getTag(SemiInvulnerableTag))
     );
@@ -3015,12 +3008,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     }
 
     const previousFormMove = previousFormKey ? COSPLAY_PIKACHU_FORM_MOVES[previousFormKey] : undefined;
-    const replacementMoves = [
-      previousFormMove,
-      MoveId.THUNDER_SHOCK,
-      ...COSPLAY_PIKACHU_MOVE_IDS,
-    ].filter((moveId, index, moves): moveId is MoveId =>
-      moveId != null && moveId !== formMove && moves.indexOf(moveId) === index,
+    const replacementMoves = [previousFormMove, MoveId.THUNDER_SHOCK, ...COSPLAY_PIKACHU_MOVE_IDS].filter(
+      (moveId, index, moves): moveId is MoveId =>
+        moveId != null && moveId !== formMove && moves.indexOf(moveId) === index,
     );
     const moveIndex = this.moveset.findIndex(move => move != null && replacementMoves.includes(move.moveId));
     if (moveIndex >= 0) {
@@ -5369,6 +5359,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     if (this.summonData.speciesForm) {
       this.summonData.speciesForm = null;
       this.updateFusionPalette();
+      void this.loadAssets(false).catch(err => console.error(`Failed to reload assets for ${this.name}`, err));
     }
     this.summonData = new PokemonSummonData();
     this.tempSummonData = new PokemonTempSummonData();
@@ -5433,7 +5424,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
   // #region Sprite and Animation Methods
 
-  setFrameRate(frameRate: number) {
+  protected setFrameRate(frameRate: number): void {
     const battleSpriteKey = this.getBattleSpriteKey();
     const animation = globalScene.anims.get(battleSpriteKey);
     if (!animation) {
@@ -5442,22 +5433,14 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
           const loadedAnimation = globalScene.anims.get(battleSpriteKey);
           if (loadedAnimation) {
             loadedAnimation.frameRate = frameRate;
+            this.playAnim();
           }
         })
         .catch(err => console.error(`Failed to reload animation for ${battleSpriteKey}`, err));
       return;
     }
     animation.frameRate = frameRate;
-    try {
-      this.getSprite().play(battleSpriteKey);
-    } catch (err: unknown) {
-      console.error(`Failed to play animation for ${battleSpriteKey}`, err);
-    }
-    try {
-      this.getTintSprite()?.play(battleSpriteKey);
-    } catch (err: unknown) {
-      console.error(`Failed to play animation for ${battleSpriteKey}`, err);
-    }
+    this.playAnim();
   }
 
   tint(color: number, alpha?: number, duration?: number, ease?: string) {

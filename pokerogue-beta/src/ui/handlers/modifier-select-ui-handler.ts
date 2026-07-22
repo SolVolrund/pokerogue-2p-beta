@@ -432,7 +432,10 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
             if (globalScene.shopCursorTarget === ShopCursorTarget.CHECK_TEAM) {
               this.setRowCursor(0);
               this.setCursor(3);
-            } else if (globalScene.shopCursorTarget === ShopCursorTarget.SHOP && !hasShop) {
+            } else if (
+              globalScene.shopCursorTarget === ShopCursorTarget.SHOP
+              && (!hasShop || this.shopOptionsRows.length === 0)
+            ) {
               this.setRowCursor(ShopCursorTarget.REWARDS);
               this.setCursor(0);
             } else {
@@ -666,17 +669,12 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       const selectedOption = options[this.cursor];
       if (selectedOption instanceof AlphTileOption) {
         this.cursorObj.setPosition(selectedOption.x - 10, selectedOption.y + 5);
+      } else if (this.rowCursor < 2) {
+        // Cursor on free items
+        this.cursorObj.setPosition(selectedOption.x - 20, selectedOption.y + 2);
       } else {
-        if (this.rowCursor < 2) {
-          // Cursor on free items
-          this.cursorObj.setPosition(
-            selectedOption.x - 20,
-            selectedOption.y + 2,
-          );
-        } else {
-          // Cursor on paying items
-          this.cursorObj.setPosition(selectedOption.x - 16, selectedOption.y + 5);
-        }
+        // Cursor on paying items
+        this.cursorObj.setPosition(selectedOption.x - 16, selectedOption.y + 5);
       }
 
       if (selectedOption instanceof AlphTileOption) {

@@ -61,6 +61,7 @@ import {
   IncreasePpAbAttr,
   InfiltratorAbAttr,
   IntimidateImmunityAbAttr,
+  LevitatingAbAttr,
   LowHpMoveTypePowerBoostAbAttr,
   MaxMultiHitAbAttr,
   MoneyAbAttr,
@@ -349,6 +350,7 @@ export function initAbilities() {
         PokemonType.GROUND,
         (pokemon: Pokemon) => !pokemon.getTag(GroundedTag) && !globalScene.arena.getTag(ArenaTagType.GRAVITY),
       )
+      .attr(LevitatingAbAttr)
       .ignorable()
       .build(),
     new AbBuilder(AbilityId.EFFECT_SPORE, 3) //
@@ -460,6 +462,7 @@ export function initAbilities() {
       .build(),
     new AbBuilder(AbilityId.KEEN_EYE, 3) //
       .attr(ProtectStatAbAttr, Stat.ACC)
+      .attr(IgnoreOpponentStatStagesAbAttr, [Stat.EVA])
       .ignorable()
       .build(),
     new AbBuilder(AbilityId.HYPER_CUTTER, 3) //
@@ -1031,7 +1034,7 @@ export function initAbilities() {
       // Disable Illusion in fusions.
       .attr(NoFusionAbilityAbAttr)
       // Illusion is available again after a battle.
-      .conditionalAttr((pokemon) => pokemon.isAllowedInBattle(), IllusionPostBattleAbAttr, false)
+      .conditionalAttr(pokemon => pokemon.isAllowedInBattle(), IllusionPostBattleAbAttr, false)
       .uncopiable()
       .build(),
     new AbBuilder(AbilityId.IMPOSTER, 5) //
@@ -2186,6 +2189,7 @@ export function initAbilities() {
         PokemonType.GROUND,
         (pokemon: Pokemon) => !pokemon.getTag(GroundedTag) && !globalScene.arena.getTag(ArenaTagType.GRAVITY),
       )
+      .attr(LevitatingAbAttr)
       .attr(PostVictoryStatStageChangeAbAttr, beastBoostHighestStatCalc)
       .ignorable()
       .build(),

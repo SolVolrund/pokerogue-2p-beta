@@ -459,24 +459,20 @@ export abstract class Move implements Localizable {
    * @returns Whether the move is blocked by the target's type.
    * Self-targeted moves will return `false` regardless of circumstances.
    */
-  isTypeImmune(user: Pokemon, target: Pokemon, type: PokemonType): boolean {
+  isTypeImmune(user: Pokemon, target: Pokemon, _type: PokemonType): boolean {
     if (this.moveTarget === MoveTarget.USER) {
       return false;
     }
 
-    switch (type) {
-      case PokemonType.GRASS:
-        if (this.hasFlag(MoveFlags.POWDER_MOVE)) {
-          return true;
-        }
-        break;
-      case PokemonType.DARK:
-        if (user.hasAbility(AbilityId.PRANKSTER) && this.category === MoveCategory.STATUS && user.isOpponent(target)) {
-          return true;
-        }
-        break;
+    let typeImmune = false;
+    if (target.isOfType(PokemonType.GRASS, { returnOriginalTypesIfStellar: true })) {
+      typeImmune ||= this.hasFlag(MoveFlags.POWDER_MOVE);
     }
-    return false;
+    if (target.isOfType(PokemonType.DARK, { returnOriginalTypesIfStellar: true })) {
+      typeImmune ||=
+        user.hasAbility(AbilityId.PRANKSTER) && this.category === MoveCategory.STATUS && user.isOpponent(target);
+    }
+    return typeImmune;
   }
 
   /**
@@ -1301,7 +1297,8 @@ export abstract class Move implements Localizable {
     } else {
       const multiHitAttr = this.getAttrs("MultiHitAttr")[0];
       if (multiHitAttr) {
-        const loadedDice = !!pokemon
+        const loadedDice =
+          !!pokemon
           && isLoadedDiceBoostedMove(this)
           && pokemon.getHeldItems().some(modifier => modifier instanceof LoadedDiceModifier);
         effectivePower =
@@ -1309,8 +1306,7 @@ export abstract class Move implements Localizable {
             accMultiplier: accMult,
             maxMultiHit: res?.maxMultiHit?.value,
             loadedDice,
-          })
-          * this.power;
+          }) * this.power;
       } else {
         effectivePower =
           this.power * powerMult * (this.accuracy === -1 ? 1 : Math.min(this.accuracy * accMult, 100) / 100);
@@ -5890,13 +5886,7 @@ export class FormChangeItemTypeAttr extends VariableMoveTypeAttr {
 
   private getLegendPlateJudgmentType(user: Pokemon, target: Pokemon, move: Move): PokemonType {
     const battle = globalScene.currentBattle;
-    const cacheKey = [
-      battle?.waveIndex ?? 0,
-      battle?.turn ?? 0,
-      user.id,
-      target.id,
-      move.id,
-    ].join(":");
+    const cacheKey = [battle?.waveIndex ?? 0, battle?.turn ?? 0, user.id, target.id, move.id].join(":");
     const cachedType = legendPlateTypeCache.get(cacheKey);
     if (cachedType !== undefined) {
       return cachedType;
@@ -5911,9 +5901,10 @@ export class FormChangeItemTypeAttr extends VariableMoveTypeAttr {
         useIllusion: true,
       });
       const primaryDefenseScore = getTypeDamageMultiplier(targetTypes[0], type);
-      const secondaryDefenseScore = targetTypes[1] === undefined || targetTypes[1] === PokemonType.UNKNOWN
-        ? 1
-        : getTypeDamageMultiplier(targetTypes[1], type);
+      const secondaryDefenseScore =
+        targetTypes[1] === undefined || targetTypes[1] === PokemonType.UNKNOWN
+          ? 1
+          : getTypeDamageMultiplier(targetTypes[1], type);
 
       return { type, offensiveScore, primaryDefenseScore, secondaryDefenseScore };
     });
@@ -7459,7 +7450,9 @@ export class RevivalBlessingAttr extends MoveEffectAttr {
     return (user, _target, _move) => {
       const playerIndex = user.isPlayer() ? globalScene.getPlayerIndexForPokemon(user) : undefined;
       const party =
-        user.isPlayer() && playerIndex !== undefined ? globalScene.getPlayerParty(playerIndex) : globalScene.getEnemyParty();
+        user.isPlayer() && playerIndex !== undefined
+          ? globalScene.getPlayerParty(playerIndex)
+          : globalScene.getEnemyParty();
       return user.hasTrainer() && party.some((p: Pokemon) => p.isFainted() && !p.isBoss());
     };
   }
@@ -7496,6 +7489,12 @@ export class ForceSwitchOutAttr extends MoveEffectAttr {
 
     /** The {@linkcode Pokemon} to be switched out with this effect */
     const switchOutTarget = this.selfSwitch ? user : target;
+
+    // Dondozo with an allied Tatsugiri in its mouth cannot switch or be forced out.
+    const commandedTag = switchOutTarget.getTag(BattlerTagType.COMMANDED);
+    if (commandedTag?.getSourcePokemon()?.isActive(true)) {
+      return false;
+    }
 
     // If the switch-out target is a Dondozo with a Tatsugiri in its mouth
     // (e.g. when it uses Flip Turn), make it spit out the Tatsugiri before switching out.

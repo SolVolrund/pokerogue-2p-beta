@@ -1,5 +1,5 @@
-import { globalScene } from "#app/global-scene";
 import type { PlayerIndex } from "#app/battle-scene";
+import { globalScene } from "#app/global-scene";
 import { Gender, getGenderColor, getGenderSymbol } from "#data/gender";
 import { getTypeRgb } from "#data/type";
 import { PokemonType } from "#enums/pokemon-type";
@@ -650,7 +650,7 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
   async updateInfo(pokemon: Pokemon, instant?: boolean): Promise<void> {
     let resolve: (r: void | PromiseLike<void>) => void = () => {};
     const promise = new Promise<void>(r => (resolve = r));
-    if (!globalScene) {
+    if (!globalScene || !this.active) {
       return resolve();
     }
 

@@ -435,6 +435,20 @@ export class AttackTypeImmunityAbAttr extends TypeImmunityAbAttr {
   }
 }
 
+interface LevitatingAbAttrParams extends AbAttrBaseParams {
+  isLevitating: ValueHolder<boolean>;
+}
+
+export class LevitatingAbAttr extends AbAttr {
+  constructor() {
+    super(false);
+  }
+
+  public override apply({ isLevitating }: LevitatingAbAttrParams): void {
+    isLevitating.value = true;
+  }
+}
+
 export class TypeImmunityHealAbAttr extends TypeImmunityAbAttr {
   // biome-ignore lint/complexity/noUselessConstructor: Changes the type of `immuneType`
   constructor(immuneType: PokemonType) {
@@ -3764,7 +3778,7 @@ export class ForewarnAbAttr extends PostSummonAbAttr {
  * @see {@link https://www.smogon.com/dex/sv/abilities/forewarn/}
  */
 function getForewarnPower(move: Move): number {
-  if (move.is("StatusMove")) {
+  if (move.is("StatusMove") || move.is("SelfStatusMove")) {
     return 1;
   }
 
@@ -5103,6 +5117,10 @@ export class FlinchStatStageChangeAbAttr extends FlinchEffectAbAttr {
 
 export class IncreasePpAbAttr extends AbAttr {
   private declare readonly _: never;
+
+  constructor() {
+    super(false);
+  }
 }
 
 /** @sealed */
@@ -5467,9 +5485,7 @@ function getIllusionParty(pokemon: Pokemon): Pokemon[] {
   }
 
   const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon);
-  return (playerIndex === undefined ? [] : globalScene.getPlayerParty(playerIndex)).filter(p =>
-    p.isAllowedInBattle(),
-  );
+  return (playerIndex === undefined ? [] : globalScene.getPlayerParty(playerIndex)).filter(p => p.isAllowedInBattle());
 }
 
 function getLastIllusionTarget(pokemon: Pokemon): Pokemon | undefined {
@@ -6177,6 +6193,7 @@ export const AbilityAttrs = Object.freeze({
   IncreasePpAbAttr,
   InfiltratorAbAttr,
   IntimidateImmunityAbAttr,
+  LevitatingAbAttr,
   LowHpMoveTypePowerBoostAbAttr,
   MaxMultiHitAbAttr,
   MoneyAbAttr,

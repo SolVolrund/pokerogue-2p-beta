@@ -47,7 +47,7 @@ export class StatStageChangePhase extends PokemonPhase {
   public override start(): void {
     const pokemon = this.getPokemon();
 
-    if (!pokemon.isActive(true)) {
+    if (!pokemon?.isActive(true)) {
       this.end();
       return;
     }
@@ -276,7 +276,7 @@ export class StatStageChangePhase extends PokemonPhase {
   private triggerReactionAbilities(pokemon: Pokemon, applied: readonly StatChange[]): void {
     const positiveApplied = applied.filter(c => c.stages > 0);
 
-    if (positiveApplied.length > 0) {
+    if (this.options.sourceEffectType !== StatChangeSource.OPPORTUNIST && positiveApplied.length > 0) {
       for (const opponent of pokemon.getOpponentsGenerator()) {
         applyAbAttrs("StatStageChangeCopyAbAttr", { pokemon: opponent, changes: positiveApplied });
       }
