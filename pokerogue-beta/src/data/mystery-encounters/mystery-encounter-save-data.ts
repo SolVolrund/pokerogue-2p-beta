@@ -1,4 +1,6 @@
 import { BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT } from "#app/constants";
+import type { PlayerIndex } from "#app/battle-scene";
+import type { GameModes } from "#enums/game-modes";
 import type { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import type { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import type { FieldBlessing } from "#utils/field-blessings";
@@ -34,12 +36,21 @@ export interface ContestHallProgress {
   receivedPokeblockKit?: boolean;
 }
 
+export interface DejaVuScheduledEncounterData {
+  scheduledWave: number;
+  mode: GameModes;
+  ghostTimestampsByPlayer: Partial<Record<PlayerIndex, number>>;
+  completed?: boolean;
+}
+
 export class MysteryEncounterSaveData {
   encounteredEvents: SeenEncounterData[] = [];
   encounterSpawnChance: number = BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT;
   queuedEncounters: QueuedEncounter[] = [];
   fieldBlessing?: FieldBlessing;
   contestHallProgress: ContestHallProgress = {};
+  dejaVuScheduleInitialized = false;
+  dejaVuScheduledEncounters: DejaVuScheduledEncounterData[] = [];
 
   constructor(data?: MysteryEncounterSaveData) {
     if (data != null) {
@@ -49,5 +60,7 @@ export class MysteryEncounterSaveData {
     this.encounteredEvents = this.encounteredEvents ?? [];
     this.queuedEncounters = this.queuedEncounters ?? [];
     this.contestHallProgress = this.contestHallProgress ?? {};
+    this.dejaVuScheduleInitialized = !!this.dejaVuScheduleInitialized;
+    this.dejaVuScheduledEncounters = this.dejaVuScheduledEncounters ?? [];
   }
 }

@@ -62,6 +62,7 @@ import {
 import type { SpeciesFormChange } from "#data/pokemon-forms";
 import type { PokemonSpeciesForm } from "#data/pokemon-species";
 import { isCosplayPikachuForm, PokemonSpecies } from "#data/pokemon-species";
+import { ROTOM_FORM_MOVES, ROTOM_MOVE_IDS } from "#data/rotom";
 import { getRandomStatus, getStatusEffectHealText, getStatusEffectOverlapText, Status } from "#data/status-effect";
 import { getTerrainBlockMessage, TerrainType } from "#data/terrain";
 import type { TypeDamageMultiplier } from "#data/type";
@@ -201,6 +202,28 @@ import { getBaseLearnableMoveSource, getLevelMoves } from "./learnsets";
 
 function isCosplayPikachuSpeciesForm(species: PokemonSpecies, formIndex?: number): boolean {
   return isCosplayPikachuForm(species.speciesId, species.forms?.[formIndex ?? 0]?.getFormKey());
+}
+
+interface FormMoveSyncConfig {
+  formMoves: Partial<Record<string, MoveId>>;
+  moveIds: ReadonlySet<MoveId>;
+}
+
+function getFormMoveSyncConfig(speciesId: SpeciesId): FormMoveSyncConfig | null {
+  switch (speciesId) {
+    case SpeciesId.PIKACHU:
+      return {
+        formMoves: COSPLAY_PIKACHU_FORM_MOVES,
+        moveIds: COSPLAY_PIKACHU_MOVE_IDS,
+      };
+    case SpeciesId.ROTOM:
+      return {
+        formMoves: ROTOM_FORM_MOVES,
+        moveIds: ROTOM_MOVE_IDS,
+      };
+    default:
+      return null;
+  }
 }
 
 function isBattleOpponentForTargeting(user: Pokemon, target: Pokemon): boolean {
@@ -355,7 +378,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
   /** Stat stages queued by berry eating to be run in a single phase */
   public queuedBerryStatChanges: Mutable<StatChange>[] = []; // todo Doing it this way to touch modifiers as little as possible, may not be ideal permanent solution
-  public pendingCosplayFormMoveLearn: MoveId | null = null;
+  public pendingFormMoveLearn: MoveId | null = null;
 
   // TODO: Rework this eventually
   constructor(
@@ -837,9 +860,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     useIllusion = useIllusion && !!illusion;
 
     // Load the assets for the species form
-    const formIndex = useIllusion ? illusion!.formIndex : this.formIndex;
+    const formIndex = this.getSpriteFormIndex(useIllusion);
     loadPromises.push(
-      this.getSpeciesForm(false, useIllusion).loadAssets(
+      this.getSpriteSpeciesForm(false, useIllusion).loadAssets(
         this.getGender(useIllusion) === Gender.FEMALE,
         formIndex,
         this.isShiny(useIllusion),
@@ -1000,6 +1023,47 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     return this.fusionSpecies.forms[this.fusionFormIndex].formKey;
   }
 
+  private getArceusLegendPlateSpriteFormIndex(): number | null {
+    if (this.species.speciesId !== SpeciesId.ARCEUS || this.getFormKey() !== "legend") {
+      return null;
+    }
+
+    const currentType =
+      this.summonData.types[0]
+      ?? this.getTypes({ includeTeraType: false, bypassSummonData: true, ignoreThirdType: true })[0];
+    if (currentType < PokemonType.NORMAL || currentType > PokemonType.FAIRY) {
+      return null;
+    }
+
+    const matchingFormIndex = this.species.forms.findIndex(
+      form => form.formKey !== "legend" && form.type1 === currentType,
+    );
+    return matchingFormIndex >= 0 ? matchingFormIndex : null;
+  }
+
+  private getSpriteFormIndex(useIllusion = true): number {
+    if (useIllusion && this.summonData.illusion) {
+      return this.summonData.illusion.formIndex;
+    }
+
+    return this.getArceusLegendPlateSpriteFormIndex() ?? this.formIndex;
+  }
+
+  private getSpriteSpeciesForm(ignoreOverride = false, useIllusion = false): PokemonSpeciesForm {
+    if (!ignoreOverride && this.summonData.speciesForm) {
+      return this.getSpeciesForm(ignoreOverride, useIllusion);
+    }
+
+    const usingIllusion = useIllusion && !!this.summonData.illusion;
+    const formIndex = this.getSpriteFormIndex(useIllusion);
+    // Legend Arceus stays mechanically in its boss form, but borrows the visual form for its current type.
+    if (!usingIllusion && formIndex !== this.formIndex) {
+      return this.species;
+    }
+
+    return this.getSpeciesForm(ignoreOverride, useIllusion);
+  }
+
   // #region Atlas and sprite ID methods
 
   // TODO: Add more documentation for all these attributes.
@@ -1017,8 +1081,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   getSpriteId(ignoreOverride?: boolean): string {
-    const formIndex = this.summonData.illusion?.formIndex ?? this.formIndex;
-    return this.getSpeciesForm(ignoreOverride, true).getSpriteId(
+    const formIndex = this.getSpriteFormIndex(true);
+    return this.getSpriteSpeciesForm(ignoreOverride, true).getSpriteId(
       this.getGender(ignoreOverride, true) === Gender.FEMALE,
       formIndex,
       this.isBaseShiny(true),
@@ -1032,9 +1096,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       back = this.isPlayer() && (playerIndex == null || !globalScene.isMysteryEncounterEnemySidePlayer(playerIndex));
     }
 
-    const formIndex = this.summonData.illusion?.formIndex ?? this.formIndex;
+    const formIndex = this.getSpriteFormIndex(true);
 
-    return this.getSpeciesForm(ignoreOverride, true).getSpriteId(
+    return this.getSpriteSpeciesForm(ignoreOverride, true).getSpriteId(
       this.getGender(ignoreOverride, true) === Gender.FEMALE,
       formIndex,
       this.isBaseShiny(true),
@@ -1044,9 +1108,10 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   getSpriteKey(ignoreOverride?: boolean): string {
-    return this.getSpeciesForm(ignoreOverride, false).getSpriteKey(
+    const formIndex = this.getSpriteFormIndex(false);
+    return this.getSpriteSpeciesForm(ignoreOverride, false).getSpriteKey(
       this.getGender(ignoreOverride) === Gender.FEMALE,
-      this.formIndex,
+      formIndex,
       this.isShiny(false),
       this.getVariant(false),
     );
@@ -1091,9 +1156,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   getIconAtlasKey(ignoreOverride = false, useIllusion = true): string {
-    const illusion = this.summonData.illusion;
-    const formIndex = useIllusion && illusion ? illusion.formIndex : this.formIndex;
-    return this.getSpeciesForm(ignoreOverride, useIllusion).getIconAtlasKey(
+    const formIndex = this.getSpriteFormIndex(useIllusion);
+    return this.getSpriteSpeciesForm(ignoreOverride, useIllusion).getIconAtlasKey(
       formIndex,
       this.isBaseShiny(useIllusion),
       this.getBaseVariant(useIllusion),
@@ -1111,9 +1175,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   getIconId(ignoreOverride?: boolean, useIllusion = false): string {
-    const illusion = this.summonData.illusion;
-    const formIndex = useIllusion && illusion ? illusion.formIndex : this.formIndex;
-    return this.getSpeciesForm(ignoreOverride, useIllusion).getIconId(
+    const formIndex = this.getSpriteFormIndex(useIllusion);
+    return this.getSpriteSpeciesForm(ignoreOverride, useIllusion).getIconId(
       this.getGender(ignoreOverride, useIllusion) === Gender.FEMALE,
       formIndex,
       this.isBaseShiny(useIllusion),
@@ -2565,7 +2628,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   public getMoveType(move: Move, simulated = true, target: Pokemon | null = null): PokemonType {
     const moveTypeHolder = new NumberHolder(move.type);
 
-    applyMoveAttrs("VariableMoveTypeAttr", this, target, move, moveTypeHolder);
+    applyMoveAttrs("VariableMoveTypeAttr", this, target, move, moveTypeHolder, simulated);
 
     // Avoid applying type-changing abilities (e.g. Aerilate) for move-calling moves
     if (!move.hasAttr("CallMoveAttr")) {
@@ -2996,19 +3059,20 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     }
   }
 
-  protected syncCosplayPikachuFormMove(previousFormKey?: string): void {
-    this.pendingCosplayFormMoveLearn = null;
-    if (this.species.speciesId !== SpeciesId.PIKACHU) {
+  protected syncSpecialFormMove(previousFormKey?: string): void {
+    this.pendingFormMoveLearn = null;
+    const formMoveConfig = getFormMoveSyncConfig(this.species.speciesId);
+    if (formMoveConfig == null) {
       return;
     }
 
-    const formMove = COSPLAY_PIKACHU_FORM_MOVES[this.getFormKey()];
+    const formMove = formMoveConfig.formMoves[this.getFormKey()];
     if (formMove == null || this.getMoveset(true).some(move => move?.moveId === formMove)) {
       return;
     }
 
-    const previousFormMove = previousFormKey ? COSPLAY_PIKACHU_FORM_MOVES[previousFormKey] : undefined;
-    const replacementMoves = [previousFormMove, MoveId.THUNDER_SHOCK, ...COSPLAY_PIKACHU_MOVE_IDS].filter(
+    const previousFormMove = previousFormKey ? formMoveConfig.formMoves[previousFormKey] : undefined;
+    const replacementMoves = [previousFormMove, MoveId.THUNDER_SHOCK, ...formMoveConfig.moveIds].filter(
       (moveId, index, moves): moveId is MoveId =>
         moveId != null && moveId !== formMove && moves.indexOf(moveId) === index,
     );
@@ -3019,16 +3083,16 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     }
 
     if (this.isPlayer()) {
-      this.pendingCosplayFormMoveLearn = formMove;
+      this.pendingFormMoveLearn = formMove;
       return;
     }
 
     this.setMove(Math.min(this.moveset.length, 3), formMove);
   }
 
-  public consumePendingCosplayFormMoveLearn(): MoveId | null {
-    const moveId = this.pendingCosplayFormMoveLearn;
-    this.pendingCosplayFormMoveLearn = null;
+  public consumePendingFormMoveLearn(): MoveId | null {
+    const moveId = this.pendingFormMoveLearn;
+    this.pendingFormMoveLearn = null;
     return moveId;
   }
 
@@ -4460,7 +4524,10 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     for (const s of BATTLE_STATS) {
       const sourceStage = source.getStatStage(s);
       if (this.isPlayer() && sourceStage === 6) {
-        globalScene.validateAchv(achvs.TRANSFER_MAX_STAT_STAGE);
+        const playerIndex = globalScene.getPlayerIndexForPokemon(this) ?? globalScene.activePlayerIndex;
+        if (!globalScene.isComputerPartnerPlayer(playerIndex)) {
+          globalScene.validateAchvForPlayer(achvs.TRANSFER_MAX_STAT_STAGE, playerIndex);
+        }
       }
       this.setStatStage(s, sourceStage);
     }
@@ -4654,7 +4721,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       this.gender = Gender.FEMALE;
     }
     this.generateName();
-    this.syncCosplayPikachuFormMove(previousFormKey);
+    this.syncSpecialFormMove(previousFormKey);
 
     const abilityCount = this.getSpeciesForm().getAbilityCount();
     if (this.abilityIndex >= abilityCount) {
@@ -6192,8 +6259,10 @@ export class PlayerPokemon extends Pokemon {
 
     this.friendship = Math.min(finalFriendship, 255);
     if (this.friendship >= 255) {
-      globalScene.validateAchv(achvs.MAX_FRIENDSHIP);
-      awardRibbonsToSpeciesLine(this.species.speciesId, RibbonData.FRIENDSHIP);
+      if (playerIndex !== undefined && !globalScene.isComputerPartnerPlayer(playerIndex)) {
+        globalScene.validateAchvForPlayer(achvs.MAX_FRIENDSHIP, playerIndex);
+        awardRibbonsToSpeciesLine(this.species.speciesId, RibbonData.FRIENDSHIP, gameData);
+      }
     }
 
     let candyFriendshipMultiplier = gameMode.isClassic ? timedEventManager.getClassicFriendshipMultiplier() : 1;
@@ -6356,9 +6425,11 @@ export class PlayerPokemon extends Pokemon {
         }
       }
       if (!globalScene.gameMode.isDaily || this.metBiome > -1) {
-        globalScene.gameData.updateSpeciesDexIvs(this.species.speciesId, this.ivs);
-        globalScene.gameData.setPokemonSeen(this, false);
-        globalScene.gameData.setPokemonCaught(this, false).then(() => updateAndResolve());
+        const playerIndex = globalScene.getPlayerIndexForPokemon(this) ?? globalScene.activePlayerIndex;
+        const gameData = globalScene.getPlayerGameData(playerIndex);
+        gameData.updateSpeciesDexIvs(this.species.speciesId, this.ivs, playerIndex);
+        gameData.setPokemonSeen(this, false);
+        gameData.setPokemonCaught(this, false).then(() => updateAndResolve());
       } else {
         updateAndResolve();
       }
@@ -6453,7 +6524,7 @@ export class PlayerPokemon extends Pokemon {
         this.gender = Gender.FEMALE;
       }
       this.generateName();
-      this.syncCosplayPikachuFormMove(previousFormKey);
+      this.syncSpecialFormMove(previousFormKey);
       const abilityCount = this.getSpeciesForm().getAbilityCount();
       if (this.abilityIndex >= abilityCount) {
         // Shouldn't happen
@@ -6497,8 +6568,11 @@ export class PlayerPokemon extends Pokemon {
       this.pauseEvolutions = true;
     }
 
-    globalScene.validateAchv(achvs.SPLICE);
-    globalScene.gameData.gameStats.pokemonFused++;
+    const playerIndex = globalScene.getPlayerIndexForPokemon(this) ?? globalScene.activePlayerIndex;
+    if (!globalScene.isComputerPartnerPlayer(playerIndex)) {
+      globalScene.validateAchvForPlayer(achvs.SPLICE, playerIndex);
+      globalScene.getPlayerGameData(playerIndex).gameStats.pokemonFused++;
+    }
 
     // Store the average HP% that each Pokemon has
     const maxHp = this.getMaxHp();
@@ -6520,7 +6594,6 @@ export class PlayerPokemon extends Pokemon {
     }
 
     this.updateInfo(true);
-    const playerIndex = globalScene.getPlayerIndexForPokemon(this) ?? globalScene.activePlayerIndex;
     const party = globalScene.getPlayerParty(playerIndex);
     const fusedPartyMemberIndex = party.indexOf(pokemon);
     let partyMemberIndex = party.indexOf(this);

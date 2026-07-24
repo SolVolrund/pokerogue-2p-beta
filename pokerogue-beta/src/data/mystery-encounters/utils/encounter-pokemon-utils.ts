@@ -667,29 +667,31 @@ export async function catchPokemon(
   globalScene.setActivePlayerIndex(playerIndex);
   const speciesForm = pokemon.fusionSpecies ? pokemon.getFusionSpeciesForm() : pokemon.getSpeciesForm();
 
-  if (
-    speciesForm.abilityHidden
-    && (pokemon.fusionSpecies ? pokemon.fusionAbilityIndex : pokemon.abilityIndex) === speciesForm.getAbilityCount() - 1
-  ) {
-    globalScene.validateAchv(achvs.HIDDEN_ABILITY);
-  }
+  if (!globalScene.isComputerPartnerPlayer(playerIndex)) {
+    if (
+      speciesForm.abilityHidden
+      && (pokemon.fusionSpecies ? pokemon.fusionAbilityIndex : pokemon.abilityIndex) === speciesForm.getAbilityCount() - 1
+    ) {
+      globalScene.validateAchvForPlayer(achvs.HIDDEN_ABILITY, playerIndex);
+    }
 
-  if (pokemon.species.subLegendary) {
-    globalScene.validateAchv(achvs.CATCH_SUB_LEGENDARY);
-  }
+    if (pokemon.species.subLegendary) {
+      globalScene.validateAchvForPlayer(achvs.CATCH_SUB_LEGENDARY, playerIndex);
+    }
 
-  if (pokemon.species.legendary) {
-    globalScene.validateAchv(achvs.CATCH_LEGENDARY);
-  }
+    if (pokemon.species.legendary) {
+      globalScene.validateAchvForPlayer(achvs.CATCH_LEGENDARY, playerIndex);
+    }
 
-  if (pokemon.species.mythical) {
-    globalScene.validateAchv(achvs.CATCH_MYTHICAL);
+    if (pokemon.species.mythical) {
+      globalScene.validateAchvForPlayer(achvs.CATCH_MYTHICAL, playerIndex);
+    }
   }
 
   globalScene.pokemonInfoContainer.show(pokemon, true);
 
   const capturingPlayerGameData = globalScene.getPlayerGameData(playerIndex);
-  capturingPlayerGameData.updateSpeciesDexIvs(pokemon.species.getRootSpeciesId(true), pokemon.ivs);
+  capturingPlayerGameData.updateSpeciesDexIvs(pokemon.species.getRootSpeciesId(true), pokemon.ivs, playerIndex);
 
   return new Promise(resolve => {
     const addStatus = new BooleanHolder(true);
@@ -718,8 +720,11 @@ export async function catchPokemon(
           m => m instanceof PokemonHeldItemModifier && m.pokemonId === pokemon.id,
           false,
         );
-        if (globalScene.getPlayerParty(playerIndex).filter(p => p.isShiny()).length === PLAYER_PARTY_MAX_SIZE) {
-          globalScene.validateAchv(achvs.SHINY_PARTY);
+        if (
+          !globalScene.isComputerPartnerPlayer(playerIndex)
+          && globalScene.getPlayerParty(playerIndex).filter(p => p.isShiny()).length === PLAYER_PARTY_MAX_SIZE
+        ) {
+          globalScene.validateAchvForPlayer(achvs.SHINY_PARTY, playerIndex);
         }
         Promise.all(
           modifiers.map(m => globalScene.addModifier(m, true, undefined, undefined, undefined, undefined, playerIndex)),
@@ -1057,30 +1062,36 @@ export function getEncounterPokemonLevelForWave(levelAdditiveModifier = 0) {
   return baseLevel + Math.max(Math.round((currentBattle.waveIndex / 10) * levelAdditiveModifier), 0);
 }
 
-export async function addPokemonDataToDexAndValidateAchievements(pokemon: PlayerPokemon) {
+export async function addPokemonDataToDexAndValidateAchievements(
+  pokemon: PlayerPokemon,
+  playerIndex: PlayerIndex = globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.activePlayerIndex,
+) {
   const speciesForm = pokemon.fusionSpecies ? pokemon.getFusionSpeciesForm() : pokemon.getSpeciesForm();
 
-  if (
-    speciesForm.abilityHidden
-    && (pokemon.fusionSpecies ? pokemon.fusionAbilityIndex : pokemon.abilityIndex) === speciesForm.getAbilityCount() - 1
-  ) {
-    globalScene.validateAchv(achvs.HIDDEN_ABILITY);
+  if (!globalScene.isComputerPartnerPlayer(playerIndex)) {
+    if (
+      speciesForm.abilityHidden
+      && (pokemon.fusionSpecies ? pokemon.fusionAbilityIndex : pokemon.abilityIndex) === speciesForm.getAbilityCount() - 1
+    ) {
+      globalScene.validateAchvForPlayer(achvs.HIDDEN_ABILITY, playerIndex);
+    }
+
+    if (pokemon.species.subLegendary) {
+      globalScene.validateAchvForPlayer(achvs.CATCH_SUB_LEGENDARY, playerIndex);
+    }
+
+    if (pokemon.species.legendary) {
+      globalScene.validateAchvForPlayer(achvs.CATCH_LEGENDARY, playerIndex);
+    }
+
+    if (pokemon.species.mythical) {
+      globalScene.validateAchvForPlayer(achvs.CATCH_MYTHICAL, playerIndex);
+    }
   }
 
-  if (pokemon.species.subLegendary) {
-    globalScene.validateAchv(achvs.CATCH_SUB_LEGENDARY);
-  }
-
-  if (pokemon.species.legendary) {
-    globalScene.validateAchv(achvs.CATCH_LEGENDARY);
-  }
-
-  if (pokemon.species.mythical) {
-    globalScene.validateAchv(achvs.CATCH_MYTHICAL);
-  }
-
-  globalScene.gameData.updateSpeciesDexIvs(pokemon.species.getRootSpeciesId(true), pokemon.ivs);
-  return globalScene.gameData.setPokemonCaught(pokemon, true, false, false);
+  const gameData = globalScene.getPlayerGameData(playerIndex);
+  gameData.updateSpeciesDexIvs(pokemon.species.getRootSpeciesId(true), pokemon.ivs, playerIndex);
+  return gameData.setPokemonCaught(pokemon, true, false, false);
 }
 
 /**

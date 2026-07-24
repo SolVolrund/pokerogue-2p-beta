@@ -17,6 +17,7 @@ import { getLevelTotalExp } from "#data/exp";
 import { SpeciesFormChangeItemTrigger, SpeciesFormChangeManualTrigger } from "#data/form-change-triggers";
 import { MAX_PER_TYPE_POKEBALLS } from "#data/pokeball";
 import { SpeciesFormChange } from "#data/pokemon-forms";
+import { isRotomApplianceItem } from "#data/rotom";
 import { getStatusEffectHealText } from "#data/status-effect";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BerryType } from "#enums/berry-type";
@@ -3425,7 +3426,7 @@ export class PokemonFormChangeItemModifier extends PokemonHeldItemModifier {
     if (switchActive) {
       this.active = false;
     } else if (active) {
-      this.deactivateOtherCosplayScarfItems(pokemon);
+      this.deactivateOtherExclusiveFormChangeItems(pokemon);
     }
 
     let ret = globalScene.triggerPokemonFormChange(pokemon, SpeciesFormChangeItemTrigger);
@@ -3458,22 +3459,29 @@ export class PokemonFormChangeItemModifier extends PokemonHeldItemModifier {
     return ret;
   }
 
-  private deactivateOtherCosplayScarfItems(pokemon: Pokemon): void {
-    if (!pokemon.hasSpecies(SpeciesId.PIKACHU) || !isCosplayPikachuScarfItem(this.formChangeItem)) {
+  private deactivateOtherExclusiveFormChangeItems(pokemon: Pokemon): void {
+    const shouldDeactivate =
+      pokemon.hasSpecies(SpeciesId.PIKACHU) && isCosplayPikachuScarfItem(this.formChangeItem)
+        ? isCosplayPikachuScarfItem
+        : pokemon.hasSpecies(SpeciesId.ROTOM) && isRotomApplianceItem(this.formChangeItem)
+          ? isRotomApplianceItem
+          : null;
+
+    if (!shouldDeactivate) {
       return;
     }
 
-    const otherActiveScarves = globalScene.findModifiersForPokemon(
+    const otherActiveItems = globalScene.findModifiersForPokemon(
       m =>
         m instanceof PokemonFormChangeItemModifier
         && m !== this
         && m.pokemonId === pokemon.id
         && m.active
-        && isCosplayPikachuScarfItem(m.formChangeItem),
+        && shouldDeactivate(m.formChangeItem),
       pokemon,
     ) as PokemonFormChangeItemModifier[];
 
-    for (const modifier of otherActiveScarves) {
+    for (const modifier of otherActiveItems) {
       modifier.active = false;
     }
   }

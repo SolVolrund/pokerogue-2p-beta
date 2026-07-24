@@ -19,7 +19,6 @@ import { Trainer } from "#field/trainer";
 import { MoneyMultiplierModifier, type PokemonHeldItemModifier } from "#modifiers/modifier";
 import type { CustomModifierSettings } from "#modifiers/modifier-type";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
-import { MoneyAchv } from "#system/achv";
 import { MusicPreference } from "#system/settings";
 import { trainerConfigs } from "#trainers/trainer-config";
 import type { NewBattleResolvedProps } from "#types/new-battle-props";
@@ -236,7 +235,6 @@ export class Battle {
 
     if (globalScene.twoPlayerMode) {
       globalScene.updateMoneyText();
-      globalScene.validateAchvs(MoneyAchv);
     }
 
     const userLocale = navigator.language || "en-US";

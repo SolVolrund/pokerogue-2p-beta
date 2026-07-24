@@ -371,13 +371,16 @@ function createATrainersTestBattleConfig(acceptChoices: ATrainersTestChoice[]): 
     };
   }
 
-  return {
+  const config: EnemyPartyConfig = {
     levelAdditiveModifier: 1,
     doubleBattle: true,
     trainerConfig: getTrainerConfig(acceptedInfos[0]),
     partnerTrainerConfig: getTrainerConfig(acceptedInfos[1]),
-    partnerTrainerConfig2: acceptedInfos[2] ? getTrainerConfig(acceptedInfos[2]) : undefined,
   };
+  if (acceptedInfos[2]) {
+    config.partnerTrainerConfig2 = getTrainerConfig(acceptedInfos[2]);
+  }
+  return config;
 }
 
 function setATrainersTestRewardMessages(choices: ATrainersTestChoice[]): void {

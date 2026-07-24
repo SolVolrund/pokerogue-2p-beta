@@ -705,10 +705,14 @@ export class MoveEffectPhase extends PokemonPhase {
     }
 
     if (user.isPlayer()) {
-      globalScene.validateAchvs(DamageAchv, new NumberHolder(finalDmg));
+      const playerIndex = globalScene.getPlayerIndexForPokemon(user) ?? globalScene.activePlayerIndex;
+      const gameData = globalScene.getPlayerGameData(playerIndex);
+      if (!globalScene.isComputerPartnerPlayer(playerIndex)) {
+        globalScene.validateAchvsForPlayer(DamageAchv, playerIndex, new NumberHolder(finalDmg));
+      }
 
-      if (finalDmg > globalScene.gameData.gameStats.highestDamage) {
-        globalScene.gameData.gameStats.highestDamage = finalDmg;
+      if (finalDmg > gameData.gameStats.highestDamage) {
+        gameData.gameStats.highestDamage = finalDmg;
       }
     }
 

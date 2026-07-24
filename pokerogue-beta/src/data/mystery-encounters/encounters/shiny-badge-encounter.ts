@@ -287,7 +287,7 @@ function finishShinyBadgeDuel(winner: PlayerIndex, duelPlayerIndexes: PlayerInde
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const data = getShinyBadgeData();
   data.shinyBadgeDuelActive = false;
-  data.shinyBadgeDuelPlayerIndexes = undefined;
+  delete data.shinyBadgeDuelPlayerIndexes;
   encounter.onGameOver = undefined;
   encounter.onPokemonFaint = undefined;
   encounter.dialogue.outro = [
@@ -344,7 +344,6 @@ export const ShinyBadgeEncounter: MysteryEncounter = MysteryEncounterBuilder.wit
     encounter.misc = {
       choices: [],
       shinyBadgeDuelActive: false,
-      shinyBadgeDuelPlayerIndexes: undefined,
     } satisfies ShinyBadgeData;
 
     return true;

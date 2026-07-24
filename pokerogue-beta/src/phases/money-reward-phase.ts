@@ -2,7 +2,6 @@ import { globalScene } from "#app/global-scene";
 import { ArenaTagType } from "#enums/arena-tag-type";
 import { MoneyMultiplierModifier } from "#modifiers/modifier";
 import { BattlePhase } from "#phases/battle-phase";
-import { MoneyAchv } from "#system/achv";
 import { NumberHolder } from "#utils/common";
 import i18next from "i18next";
 
@@ -27,7 +26,6 @@ export class MoneyRewardPhase extends BattlePhase {
       });
       globalScene.setActivePlayerIndex(previousPlayerIndex);
       globalScene.updateMoneyText();
-      globalScene.validateAchvs(MoneyAchv);
 
       const userLocale = navigator.language || "en-US";
       const formattedMoneyAmount = Math.min(...payouts).toLocaleString(userLocale);

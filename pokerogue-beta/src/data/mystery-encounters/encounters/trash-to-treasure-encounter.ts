@@ -179,13 +179,16 @@ async function storeTrashToTreasureChoice(
 function createGarbodorBattleConfig(battlePlayers: PlayerIndex[]): EnemyPartyConfig {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const fieldPosition = battlePlayers.length > 2 ? FieldPosition.CENTER : undefined;
-  return {
+  const config: EnemyPartyConfig = {
     ...encounter.enemyPartyConfigs[0],
     doubleBattle: battlePlayers.length > 1,
-    pokemonConfigs: encounter.enemyPartyConfigs[0].pokemonConfigs?.map((config, index) =>
-      index === 0 && fieldPosition != null ? { ...config, fieldPosition } : config,
-    ),
   };
+  if (encounter.enemyPartyConfigs[0].pokemonConfigs) {
+    config.pokemonConfigs = encounter.enemyPartyConfigs[0].pokemonConfigs.map((pokemonConfig, index) =>
+      index === 0 && fieldPosition != null ? { ...pokemonConfig, fieldPosition } : pokemonConfig,
+    );
+  }
+  return config;
 }
 
 function queueGarbodorStartOfBattleEffects(battlePlayers: PlayerIndex[]): void {

@@ -266,30 +266,32 @@ export class AttemptCapturePhase extends PokemonPhase {
 
     const speciesForm = pokemon.fusionSpecies ? pokemon.getFusionSpeciesForm() : pokemon.getSpeciesForm();
 
-    if (
-      speciesForm.abilityHidden
-      && (pokemon.fusionSpecies ? pokemon.fusionAbilityIndex : pokemon.abilityIndex)
-        === speciesForm.getAbilityCount() - 1
-    ) {
-      globalScene.validateAchv(achvs.HIDDEN_ABILITY);
-    }
+    if (!globalScene.isComputerPartnerPlayer(this.playerIndex)) {
+      if (
+        speciesForm.abilityHidden
+        && (pokemon.fusionSpecies ? pokemon.fusionAbilityIndex : pokemon.abilityIndex)
+          === speciesForm.getAbilityCount() - 1
+      ) {
+        globalScene.validateAchvForPlayer(achvs.HIDDEN_ABILITY, this.playerIndex);
+      }
 
-    if (pokemon.species.subLegendary) {
-      globalScene.validateAchv(achvs.CATCH_SUB_LEGENDARY);
-    }
+      if (pokemon.species.subLegendary) {
+        globalScene.validateAchvForPlayer(achvs.CATCH_SUB_LEGENDARY, this.playerIndex);
+      }
 
-    if (pokemon.species.legendary) {
-      globalScene.validateAchv(achvs.CATCH_LEGENDARY);
-    }
+      if (pokemon.species.legendary) {
+        globalScene.validateAchvForPlayer(achvs.CATCH_LEGENDARY, this.playerIndex);
+      }
 
-    if (pokemon.species.mythical) {
-      globalScene.validateAchv(achvs.CATCH_MYTHICAL);
+      if (pokemon.species.mythical) {
+        globalScene.validateAchvForPlayer(achvs.CATCH_MYTHICAL, this.playerIndex);
+      }
     }
 
     globalScene.pokemonInfoContainer.show(pokemon, true);
 
     const capturingPlayerGameData = globalScene.getPlayerGameData(this.playerIndex);
-    capturingPlayerGameData.updateSpeciesDexIvs(pokemon.species.getRootSpeciesId(true), pokemon.ivs);
+    capturingPlayerGameData.updateSpeciesDexIvs(pokemon.species.getRootSpeciesId(true), pokemon.ivs, this.playerIndex);
     const recordComputerPartnerCatch = () => {
       if (!globalScene.isComputerPartnerPlayer(this.playerIndex)) {
         return;
@@ -329,8 +331,11 @@ export class AttemptCapturePhase extends PokemonPhase {
             m => m instanceof PokemonHeldItemModifier && m.pokemonId === pokemon.id,
             false,
           );
-          if (globalScene.getPlayerParty(this.playerIndex).filter(p => p.isShiny()).length === PLAYER_PARTY_MAX_SIZE) {
-            globalScene.validateAchv(achvs.SHINY_PARTY);
+          if (
+            !globalScene.isComputerPartnerPlayer(this.playerIndex)
+            && globalScene.getPlayerParty(this.playerIndex).filter(p => p.isShiny()).length === PLAYER_PARTY_MAX_SIZE
+          ) {
+            globalScene.validateAchvForPlayer(achvs.SHINY_PARTY, this.playerIndex);
           }
           Promise.all(
             modifiers.map(m => globalScene.addModifier(m, true, undefined, undefined, undefined, undefined, this.playerIndex)),

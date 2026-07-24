@@ -442,7 +442,7 @@ async function resolvePokemonTrade(choice: GlobalTradeSystemChoice): Promise<voi
   await doPokemonTradeSequence(tradedPokemon, newPlayerPokemon);
   await showEncounterText(`${namespace}:tradeReceived`, null, 0, true, 4000);
   audioManager.playBgm(encounter.misc.bgmKey);
-  await addPokemonDataToDexAndValidateAchievements(newPlayerPokemon);
+  await addPokemonDataToDexAndValidateAchievements(newPlayerPokemon, choice.playerIndex);
   await hideTradeBackground();
   tradedPokemon.destroy();
 }

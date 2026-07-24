@@ -178,6 +178,11 @@ export enum FormChangeItem {
   COSPLAY_PINK_SCARF,
   COSPLAY_GREEN_SCARF,
   COSPLAY_YELLOW_SCARF,
+  ROTOM_OVEN,
+  ROTOM_WASHER,
+  ROTOM_FRIDGE,
+  ROTOM_FAN,
+  ROTOM_MOWER,
 
   // #endregion Form Change Items
 }

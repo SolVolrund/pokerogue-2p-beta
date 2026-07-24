@@ -81,13 +81,17 @@ export class FormChangePhase extends EvolutionPhase {
       onComplete: () => {
         let playEvolutionFanfare = false;
         if (this.formChange.formKey.indexOf(SpeciesFormKey.MEGA) > -1) {
-          globalScene.validateAchv(achvs.MEGA_EVOLVE);
+          if (!globalScene.isComputerPartnerPlayer(this.playerIndex)) {
+            globalScene.validateAchvForPlayer(achvs.MEGA_EVOLVE, this.playerIndex);
+          }
           playEvolutionFanfare = true;
         } else if (
           this.formChange.formKey.indexOf(SpeciesFormKey.GIGANTAMAX) > -1
           || this.formChange.formKey.indexOf(SpeciesFormKey.ETERNAMAX) > -1
         ) {
-          globalScene.validateAchv(achvs.GIGANTAMAX);
+          if (!globalScene.isComputerPartnerPlayer(this.playerIndex)) {
+            globalScene.validateAchvForPlayer(achvs.GIGANTAMAX, this.playerIndex);
+          }
           playEvolutionFanfare = true;
         }
 
@@ -98,7 +102,7 @@ export class FormChangePhase extends EvolutionPhase {
           getSpeciesFormChangeMessage(this.pokemon, this.formChange, preName),
           null,
           () => {
-            this.queuePendingCosplayMoveLearn();
+            this.queuePendingFormMoveLearn();
             this.end();
           },
           null,
@@ -110,8 +114,8 @@ export class FormChangePhase extends EvolutionPhase {
     });
   }
 
-  private queuePendingCosplayMoveLearn(): void {
-    const moveId = this.pokemon.consumePendingCosplayFormMoveLearn();
+  private queuePendingFormMoveLearn(): void {
+    const moveId = this.pokemon.consumePendingFormMoveLearn();
     if (moveId == null) {
       return;
     }

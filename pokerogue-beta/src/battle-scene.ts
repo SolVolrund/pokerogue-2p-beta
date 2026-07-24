@@ -50,6 +50,8 @@ import { initCommonAnims, initMoveAnim, loadCommonAnimAssets, loadMoveAnimAssets
 import { isContestHallScheduledEncounterDue } from "#data/contests/contest-hall-schedule";
 import { getDailyMysteryEncounter } from "#data/daily-seed/daily-run";
 import { allMoves, biomeDepths, modifierTypes } from "#data/data-lists";
+import { getDueDejaVuSchedule } from "#mystery-encounters/deja-vu-ghosts";
+import { getGtsMalfunctionTargetWave } from "#mystery-encounters/gts-malfunction-encounter";
 import { getClassicFinalBossDialogue } from "#data/dialogue";
 import { getLevelTotalExp } from "#data/exp";
 import type { SpeciesFormChangeTrigger } from "#data/form-change-triggers";
@@ -296,6 +298,7 @@ const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE,
   MysteryEncounterType.FARAWAY_ISLAND_TREASURE,
   MysteryEncounterType.CONTEST_HALL,
+  MysteryEncounterType.DEJA_VU,
 ];
 const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] = [
   MysteryEncounterType.MYSTERIOUS_CHEST,
@@ -332,6 +335,7 @@ const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] 
   MysteryEncounterType.POKE_POACHERS,
   MysteryEncounterType.FARAWAY_ISLAND_TREASURE,
   MysteryEncounterType.CONTEST_HALL,
+  MysteryEncounterType.DEJA_VU,
 ];
 
 export interface PlayerRunState {
@@ -3574,10 +3578,10 @@ export class BattleScene extends SceneBase {
       && (forcedMysteryEncounterType != null || this.isWaveMysteryEncounter(resolved.battleType, waveIndex));
 
     if (isMysteryEncounterWave) {
-      const shouldResetEncounterSpawnChance = !this.isScheduledContestHallMysteryEncounterWave(
-        resolved.battleType,
-        waveIndex,
-      );
+      const shouldResetEncounterSpawnChance =
+        !this.isScheduledContestHallMysteryEncounterWave(resolved.battleType, waveIndex)
+        && !this.isScheduledGtsMalfunctionMysteryEncounterWave(resolved.battleType, waveIndex)
+        && !this.isScheduledDejaVuMysteryEncounterWave(resolved.battleType, waveIndex);
       resolved.battleType = BattleType.MYSTERY_ENCOUNTER;
       resolved.mysteryEncounterType = forcedMysteryEncounterType;
       if (shouldResetEncounterSpawnChance) {
@@ -4010,9 +4014,10 @@ export class BattleScene extends SceneBase {
       case SpeciesId.MAGEARNA:
       case SpeciesId.ZARUDE:
       case SpeciesId.SQUAWKABILLY:
-      case SpeciesId.TATSUGIRI:
       case SpeciesId.PALDEA_TAUROS:
         return randSeedInt(species.forms.length);
+      case SpeciesId.TATSUGIRI:
+        return randSeedInt(3);
       case SpeciesId.SINISTEA:
       case SpeciesId.POLTEAGEIST:
       case SpeciesId.MAUSHOLD:
@@ -4575,7 +4580,9 @@ export class BattleScene extends SceneBase {
     if (showUpdate && (!this.twoPlayerMode || playerIndex === this.activePlayerIndex)) {
       this.updateMoneyText();
       this.animateMoneyChanged(true);
-      this.validateAchvs(MoneyAchv);
+    }
+    if (amount > 0 && !this.isComputerPartnerPlayer(playerIndex)) {
+      this.validateAchvsForPlayer(MoneyAchv, playerIndex, playerIndex);
     }
   }
 
@@ -4605,7 +4612,9 @@ export class BattleScene extends SceneBase {
     }
     let success = false;
     const soundName = modifier.type.soundName;
-    this.validateAchvs(ModifierAchv, modifier);
+    if (!this.isComputerPartnerPlayer(playerIndex)) {
+      this.validateAchvsForPlayer(ModifierAchv, playerIndex, modifier);
+    }
     const modifiersToRemove: PersistentModifier[] = [];
     if (modifier instanceof PersistentModifier) {
       const playerModifiers = this.getPlayerModifiers(playerIndex);
@@ -5379,21 +5388,38 @@ export class BattleScene extends SceneBase {
   }
 
   validateAchvs<T extends Achv>(achvType: Constructor<T>, ...args: NonNullable<Parameters<T["validate"]>[0]>): void {
+    this.validateAchvsForPlayer(achvType, this.activePlayerIndex, ...args);
+  }
+
+  validateAchvsForPlayer<T extends Achv>(
+    achvType: Constructor<T>,
+    playerIndex: PlayerIndex,
+    ...args: NonNullable<Parameters<T["validate"]>[0]>
+  ): void {
     const filteredAchvs = Object.values(achvs).filter(a => a instanceof achvType);
     for (const achv of filteredAchvs) {
-      this.validateAchv(achv, args);
+      this.validateAchvForPlayer(achv, playerIndex, args);
     }
   }
 
   validateAchv<T extends Achv>(achv: T, args?: Parameters<T["validate"]>[0]): boolean {
+    return this.validateAchvForPlayer(achv, this.activePlayerIndex, args);
+  }
+
+  validateAchvForPlayer<T extends Achv>(
+    achv: T,
+    playerIndex: PlayerIndex,
+    args?: Parameters<T["validate"]>[0],
+  ): boolean {
+    const gameData = this.getPlayerGameData(playerIndex);
     if (
-      (!Object.hasOwn(this.gameData.achvUnlocks, achv.id) || activeOverrides.ACHIEVEMENTS_REUNLOCK_OVERRIDE)
+      (!Object.hasOwn(gameData.achvUnlocks, achv.id) || activeOverrides.ACHIEVEMENTS_REUNLOCK_OVERRIDE)
       && achv.validate(args)
     ) {
-      this.gameData.achvUnlocks[achv.id] = Date.now();
+      gameData.achvUnlocks[achv.id] = Date.now();
       this.ui.achvBar.showAchv(achv);
       if (Object.hasOwn(vouchers, achv.id)) {
-        this.validateVoucher(vouchers[achv.id]);
+        this.validateVoucherForPlayer(vouchers[achv.id], playerIndex);
       }
       return true;
     }
@@ -5687,13 +5713,15 @@ export class BattleScene extends SceneBase {
             return;
         }
 
-        this.currentBattle.double = true;
-        const availablePartyMembers = this.getPlayerParty().filter(p => p.isAllowedInBattle());
-        if (availablePartyMembers.length > 1) {
-          this.phaseManager.pushNew("ToggleDoublePositionPhase", true);
-          if (!availablePartyMembers[1].isOnField()) {
-            this.phaseManager.pushNew("SummonPhase", 1);
-            this.phaseManager.pushNew("PostSummonPhase", 1);
+        if (!this.twoPlayerMode) {
+          this.currentBattle.double = true;
+          const availablePartyMembers = this.getPlayerParty().filter(p => p.isAllowedInBattle());
+          if (availablePartyMembers.length > 1) {
+            this.phaseManager.pushNew("ToggleDoublePositionPhase", true);
+            if (!availablePartyMembers[1].isOnField()) {
+              this.phaseManager.pushNew("SummonPhase", 1);
+              this.phaseManager.pushNew("PostSummonPhase", 1);
+            }
           }
         }
 
@@ -5897,6 +5925,14 @@ export class BattleScene extends SceneBase {
       return true;
     }
 
+    if (this.isScheduledGtsMalfunctionMysteryEncounterWave(battleType, waveIndex)) {
+      return true;
+    }
+
+    if (this.isScheduledDejaVuMysteryEncounterWave(battleType, waveIndex)) {
+      return true;
+    }
+
     const [lowestMysteryEncounterWave, highestMysteryEncounterWave] = this.gameMode.getMysteryEncounterLegalWaves();
     // Base spawn weight is BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT/256, and increases
     // by WEIGHT_INCREMENT_ON_SPAWN_MISS/256 for each missed attempt at spawning an encounter on a valid floor
@@ -5944,6 +5980,15 @@ export class BattleScene extends SceneBase {
     ) {
       return MysteryEncounterType.POKE_POACHERS;
     }
+    if (this.isScheduledContestHallMysteryEncounterWave(battleType, waveIndex)) {
+      return undefined;
+    }
+    if (this.isScheduledGtsMalfunctionMysteryEncounterWave(battleType, waveIndex)) {
+      return MysteryEncounterType.GTS_MALFUNCTION;
+    }
+    if (this.isScheduledDejaVuMysteryEncounterWave(battleType, waveIndex)) {
+      return MysteryEncounterType.DEJA_VU;
+    }
     return undefined;
   }
 
@@ -5972,6 +6017,41 @@ export class BattleScene extends SceneBase {
       battleType === BattleType.WILD
       && this.isMysteryEncounterEnabled(MysteryEncounterType.CONTEST_HALL)
       && isContestHallScheduledEncounterDue(waveIndex)
+    );
+  }
+
+  private isScheduledGtsMalfunctionMysteryEncounterWave(battleType: BattleType, waveIndex: number): boolean {
+    const encounterType = MysteryEncounterType.GTS_MALFUNCTION;
+    const encounter = allMysteryEncounters[encounterType];
+    const maxAllowedEncounters = encounter?.maxAllowedEncounters ?? 0;
+    const previousEncounters = this.mysteryEncounterSaveData.encounteredEvents.filter(
+      event => event.type === encounterType,
+    ).length;
+
+    return (
+      battleType === BattleType.WILD
+      && !!encounter
+      && this.twoPlayerMode
+      && this.isMysteryEncounterEnabled(encounterType)
+      && !timedEventManager.getEventMysteryEncountersDisabled().includes(encounterType)
+      && this.isMysteryEncounterValidForWave(battleType, waveIndex)
+      && waveIndex >= getGtsMalfunctionTargetWave()
+      && (maxAllowedEncounters <= 0 || previousEncounters < maxAllowedEncounters)
+      && this.getActivePlayerIndexes().every(playerIndex => this.getPokemonAllowedInBattle(playerIndex).length >= 2)
+    );
+  }
+
+  private isScheduledDejaVuMysteryEncounterWave(battleType: BattleType, waveIndex: number): boolean {
+    const encounterType = MysteryEncounterType.DEJA_VU;
+    const encounter = allMysteryEncounters[encounterType];
+    return (
+      battleType === BattleType.WILD
+      && !!encounter
+      && this.isMysteryEncounterEnabled(encounterType)
+      && !timedEventManager.getEventMysteryEncountersDisabled().includes(encounterType)
+      && this.isMysteryEncounterValidForWave(battleType, waveIndex)
+      && encounter.meetsRequirements()
+      && !!getDueDejaVuSchedule(this, waveIndex)
     );
   }
 

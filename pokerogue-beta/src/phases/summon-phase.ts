@@ -1,4 +1,5 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
+import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
@@ -25,7 +26,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
     this.loaded = loaded;
   }
 
-  private getShinyBadgeDuelVisualPosition(playerIndex: number):
+  private getShinyBadgeDuelVisualPosition(playerIndex: PlayerIndex):
     | { x: number; y: number; fieldPosition: FieldPosition }
     | undefined {
     const misc = globalScene.currentBattle.mysteryEncounter?.misc;

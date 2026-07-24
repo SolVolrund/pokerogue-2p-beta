@@ -35,6 +35,7 @@ export interface SystemSaveData {
   voucherUnlocks: VoucherUnlocks;
   computerPartnerUnlocks?: Partial<Record<ComputerPartnerKey, number>>;
   computerPartnerProgress?: Partial<Record<ComputerPartnerKey, ComputerPartnerProgressData>>;
+  dejaVuGhosts?: Partial<Record<GameModes, DejaVuGhostData>>;
   voucherCounts: VoucherCounts;
   eggs: EggData[];
   gameVersion: string;
@@ -64,6 +65,19 @@ export interface ComputerPartnerProgressData {
   dexData: Partial<Record<SpeciesId, ComputerPartnerDexProgressEntry>>;
   starterData: Partial<Record<SpeciesId, ComputerPartnerStarterProgressEntry>>;
   eggPurchases: number;
+}
+
+export interface DejaVuGhostPokemonData {
+  pokemon: PokemonData;
+  heldItems: ModifierData[];
+}
+
+export interface DejaVuGhostData {
+  mode: GameModes;
+  waveIndex: number;
+  timestamp: number;
+  playerGender: PlayerGender;
+  party: DejaVuGhostPokemonData[];
 }
 
 export interface PlayerSessionSaveData {

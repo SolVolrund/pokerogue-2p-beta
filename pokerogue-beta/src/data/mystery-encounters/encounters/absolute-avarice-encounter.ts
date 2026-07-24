@@ -738,7 +738,7 @@ export const AbsoluteAvariceEncounter: MysteryEncounter = MysteryEncounterBuilde
     seedAbsoluteAvariceTestBerries();
 
     const berryItemsByPlayer = buildBerryItemsByPlayer();
-    const berryItemsMap = berryItemsByPlayer[globalScene.activePlayerIndex];
+    const berryItemsMap = berryItemsByPlayer[globalScene.activePlayerIndex] ?? new Map<number, BerryModifier[]>();
 
     encounter.misc = {
       berryItemsMap,

@@ -48,16 +48,21 @@ export class TrainerVictoryPhase extends BattlePhase {
           ][trainerVoucher.voucherType]
         : [modifierTypes.VOUCHER, modifierTypes.VOUCHER, modifierTypes.VOUCHER_PLUS, modifierTypes.VOUCHER_PREMIUM][
             trainerVoucher.voucherType
-          ];
+      ];
 
       if (globalScene.twoPlayerMode) {
-        ([1, 0] as const).forEach(playerIndex => {
-          if (!globalScene.validateVoucherForPlayer(trainerVoucher, playerIndex)) {
-            this.unshiftModifierRewardForPlayer(voucherRewardFunc, playerIndex);
-          }
-        });
-      } else if (!globalScene.validateVoucher(trainerVoucher)) {
-        this.unshiftModifierReward(voucherRewardFunc);
+        globalScene
+          .getActivePlayerIndexes()
+          .slice()
+          .reverse()
+          .filter(playerIndex => !globalScene.isComputerPartnerPlayer(playerIndex))
+          .forEach(playerIndex => {
+            if (!globalScene.validateVoucherForPlayer(trainerVoucher, playerIndex)) {
+              this.unshiftModifierRewardForPlayer(voucherRewardFunc, playerIndex);
+            }
+          });
+      } else if (!globalScene.validateVoucherForPlayer(trainerVoucher, globalScene.activePlayerIndex)) {
+        this.unshiftModifierRewardForPlayer(voucherRewardFunc, globalScene.activePlayerIndex);
       }
     }
     // Breeders in Space achievement
@@ -65,7 +70,10 @@ export class TrainerVictoryPhase extends BattlePhase {
       globalScene.arena.biomeId === BiomeId.SPACE
       && (trainerType === TrainerType.BREEDER || trainerType === TrainerType.EXPERT_POKEMON_BREEDER)
     ) {
-      globalScene.validateAchv(achvs.BREEDERS_IN_SPACE);
+      const playerIndexes = globalScene.twoPlayerMode
+        ? globalScene.getActivePlayerIndexes().filter(playerIndex => !globalScene.isComputerPartnerPlayer(playerIndex))
+        : ([globalScene.activePlayerIndex] as PlayerIndex[]);
+      playerIndexes.forEach(playerIndex => globalScene.validateAchvForPlayer(achvs.BREEDERS_IN_SPACE, playerIndex));
     }
 
     const computerPartnerUnlockKey = COMPUTER_PARTNER_UNLOCKS_BY_TRAINER_TYPE[trainerType];

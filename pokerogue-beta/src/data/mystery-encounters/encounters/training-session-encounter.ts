@@ -473,7 +473,7 @@ function applyLightTrainingReward(choice: TrainingChoice): void {
 
   if (improvedCount > 0) {
     playerPokemon.calculateStats();
-    gameData.updateSpeciesDexIvs(playerPokemon.species.getRootSpeciesId(true), playerPokemon.ivs);
+    gameData.updateSpeciesDexIvs(playerPokemon.species.getRootSpeciesId(true), playerPokemon.ivs, choice.playerIndex);
     gameData.setPokemonCaught(playerPokemon, false);
   }
 

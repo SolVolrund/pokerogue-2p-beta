@@ -76,6 +76,8 @@ import type {
   ComputerPartnerDexProgressEntry,
   ComputerPartnerProgressData,
   ComputerPartnerStarterProgressEntry,
+  DejaVuGhostData,
+  DejaVuGhostPokemonData,
   DexAttrProps,
   RunHistoryData,
   SeenDialogues,
@@ -170,6 +172,7 @@ export class GameData {
   public voucherUnlocks: VoucherUnlocks;
   public computerPartnerUnlocks: Partial<Record<ComputerPartnerKey, number>>;
   public computerPartnerProgress: Partial<Record<ComputerPartnerKey, ComputerPartnerProgressData>>;
+  public dejaVuGhosts: Partial<Record<GameModes, DejaVuGhostData>>;
   public voucherCounts: VoucherCounts;
   public eggs: Egg[];
   public eggPity: number[];
@@ -205,6 +208,7 @@ export class GameData {
     this.voucherUnlocks = {};
     this.computerPartnerUnlocks = {};
     this.computerPartnerProgress = {};
+    this.dejaVuGhosts = {};
     this.voucherCounts = {
       [VoucherType.REGULAR]: 0,
       [VoucherType.PLUS]: 0,
@@ -231,6 +235,7 @@ export class GameData {
       voucherUnlocks: this.voucherUnlocks,
       computerPartnerUnlocks: this.computerPartnerUnlocks,
       computerPartnerProgress: this.computerPartnerProgress,
+      dejaVuGhosts: this.dejaVuGhosts,
       voucherCounts: this.voucherCounts,
       eggs: this.eggs.map(e => new EggData(e)),
       gameVersion: globalScene.game.config.gameVersion,
@@ -452,6 +457,17 @@ export class GameData {
       }
     }
 
+    this.dejaVuGhosts = {};
+    if (systemData.dejaVuGhosts) {
+      for (const modeKey of Object.keys(systemData.dejaVuGhosts)) {
+        const mode = Number(modeKey) as GameModes;
+        const ghost = systemData.dejaVuGhosts[mode];
+        if (ghost) {
+          this.dejaVuGhosts[mode] = GameData.normalizeDejaVuGhost(ghost);
+        }
+      }
+    }
+
     if (systemData.voucherCounts) {
       getEnumKeys(VoucherType).forEach(key => {
         const index = VoucherType[key];
@@ -615,6 +631,11 @@ export class GameData {
     if (source.computerPartnerProgress) {
       target.computerPartnerProgress ??= {};
       GameData.mergeComputerPartnerProgress(target.computerPartnerProgress, source.computerPartnerProgress);
+    }
+
+    if (source.dejaVuGhosts) {
+      target.dejaVuGhosts ??= {};
+      GameData.mergeDejaVuGhosts(target.dejaVuGhosts, source.dejaVuGhosts);
     }
 
     return target;
@@ -876,6 +897,42 @@ export class GameData {
       targetEntry.abilityAttr |= sourceEntry.abilityAttr ?? 0;
       targetEntry.passiveAttr |= sourceEntry.passiveAttr ?? 0;
       targetEntry.valueReduction = Math.max(targetEntry.valueReduction ?? 0, sourceEntry.valueReduction ?? 0);
+    }
+  }
+
+  private static normalizeDejaVuGhost(ghost: Partial<DejaVuGhostData>): DejaVuGhostData {
+    const party = (ghost.party ?? [])
+      .filter((entry): entry is DejaVuGhostPokemonData => !!entry?.pokemon)
+      .map(entry => ({
+        pokemon: new PokemonData(entry.pokemon),
+        heldItems: (entry.heldItems ?? []).map(item => new PersistentModifierData(item, true)),
+      }));
+
+    return {
+      mode: ghost.mode ?? GameModes.CLASSIC,
+      waveIndex: ghost.waveIndex ?? 1,
+      timestamp: ghost.timestamp ?? 0,
+      playerGender: ghost.playerGender ?? PlayerGender.UNSET,
+      party,
+    };
+  }
+
+  private static mergeDejaVuGhosts(
+    target: Partial<Record<GameModes, DejaVuGhostData>>,
+    source: Partial<Record<GameModes, DejaVuGhostData>>,
+  ): void {
+    for (const modeKey of Object.keys(source)) {
+      const mode = Number(modeKey) as GameModes;
+      const sourceGhost = source[mode];
+      if (!sourceGhost) {
+        continue;
+      }
+
+      const normalizedSource = GameData.normalizeDejaVuGhost(sourceGhost);
+      const targetGhost = target[mode];
+      if (!targetGhost || (normalizedSource.timestamp ?? 0) > (targetGhost.timestamp ?? 0)) {
+        target[mode] = normalizedSource;
+      }
     }
   }
 
@@ -2558,7 +2615,11 @@ export class GameData {
    * @param forStarter - If true, will increment the ribbon count for the root species of the given species
    * @returns The number of classic wins after incrementing.
    */
-  incrementRibbonCount(species: PokemonSpecies, forStarter = false): number {
+  incrementRibbonCount(
+    species: PokemonSpecies,
+    forStarter = false,
+    playerIndex: PlayerIndex = globalScene.activePlayerIndex,
+  ): number {
     const speciesIdToIncrement: SpeciesId = species.getRootSpeciesId(forStarter);
 
     if (!this.starterData[speciesIdToIncrement].classicWinCount) {
@@ -2572,19 +2633,19 @@ export class GameData {
     const ribbonsInStats: number = this.gameStats.ribbonsOwned;
 
     if (ribbonsInStats >= 100) {
-      globalScene.validateAchv(achvs._100_RIBBONS);
+      globalScene.validateAchvForPlayer(achvs._100_RIBBONS, playerIndex, [playerIndex]);
     }
     if (ribbonsInStats >= 75) {
-      globalScene.validateAchv(achvs._75_RIBBONS);
+      globalScene.validateAchvForPlayer(achvs._75_RIBBONS, playerIndex, [playerIndex]);
     }
     if (ribbonsInStats >= 50) {
-      globalScene.validateAchv(achvs._50_RIBBONS);
+      globalScene.validateAchvForPlayer(achvs._50_RIBBONS, playerIndex, [playerIndex]);
     }
     if (ribbonsInStats >= 25) {
-      globalScene.validateAchv(achvs._25_RIBBONS);
+      globalScene.validateAchvForPlayer(achvs._25_RIBBONS, playerIndex, [playerIndex]);
     }
     if (ribbonsInStats >= 10) {
-      globalScene.validateAchv(achvs._10_RIBBONS);
+      globalScene.validateAchvForPlayer(achvs._10_RIBBONS, playerIndex, [playerIndex]);
     }
 
     return ++this.starterData[speciesIdToIncrement].classicWinCount;
@@ -2609,6 +2670,19 @@ export class GameData {
     globalScene.candyBar.showStarterSpeciesCandy(speciesId, numCandiesToAdd);
 
     return true;
+  }
+
+  public getDejaVuGhost(mode: GameModes): DejaVuGhostData | undefined {
+    const ghost = this.dejaVuGhosts[mode];
+    return ghost ? GameData.normalizeDejaVuGhost(ghost) : undefined;
+  }
+
+  public setDejaVuGhost(ghost: DejaVuGhostData): void {
+    this.dejaVuGhosts[ghost.mode] = GameData.normalizeDejaVuGhost(ghost);
+  }
+
+  public clearDejaVuGhost(mode: GameModes): void {
+    delete this.dejaVuGhosts[mode];
   }
 
   public getComputerPartnerProgress(key: ComputerPartnerKey): ComputerPartnerProgressData {
@@ -2763,7 +2837,7 @@ export class GameData {
     } while (speciesId != null);
   }
 
-  updateSpeciesDexIvs(speciesId: SpeciesId, ivs: number[]): void {
+  updateSpeciesDexIvs(speciesId: SpeciesId, ivs: number[], playerIndex: PlayerIndex = globalScene.activePlayerIndex): void {
     let dexEntry: DexEntry;
     do {
       dexEntry = this.dexData[speciesId];
@@ -2771,8 +2845,8 @@ export class GameData {
       for (let i = 0; i < dexIvs.length; i++) {
         dexIvs[i] = Math.max(dexIvs[i], ivs[i]);
       }
-      if (dexIvs.every(iv => iv === 31)) {
-        globalScene.validateAchv(achvs.PERFECT_IVS);
+      if (dexIvs.every(iv => iv === 31) && !globalScene.isComputerPartnerPlayer(playerIndex)) {
+        globalScene.validateAchvForPlayer(achvs.PERFECT_IVS, playerIndex);
       }
       speciesId = speciesDataRegistry.getPrevolution(speciesId)!;
     } while (speciesId != null);

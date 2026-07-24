@@ -3899,15 +3899,15 @@ export class WishAttr extends MoveEffectAttr {
 }
 
 /**
- * Attribute that cancels the associated move's effects when set to be combined with the user's ally's
- * subsequent move this turn. Used for Grass Pledge, Water Pledge, and Fire Pledge.
+ * Attribute that cancels the associated move's effects when set to be combined with a same-side ally's
+ * pending Pledge move this turn. Used for Grass Pledge, Water Pledge, and Fire Pledge.
  */
 export class AwaitCombinedPledgeAttr extends OverrideMoveEffectAttr {
   constructor() {
     super(true);
   }
   /**
-   * If the user's ally is set to use a different move with this attribute,
+   * If a same-side ally is set to use a different move with this attribute,
    * defer this move's effects for a combined move on the ally's turn.
    * @param user the {@linkcode Pokemon} using this move
    * @param target n/a
@@ -3926,28 +3926,32 @@ export class AwaitCombinedPledgeAttr extends OverrideMoveEffectAttr {
 
     const overridden = args[0] as BooleanHolder;
 
-    const allyMovePhase = globalScene.phaseManager.getMovePhase(phase => phase.pokemon.isPlayer() === user.isPlayer());
-    if (allyMovePhase) {
-      const allyMove = allyMovePhase.move.getMove();
-      if (allyMove !== move && allyMove.hasAttr("AwaitCombinedPledgeAttr")) {
-        for (const p of [user, allyMovePhase.pokemon]) {
-          p.turnData.combiningPledge = move.id;
-        }
-
-        // "{userPokemonName} is waiting for {allyPokemonName}'s move..."
-        globalScene.phaseManager.queueMessage(
-          i18next.t("moveTriggers:awaitingPledge", {
-            userPokemonName: getPokemonNameWithAffix(user),
-            allyPokemonName: getPokemonNameWithAffix(allyMovePhase.pokemon),
-          }),
-        );
-
-        // Move the ally's MovePhase (if needed) so that the ally moves next
-        globalScene.phaseManager.forceMoveNext((phase: MovePhase) => phase.pokemon === user.getAlly());
-
-        overridden.value = true;
-        return true;
+    const allyMovePhase = globalScene.phaseManager.getMovePhase(phase => {
+      if (phase.pokemon === user || phase.pokemon.isPlayer() !== user.isPlayer()) {
+        return false;
       }
+
+      const allyMove = phase.move.getMove();
+      return allyMove !== move && allyMove.hasAttr("AwaitCombinedPledgeAttr");
+    });
+    if (allyMovePhase) {
+      for (const p of [user, allyMovePhase.pokemon]) {
+        p.turnData.combiningPledge = move.id;
+      }
+
+      // "{userPokemonName} is waiting for {allyPokemonName}'s move..."
+      globalScene.phaseManager.queueMessage(
+        i18next.t("moveTriggers:awaitingPledge", {
+          userPokemonName: getPokemonNameWithAffix(user),
+          allyPokemonName: getPokemonNameWithAffix(allyMovePhase.pokemon),
+        }),
+      );
+
+      // Move the matching ally's MovePhase (if needed) so that the combined pledge resolves next.
+      globalScene.phaseManager.forceMoveNext((phase: MovePhase) => phase === allyMovePhase);
+
+      overridden.value = true;
+      return true;
     }
     return false;
   }
@@ -5833,13 +5837,21 @@ const legendPlateTypeCache = new Map<string, PokemonType>();
 export class FormChangeItemTypeAttr extends VariableMoveTypeAttr {
   apply(user: Pokemon, target: Pokemon | null, move: Move, args: any[]): boolean {
     const moveType = args[0];
+    const simulated = args[1] ?? true;
     if (!(moveType instanceof NumberHolder)) {
       return false;
     }
 
     if (this.isLegendPlateJudgment(user, move)) {
       if (target) {
-        moveType.value = this.getLegendPlateJudgmentType(user, target, move);
+        const legendPlateType = this.getLegendPlateJudgmentType(user, target, move);
+        moveType.value = legendPlateType;
+        const currentTypes = user.getTypes({ includeTeraType: false });
+        if (!simulated && currentTypes.some(type => type !== legendPlateType)) {
+          user.summonData.types = [legendPlateType];
+          void user.loadAssets(false);
+          user.updateInfo();
+        }
         return true;
       }
       return true;

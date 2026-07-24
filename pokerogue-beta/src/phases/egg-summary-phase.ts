@@ -33,7 +33,7 @@ export class EggSummaryPhase extends Phase {
 
     for (const eggHatchData of this.eggHatchData) {
       eggHatchData.setDex(gameData);
-      await eggHatchData.updatePokemon(false, gameData);
+      await eggHatchData.updatePokemon(false, gameData, this.playerIndex);
     }
     globalScene.savePlayerSystemSaveLocal(this.playerIndex);
 

@@ -1,4 +1,5 @@
 import { globalScene } from "#app/global-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import type { PlayerPokemon } from "#field/pokemon";
 import type { GameData } from "#system/game-data";
 import type { DexEntry } from "#types/dex-data";
@@ -86,10 +87,14 @@ export class EggHatchData {
    * @param showMessage boolean to show messages for the new catches and egg moves (false by default)
    * @returns
    */
-  updatePokemon(showMessage = false, gameData: GameData = globalScene.gameData) {
+  updatePokemon(
+    showMessage = false,
+    gameData: GameData = globalScene.gameData,
+    playerIndex: PlayerIndex = globalScene.activePlayerIndex,
+  ) {
     return new Promise<void>(resolve => {
       gameData.setPokemonCaught(this.pokemon, true, true, showMessage).then(() => {
-        gameData.updateSpeciesDexIvs(this.pokemon.species.speciesId, this.pokemon.ivs);
+        gameData.updateSpeciesDexIvs(this.pokemon.species.speciesId, this.pokemon.ivs, playerIndex);
         gameData.setEggMoveUnlocked(this.pokemon.species, this.eggMoveIndex, showMessage).then(value => {
           this.setEggMoveUnlocked(value);
           resolve();

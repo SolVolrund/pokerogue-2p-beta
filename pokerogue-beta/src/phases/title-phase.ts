@@ -1562,7 +1562,7 @@ export class TitlePhase extends Phase {
     // TODO: Move this to a migrate script instead of running it on save slot load
     for (const achv of Object.keys(globalScene.gameData.achvUnlocks)) {
       if (Object.hasOwn(vouchers, achv) && achv !== "CLASSIC_VICTORY") {
-        globalScene.validateVoucher(vouchers[achv]);
+        globalScene.validateVoucherForPlayer(vouchers[achv], globalScene.activePlayerIndex);
       }
     }
 

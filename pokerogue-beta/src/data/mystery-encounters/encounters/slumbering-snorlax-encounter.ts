@@ -213,7 +213,7 @@ async function promptNextSlumberingSnorlaxPlayer(
     computerPartnerOption: {
       chooseOptionIndex: chooseComputerPartnerSlumberingSnorlaxOption,
       onOptionChosen: (optionIndex, choicePlayerIndex) =>
-        storeSlumberingSnorlaxChoice(optionIndex, choicePlayerIndex),
+        storeSlumberingSnorlaxChoice(optionIndex as SlumberingSnorlaxOptionIndex, choicePlayerIndex),
     },
   });
   return result ?? false;

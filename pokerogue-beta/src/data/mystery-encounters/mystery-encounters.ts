@@ -9,6 +9,7 @@ import { ClowningAroundEncounter } from "#mystery-encounters/clowning-around-enc
 import { ContestHallEncounter } from "#mystery-encounters/contest-hall-encounter";
 import { DancingLessonsEncounter } from "#mystery-encounters/dancing-lessons-encounter";
 import { DarkDealEncounter } from "#mystery-encounters/dark-deal-encounter";
+import { DejaVuEncounter } from "#mystery-encounters/deja-vu-encounter";
 import { DelibirdyEncounter } from "#mystery-encounters/delibirdy-encounter";
 import { DepartmentStoreSaleEncounter } from "#mystery-encounters/department-store-sale-encounter";
 import { FarawayIslandTreasureEncounter } from "#mystery-encounters/faraway-island-treasure-encounter";
@@ -284,6 +285,7 @@ export function initMysteryEncounters() {
   allMysteryEncounters[MysteryEncounterType.POKE_POACHERS] = PokePoachersEncounter;
   allMysteryEncounters[MysteryEncounterType.FARAWAY_ISLAND_TREASURE] = FarawayIslandTreasureEncounter;
   allMysteryEncounters[MysteryEncounterType.CONTEST_HALL] = ContestHallEncounter;
+  allMysteryEncounters[MysteryEncounterType.DEJA_VU] = DejaVuEncounter;
 
   // Add extreme encounters to biome map
   extremeBiomeEncounters.forEach(encounter => {

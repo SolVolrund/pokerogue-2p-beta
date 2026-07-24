@@ -116,7 +116,7 @@ class GtsMalfunctionSpawnRequirement extends EncounterSceneRequirement {
     const playerIndexes = getMysteryEncounterPlayerIndexes();
     return (
       globalScene.twoPlayerMode
-      && globalScene.currentBattle.waveIndex === getGtsMalfunctionTargetWave()
+      && globalScene.currentBattle.waveIndex >= getGtsMalfunctionTargetWave()
       && playerIndexes.every(playerIndex => globalScene.getPokemonAllowedInBattle(playerIndex).length >= 2)
     );
   }
@@ -205,7 +205,7 @@ function getGtsModsTeamSize(wave: number): number {
   return 2 + Math.min(index, 5) * 2;
 }
 
-function getGtsMalfunctionTargetWave(): number {
+export function getGtsMalfunctionTargetWave(): number {
   let targetWave = 10;
 
   globalScene.executeWithSeedOffset(() => {

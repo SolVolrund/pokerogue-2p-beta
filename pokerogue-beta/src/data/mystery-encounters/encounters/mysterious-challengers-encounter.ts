@@ -211,16 +211,29 @@ function createMysteriousChallengerBattleConfig(choices: MysteriousChallengerCho
     );
   }
 
-  return {
-    trainerConfig: configs[0].trainerConfig,
-    female: configs[0].female,
-    partnerTrainerConfig: configs[1]?.trainerConfig,
-    partnerFemale: configs[1]?.female,
-    partnerTrainerConfig2: configs[2]?.trainerConfig,
-    partnerFemale2: configs[2]?.female,
+  const config: EnemyPartyConfig = {
     doubleBattle: sortedChoices.length > 1,
     trainerLevelAdditiveModifiers,
   };
+  if (configs[0].trainerConfig) {
+    config.trainerConfig = configs[0].trainerConfig;
+  }
+  if (configs[0].female != null) {
+    config.female = configs[0].female;
+  }
+  if (configs[1]?.trainerConfig) {
+    config.partnerTrainerConfig = configs[1].trainerConfig;
+  }
+  if (configs[1]?.female != null) {
+    config.partnerFemale = configs[1].female;
+  }
+  if (configs[2]?.trainerConfig) {
+    config.partnerTrainerConfig2 = configs[2].trainerConfig;
+  }
+  if (configs[2]?.female != null) {
+    config.partnerFemale2 = configs[2].female;
+  }
+  return config;
 }
 
 async function runMysteriousChallengerChoices(optionIndex: MysteriousChallengerOptionIndex): Promise<boolean> {

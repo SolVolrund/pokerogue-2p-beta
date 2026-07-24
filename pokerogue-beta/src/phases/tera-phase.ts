@@ -44,10 +44,13 @@ export class TeraPhase extends BattlePhase {
     globalScene.triggerPokemonFormChange(this.pokemon, SpeciesFormChangeTeraTrigger);
 
     if (this.pokemon.isPlayer()) {
-      globalScene.arena.incrementPlayerTerasUsed(globalScene.getPlayerIndexForPokemon(this.pokemon) ?? 0);
-      globalScene.validateAchv(achvs.TERASTALLIZE);
-      if (this.pokemon.getTeraType() === PokemonType.STELLAR) {
-        globalScene.validateAchv(achvs.STELLAR_TERASTALLIZE);
+      const playerIndex = globalScene.getPlayerIndexForPokemon(this.pokemon) ?? 0;
+      globalScene.arena.incrementPlayerTerasUsed(playerIndex);
+      if (!globalScene.isComputerPartnerPlayer(playerIndex)) {
+        globalScene.validateAchvForPlayer(achvs.TERASTALLIZE, playerIndex);
+        if (this.pokemon.getTeraType() === PokemonType.STELLAR) {
+          globalScene.validateAchvForPlayer(achvs.STELLAR_TERASTALLIZE, playerIndex);
+        }
       }
     }
 

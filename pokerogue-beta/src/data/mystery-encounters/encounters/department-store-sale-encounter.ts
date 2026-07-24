@@ -14,6 +14,7 @@ import {
 } from "#mystery-encounters/encounter-player-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
+import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { getPlayerModifierTypeOptions, type ModifierTypeOption } from "#modifiers/modifier-type";
 import type { ModifierTypeFunc } from "#types/modifier-types";

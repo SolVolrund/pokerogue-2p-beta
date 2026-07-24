@@ -1,6 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import type { SpeciesId } from "#enums/species-id";
+import type { GameData } from "#system/game-data";
 import { RibbonData, type RibbonFlag } from "#system/ribbons/ribbon-data";
 
 /**
@@ -9,8 +10,12 @@ import { RibbonData, type RibbonFlag } from "#system/ribbons/ribbon-data";
  * @param id - The ID of the species to award ribbons to
  * @param ribbons - The ribbon(s) to award (use bitwise OR to combine multiple)
  */
-export function awardRibbonsToSpeciesLine(id: SpeciesId, ribbons: RibbonFlag): void {
-  const dexData = globalScene.gameData.dexData;
+export function awardRibbonsToSpeciesLine(
+  id: SpeciesId,
+  ribbons: RibbonFlag,
+  gameData: GameData = globalScene.gameData,
+): void {
+  const dexData = gameData.dexData;
   dexData[id].ribbons.award(ribbons);
   // Mark all pre-evolutions of the Pokémon with the same ribbon flags.
   for (

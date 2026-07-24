@@ -1,5 +1,6 @@
 import { pokerogueApi } from "#api/api";
 import { clientSessionId } from "#app/account";
+import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
@@ -15,6 +16,7 @@ import { TrainerType } from "#enums/trainer-type";
 import { UiMode } from "#enums/ui-mode";
 import { Unlockables } from "#enums/unlockables";
 import type { Pokemon } from "#field/pokemon";
+import { PokemonHeldItemModifier } from "#modifiers/modifier";
 import { BattlePhase } from "#phases/battle-phase";
 import type { EndCardPhase } from "#phases/end-card-phase";
 import { achvs, ChallengeAchv } from "#system/achv";
@@ -26,7 +28,7 @@ import { RibbonData, type RibbonFlag } from "#system/ribbons/ribbon-data";
 import { awardRibbonsToSpeciesLine } from "#system/ribbons/ribbon-methods";
 import { TrainerData } from "#system/trainer-data";
 import { trainerConfigs } from "#trainers/trainer-config";
-import type { SessionSaveData } from "#types/save-data";
+import type { DejaVuGhostData, SessionSaveData } from "#types/save-data";
 import { checkSpeciesValidForChallenge, isNuzlockeChallenge } from "#utils/challenge-utils";
 import { fixedInt, isLocalServerConnected } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
@@ -36,7 +38,7 @@ export class GameOverPhase extends BattlePhase {
   public readonly phaseName = "GameOverPhase";
 
   private isVictory: boolean;
-  private readonly firstRibbons: PokemonSpecies[] = [];
+  private readonly firstRibbonsByPlayer = new Map<PlayerIndex, PokemonSpecies[]>();
 
   constructor(isVictory = false) {
     super();
@@ -149,7 +151,14 @@ export class GameOverPhase extends BattlePhase {
    * Submethod of {@linkcode handleGameOver} that awards ribbons to Pokémon in the player's party based on the current
    * game mode and challenges.
    */
-  private awardRibbons(): void {
+  private getVictoryProfilePlayerIndexes(): PlayerIndex[] {
+    const playerIndexes = globalScene
+      .getActivePlayerIndexes()
+      .filter(playerIndex => !globalScene.isComputerPartnerPlayer(playerIndex));
+    return playerIndexes.length > 0 ? playerIndexes : [0];
+  }
+
+  private awardRibbons(playerIndex: PlayerIndex): void {
     let ribbonFlags = 0n;
     for (const challenge of globalScene.gameMode.challenges) {
       const ribbon = challenge.ribbonAwarded;
@@ -177,40 +186,51 @@ export class GameOverPhase extends BattlePhase {
     }
     // Award ribbons to all Pokémon in the player's party that are considered valid
     // for the current game mode and challenges.
-    for (const pokemon of globalScene.getPlayerParty()) {
+    const gameData = globalScene.getPlayerGameData(playerIndex);
+    for (const pokemon of globalScene.getPlayerParty(playerIndex)) {
       const species = pokemon.species;
       if (
         checkSpeciesValidForChallenge(
           species,
-          globalScene.gameData.getSpeciesDexAttrProps(species, pokemon.getDexAttr()),
+          gameData.getSpeciesDexAttrProps(species, pokemon.getDexAttr()),
           false,
         )
       ) {
-        awardRibbonsToSpeciesLine(species.speciesId, ribbonFlags as RibbonFlag);
+        awardRibbonsToSpeciesLine(species.speciesId, ribbonFlags as RibbonFlag, gameData);
       }
     }
   }
 
   handleGameOver(): void {
+    this.saveDejaVuGhosts();
+
     const doGameOver = (newClear: boolean) => {
       globalScene.disableMenu = true;
       globalScene.time.delayedCall(1000, () => {
-        let firstClear = false;
+        const victoryProfilePlayerIndexes = this.getVictoryProfilePlayerIndexes();
+        const firstClearByPlayer = new Map<PlayerIndex, boolean>();
         if (this.isVictory) {
           if (globalScene.gameMode.isClassic) {
-            firstClear = globalScene.validateAchv(achvs.CLASSIC_VICTORY);
-            globalScene.validateAchv(achvs.UNEVOLVED_CLASSIC_VICTORY);
-            globalScene.gameData.gameStats.sessionsWon++;
-            for (const pokemon of globalScene.getPlayerParty()) {
-              this.awardFirstClassicCompletion(pokemon);
-              if (pokemon.species.getRootSpeciesId() !== pokemon.species.getRootSpeciesId(true)) {
-                this.awardFirstClassicCompletion(pokemon, true);
+            for (const playerIndex of victoryProfilePlayerIndexes) {
+              firstClearByPlayer.set(
+                playerIndex,
+                globalScene.validateAchvForPlayer(achvs.CLASSIC_VICTORY, playerIndex, [playerIndex]),
+              );
+              globalScene.validateAchvForPlayer(achvs.UNEVOLVED_CLASSIC_VICTORY, playerIndex, [playerIndex]);
+              globalScene.getPlayerGameData(playerIndex).gameStats.sessionsWon++;
+              for (const pokemon of globalScene.getPlayerParty(playerIndex)) {
+                this.awardFirstClassicCompletion(pokemon, playerIndex);
+                if (pokemon.species.getRootSpeciesId() !== pokemon.species.getRootSpeciesId(true)) {
+                  this.awardFirstClassicCompletion(pokemon, playerIndex, true);
+                }
               }
+              this.awardRibbons(playerIndex);
             }
-            this.awardRibbons();
           } else if (globalScene.gameMode.isDaily && newClear) {
-            globalScene.gameData.gameStats.dailyRunSessionsWon++;
-            globalScene.validateAchv(achvs.DAILY_VICTORY);
+            for (const playerIndex of victoryProfilePlayerIndexes) {
+              globalScene.getPlayerGameData(playerIndex).gameStats.dailyRunSessionsWon++;
+              globalScene.validateAchvForPlayer(achvs.DAILY_VICTORY, playerIndex);
+            }
           }
         }
 
@@ -225,18 +245,33 @@ export class GameOverPhase extends BattlePhase {
           globalScene.ui.clearText();
 
           if (this.isVictory && globalScene.gameMode.isChallenge) {
-            globalScene.gameMode.challenges.forEach(c => globalScene.validateAchvs(ChallengeAchv, c));
+            victoryProfilePlayerIndexes.forEach(playerIndex => {
+              globalScene.gameMode.challenges.forEach(c =>
+                globalScene.validateAchvsForPlayer(ChallengeAchv, playerIndex, c),
+              );
+            });
           }
 
           const clear = (endCardPhase?: EndCardPhase) => {
             if (this.isVictory && newClear) {
               this.handleUnlocks();
 
-              for (const species of this.firstRibbons) {
-                globalScene.phaseManager.unshiftNew("RibbonModifierRewardPhase", modifierTypes.VOUCHER_PLUS, species);
-              }
-              if (!firstClear) {
-                globalScene.phaseManager.unshiftNew("GameOverModifierRewardPhase", modifierTypes.VOUCHER_PREMIUM);
+              for (const playerIndex of victoryProfilePlayerIndexes) {
+                for (const species of this.firstRibbonsByPlayer.get(playerIndex) ?? []) {
+                  globalScene.phaseManager.unshiftNew(
+                    "RibbonModifierRewardPhase",
+                    modifierTypes.VOUCHER_PLUS,
+                    species,
+                    playerIndex,
+                  );
+                }
+                if (firstClearByPlayer.get(playerIndex) === false) {
+                  globalScene.phaseManager.unshiftNew(
+                    "GameOverModifierRewardPhase",
+                    modifierTypes.VOUCHER_PREMIUM,
+                    playerIndex,
+                  );
+                }
               }
             }
             this.getRunHistoryEntry().then(runHistoryEntry => {
@@ -319,6 +354,55 @@ export class GameOverPhase extends BattlePhase {
     }
   }
 
+  private saveDejaVuGhosts(): void {
+    if (this.isVictory || !globalScene.gameMode.hasMysteryEncounters) {
+      return;
+    }
+
+    for (const playerIndex of globalScene.getActivePlayerIndexes()) {
+      if (globalScene.isComputerPartnerPlayer(playerIndex)) {
+        continue;
+      }
+
+      const party = globalScene
+        .getPlayerParty(playerIndex)
+        .filter(pokemon => globalScene.getEonFluteGuestOwner(pokemon) === undefined);
+      if (party.length === 0) {
+        continue;
+      }
+
+      const ghost: DejaVuGhostData = {
+        mode: globalScene.gameMode.modeId,
+        waveIndex: globalScene.currentBattle.waveIndex,
+        timestamp: Date.now(),
+        playerGender: globalScene.getTrainerGender(playerIndex),
+        party: party.map(pokemon => ({
+          pokemon: new PokemonData(pokemon),
+          heldItems: globalScene
+            .findModifiersForPlayer(
+              modifier =>
+                modifier instanceof PokemonHeldItemModifier
+                && modifier.pokemonId === pokemon.id
+                && !modifier.eonFluteGuestItem,
+              playerIndex,
+            )
+            .map(modifier => new PersistentModifierData(modifier, true)),
+        })),
+      };
+
+      globalScene.getPlayerGameData(playerIndex).setDejaVuGhost(ghost);
+      this.saveDejaVuGhostProfile(playerIndex);
+    }
+  }
+
+  private saveDejaVuGhostProfile(playerIndex: PlayerIndex): void {
+    if (globalScene.twoPlayerMode) {
+      globalScene.savePlayerSystemSaveLocal(playerIndex);
+    } else {
+      globalScene.gameData.saveSystemLocal();
+    }
+  }
+
   handleUnlocks(): void {
     if (this.isVictory && globalScene.gameMode.isClassic) {
       const classicFinalBossSpeciesId = globalScene.currentBattle.classicFinalBossSpeciesId;
@@ -355,12 +439,16 @@ export class GameOverPhase extends BattlePhase {
     }
   }
 
-  awardFirstClassicCompletion(pokemon: Pokemon, forStarter = false): void {
+  awardFirstClassicCompletion(pokemon: Pokemon, playerIndex: PlayerIndex, forStarter = false): void {
     const speciesId = getPokemonSpecies(pokemon.species.speciesId);
-    const speciesRibbonCount = globalScene.gameData.incrementRibbonCount(speciesId, forStarter);
+    const speciesRibbonCount = globalScene
+      .getPlayerGameData(playerIndex)
+      .incrementRibbonCount(speciesId, forStarter, playerIndex);
     // first time classic win, award voucher
     if (speciesRibbonCount === 1) {
-      this.firstRibbons.push(getPokemonSpecies(pokemon.species.getRootSpeciesId(forStarter)));
+      const firstRibbons = this.firstRibbonsByPlayer.get(playerIndex) ?? [];
+      firstRibbons.push(getPokemonSpecies(pokemon.species.getRootSpeciesId(forStarter)));
+      this.firstRibbonsByPlayer.set(playerIndex, firstRibbons);
     }
   }
 

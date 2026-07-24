@@ -303,13 +303,16 @@ function createBerriesAboundBattleConfig(battlePlayers: PlayerIndex[], enraged: 
     : globalScene.currentBattle.mysteryEncounter!.enemyPartyConfigs[0];
   const fieldPosition = battlePlayers.length > 2 ? FieldPosition.CENTER : undefined;
 
-  return {
+  const config: EnemyPartyConfig = {
     ...baseConfig,
     doubleBattle: battlePlayers.length > 1,
-    pokemonConfigs: baseConfig.pokemonConfigs?.map((config, index) =>
-      index === 0 && fieldPosition != null ? { ...config, fieldPosition } : config,
-    ),
   };
+  if (baseConfig.pokemonConfigs) {
+    config.pokemonConfigs = baseConfig.pokemonConfigs.map((pokemonConfig, index) =>
+      index === 0 && fieldPosition != null ? { ...pokemonConfig, fieldPosition } : pokemonConfig,
+    );
+  }
+  return config;
 }
 
 function queueBerriesAboundStartOfBattleEffects(battlePlayers: PlayerIndex[]): void {

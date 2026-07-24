@@ -337,10 +337,11 @@ function chooseComputerPartnerDancingLessonsChoice(playerIndex: PlayerIndex): Da
     return { playerIndex, optionIndex: 1 };
   }
 
+  const selectedPokemon = getComputerPartnerLearnDancePokemon(playerIndex);
   return {
     playerIndex,
     optionIndex: 2,
-    selectedPokemon: getComputerPartnerLearnDancePokemon(playerIndex),
+    ...(selectedPokemon ? { selectedPokemon } : {}),
   };
 }
 

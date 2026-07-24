@@ -115,6 +115,12 @@ export class EncounterPhase extends BattlePhase {
       .filter(pokemon => !pokemon.isFainted());
   }
 
+  private getAchievementPlayerIndexes(): PlayerIndex[] {
+    return (globalScene.twoPlayerMode
+      ? globalScene.getActivePlayerIndexes()
+      : [globalScene.activePlayerIndex]).filter(playerIndex => !globalScene.isComputerPartnerPlayer(playerIndex));
+  }
+
   private canPokemonHitSingleTypeSuperEffectively(pokemon: Pokemon, targetType: PokemonType): boolean {
     return pokemon.getMoveset().some(pokemonMove => {
       const move = pokemonMove.getMove();
@@ -309,8 +315,10 @@ export class EncounterPhase extends BattlePhase {
       return true;
     });
 
-    if (globalScene.getPlayerParty().filter(p => p.isShiny()).length === PLAYER_PARTY_MAX_SIZE) {
-      globalScene.validateAchv(achvs.SHINY_PARTY);
+    for (const playerIndex of this.getAchievementPlayerIndexes()) {
+      if (globalScene.getPlayerParty(playerIndex).filter(p => p.isShiny()).length === PLAYER_PARTY_MAX_SIZE) {
+        globalScene.validateAchvForPlayer(achvs.SHINY_PARTY, playerIndex);
+      }
     }
 
     if (battle.battleType === BattleType.TRAINER) {
@@ -561,7 +569,7 @@ export class EncounterPhase extends BattlePhase {
     globalScene.currentBattle.computerPartnerCaptureInterests = [];
 
     const capturableTargets = globalScene.getEnemyField().filter(pokemon =>
-      pokemon.isActive(true) && !pokemon.isFainted() && !pokemon.isBoss(),
+      this.isCaptureReservationTarget(pokemon),
     );
     if (!capturableTargets.length) {
       globalScene.currentBattle.computerPartnerWildCaptureDisabled = true;
@@ -646,7 +654,7 @@ export class EncounterPhase extends BattlePhase {
       .map((pokemon, targetIndex) => ({ pokemon, targetIndex }))
       .sort((a, b) => this.getCaptureTargetSortValue(a.targetIndex) - this.getCaptureTargetSortValue(b.targetIndex))
       .forEach(({ pokemon, targetIndex }) => {
-        if (!pokemon.isActive(true) || pokemon.isFainted() || pokemon.isBoss() || partnerTargetIds.has(pokemon.id)) {
+        if (!this.isCaptureReservationTarget(pokemon) || partnerTargetIds.has(pokemon.id)) {
           return;
         }
 
@@ -687,11 +695,33 @@ export class EncounterPhase extends BattlePhase {
     }
 
     const capturableTargets = globalScene.getEnemyField().filter(pokemon =>
-      pokemon.isActive(true) && !pokemon.isFainted() && !pokemon.isBoss(),
+      this.isCaptureReservationTarget(pokemon),
     );
     return capturableTargets.length === 1
       ? `Do you want to capture ${capturableTargets[0].getNameToRender()}?`
       : "Do you want to capture any of these Pokemon?";
+  }
+
+  private isCaptureReservationTarget(pokemon: Pokemon): boolean {
+    if (!pokemon.isActive(true) || pokemon.isFainted()) {
+      return false;
+    }
+
+    if (!pokemon.isBoss()) {
+      return true;
+    }
+
+    return this.isReservableWildBossCaptureTarget();
+  }
+
+  private isReservableWildBossCaptureTarget(): boolean {
+    const battle = globalScene.currentBattle;
+
+    return (
+      battle.battleType === BattleType.WILD
+      && !battle.isClassicFinalBoss
+      && globalScene.arena.biomeId !== BiomeId.END
+    );
   }
 
   private showComputerPartnerCaptureClaimMessage(
@@ -820,7 +850,9 @@ export class EncounterPhase extends BattlePhase {
         enemyPokemon.cry();
         enemyPokemon.showInfo();
         if (enemyPokemon.isShiny()) {
-          globalScene.validateAchv(achvs.SEE_SHINY);
+          this.getAchievementPlayerIndexes().forEach(playerIndex =>
+            globalScene.validateAchvForPlayer(achvs.SEE_SHINY, playerIndex),
+          );
         }
       }
       globalScene.updateFieldScale();

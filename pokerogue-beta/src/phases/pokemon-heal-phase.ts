@@ -94,9 +94,13 @@ export class PokemonHealPhase extends CommonAnimPhase {
         globalScene.damageNumberHandler.add(pokemon, healAmount.value, HitResult.HEAL);
       }
       if (pokemon.isPlayer()) {
-        globalScene.validateAchvs(HealAchv, healAmount);
-        if (healAmount.value > globalScene.gameData.gameStats.highestHeal) {
-          globalScene.gameData.gameStats.highestHeal = healAmount.value;
+        const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.activePlayerIndex;
+        const gameData = globalScene.getPlayerGameData(playerIndex);
+        if (!globalScene.isComputerPartnerPlayer(playerIndex)) {
+          globalScene.validateAchvsForPlayer(HealAchv, playerIndex, healAmount);
+        }
+        if (healAmount.value > gameData.gameStats.highestHeal) {
+          gameData.gameStats.highestHeal = healAmount.value;
         }
       }
       if (this.healStatus && !this.revive && pokemon.status) {

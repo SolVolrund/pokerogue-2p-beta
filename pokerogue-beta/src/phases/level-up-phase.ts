@@ -31,11 +31,14 @@ export class LevelUpPhase extends PlayerPartyMemberPokemonPhase {
     super.start();
     this.setLevelUpInputOwner();
 
-    if (this.level > globalScene.gameData.gameStats.highestLevel) {
-      globalScene.gameData.gameStats.highestLevel = this.level;
+    const gameData = globalScene.getPlayerGameData(this.playerIndex);
+    if (this.level > gameData.gameStats.highestLevel) {
+      gameData.gameStats.highestLevel = this.level;
     }
 
-    globalScene.validateAchvs(LevelAchv, new NumberHolder(this.level));
+    if (!globalScene.isComputerPartnerPlayer(this.playerIndex)) {
+      globalScene.validateAchvsForPlayer(LevelAchv, this.playerIndex, new NumberHolder(this.level));
+    }
 
     const prevStats = this.pokemon.stats.slice(0);
 

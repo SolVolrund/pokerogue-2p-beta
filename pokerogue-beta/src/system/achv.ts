@@ -1,3 +1,4 @@
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import type { Challenge } from "#data/challenge";
@@ -110,7 +111,13 @@ export class MoneyAchv extends Achv {
   moneyAmount: number;
 
   constructor(localizationKey: string, moneyAmount: number, iconImage: string, score: number) {
-    super(localizationKey, "", iconImage, score, () => globalScene.money >= this.moneyAmount);
+    super(
+      localizationKey,
+      "",
+      iconImage,
+      score,
+      args => globalScene.getPlayerMoney(getAchievementPlayerIndex(args)) >= this.moneyAmount,
+    );
     this.moneyAmount = moneyAmount;
   }
 }
@@ -124,7 +131,8 @@ export class RibbonAchv extends Achv {
       "",
       iconImage,
       score,
-      () => globalScene.gameData.gameStats.ribbonsOwned >= this.ribbonAmount,
+      args =>
+        globalScene.getPlayerGameData(getAchievementPlayerIndex(args)).gameStats.ribbonsOwned >= this.ribbonAmount,
     );
     this.ribbonAmount = ribbonAmount;
   }
@@ -465,13 +473,18 @@ const inverseAndFlipStatAchievementsBlock = () =>
 const passivesChallengeAchievementsBlock = () =>
   globalScene.gameMode.challenges.some(c => c.id === Challenges.PASSIVES && c.value === 2);
 
+const getAchievementPlayerIndex = (args?: unknown): PlayerIndex => {
+  const candidate = Array.isArray(args) ? args[0] : args;
+  return candidate === 0 || candidate === 1 || candidate === 2 ? candidate : globalScene.activePlayerIndex;
+};
+
 export const achvs = {
   CLASSIC_VICTORY: new Achv(
     "classicVictory",
     "classicVictory.description",
     "classic_ribbon_default",
     250,
-    () => globalScene.gameData.gameStats.sessionsWon === 0,
+    args => globalScene.getPlayerGameData(getAchievementPlayerIndex(args)).gameStats.sessionsWon === 0,
   ),
   _10_RIBBONS: new RibbonAchv("10Ribbons", 10, "common_ribbon", 50),
   _25_RIBBONS: new RibbonAchv("25Ribbons", 25, "great_ribbon", 75),
@@ -865,7 +878,10 @@ export const achvs = {
     "unevolvedClassicVictory.description",
     "eviolite",
     50,
-    () => globalScene.getPlayerParty().some(p => speciesDataRegistry.hasEvolutions(p.getSpeciesForm(true).speciesId)),
+    args =>
+      globalScene
+        .getPlayerParty(getAchievementPlayerIndex(args))
+        .some(p => speciesDataRegistry.hasEvolutions(p.getSpeciesForm(true).speciesId)),
   ),
   FLIP_INVERSE: new ChallengeAchv(
     "flipInverse",

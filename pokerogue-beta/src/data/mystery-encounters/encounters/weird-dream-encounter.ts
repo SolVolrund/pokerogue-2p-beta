@@ -854,27 +854,29 @@ async function postProcessTransformedPokemon(
     !forBattle
     && (newPokemon.getSpeciesForm().getBaseStatTotal() <= NON_LEGENDARY_BST_THRESHOLD || newPokemon.isShiny())
   ) {
-    if (
-      newPokemon.getSpeciesForm().abilityHidden
-      && newPokemon.abilityIndex === newPokemon.getSpeciesForm().getAbilityCount() - 1
-    ) {
-      globalScene.validateAchv(achvs.HIDDEN_ABILITY);
-    }
+    if (!globalScene.isComputerPartnerPlayer(playerIndex)) {
+      if (
+        newPokemon.getSpeciesForm().abilityHidden
+        && newPokemon.abilityIndex === newPokemon.getSpeciesForm().getAbilityCount() - 1
+      ) {
+        globalScene.validateAchvForPlayer(achvs.HIDDEN_ABILITY, playerIndex);
+      }
 
-    if (newPokemon.species.subLegendary) {
-      globalScene.validateAchv(achvs.CATCH_SUB_LEGENDARY);
-    }
+      if (newPokemon.species.subLegendary) {
+        globalScene.validateAchvForPlayer(achvs.CATCH_SUB_LEGENDARY, playerIndex);
+      }
 
-    if (newPokemon.species.legendary) {
-      globalScene.validateAchv(achvs.CATCH_LEGENDARY);
-    }
+      if (newPokemon.species.legendary) {
+        globalScene.validateAchvForPlayer(achvs.CATCH_LEGENDARY, playerIndex);
+      }
 
-    if (newPokemon.species.mythical) {
-      globalScene.validateAchv(achvs.CATCH_MYTHICAL);
+      if (newPokemon.species.mythical) {
+        globalScene.validateAchvForPlayer(achvs.CATCH_MYTHICAL, playerIndex);
+      }
     }
 
     const gameData = globalScene.getPlayerGameData(playerIndex);
-    gameData.updateSpeciesDexIvs(newPokemon.species.getRootSpeciesId(true), newPokemon.ivs);
+    gameData.updateSpeciesDexIvs(newPokemon.species.getRootSpeciesId(true), newPokemon.ivs, playerIndex);
     const newStarterUnlocked = await gameData.setPokemonCaught(newPokemon, true, false, false);
     if (newStarterUnlocked) {
       isNewStarter = true;

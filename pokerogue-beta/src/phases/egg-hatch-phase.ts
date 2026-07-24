@@ -350,17 +350,19 @@ export class EggHatchPhase extends Phase {
   doReveal(): void {
     // set the previous dex data so info container can show new unlocks in egg summary
     const isShiny = this.pokemon.isShiny();
-    if (this.pokemon.species.subLegendary) {
-      globalScene.validateAchv(achvs.HATCH_SUB_LEGENDARY);
-    }
-    if (this.pokemon.species.legendary) {
-      globalScene.validateAchv(achvs.HATCH_LEGENDARY);
-    }
-    if (this.pokemon.species.mythical) {
-      globalScene.validateAchv(achvs.HATCH_MYTHICAL);
-    }
-    if (isShiny) {
-      globalScene.validateAchv(achvs.HATCH_SHINY);
+    if (!globalScene.isComputerPartnerPlayer(this.playerIndex)) {
+      if (this.pokemon.species.subLegendary) {
+        globalScene.validateAchvForPlayer(achvs.HATCH_SUB_LEGENDARY, this.playerIndex);
+      }
+      if (this.pokemon.species.legendary) {
+        globalScene.validateAchvForPlayer(achvs.HATCH_LEGENDARY, this.playerIndex);
+      }
+      if (this.pokemon.species.mythical) {
+        globalScene.validateAchvForPlayer(achvs.HATCH_MYTHICAL, this.playerIndex);
+      }
+      if (isShiny) {
+        globalScene.validateAchvForPlayer(achvs.HATCH_SHINY, this.playerIndex);
+      }
     }
     this.eggContainer.setVisible(false);
     const spriteKey = this.pokemon.getSpriteKey(true);
@@ -414,7 +416,7 @@ export class EggHatchPhase extends Phase {
           null,
           () => {
             if (isNewStarterCatch) {
-              gameData.updateSpeciesDexIvs(this.pokemon.species.speciesId, this.pokemon.ivs);
+              gameData.updateSpeciesDexIvs(this.pokemon.species.speciesId, this.pokemon.ivs, this.playerIndex);
               gameData.setPokemonCaught(this.pokemon, true, true).then(finishHatch);
             } else {
               finishHatch();
@@ -428,7 +430,7 @@ export class EggHatchPhase extends Phase {
         if (!isNewStarterCatch) {
           const printDuration = (hatchText.length + 1) * 20;
           globalScene.time.delayedCall(printDuration, () => {
-            gameData.updateSpeciesDexIvs(this.pokemon.species.speciesId, this.pokemon.ivs);
+            gameData.updateSpeciesDexIvs(this.pokemon.species.speciesId, this.pokemon.ivs, this.playerIndex);
             gameData.setPokemonCaught(this.pokemon, true, true);
           });
         }

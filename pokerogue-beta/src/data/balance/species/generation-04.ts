@@ -10,6 +10,7 @@ import {
 import { Gender } from "#data/gender";
 import { SpeciesFormChange, SpeciesFormChangeCondition } from "#data/pokemon-forms";
 import { PokemonForm, PokemonSpecies } from "#data/pokemon-species";
+import { ROTOM_APPLIANCE_FORMS, ROTOM_BASE_FORM_KEY } from "#data/rotom";
 import { AbilityId } from "#enums/ability-id";
 import { EggTier } from "#enums/egg-type";
 import { FormChangeItem } from "#enums/form-change-item";
@@ -20,6 +21,23 @@ import { SpeciesId } from "#enums/species-id";
 import { TimeOfDay } from "#enums/time-of-day";
 import { WeatherType } from "#enums/weather-type";
 import type { SpeciesDataMapConfig } from "#types/pokemon-species";
+
+function createRotomApplianceFormChanges(): SpeciesFormChange[] {
+  const sourceForms = [ROTOM_BASE_FORM_KEY, ...ROTOM_APPLIANCE_FORMS.map(form => form.formKey)];
+
+  return sourceForms.flatMap(preFormKey =>
+    ROTOM_APPLIANCE_FORMS.filter(target => preFormKey !== target.formKey).map(
+      target =>
+        new SpeciesFormChange({
+          speciesId: SpeciesId.ROTOM,
+          preFormKey,
+          evoFormKey: target.formKey,
+          trigger: new SpeciesFormChangeItemTrigger(target.item),
+          conditions: [],
+        }),
+    ),
+  );
+}
 
 export function initGenerationFour(): SpeciesDataMapConfig {
   const generationFourSpeciesData: SpeciesDataMapConfig = {} as SpeciesDataMapConfig;
@@ -8565,7 +8583,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       growthRate: GrowthRate.MEDIUM_FAST,
       malePercent: null,
       genderDiffs: false,
-      canChangeForm: false,
+      canChangeForm: true,
       forms: [
         new PokemonForm({
           formName: "Normal",
@@ -8716,6 +8734,9 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     starter: SpeciesId.ROTOM,
     starterCost: 4,
     evolutions: [],
+    formChanges: [
+      ...createRotomApplianceFormChanges(),
+    ],
     eggTier: EggTier.RARE,
     passives: {
       0: AbilityId.HADRON_ENGINE,
