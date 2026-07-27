@@ -230,9 +230,9 @@ const TWO_PLAYER_SESSION_SYSTEM_SAVE_KEYS = [
 ] as const;
 const TWO_PLAYER_PROFILE_HANDSHAKE_BUILD = "profile-handshake-2026-06-17c";
 const TWO_PLAYER_SYNC_SETTING_TYPES = new Set<SettingType>([SettingType.GENERAL, SettingType.DISPLAY]);
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = 1;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.MINING;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = true;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = null;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = null;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = false;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_PLAYER_MONEY: number | null = null;
 const EON_FLUTE_HELPER_SOURCE_ID = "eon_flute" as const;
 type LegendaryHelperSourceId = typeof EON_FLUTE_HELPER_SOURCE_ID | AlphLegendaryHelperId;
