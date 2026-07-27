@@ -56,6 +56,7 @@ export class PartyHealPhase extends BattlePhase {
       }
     });
     globalScene.arena.resetPlayerTerasUsed();
+    globalScene.arena.resetPlayerZMovesUsed();
   }
 
   public override end() {

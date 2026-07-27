@@ -9,12 +9,13 @@ import { ArenaTagType } from "#enums/arena-tag-type";
 import { type BattleStat, getStatKey, getStatStageChangeDescriptionKey, Stat } from "#enums/stat";
 import { StatChangeSource } from "#enums/stat-change-source";
 import type { Pokemon } from "#field/pokemon";
-import { MirrorHerbModifier, ResetNegativeStatStageModifier } from "#modifiers/modifier";
+import { MirrorHerbModifier, PreserveBerryModifier, ResetNegativeStatStageModifier } from "#modifiers/modifier";
 import { PokemonPhase } from "#phases/pokemon-phase";
 import type { ConditionalUserFieldProtectStatAbAttrParams, PreStatStageChangeAbAttrParams } from "#types/ability-types";
 import type { StatChange, StatStageChangePhaseOptions } from "#types/stat-change";
 import type { Mutable } from "#types/type-helpers";
 import { playTween } from "#utils/anim-utils";
+import { BooleanHolder } from "#utils/common";
 import { deepCopy } from "#utils/data";
 import { ValueHolder } from "#utils/value-holder";
 import i18next from "i18next";
@@ -327,7 +328,11 @@ export class StatStageChangePhase extends PokemonPhase {
       ) as MirrorHerbModifier | null;
 
       if (mirrorHerb) {
-        opponent.loseHeldItem(mirrorHerb);
+        const preserve = new BooleanHolder(false);
+        globalScene.applyModifiersForPokemon(PreserveBerryModifier, opponent, opponent, preserve);
+        if (!preserve.value) {
+          opponent.loseHeldItem(mirrorHerb);
+        }
         const playerIndex = opponent.isPlayer() ? globalScene.getPlayerIndexForPokemon(opponent) : undefined;
         globalScene.updateModifiers(opponent.isPlayer(), undefined, playerIndex);
       }

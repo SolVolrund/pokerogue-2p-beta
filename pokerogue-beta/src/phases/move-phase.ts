@@ -148,6 +148,9 @@ export class MovePhase extends PokemonPhase {
       [this.move, this.targets] = override;
     }
 
+    user.turnData.zMovePower = this.move.zMovePower;
+    user.turnData.zMoveSourceMove = this.move.zMoveSourceMoveId;
+
     // For the purposes of payback and kin, the pokemon is considered to have acted
     // if it attempted to move at all.
     user.turnData.acted = true;
@@ -405,7 +408,7 @@ export class MovePhase extends PokemonPhase {
    * @returns Whether the move was cancelled due to insufficient PP
    */
   protected checkPP(): boolean {
-    const move = this.move;
+    const move = this.getPpMove();
     if (move.getMove().pp !== -1 && !isIgnorePP(this.useMode) && move.ppUsed >= move.getMovePp()) {
       this.cancel();
       this.showFailedText();
@@ -653,12 +656,20 @@ export class MovePhase extends PokemonPhase {
    */
   protected usePP(): void {
     if (!isIgnorePP(this.useMode)) {
-      const move = this.move;
+      const move = this.getPpMove();
       // "commit" to using the move, deducting PP.
       const ppUsed = 1 + this.getPpIncreaseFromPressure(this.getActiveTargetPokemon());
       move.usePp(ppUsed);
       globalScene.eventTarget.dispatchEvent(new MoveUsedEvent(this.pokemon.id, move.getMove(), move.ppUsed));
     }
+  }
+
+  private getPpMove(): PokemonMove {
+    if (!this.move.zMoveSourceMoveId) {
+      return this.move;
+    }
+
+    return this.pokemon.getMoveset().find(move => move.moveId === this.move.zMoveSourceMoveId) ?? this.move;
   }
 
   /**

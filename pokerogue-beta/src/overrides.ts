@@ -334,6 +334,10 @@ class DefaultOverrides {
   readonly STARTING_HELD_ITEMS_OVERRIDE: ModifierOverride[] = [];
   /** Override array of {@linkcode ModifierOverride}s used to provide held items to enemies on spawn. */
   readonly ENEMY_HELD_ITEMS_OVERRIDE: ModifierOverride[] = [];
+  /** Override the species for wild enemies on the first wave only. */
+  readonly FIRST_WILD_ENCOUNTER_SPECIES_OVERRIDE: SpeciesId | null = null;
+  /** Override enemy held items for wild enemies on the first wave only. */
+  readonly FIRST_WILD_ENCOUNTER_HELD_ITEMS_OVERRIDE: ModifierOverride[] = [];
 
   /**
    * Override array of {@linkcode ModifierOverride}s used to replace the generated item rolls after a wave.

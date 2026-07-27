@@ -5,6 +5,7 @@ import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { activeOverrides } from "#app/overrides";
+import { STARTING_WAVE } from "#balance/misc";
 import { FusionSpeciesFormEvolution } from "#balance/pokemon-evolutions";
 import { FRIENDSHIP_GAIN_FROM_RARE_CANDY } from "#balance/starters";
 import { getBerryEffectFunc, getBerryPredicate } from "#data/berry";
@@ -18,6 +19,7 @@ import { SpeciesFormChangeItemTrigger, SpeciesFormChangeManualTrigger } from "#d
 import { MAX_PER_TYPE_POKEBALLS } from "#data/pokeball";
 import { SpeciesFormChange } from "#data/pokemon-forms";
 import { isRotomApplianceItem } from "#data/rotom";
+import { BattleType } from "#enums/battle-type";
 import { getStatusEffectHealText } from "#data/status-effect";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BerryType } from "#enums/berry-type";
@@ -34,6 +36,7 @@ import { BATTLE_STATS, type PermanentStat, Stat, TEMP_BATTLE_STATS, type TempBat
 import { StatChangeSource } from "#enums/stat-change-source";
 import { StatusEffect } from "#enums/status-effect";
 import { TextStyle } from "#enums/text-style";
+import type { ZCrystal } from "#enums/z-crystal";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import type {
   DoubleBattleChanceBoosterModifierType,
@@ -49,6 +52,7 @@ import type {
   PokemonMultiHitModifierType,
   TerastallizeModifierType,
   TmModifierType,
+  ZCrystalModifierType,
 } from "#modifiers/modifier-type";
 import type { VoucherType } from "#system/voucher";
 import type { ModifierInstanceMap, ModifierString } from "#types/modifier-types";
@@ -757,6 +761,20 @@ export class TerastallizeAccessModifier extends PersistentModifier {
    * @param _args N/A
    * @returns always `true`
    */
+  override apply(..._args: unknown[]): boolean {
+    return true;
+  }
+
+  getMaxStackCount(): number {
+    return 1;
+  }
+}
+
+export class ZMoveAccessModifier extends PersistentModifier {
+  clone(): ZMoveAccessModifier {
+    return new ZMoveAccessModifier(this.type, this.stackCount);
+  }
+
   override apply(..._args: unknown[]): boolean {
     return true;
   }
@@ -1761,6 +1779,136 @@ export class AttackTypeBoosterModifier extends PokemonHeldItemModifier {
 
   getMaxHeldItemCount(_pokemon: Pokemon): number {
     return 99;
+  }
+}
+
+/**
+ * Applies one-time Specific Type item boosts (e.g., Fire Gem)
+ */
+export class TypeGemModifier extends PokemonHeldItemModifier {
+  public moveType: PokemonType;
+  private boostMultiplier: number;
+
+  constructor(type: ModifierType, pokemonId: number, moveType: PokemonType, boostPercent: number, stackCount?: number) {
+    super(type, pokemonId, stackCount);
+
+    this.moveType = moveType;
+    this.boostMultiplier = boostPercent * 0.01;
+  }
+
+  matchType(modifier: Modifier): boolean {
+    if (modifier instanceof TypeGemModifier) {
+      const typeGemModifier = modifier as TypeGemModifier;
+      return typeGemModifier.moveType === this.moveType && typeGemModifier.boostMultiplier === this.boostMultiplier;
+    }
+
+    return false;
+  }
+
+  clone() {
+    return new TypeGemModifier(this.type, this.pokemonId, this.moveType, this.boostMultiplier * 100, this.stackCount);
+  }
+
+  getArgs(): any[] {
+    return super.getArgs().concat([this.moveType, this.boostMultiplier * 100]);
+  }
+
+  /**
+   * Checks if {@linkcode TypeGemModifier} should be applied
+   * @param pokemon the {@linkcode Pokemon} that holds the held item
+   * @param moveType the {@linkcode PokemonType} of the move being used
+   * @param movePower the {@linkcode NumberHolder} that holds the power of the move
+   * @param moveId the {@linkcode MoveId} of the move being used
+   * @returns `true` if boosts should be applied to the move.
+   */
+  override shouldApply(
+    pokemon?: Pokemon,
+    moveType?: PokemonType,
+    movePower?: NumberHolder,
+    moveId?: MoveId,
+  ): boolean {
+    return (
+      super.shouldApply(pokemon, moveType, movePower, moveId)
+      && typeof moveType === "number"
+      && movePower instanceof NumberHolder
+      && typeof moveId === "number"
+      && this.moveType === moveType
+    );
+  }
+
+  /**
+   * Applies {@linkcode TypeGemModifier}
+   * @param pokemon {@linkcode Pokemon} that holds the held item
+   * @param moveType {@linkcode PokemonType} of the move being used
+   * @param movePower {@linkcode NumberHolder} that holds the power of the move
+   * @param moveId {@linkcode MoveId} of the move being used
+   * @param simulated Whether this boost is for a damage simulation
+   * @returns `true` if boosts have been applied to the move.
+   */
+  override apply(
+    pokemon: Pokemon,
+    moveType: PokemonType,
+    movePower: NumberHolder,
+    moveId: MoveId,
+    simulated = false,
+  ): boolean {
+    if (moveType === this.moveType && movePower.value >= 1) {
+      movePower.value = Math.floor(movePower.value * (1 + this.boostMultiplier));
+      if (!simulated) {
+        pokemon.turnData.typeGemMoveId = moveId;
+        pokemon.turnData.typeGemMoveType = moveType;
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  getScoreMultiplier(): number {
+    return 1.1;
+  }
+
+  getMaxHeldItemCount(_pokemon: Pokemon): number {
+    return 3;
+  }
+}
+
+export class ZCrystalModifier extends PokemonHeldItemModifier {
+  public declare type: ZCrystalModifierType;
+  public readonly zCrystal: ZCrystal;
+  public active: boolean;
+  public isTransferable = false;
+
+  constructor(
+    type: ZCrystalModifierType,
+    pokemonId: number,
+    zCrystal: ZCrystal,
+    activeOrStackCount: boolean | number = true,
+    stackCount?: number,
+  ) {
+    super(type, pokemonId, typeof activeOrStackCount === "number" ? activeOrStackCount : stackCount);
+    this.zCrystal = zCrystal;
+    this.active = typeof activeOrStackCount === "boolean" ? activeOrStackCount : true;
+  }
+
+  matchType(modifier: Modifier): boolean {
+    return modifier instanceof ZCrystalModifier && modifier.zCrystal === this.zCrystal;
+  }
+
+  clone(): PersistentModifier {
+    return new ZCrystalModifier(this.type, this.pokemonId, this.zCrystal, this.active, this.stackCount);
+  }
+
+  getArgs(): any[] {
+    return super.getArgs().concat(this.zCrystal, this.active);
+  }
+
+  override apply(_pokemon: Pokemon): boolean {
+    return true;
+  }
+
+  getMaxHeldItemCount(_pokemon: Pokemon): number {
+    return 1;
   }
 }
 
@@ -4439,10 +4587,21 @@ export function overrideModifiers(isPlayer = true): void {
  * @param isPlayer {@linkcode boolean} for whether the {@linkcode pokemon} is the player's (`true`) or an enemy (`false`)
  */
 export function overrideHeldItems(pokemon: Pokemon, isPlayer = true): void {
+  if (!globalScene) {
+    return;
+  }
+
+  const isFirstWildEncounterEnemy =
+    !isPlayer
+    && activeOverrides.FIRST_WILD_ENCOUNTER_HELD_ITEMS_OVERRIDE.length > 0
+    && globalScene.currentBattle?.battleType === BattleType.WILD
+    && globalScene.currentBattle.waveIndex === (activeOverrides.STARTING_WAVE_OVERRIDE ?? STARTING_WAVE);
   const heldItemsOverride: ModifierOverride[] = isPlayer
     ? activeOverrides.STARTING_HELD_ITEMS_OVERRIDE
-    : activeOverrides.ENEMY_HELD_ITEMS_OVERRIDE;
-  if (!heldItemsOverride || heldItemsOverride.length === 0 || !globalScene) {
+    : isFirstWildEncounterEnemy
+      ? activeOverrides.FIRST_WILD_ENCOUNTER_HELD_ITEMS_OVERRIDE
+      : activeOverrides.ENEMY_HELD_ITEMS_OVERRIDE;
+  if (!heldItemsOverride || heldItemsOverride.length === 0) {
     return;
   }
 
@@ -4498,6 +4657,7 @@ const ModifierClassMap = Object.freeze({
   MegaEvolutionAccessModifier,
   GigantamaxAccessModifier,
   TerastallizeAccessModifier,
+  ZMoveAccessModifier,
   PokemonHeldItemModifier,
   LapsingPokemonHeldItemModifier,
   BaseStatModifier,
@@ -4512,6 +4672,8 @@ const ModifierClassMap = Object.freeze({
   CritBoosterModifier,
   SpeciesCritBoosterModifier,
   AttackTypeBoosterModifier,
+  TypeGemModifier,
+  ZCrystalModifier,
   SurviveDamageModifier,
   BypassSpeedChanceModifier,
   FlinchChanceModifier,

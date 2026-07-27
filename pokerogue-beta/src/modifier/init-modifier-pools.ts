@@ -33,6 +33,7 @@ import type { initModifierTypes } from "#modifiers/modifier-type";
 import { WeightedModifierType } from "#modifiers/modifier-type";
 import type { WeightedModifierTypeWeightFunc } from "#types/modifier-types";
 import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
+import { getValidZCrystalsForParty, hasZMoveAccessForParty } from "#utils/z-move-utils";
 
 /**
  * Initialize the wild modifier pool
@@ -42,7 +43,10 @@ function initWildModifierPool() {
     m.setTier(ModifierTier.COMMON);
     return m;
   });
-  wildModifierPool[ModifierTier.GREAT] = [new WeightedModifierType(modifierTypes.BASE_STAT_BOOSTER, 1)].map(m => {
+  wildModifierPool[ModifierTier.GREAT] = [
+    new WeightedModifierType(modifierTypes.BASE_STAT_BOOSTER, 1),
+    new WeightedModifierType(modifierTypes.TYPE_GEM, (party: Pokemon[]) => party.some(hasTypeGemTarget) ? 1 : 0, 1),
+  ].map(m => {
     m.setTier(ModifierTier.GREAT);
     return m;
   });
@@ -132,8 +136,8 @@ function initCommonModifierPool() {
     ),
     new WeightedModifierType(modifierTypes.LURE, lureWeightFunc(10, 2)),
     new WeightedModifierType(modifierTypes.TEMP_STAT_STAGE_BOOSTER, 4),
-    new WeightedModifierType(modifierTypes.BERRY, 2),
-    new WeightedModifierType(modifierTypes.MIRROR_HERB, 1),
+    new WeightedModifierType(modifierTypes.BERRY, 3),
+    new WeightedModifierType(modifierTypes.MIRROR_HERB, 0),
     new WeightedModifierType(modifierTypes.TM_COMMON, 2),
   ].map(m => {
     m.setTier(ModifierTier.COMMON);
@@ -328,6 +332,9 @@ function initGreatModifierPool() {
       4,
     ),
     new WeightedModifierType(modifierTypes.BASE_STAT_BOOSTER, 3),
+    new WeightedModifierType(modifierTypes.TYPE_GEM, (party: Pokemon[]) =>
+      party.some(hasTypeGemTarget) ? 2 : 0,
+    ),
     new WeightedModifierType(modifierTypes.TERA_SHARD, (party: Pokemon[]) =>
       party.filter(
         p =>
@@ -335,6 +342,11 @@ function initGreatModifierPool() {
       ).length > 0
         ? 1
         : 0,
+    ),
+    new WeightedModifierType(
+      modifierTypes.Z_CRYSTAL,
+      (party: Pokemon[]) =>
+        hasZMoveAccessForParty(party) && getValidZCrystalsForParty(party).length > 0 ? 1 : 0,
     ),
     new WeightedModifierType(
       modifierTypes.DNA_SPLICERS,
@@ -366,6 +378,10 @@ function initGreatModifierPool() {
 /**
  * Initialize the Ultra modifier pool
  */
+function hasTypeGemTarget(pokemon: Pokemon): boolean {
+  return pokemon.isAllowedInChallenge() && pokemon.getMoveset(true).some(move => move && move.getMove().is("AttackMove"));
+}
+
 function hasLoadedDiceTarget(pokemon: Pokemon): boolean {
   const isHoldingMax = pokemon.getHeldItems().some(item => (
     item.type.id === "LOADED_DICE" && item.getStackCount() >= item.getMaxStackCount()
@@ -704,6 +720,11 @@ function initRogueModifierPool() {
       36,
     ),
     new WeightedModifierType(
+      modifierTypes.Z_RING,
+      () => Math.min(Math.ceil(globalScene.currentBattle.waveIndex / 50), 4) * 9,
+      36,
+    ),
+    new WeightedModifierType(
       modifierTypes.VOUCHER_PLUS,
       (_party: Pokemon[], rerollCount: number) => (globalScene.gameMode.isDaily ? 0 : Math.max(3 - rerollCount * 1, 0)),
       3,
@@ -784,7 +805,15 @@ function initTrainerModifierPool() {
     m.setTier(ModifierTier.COMMON);
     return m;
   });
-  trainerModifierPool[ModifierTier.GREAT] = [new WeightedModifierType(modifierTypes.BASE_STAT_BOOSTER, 3)].map(m => {
+  trainerModifierPool[ModifierTier.GREAT] = [
+    new WeightedModifierType(modifierTypes.BASE_STAT_BOOSTER, 3),
+    new WeightedModifierType(modifierTypes.TYPE_GEM, (party: Pokemon[]) => party.some(hasTypeGemTarget) ? 2 : 0, 2),
+    new WeightedModifierType(
+      modifierTypes.Z_CRYSTAL,
+      (party: Pokemon[]) => getValidZCrystalsForParty(party).length > 0 ? 1 : 0,
+      1,
+    ),
+  ].map(m => {
     m.setTier(ModifierTier.GREAT);
     return m;
   });

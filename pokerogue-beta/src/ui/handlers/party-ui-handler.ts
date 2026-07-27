@@ -20,6 +20,7 @@ import { StatusEffect } from "#enums/status-effect";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
+import { ZCrystalModifier } from "#modifiers/modifier";
 import type { PokemonFormChangeItemModifier, PokemonHeldItemModifier } from "#modifiers/modifier";
 import type { PokemonMove } from "#moves/pokemon-move";
 import type { CommandPhase } from "#phases/command-phase";
@@ -66,6 +67,7 @@ export enum PartyOption {
   SCROLL_UP = 1000,
   SCROLL_DOWN = 1001,
   FORM_CHANGE_ITEM = 2000,
+  Z_CRYSTAL = 2500,
   MOVE_1 = 3000,
   MOVE_2,
   MOVE_3,
@@ -201,6 +203,34 @@ export class PartyUiHandler extends MessageUiHandler {
   };
 
   public static NoEffectMessage = i18next.t("partyUiHandler:anyEffect");
+
+  private isFormChangeItemOption(option: number): boolean {
+    return option >= PartyOption.FORM_CHANGE_ITEM && option < PartyOption.Z_CRYSTAL;
+  }
+
+  private isZCrystalOption(option: number): boolean {
+    return option >= PartyOption.Z_CRYSTAL && option < PartyOption.MOVE_1;
+  }
+
+  private normalizeZCrystalModifiers(zCrystalModifiers: ZCrystalModifier[]): void {
+    if (zCrystalModifiers.length === 0) {
+      return;
+    }
+
+    let hasActiveCrystal = false;
+    for (const modifier of zCrystalModifiers) {
+      if (modifier.active && !hasActiveCrystal) {
+        hasActiveCrystal = true;
+        continue;
+      }
+
+      modifier.active = false;
+    }
+
+    if (!hasActiveCrystal) {
+      zCrystalModifiers[0].active = true;
+    }
+  }
 
   private localizedOptions = [
     PartyOption.SEND_OUT,
@@ -484,6 +514,23 @@ export class PartyUiHandler extends MessageUiHandler {
       },
       pokemon,
     );
+    return true;
+  }
+
+  private processZCrystalOption(pokemon: Pokemon, option: number): boolean {
+    const modifier = this.getZCrystalModifiers(pokemon)[option - PartyOption.Z_CRYSTAL];
+    if (!modifier) {
+      return false;
+    }
+
+    for (const zCrystalModifier of this.getZCrystalModifiers(pokemon)) {
+      zCrystalModifier.active = zCrystalModifier === modifier;
+    }
+
+    this.clearOptions();
+    globalScene.updateModifiers(true, true, this.getPlayerIndex());
+    this.getUi().playSelect();
+    this.showText(`${modifier.type.name} was selected.`, undefined, () => this.showText("", 0), undefined, true);
     return true;
   }
 
@@ -819,15 +866,27 @@ export class PartyUiHandler extends MessageUiHandler {
     if (option === PartyOption.RENAME) {
       return this.processRenameOption(pokemon);
     }
-    // This is only relevant for PartyUiMode.CHECK
-    // TODO: This risks hitting the other options (.MOVE_i and ALL) so does it? Do we need an extra check?
+
     if (
-      option >= PartyOption.FORM_CHANGE_ITEM
+      this.isZCrystalOption(option)
+      && globalScene.phaseManager.getCurrentPhase().is("SelectModifierPhase")
+      && this.partyUiMode === PartyUiMode.CHECK
+    ) {
+      return this.processZCrystalOption(pokemon, option);
+    }
+
+    // This is only relevant for PartyUiMode.CHECK
+    if (
+      this.isFormChangeItemOption(option)
       && globalScene.phaseManager.getCurrentPhase().is("SelectModifierPhase")
       && this.partyUiMode === PartyUiMode.CHECK
     ) {
       const formChangeItemModifiers = this.getFormChangeItemsModifiers(pokemon);
       const modifier = formChangeItemModifiers[option - PartyOption.FORM_CHANGE_ITEM];
+      if (!modifier) {
+        return false;
+      }
+
       if (
         !modifier.active
         && pokemon.hasSpecies(SpeciesId.PIKACHU)
@@ -1544,6 +1603,12 @@ export class PartyUiHandler extends MessageUiHandler {
           for (let i = 0; i < formChangeItemModifiers.length; i++) {
             this.options.push(PartyOption.FORM_CHANGE_ITEM + i);
           }
+          const zCrystalModifiers = this.getZCrystalModifiers(pokemon);
+          if (zCrystalModifiers.length > 1) {
+            for (let i = 0; i < zCrystalModifiers.length; i++) {
+              this.options.push(PartyOption.Z_CRYSTAL + i);
+            }
+          }
         }
         break;
       case PartyUiMode.SELECT:
@@ -1653,10 +1718,15 @@ export class PartyUiHandler extends MessageUiHandler {
             break;
           }
           default: {
-            const formChangeItemModifiers = this.getFormChangeItemsModifiers(pokemon);
-            if (formChangeItemModifiers && option >= PartyOption.FORM_CHANGE_ITEM) {
+            if (this.isZCrystalOption(option)) {
+              const modifier = this.getZCrystalModifiers(pokemon)[option - PartyOption.Z_CRYSTAL];
+              optionName = modifier ? `${modifier.active ? "Selected" : "Select"} ${modifier.type.name}` : "";
+            } else if (this.isFormChangeItemOption(option)) {
+              const formChangeItemModifiers = this.getFormChangeItemsModifiers(pokemon);
               const modifier = formChangeItemModifiers[option - PartyOption.FORM_CHANGE_ITEM];
-              optionName = `${modifier.active ? i18next.t("partyUiHandler:deactivate") : i18next.t("partyUiHandler:activate")} ${modifier.type.name}`;
+              optionName = modifier
+                ? `${modifier.active ? i18next.t("partyUiHandler:deactivate") : i18next.t("partyUiHandler:activate")} ${modifier.type.name}`
+                : "";
             } else if (option === PartyOption.UNPAUSE_EVOLUTION) {
               optionName = `${pokemon.pauseEvolutions ? i18next.t("partyUiHandler:unpauseEvolution") : i18next.t("partyUiHandler:pauseEvolution")}`;
             } else if (this.localizedOptions.includes(option)) {
@@ -1910,6 +1980,16 @@ export class PartyUiHandler extends MessageUiHandler {
       );
     }
     return formChangeItemModifiers;
+  }
+
+  getZCrystalModifiers(pokemon: Pokemon): ZCrystalModifier[] {
+    const zCrystalModifiers = globalScene.findModifiersForPlayer(
+      m => m instanceof ZCrystalModifier && m.pokemonId === pokemon.id,
+      this.getPlayerIndex(),
+    ) as ZCrystalModifier[];
+
+    this.normalizeZCrystalModifiers(zCrystalModifiers);
+    return zCrystalModifiers;
   }
 
   getOptionsCursorWithScroll(): number {

@@ -9,13 +9,14 @@ import { MoveUseMode } from "#enums/move-use-mode";
 import { PokemonType } from "#enums/pokemon-type";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
-import type { EnemyPokemon, Pokemon } from "#field/pokemon";
-import type { PokemonMove } from "#moves/pokemon-move";
+import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
+import { PokemonMove } from "#moves/pokemon-move";
 import type { CommandPhase } from "#phases/command-phase";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
 import { addTextObject, getTextColor } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { fixedInt, getLocalizedSpriteKey, padInt } from "#utils/common";
+import { getZMoveForPokemonMove } from "#utils/z-move-utils";
 import i18next from "i18next";
 
 export class FightUiHandler extends UiHandler implements InfoToggle {
@@ -275,14 +276,21 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
     }
 
     const pokemonMove = moveset[cursor];
-    const moveType = pokemon.getMoveType(pokemonMove.getMove());
+    const displayPokemonMove = this.getDisplayPokemonMove(pokemon, pokemonMove);
+    if (!displayPokemonMove) {
+      this.setInfoVis(false);
+      return;
+    }
+
+    const displayMove = displayPokemonMove.getMove();
+    const moveType = pokemon.getMoveType(displayMove);
     const textureKey = getLocalizedSpriteKey("types");
     this.typeIcon.setTexture(textureKey, PokemonType[moveType].toLowerCase()).setScale(0.8);
 
-    const moveCategory = pokemonMove.getMove().category;
+    const moveCategory = displayMove.category;
     this.moveCategoryIcon.setTexture("categories", MoveCategory[moveCategory].toLowerCase()).setScale(1.0);
-    const power = pokemonMove.getMove().power;
-    const accuracy = pokemonMove.getMove().accuracy;
+    const power = displayPokemonMove.zMovePower ?? displayMove.power;
+    const accuracy = displayMove.accuracy;
     const maxPP = pokemonMove.getMovePp();
     const pp = maxPP - pokemonMove.ppUsed;
 
@@ -296,11 +304,22 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
 
     // Changes the text color and shadow according to the determined TextStyle
     this.ppText.setColor(getTextColor(ppColorStyle, false)).setShadowColor(getTextColor(ppColorStyle, true));
-    this.moveInfoOverlay.show(pokemonMove.getMove());
+    this.moveInfoOverlay.show(displayMove);
 
     pokemon.getOpponents().forEach(opponent => {
-      (opponent as EnemyPokemon).updateEffectiveness(this.getEffectivenessText(pokemon, opponent, pokemonMove));
+      (opponent as EnemyPokemon).updateEffectiveness(this.getEffectivenessText(pokemon, opponent, displayPokemonMove));
     });
+  }
+
+  private getDisplayPokemonMove(pokemon: PlayerPokemon, pokemonMove: PokemonMove): PokemonMove | undefined {
+    if (this.fromCommand !== Command.Z_MOVE) {
+      return pokemonMove;
+    }
+
+    const zMove = getZMoveForPokemonMove(pokemon, pokemonMove);
+    return zMove
+      ? new PokemonMove(zMove.moveId, 0, 0, undefined, zMove.sourceMoveId, zMove.power)
+      : undefined;
   }
 
   setCursor(cursor: number): boolean {
@@ -321,9 +340,9 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
     this.setMoveInfo(cursor);
 
     if (!this.cursorObj) {
-      const isTera = this.fromCommand === Command.TERA;
-      this.cursorObj = globalScene.add.image(0, 0, isTera ? "cursor_tera" : "cursor");
-      this.cursorObj.setScale(isTera ? 0.7 : 1);
+      const isSpecialMoveCommand = this.fromCommand === Command.TERA || this.fromCommand === Command.Z_MOVE;
+      this.cursorObj = globalScene.add.image(0, 0, isSpecialMoveCommand ? "cursor_tera" : "cursor");
+      this.cursorObj.setScale(isSpecialMoveCommand ? 0.7 : 1);
       ui.add(this.cursorObj);
     }
 
@@ -368,10 +387,15 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
 
       if (moveIndex < moveset.length) {
         const pokemonMove = moveset[moveIndex]!; // TODO is the bang correct?
+        const displayPokemonMove = this.getDisplayPokemonMove(pokemon, pokemonMove);
         moveText
-          .setText(pokemonMove.getName())
-          .setName(pokemonMove.getName())
-          .setColor(this.getMoveColor(pokemon, pokemonMove) ?? moveText.style.color);
+          .setText(displayPokemonMove?.getName() ?? pokemonMove.getName())
+          .setName(displayPokemonMove?.getName() ?? pokemonMove.getName())
+          .setColor(
+            displayPokemonMove
+              ? (this.getMoveColor(pokemon, displayPokemonMove) ?? moveText.style.color)
+              : "#808080",
+          );
       }
 
       this.movesContainer.add(moveText);

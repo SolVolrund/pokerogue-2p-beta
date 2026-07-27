@@ -2,7 +2,7 @@ import { MoveId } from "#enums/move-id";
 import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 
-export const ALPH_LEGENDARY_HELPER_IDS = ["papa", "mama", "uncle"] as const;
+export const ALPH_LEGENDARY_HELPER_IDS = ["papa", "mama", "uncle", "jirachi"] as const;
 export type AlphLegendaryHelperId = (typeof ALPH_LEGENDARY_HELPER_IDS)[number];
 
 export interface AlphLegendaryHelperConfig {
@@ -30,5 +30,11 @@ export const ALPH_LEGENDARY_HELPER_CONFIGS: Record<AlphLegendaryHelperId, AlphLe
     species: SpeciesId.RAIKOU,
     moves: [MoveId.THUNDERBOLT, MoveId.SCALD, MoveId.SHADOW_BALL, MoveId.AURA_SPHERE],
     typeBoosters: [PokemonType.ELECTRIC, PokemonType.WATER, PokemonType.GHOST, PokemonType.FIGHTING],
+  },
+  jirachi: {
+    nickname: "Jirachi",
+    species: SpeciesId.JIRACHI,
+    moves: [MoveId.BODY_SLAM, MoveId.IRON_HEAD, MoveId.ZEN_HEADBUTT, MoveId.WISH],
+    typeBoosters: [PokemonType.NORMAL, PokemonType.STEEL, PokemonType.PSYCHIC],
   },
 };

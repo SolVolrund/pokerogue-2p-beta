@@ -265,8 +265,9 @@ export abstract class MessageUiHandler extends AwaitableUiHandler {
       return;
     }
 
+    // Prompt sequence is local-only and can drift between multiplayer clients.
+    // The visible message text is the stable identity we need for shared text prompts.
     return {
-      promptSequence: this.promptSequence,
       messageText: this.message.text,
       messageLength: this.message.text.length,
     };

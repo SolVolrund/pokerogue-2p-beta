@@ -79,6 +79,7 @@ import {
   PokemonMultiHitModifier,
   PreserveBerryModifier,
   ScreenEffectModifier,
+  TypeGemModifier,
 } from "#modifiers/modifier";
 import { applyMoveAttrs } from "#moves/apply-attrs";
 import {
@@ -1166,6 +1167,15 @@ export abstract class Move implements Localizable {
     if (!this.hasAttr("TypelessAttr")) {
       globalScene.arena.applyTags(WeakenMoveTypeTag, typeChangeHolder.value, power);
       globalScene.applyModifiers(AttackTypeBoosterModifier, source.isPlayer(), source, typeChangeHolder.value, power);
+      globalScene.applyModifiers(
+        TypeGemModifier,
+        source.isPlayer(),
+        source,
+        typeChangeHolder.value,
+        power,
+        this.id,
+        simulated,
+      );
     }
 
     if (source.getTag(HelpingHandTag)) {
@@ -4626,6 +4636,18 @@ export class VariablePowerAttr extends MoveAttr {
   apply(_user: Pokemon, _target: Pokemon, _move: Move, _args: any[]): boolean {
     //const power = args[0] as Utils.NumberHolder;
     return false;
+  }
+}
+
+export class ZMovePowerAttr extends VariablePowerAttr {
+  apply(user: Pokemon, _target: Pokemon, _move: Move, args: any[]): boolean {
+    const power = args[0] as NumberHolder;
+    if (user.turnData.zMovePower === undefined) {
+      return false;
+    }
+
+    power.value = user.turnData.zMovePower;
+    return true;
   }
 }
 
@@ -9487,6 +9509,7 @@ const MoveAttrs = Object.freeze({
   SwapStatStagesAttr,
   HpSplitAttr,
   VariablePowerAttr,
+  ZMovePowerAttr,
   LessPPMorePowerAttr,
   MovePowerMultiplierAttr,
   BeatUpAttr,
@@ -11762,81 +11785,80 @@ export function initMoves() {
       .ignoresProtect(),
     /* Unused */
     new AttackMove(MoveId.BREAKNECK_BLITZ__PHYSICAL, PokemonType.NORMAL, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.BREAKNECK_BLITZ__SPECIAL, PokemonType.NORMAL, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.ALL_OUT_PUMMELING__PHYSICAL, PokemonType.FIGHTING, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.ALL_OUT_PUMMELING__SPECIAL, PokemonType.FIGHTING, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     // biome-ignore format: slightly too long
     new AttackMove(MoveId.SUPERSONIC_SKYSTRIKE__PHYSICAL, PokemonType.FLYING, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7)
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.SUPERSONIC_SKYSTRIKE__SPECIAL, PokemonType.FLYING, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.ACID_DOWNPOUR__PHYSICAL, PokemonType.POISON, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.ACID_DOWNPOUR__SPECIAL, PokemonType.POISON, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.TECTONIC_RAGE__PHYSICAL, PokemonType.GROUND, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.TECTONIC_RAGE__SPECIAL, PokemonType.GROUND, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.CONTINENTAL_CRUSH__PHYSICAL, PokemonType.ROCK, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.CONTINENTAL_CRUSH__SPECIAL, PokemonType.ROCK, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.SAVAGE_SPIN_OUT__PHYSICAL, PokemonType.BUG, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.SAVAGE_SPIN_OUT__SPECIAL, PokemonType.BUG, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     // biome-ignore format: slightly too long
     new AttackMove(MoveId.NEVER_ENDING_NIGHTMARE__PHYSICAL, PokemonType.GHOST, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7)
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.NEVER_ENDING_NIGHTMARE__SPECIAL, PokemonType.GHOST, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.CORKSCREW_CRASH__PHYSICAL, PokemonType.STEEL, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.CORKSCREW_CRASH__SPECIAL, PokemonType.STEEL, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.INFERNO_OVERDRIVE__PHYSICAL, PokemonType.FIRE, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.INFERNO_OVERDRIVE__SPECIAL, PokemonType.FIRE, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.HYDRO_VORTEX__PHYSICAL, PokemonType.WATER, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.HYDRO_VORTEX__SPECIAL, PokemonType.WATER, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.BLOOM_DOOM__PHYSICAL, PokemonType.GRASS, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.BLOOM_DOOM__SPECIAL, PokemonType.GRASS, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.GIGAVOLT_HAVOC__PHYSICAL, PokemonType.ELECTRIC, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.GIGAVOLT_HAVOC__SPECIAL, PokemonType.ELECTRIC, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.SHATTERED_PSYCHE__PHYSICAL, PokemonType.PSYCHIC, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.SHATTERED_PSYCHE__SPECIAL, PokemonType.PSYCHIC, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.SUBZERO_SLAMMER__PHYSICAL, PokemonType.ICE, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.SUBZERO_SLAMMER__SPECIAL, PokemonType.ICE, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.DEVASTATING_DRAKE__PHYSICAL, PokemonType.DRAGON, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.DEVASTATING_DRAKE__SPECIAL, PokemonType.DRAGON, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.BLACK_HOLE_ECLIPSE__PHYSICAL, PokemonType.DARK, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.BLACK_HOLE_ECLIPSE__SPECIAL, PokemonType.DARK, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.TWINKLE_TACKLE__PHYSICAL, PokemonType.FAIRY, MoveCategory.PHYSICAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
     new AttackMove(MoveId.TWINKLE_TACKLE__SPECIAL, PokemonType.FAIRY, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
-    new AttackMove(MoveId.CATASTROPIKA, PokemonType.ELECTRIC, MoveCategory.PHYSICAL, 210, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(ZMovePowerAttr),
+    new AttackMove(MoveId.CATASTROPIKA, PokemonType.ELECTRIC, MoveCategory.PHYSICAL, 210, -1, 1, -1, 0, 7),
     /* End Unused */
     new SelfStatusMove(MoveId.SHORE_UP, PokemonType.GROUND, -1, 5, -1, 0, 7) //
       .attr(SandHealAttr)
@@ -12000,32 +12022,26 @@ export function initMoves() {
       .target(MoveTarget.USER_SIDE),
     /* Unused */
     new AttackMove(MoveId.SINISTER_ARROW_RAID, PokemonType.GHOST, MoveCategory.PHYSICAL, 180, -1, 1, -1, 0, 7)
-      .unimplemented()
       .makesContact(false)
       .edgeCase(), // I assume it's because the user needs spirit shackle and decidueye
     new AttackMove(MoveId.MALICIOUS_MOONSAULT, PokemonType.DARK, MoveCategory.PHYSICAL, 180, -1, 1, -1, 0, 7)
-      .unimplemented()
       .attr(AlwaysHitMinimizeAttr)
       .attr(HitsTagForDoubleDamageAttr, BattlerTagType.MINIMIZED)
       .edgeCase(), // I assume it's because it needs darkest lariat and incineroar
     new AttackMove(MoveId.OCEANIC_OPERETTA, PokemonType.WATER, MoveCategory.SPECIAL, 195, -1, 1, -1, 0, 7)
-      .unimplemented()
       .edgeCase(), // I assume it's because it needs sparkling aria and primarina
     new AttackMove(MoveId.GUARDIAN_OF_ALOLA, PokemonType.FAIRY, MoveCategory.SPECIAL, -1, -1, 1, -1, 0, 7) //
-      .unimplemented(),
-    new AttackMove(MoveId.SOUL_STEALING_7_STAR_STRIKE, PokemonType.GHOST, MoveCategory.PHYSICAL, 195, -1, 1, -1, 0, 7) //
-      .unimplemented(),
+      .attr(TargetHalfHpDamageAttr)
+      .partial(),
+    new AttackMove(MoveId.SOUL_STEALING_7_STAR_STRIKE, PokemonType.GHOST, MoveCategory.PHYSICAL, 195, -1, 1, -1, 0, 7),
     new AttackMove(MoveId.STOKED_SPARKSURFER, PokemonType.ELECTRIC, MoveCategory.SPECIAL, 175, -1, 1, 100, 0, 7)
-      .unimplemented()
+      .attr(StatusEffectAttr, StatusEffect.PARALYSIS)
       .edgeCase(), // I assume it's because it needs thunderbolt and Alola Raichu
     new AttackMove(MoveId.PULVERIZING_PANCAKE, PokemonType.NORMAL, MoveCategory.PHYSICAL, 210, -1, 1, -1, 0, 7)
-      .unimplemented()
       .edgeCase(), // I assume it's because it needs giga impact and snorlax
     new SelfStatusMove(MoveId.EXTREME_EVOBOOST, PokemonType.NORMAL, -1, 1, -1, 0, 7)
-      .unimplemented()
       .attr(StatStageChangeAttr, [Stat.ATK, Stat.DEF, Stat.SPATK, Stat.SPDEF, Stat.SPD], 2, true),
     new AttackMove(MoveId.GENESIS_SUPERNOVA, PokemonType.PSYCHIC, MoveCategory.SPECIAL, 185, -1, 1, 100, 0, 7)
-      .unimplemented()
       .attr(TerrainChangeAttr, TerrainType.PSYCHIC),
     /* End Unused */
     new AttackMove(MoveId.SHELL_TRAP, PokemonType.FIRE, MoveCategory.SPECIAL, 150, 100, 10, -1, -3, 7)
@@ -12076,7 +12092,6 @@ export function initMoves() {
     /* Unused */
     // biome-ignore format: slightly too long
     new AttackMove(MoveId.TEN_MILLION_VOLT_THUNDERBOLT, PokemonType.ELECTRIC, MoveCategory.SPECIAL, 195, -1, 1, -1, 0, 7)
-      .unimplemented()
       .edgeCase(), // I assume it's because it needs thunderbolt and pikachu in a cap
     /* End Unused */
     new AttackMove(MoveId.MIND_BLOWN, PokemonType.FIRE, MoveCategory.SPECIAL, 150, 100, 5, -1, 0, 7)
@@ -12091,24 +12106,18 @@ export function initMoves() {
       .ignoresAbilities(),
     /* Unused */
     new AttackMove(MoveId.LIGHT_THAT_BURNS_THE_SKY, PokemonType.PSYCHIC, MoveCategory.SPECIAL, 200, -1, 1, -1, 0, 7)
-      .unimplemented()
       .attr(PhotonGeyserCategoryAttr)
       .ignoresAbilities(),
     new AttackMove(MoveId.SEARING_SUNRAZE_SMASH, PokemonType.STEEL, MoveCategory.PHYSICAL, 200, -1, 1, -1, 0, 7)
-      .unimplemented()
       .ignoresAbilities(),
     new AttackMove(MoveId.MENACING_MOONRAZE_MAELSTROM, PokemonType.GHOST, MoveCategory.SPECIAL, 200, -1, 1, -1, 0, 7)
-      .unimplemented()
       .ignoresAbilities(),
     new AttackMove(MoveId.LETS_SNUGGLE_FOREVER, PokemonType.FAIRY, MoveCategory.PHYSICAL, 190, -1, 1, -1, 0, 7)
-      .unimplemented()
       .edgeCase(), // I assume it needs play rough and mimikyu
     new AttackMove(MoveId.SPLINTERED_STORMSHARDS, PokemonType.ROCK, MoveCategory.PHYSICAL, 190, -1, 1, -1, 0, 7)
-      .unimplemented()
       .attr(ClearTerrainAttr)
       .makesContact(false),
     new AttackMove(MoveId.CLANGOROUS_SOULBLAZE, PokemonType.DRAGON, MoveCategory.SPECIAL, 185, -1, 1, 100, 0, 7)
-      .unimplemented()
       .attr(StatStageChangeAttr, [Stat.ATK, Stat.DEF, Stat.SPATK, Stat.SPDEF, Stat.SPD], 1, true, {
         firstTargetOnly: true,
       })

@@ -56,6 +56,7 @@ const EVENT_TITLE_KEYS: Record<MysteryEncounterType, string> = {
   [MysteryEncounterType.FARAWAY_ISLAND_TREASURE]: "mysteryEncounters/farawayIslandTreasure:title",
   [MysteryEncounterType.CONTEST_HALL]: "mysteryEncounters/contestHall:title",
   [MysteryEncounterType.DEJA_VU]: "mysteryEncounters/dejaVu:title",
+  [MysteryEncounterType.MINING]: "mysteryEncounters/mining:title",
 };
 
 export function getMysteryEncounterSettingKey(encounterType: MysteryEncounterType): string {

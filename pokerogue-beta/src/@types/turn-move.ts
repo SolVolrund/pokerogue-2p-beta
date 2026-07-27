@@ -8,5 +8,9 @@ export interface TurnMove {
   move: MoveId;
   targets: BattlerIndex[];
   useMode: MoveUseMode;
+  zMove?: {
+    sourceMove: MoveId;
+    power?: number | undefined;
+  };
   result?: MoveResult | undefined;
 }

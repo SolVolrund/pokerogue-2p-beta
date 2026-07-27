@@ -16,6 +16,9 @@ export interface SerializedArenaData {
   positionalTags: SerializedPositionalTag[];
   playerTerasUsed?: number;
   playerTerasUsedByPlayer?: number[];
+  playerZMovesUsed?: number;
+  playerZMovesUsedByPlayer?: number[];
+  playerZMoveReadyWaveByPlayer?: number[];
 }
 
 export class ArenaData {
@@ -26,6 +29,9 @@ export class ArenaData {
   public positionalTags: SerializedPositionalTag[] = [];
   public playerTerasUsed: number;
   public playerTerasUsedByPlayer: number[];
+  public playerZMovesUsed: number;
+  public playerZMovesUsedByPlayer: number[];
+  public playerZMoveReadyWaveByPlayer: number[];
 
   constructor(source: Arena | SerializedArenaData) {
     // Exclude any unserializable tags from the serialized data (such as ones only lasting 1 turn).
@@ -40,6 +46,13 @@ export class ArenaData {
     this.playerTerasUsedByPlayer = source.playerTerasUsedByPlayer?.length
       ? [0, 1, 2].map(playerIndex => source.playerTerasUsedByPlayer?.[playerIndex] ?? 0)
       : [this.playerTerasUsed, 0, 0];
+    this.playerZMovesUsed = source.playerZMovesUsed ?? 0;
+    this.playerZMovesUsedByPlayer = source.playerZMovesUsedByPlayer?.length
+      ? [0, 1, 2].map(playerIndex => source.playerZMovesUsedByPlayer?.[playerIndex] ?? 0)
+      : [this.playerZMovesUsed, 0, 0];
+    this.playerZMoveReadyWaveByPlayer = source.playerZMoveReadyWaveByPlayer?.length
+      ? [0, 1, 2].map(playerIndex => source.playerZMoveReadyWaveByPlayer?.[playerIndex] ?? 0)
+      : [0, 0, 0];
 
     if (source instanceof Arena) {
       this.biome = source.biomeId;

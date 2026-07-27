@@ -349,6 +349,10 @@ export class PokemonTurnData {
   public statStagesDecreased = false;
   public moveEffectiveness: TypeDamageMultiplier | null = null;
   public combiningPledge?: MoveId;
+  public zMovePower?: number | undefined;
+  public zMoveSourceMove?: MoveId | undefined;
+  public typeGemMoveId?: MoveId | undefined;
+  public typeGemMoveType?: PokemonType | undefined;
   public failedRunAway = false;
   public joinedRound = false;
 

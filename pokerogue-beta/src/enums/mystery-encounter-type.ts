@@ -38,4 +38,5 @@ export enum MysteryEncounterType {
   CONTEST_HALL,
   POKE_POACHERS,
   DEJA_VU,
+  MINING,
 }

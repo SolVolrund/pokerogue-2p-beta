@@ -298,21 +298,26 @@ export class ContestState {
   }
 }
 
-export function compareContestantTieBreakers(a: ContestParticipant, b: ContestParticipant, salt: string): number {
-  const aHash = hashContestantTieBreaker(`${salt}:${a.id}`);
-  const bHash = hashContestantTieBreaker(`${salt}:${b.id}`);
-
-  return aHash - bHash || a.id.localeCompare(b.id);
-}
-
-function hashContestantTieBreaker(value: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < value.length; i++) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
+export function compareContestantTieBreakers(a: ContestParticipant, b: ContestParticipant, _salt: string): number {
+  const priorityDifference = getContestantTieBreakerPriority(a) - getContestantTieBreakerPriority(b);
+  if (priorityDifference) {
+    return priorityDifference;
   }
 
-  return hash >>> 0;
+  return a.id.localeCompare(b.id) || a.name.localeCompare(b.name);
+}
+
+function getContestantTieBreakerPriority(contestant: ContestParticipant): number {
+  if (contestant.id === "player") {
+    return 0;
+  }
+
+  const playerIdMatch = contestant.id.match(/^player_(\d+)$/);
+  if (playerIdMatch) {
+    return Math.max(0, Number(playerIdMatch[1]) - 1);
+  }
+
+  return 100;
 }
 
 export function createContestParticipant(

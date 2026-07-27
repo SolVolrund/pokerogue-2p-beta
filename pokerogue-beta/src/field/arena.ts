@@ -2,6 +2,7 @@ import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { activeOverrides } from "#app/overrides";
+import { Z_RING_RECHARGE_WAVES } from "#app/constants";
 import { NIGHT_TIME } from "#constants/game-constants";
 import type { ArenaTag, ArenaTagTypeMap } from "#data/arena-tag";
 import { getArenaTag } from "#data/arena-tag";
@@ -74,6 +75,9 @@ export class Arena {
 
   public playerTerasUsed = 0;
   public playerTerasUsedByPlayer = [0, 0, 0];
+  public playerZMovesUsed = 0;
+  public playerZMovesUsedByPlayer = [0, 0, 0];
+  public playerZMoveReadyWaveByPlayer = [0, 0, 0];
   /**
    * Saves the number of times a party pokemon faints during a arena encounter. \
    * {@linkcode globalScene.currentBattle.enemyFaints} is the corresponding faint counter for the enemy (this resets every wave).
@@ -144,6 +148,58 @@ export class Arena {
 
     this.playerTerasUsedByPlayer[playerIndex] = 0;
     this.playerTerasUsed = Math.max(...this.playerTerasUsedByPlayer);
+  }
+
+  public getPlayerZMovesUsed(playerIndex = 0): number {
+    return this.playerZMovesUsedByPlayer[playerIndex] ?? 0;
+  }
+
+  public incrementPlayerZMovesUsed(playerIndex = 0): void {
+    this.playerZMovesUsedByPlayer[playerIndex] = this.getPlayerZMovesUsed(playerIndex) + 1;
+    this.playerZMovesUsed = Math.max(this.playerZMovesUsed, this.playerZMovesUsedByPlayer[playerIndex]);
+  }
+
+  public restorePlayerZMovesUsed(playerZMovesUsed: number, playerZMovesUsedByPlayer?: number[]): void {
+    this.playerZMovesUsedByPlayer = playerZMovesUsedByPlayer?.length
+      ? [0, 1, 2].map(playerIndex => playerZMovesUsedByPlayer[playerIndex] ?? 0)
+      : [playerZMovesUsed, 0, 0];
+    this.playerZMovesUsed = Math.max(playerZMovesUsed, ...this.playerZMovesUsedByPlayer);
+  }
+
+  public resetPlayerZMovesUsed(playerIndex?: number): void {
+    if (playerIndex === undefined) {
+      this.playerZMovesUsedByPlayer = [0, 0, 0];
+      this.playerZMovesUsed = 0;
+      return;
+    }
+
+    this.playerZMovesUsedByPlayer[playerIndex] = 0;
+    this.playerZMovesUsed = Math.max(...this.playerZMovesUsedByPlayer);
+  }
+
+  public getPlayerZMoveReadyWave(playerIndex = 0): number {
+    return this.playerZMoveReadyWaveByPlayer[playerIndex] ?? 0;
+  }
+
+  public isPlayerZMoveReady(playerIndex = 0, waveIndex = globalScene.currentBattle?.waveIndex ?? 0): boolean {
+    return waveIndex >= this.getPlayerZMoveReadyWave(playerIndex);
+  }
+
+  public getPlayerZMoveRechargeWavesRemaining(
+    playerIndex = 0,
+    waveIndex = globalScene.currentBattle?.waveIndex ?? 0,
+  ): number {
+    return Math.max(0, this.getPlayerZMoveReadyWave(playerIndex) - waveIndex);
+  }
+
+  public startPlayerZMoveRecharge(playerIndex = 0, waveIndex = globalScene.currentBattle?.waveIndex ?? 0): void {
+    this.playerZMoveReadyWaveByPlayer[playerIndex] = waveIndex + Z_RING_RECHARGE_WAVES;
+  }
+
+  public restorePlayerZMoveReadyWaves(playerZMoveReadyWaveByPlayer?: number[]): void {
+    this.playerZMoveReadyWaveByPlayer = playerZMoveReadyWaveByPlayer?.length
+      ? [0, 1, 2].map(playerIndex => playerZMoveReadyWaveByPlayer[playerIndex] ?? 0)
+      : [0, 0, 0];
   }
 
   /** A float representing the loop point of the current biome's bgm in seconds */

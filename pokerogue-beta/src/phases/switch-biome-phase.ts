@@ -40,7 +40,7 @@ export class SwitchBiomePhase extends BattlePhase {
         globalScene.arenaEnemy.setX(globalScene.arenaEnemy.x - 600);
         // Capture BEFORE newArena overwrites globalScene.arena
         const previousBiome = globalScene.arena.biomeId;
-        globalScene.newArena(this.nextBiome);
+        globalScene.newArena(this.nextBiome, 0, true);
 
         const biomeKey = getBiomeAssetKey(this.nextBiome);
         const bgTexture = `${biomeKey}_bg`;

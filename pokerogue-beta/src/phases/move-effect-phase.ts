@@ -31,6 +31,7 @@ import {
   HitHealModifier,
   PokemonMultiHitModifier,
   ShinyBadgeModifier,
+  TypeGemModifier,
 } from "#modifiers/modifier";
 import { applyFilteredMoveAttrs, applyMoveAttrs } from "#moves/apply-attrs";
 import type { Move, MoveAttr } from "#moves/move";
@@ -263,6 +264,7 @@ export class MoveEffectPhase extends PokemonPhase {
       applyAbAttrs("ExecutedMoveAbAttr", { pokemon: user });
     }
 
+    const damageBeforeTypeGem = user.turnData.totalDamageDealt;
     try {
       this.applyToTargets(user, targets);
     } catch (e) {
@@ -270,6 +272,7 @@ export class MoveEffectPhase extends PokemonPhase {
       this.end();
       return;
     }
+    this.consumeTypeGemIfNeeded(user, damageBeforeTypeGem);
 
     const moveType = user.getMoveType(this.move, true);
     if (this.move.category !== MoveCategory.STATUS && !user.stellarTypesBoosted.includes(moveType)) {
@@ -282,6 +285,42 @@ export class MoveEffectPhase extends PokemonPhase {
 
     this.updateSubstitutes();
     this.end();
+  }
+
+  /**
+   * Type Gems boost only real move execution, then consume if that move actually dealt damage.
+   * The marker is set in damage calculation so AI simulations can use the boost without eating the item.
+   */
+  private consumeTypeGemIfNeeded(user: Pokemon, damageBefore: number): void {
+    const boostedMoveId = user.turnData.typeGemMoveId;
+    const boostedMoveType = user.turnData.typeGemMoveType;
+    if (boostedMoveId === undefined || boostedMoveType === undefined || boostedMoveId !== this.move.id) {
+      return;
+    }
+
+    if (user.turnData.totalDamageDealt <= damageBefore) {
+      if (this.lastHit) {
+        user.turnData.typeGemMoveId = undefined;
+        user.turnData.typeGemMoveType = undefined;
+      }
+      return;
+    }
+
+    const typeGem = globalScene.findModifierForPokemon(
+      modifier =>
+        modifier instanceof TypeGemModifier
+        && modifier.pokemonId === user.id
+        && modifier.moveType === boostedMoveType,
+      user,
+    ) as TypeGemModifier | undefined;
+
+    if (typeGem && user.loseHeldItem(typeGem)) {
+      const playerIndex = user.isPlayer() ? globalScene.getPlayerIndexForPokemon(user) : undefined;
+      globalScene.updateModifiers(user.isPlayer(), undefined, playerIndex);
+    }
+
+    user.turnData.typeGemMoveId = undefined;
+    user.turnData.typeGemMoveType = undefined;
   }
 
   /**

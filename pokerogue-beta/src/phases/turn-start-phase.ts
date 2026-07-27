@@ -89,6 +89,9 @@ export class TurnStartPhase extends FieldPhase {
       switch (preTurnCommand?.command) {
         case Command.TERA:
           globalScene.phaseManager.pushNew("TeraPhase", pokemon);
+          break;
+        case Command.Z_MOVE:
+          globalScene.phaseManager.pushNew("ZMovePhase", pokemon);
       }
     }
 
@@ -179,9 +182,14 @@ export class TurnStartPhase extends FieldPhase {
     }
 
     // TODO: This seems somewhat dubious
-    const move =
-      pokemon.getMoveset().find(m => m.moveId === queuedMove.move && m.ppUsed < m.getMovePp())
-      ?? new PokemonMove(queuedMove.move);
+    const move = queuedMove.zMove
+      ? new PokemonMove(queuedMove.move, 0, 0, undefined, queuedMove.zMove.sourceMove, queuedMove.zMove.power)
+      : pokemon.getMoveset().find(m => m.moveId === queuedMove.move && m.ppUsed < m.getMovePp())
+        ?? new PokemonMove(queuedMove.move);
+
+    if (queuedMove.zMove) {
+      globalScene.phaseManager.unshiftNew("LoadMoveAnimPhase", move.moveId);
+    }
 
     if (move.getMove().hasAttr("MoveHeaderAttr")) {
       globalScene.phaseManager.unshiftNew("MoveHeaderPhase", pokemon, move);

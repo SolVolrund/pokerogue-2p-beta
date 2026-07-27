@@ -169,13 +169,8 @@ export function areAllies(a: BattlerIndex, b: BattlerIndex): boolean {
  * a wild Pokémon is allowed to tera, e.g. for a Mystery Encounter.
  */
 export function willTerastallize(pokemon: Pokemon): boolean {
-  // cast is safe, as if it is just a Pokémon, initialTeamIndex will be undefined triggering the null check
-  const initialTeamIndex = (pokemon as EnemyPokemon).initialTeamIndex;
-  return (
-    initialTeamIndex != null
-    && pokemon.hasTrainer()
-    && (globalScene.currentBattle?.trainer?.config.trainerAI.instantTeras.includes(initialTeamIndex) ?? false)
-  );
+  // Cast is safe; Pokemon without trainers return false before the trainer-owned Tera lookup.
+  return pokemon.hasTrainer() && (globalScene.currentBattle?.trainer?.isInstantTeraTarget(pokemon as EnemyPokemon) ?? false);
 }
 
 /**

@@ -1527,7 +1527,17 @@ export class GameData {
     });
 
     // #region Arena stuff
-    const { weather, terrain, playerTerasUsed, playerTerasUsedByPlayer, tags, positionalTags } = fromSession.arena;
+    const {
+      weather,
+      terrain,
+      playerTerasUsed,
+      playerTerasUsedByPlayer,
+      playerZMovesUsed,
+      playerZMovesUsedByPlayer,
+      playerZMoveReadyWaveByPlayer,
+      tags,
+      positionalTags,
+    } = fromSession.arena;
 
     if (weather) {
       globalScene.arena.weather = weather;
@@ -1544,6 +1554,8 @@ export class GameData {
     }
 
     globalScene.arena.restorePlayerTerasUsed(playerTerasUsed ?? 0, playerTerasUsedByPlayer);
+    globalScene.arena.restorePlayerZMovesUsed(playerZMovesUsed ?? 0, playerZMovesUsedByPlayer);
+    globalScene.arena.restorePlayerZMoveReadyWaves(playerZMoveReadyWaveByPlayer);
 
     globalScene.arena.tags = tags;
     for (const tag of tags) {

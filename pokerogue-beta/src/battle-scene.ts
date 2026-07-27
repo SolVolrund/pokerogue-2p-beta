@@ -230,8 +230,8 @@ const TWO_PLAYER_SESSION_SYSTEM_SAVE_KEYS = [
 ] as const;
 const TWO_PLAYER_PROFILE_HANDSHAKE_BUILD = "profile-handshake-2026-06-17c";
 const TWO_PLAYER_SYNC_SETTING_TYPES = new Set<SettingType>([SettingType.GENERAL, SettingType.DISPLAY]);
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = null;
-const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = null;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = 1;
+const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = MysteryEncounterType.MINING;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = true;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_PLAYER_MONEY: number | null = null;
 const EON_FLUTE_HELPER_SOURCE_ID = "eon_flute" as const;
@@ -299,6 +299,7 @@ const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.FARAWAY_ISLAND_TREASURE,
   MysteryEncounterType.CONTEST_HALL,
   MysteryEncounterType.DEJA_VU,
+  MysteryEncounterType.MINING,
 ];
 const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] = [
   MysteryEncounterType.MYSTERIOUS_CHEST,
@@ -336,6 +337,7 @@ const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] 
   MysteryEncounterType.FARAWAY_ISLAND_TREASURE,
   MysteryEncounterType.CONTEST_HALL,
   MysteryEncounterType.DEJA_VU,
+  MysteryEncounterType.MINING,
 ];
 
 export interface PlayerRunState {
@@ -371,6 +373,7 @@ const STRICT_TWO_PLAYER_INPUT_CONTEXT_UI_MODES = new Set<UiMode>([
   UiMode.CHALLENGE_SELECT,
   UiMode.MYSTERY_ENCOUNTER,
   UiMode.CONTEST_INPUT,
+  UiMode.MINING_INPUT,
   UiMode.ALPH_WALL,
 ]);
 
@@ -2975,7 +2978,16 @@ export class BattleScene extends SceneBase {
     if (activeOverrides.ENEMY_LEVEL_OVERRIDE > 0) {
       level = activeOverrides.ENEMY_LEVEL_OVERRIDE;
     }
-    if (activeOverrides.ENEMY_SPECIES_OVERRIDE) {
+    const firstWildEncounterSpeciesOverride = activeOverrides.FIRST_WILD_ENCOUNTER_SPECIES_OVERRIDE;
+    const shouldUseFirstWildEncounterSpeciesOverride =
+      firstWildEncounterSpeciesOverride
+      && this.currentBattle?.battleType === BattleType.WILD
+      && this.currentBattle.waveIndex === (activeOverrides.STARTING_WAVE_OVERRIDE ?? STARTING_WAVE);
+    if (shouldUseFirstWildEncounterSpeciesOverride) {
+      species = getPokemonSpecies(firstWildEncounterSpeciesOverride);
+      // The fact that a Pokemon is a boss or not can change based on its Species and level
+      boss = this.getEncounterBossSegments(this.currentBattle.waveIndex, level, species) > 1;
+    } else if (activeOverrides.ENEMY_SPECIES_OVERRIDE) {
       species = getPokemonSpecies(activeOverrides.ENEMY_SPECIES_OVERRIDE);
       // The fact that a Pokemon is a boss or not can change based on its Species and level
       boss = this.getEncounterBossSegments(this.currentBattle.waveIndex, level, species) > 1;
@@ -3581,7 +3593,8 @@ export class BattleScene extends SceneBase {
       const shouldResetEncounterSpawnChance =
         !this.isScheduledContestHallMysteryEncounterWave(resolved.battleType, waveIndex)
         && !this.isScheduledGtsMalfunctionMysteryEncounterWave(resolved.battleType, waveIndex)
-        && !this.isScheduledDejaVuMysteryEncounterWave(resolved.battleType, waveIndex);
+        && !this.isScheduledDejaVuMysteryEncounterWave(resolved.battleType, waveIndex)
+        && !this.isScheduledLostAtSeaMysteryEncounterWave(resolved.battleType, waveIndex);
       resolved.battleType = BattleType.MYSTERY_ENCOUNTER;
       resolved.mysteryEncounterType = forcedMysteryEncounterType;
       if (shouldResetEncounterSpawnChance) {
@@ -3766,8 +3779,13 @@ export class BattleScene extends SceneBase {
     }
   }
 
-  newArena(biome: BiomeId, playerFaints = 0): Arena {
+  newArena(biome: BiomeId, playerFaints = 0, preserveZMoveRecharge = false): Arena {
+    const playerZMoveReadyWaveByPlayer = preserveZMoveRecharge
+      ? this.arena?.playerZMoveReadyWaveByPlayer
+      : undefined;
+
     this.arena = new Arena(biome, playerFaints);
+    this.arena.restorePlayerZMoveReadyWaves(playerZMoveReadyWaveByPlayer);
     this.eventTarget.dispatchEvent(new NewArenaEvent());
 
     this.arenaBg.pipelineData = {
@@ -5933,6 +5951,10 @@ export class BattleScene extends SceneBase {
       return true;
     }
 
+    if (this.isScheduledLostAtSeaMysteryEncounterWave(battleType, waveIndex)) {
+      return true;
+    }
+
     const [lowestMysteryEncounterWave, highestMysteryEncounterWave] = this.gameMode.getMysteryEncounterLegalWaves();
     // Base spawn weight is BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT/256, and increases
     // by WEIGHT_INCREMENT_ON_SPAWN_MISS/256 for each missed attempt at spawning an encounter on a valid floor
@@ -5988,6 +6010,9 @@ export class BattleScene extends SceneBase {
     }
     if (this.isScheduledDejaVuMysteryEncounterWave(battleType, waveIndex)) {
       return MysteryEncounterType.DEJA_VU;
+    }
+    if (this.isScheduledLostAtSeaMysteryEncounterWave(battleType, waveIndex)) {
+      return MysteryEncounterType.LOST_AT_SEA;
     }
     return undefined;
   }
@@ -6052,6 +6077,49 @@ export class BattleScene extends SceneBase {
       && this.isMysteryEncounterValidForWave(battleType, waveIndex)
       && encounter.meetsRequirements()
       && !!getDueDejaVuSchedule(this, waveIndex)
+    );
+  }
+
+  private isScheduledLostAtSeaMysteryEncounterWave(battleType: BattleType, waveIndex: number): boolean {
+    const encounterType = MysteryEncounterType.LOST_AT_SEA;
+    const encounter = allMysteryEncounters[encounterType];
+    const saveData = this.mysteryEncounterSaveData;
+    const localBiomeWave = ((waveIndex - 1) % 10) + 1;
+
+    if (
+      saveData.lostAtSeaFirstSeaForcedDone
+      || this.arena.biomeId !== BiomeId.SEA
+      || this.mysteryEncounterSaveData.encounteredEvents.some(event => event.type === encounterType)
+    ) {
+      return false;
+    }
+
+    saveData.lostAtSeaFirstSeaStartWave ??= waveIndex - localBiomeWave + 1;
+    const firstSeaStartWave = saveData.lostAtSeaFirstSeaStartWave;
+    const isInFirstSeaWindow = waveIndex >= firstSeaStartWave && waveIndex <= firstSeaStartWave + 4;
+    if (!isInFirstSeaWindow) {
+      if (waveIndex > firstSeaStartWave + 4) {
+        saveData.lostAtSeaFirstSeaForcedDone = true;
+      }
+      return false;
+    }
+
+    const maxAllowedEncounters = encounter?.maxAllowedEncounters ?? 0;
+    const previousEncounters = this.mysteryEncounterSaveData.encounteredEvents.filter(
+      event => event.type === encounterType,
+    ).length;
+
+    return (
+      battleType === BattleType.WILD
+      && !!encounter
+      && this.isMysteryEncounterEnabled(encounterType)
+      && !timedEventManager.getEventMysteryEncountersDisabled().includes(encounterType)
+      && this.isMysteryEncounterValidForWave(battleType, waveIndex)
+      && !this.isScheduledContestHallMysteryEncounterWave(battleType, waveIndex)
+      && !this.isScheduledGtsMalfunctionMysteryEncounterWave(battleType, waveIndex)
+      && !this.isScheduledDejaVuMysteryEncounterWave(battleType, waveIndex)
+      && encounter.meetsRequirements()
+      && (maxAllowedEncounters <= 0 || previousEncounters < maxAllowedEncounters)
     );
   }
 

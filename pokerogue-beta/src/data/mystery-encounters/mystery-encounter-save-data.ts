@@ -49,6 +49,8 @@ export class MysteryEncounterSaveData {
   queuedEncounters: QueuedEncounter[] = [];
   fieldBlessing?: FieldBlessing;
   contestHallProgress: ContestHallProgress = {};
+  lostAtSeaFirstSeaStartWave?: number;
+  lostAtSeaFirstSeaForcedDone = false;
   dejaVuScheduleInitialized = false;
   dejaVuScheduledEncounters: DejaVuScheduledEncounterData[] = [];
 
@@ -60,6 +62,7 @@ export class MysteryEncounterSaveData {
     this.encounteredEvents = this.encounteredEvents ?? [];
     this.queuedEncounters = this.queuedEncounters ?? [];
     this.contestHallProgress = this.contestHallProgress ?? {};
+    this.lostAtSeaFirstSeaForcedDone = !!this.lostAtSeaFirstSeaForcedDone;
     this.dejaVuScheduleInitialized = !!this.dejaVuScheduleInitialized;
     this.dejaVuScheduledEncounters = this.dejaVuScheduledEncounters ?? [];
   }

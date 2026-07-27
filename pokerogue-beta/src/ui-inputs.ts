@@ -854,6 +854,11 @@ export class UiInputs {
   }
 
   buttonStats(pressed = true): void {
+    if (pressed && globalScene.ui?.getMode() === UiMode.MINING_INPUT) {
+      globalScene.ui.processInput(Button.STATS);
+      return;
+    }
+
     // allow access to Button.STATS as a toggle for other elements
     for (const t of globalScene.getInfoToggles(true)) {
       t.toggleInfo(pressed);

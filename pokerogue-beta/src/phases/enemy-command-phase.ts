@@ -1,15 +1,19 @@
 import { globalScene } from "#app/global-scene";
 import { AbilityId } from "#enums/ability-id";
 import { AiType } from "#enums/ai-type";
+import { BattleType } from "#enums/battle-type";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { Command } from "#enums/command";
 import { FieldPosition } from "#enums/field-position";
 import { MoveId } from "#enums/move-id";
+import { MoveUseMode } from "#enums/move-use-mode";
 import type { EnemyPokemon } from "#field/pokemon";
 import { FieldPhase } from "#phases/field-phase";
+import type { TurnMove } from "#types/turn-move";
 import { shouldAiRepositionToCenter } from "#utils/ai-targeting";
 import { getPlannerSwitchIndex } from "#utils/battle-planner-ai";
 import { isMysteryEncounterSwitchProtectedPokemon } from "#utils/mystery-encounter-switch-protection";
+import { getZMoveForPokemonMove } from "#utils/z-move-utils";
 
 /**
  * Phase for determining an enemy AI's action for the next turn.
@@ -127,12 +131,14 @@ export class EnemyCommandPhase extends FieldPhase {
     }
 
     /** Select a move to use (and a target to use it against, if applicable) */
-    const nextMove = enemyPokemon.getNextMove();
+    let nextMove = enemyPokemon.getNextMove();
 
     if (this.shouldTera(enemyPokemon)) {
       globalScene.currentBattle.preTurnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = {
         command: Command.TERA,
       };
+    } else {
+      nextMove = this.upgradeEnemyZMove(enemyPokemon, nextMove);
     }
 
     globalScene.currentBattle.turnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = {
@@ -148,6 +154,41 @@ export class EnemyCommandPhase extends FieldPhase {
 
   private shouldTera(pokemon: EnemyPokemon): boolean {
     return !!globalScene.currentBattle.trainer?.shouldTera(pokemon);
+  }
+
+  private upgradeEnemyZMove(pokemon: EnemyPokemon, turnMove: TurnMove): TurnMove {
+    if (
+      globalScene.currentBattle.battleType !== BattleType.TRAINER
+      || turnMove.move === MoveId.NONE
+      || turnMove.useMode !== MoveUseMode.NORMAL
+    ) {
+      return turnMove;
+    }
+
+    const sourceMove = pokemon.getMoveset().find(move => move.moveId === turnMove.move);
+    const zMoveSelection = sourceMove ? getZMoveForPokemonMove(pokemon, sourceMove, true) : undefined;
+    if (!zMoveSelection) {
+      return turnMove;
+    }
+
+    const targets = pokemon.getNextTargets(zMoveSelection.moveId);
+    if (targets.length === 0) {
+      return turnMove;
+    }
+
+    globalScene.currentBattle.preTurnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = {
+      command: Command.Z_MOVE,
+    };
+
+    return {
+      ...turnMove,
+      move: zMoveSelection.moveId,
+      targets,
+      zMove: {
+        sourceMove: zMoveSelection.sourceMoveId,
+        ...(zMoveSelection.power !== undefined ? { power: zMoveSelection.power } : {}),
+      },
+    };
   }
 
   getFieldIndex(): number {

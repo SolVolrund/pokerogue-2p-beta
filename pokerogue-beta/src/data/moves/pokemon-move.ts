@@ -30,6 +30,8 @@ export class PokemonMove {
   public moveId: MoveId;
   public ppUsed: number;
   public ppUp: number;
+  public zMoveSourceMoveId?: MoveId | undefined;
+  public zMovePower?: number | undefined;
 
   /**
    * If defined and nonzero, overrides the maximum PP of the move (e.g., due to move being copied by Transform).
@@ -37,11 +39,20 @@ export class PokemonMove {
    */
   public maxPpOverride?: number | undefined;
 
-  constructor(moveId: MoveId, ppUsed = 0, ppUp = 0, maxPpOverride?: number) {
+  constructor(
+    moveId: MoveId,
+    ppUsed = 0,
+    ppUp = 0,
+    maxPpOverride?: number,
+    zMoveSourceMoveId?: MoveId,
+    zMovePower?: number,
+  ) {
     this.moveId = moveId;
     this.ppUsed = ppUsed;
     this.ppUp = ppUp;
     this.maxPpOverride = maxPpOverride;
+    this.zMoveSourceMoveId = zMoveSourceMoveId;
+    this.zMovePower = zMovePower;
   }
 
   /**
@@ -120,6 +131,13 @@ export class PokemonMove {
    * @returns A valid {@linkcode PokemonMove} object
    */
   static loadMove(source: PokemonMove | any): PokemonMove {
-    return new PokemonMove(source.moveId, source.ppUsed, source.ppUp, source.maxPpOverride);
+    return new PokemonMove(
+      source.moveId,
+      source.ppUsed,
+      source.ppUp,
+      source.maxPpOverride,
+      source.zMoveSourceMoveId,
+      source.zMovePower,
+    );
   }
 }

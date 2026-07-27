@@ -33,6 +33,7 @@ import { SpeciesId } from "#enums/species-id";
 import type { PermanentStat, TempBattleStat } from "#enums/stat";
 import { getStatKey, Stat, TEMP_BATTLE_STATS } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
+import { ZCrystal } from "#enums/z-crystal";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
 import {
   AddPokeballModifier,
@@ -128,7 +129,10 @@ import {
   TurnHealModifier,
   TurnHeldItemTransferModifier,
   TurnStatusEffectModifier,
+  TypeGemModifier,
   UnownBoxModifier,
+  ZCrystalModifier,
+  ZMoveAccessModifier,
 } from "#modifiers/modifier";
 import type { PokemonMove } from "#moves/pokemon-move";
 import { getVoucherTypeIcon, getVoucherTypeName, VoucherType } from "#system/voucher";
@@ -143,10 +147,17 @@ import { getEnumKeys, getEnumValues } from "#utils/enums";
 import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
 import { getModifierPoolForType, getModifierType } from "#utils/modifier-utils";
 import { toCamelCase } from "#utils/strings";
+import {
+  getValidZCrystalsForParty,
+  getValidZCrystalsForPokemon,
+  getZCrystalLocaleKey,
+  hasZMoveAccessForParty,
+} from "#utils/z-move-utils";
 import i18next from "i18next";
 
 const outputModifierData = false;
 const useMaxWeightForOutput = false;
+const TYPE_GEM_BOOST_PERCENT = 30;
 
 const ARCEUS_LEGEND_PLATE_REQUIRED_ITEMS = [
   FormChangeItem.FIST_PLATE,
@@ -470,6 +481,39 @@ export class PokemonHeldItemModifierType extends PokemonModifierType {
 
   newModifier(...args: any[]): PokemonHeldItemModifier {
     return super.newModifier(...args) as PokemonHeldItemModifier;
+  }
+}
+
+export class ZCrystalModifierType extends PokemonHeldItemModifierType {
+  public readonly zCrystal: ZCrystal;
+
+  constructor(localeKey: string, zCrystal: ZCrystal) {
+    super(
+      localeKey,
+      zCrystal,
+      (type, args) => {
+        const pokemon = args[0] as Pokemon;
+        const existingZCrystals = globalScene.findModifiersForPokemon(
+          modifier => modifier instanceof ZCrystalModifier && modifier.pokemonId === pokemon.id,
+          pokemon,
+        );
+
+        return new ZCrystalModifier(type as ZCrystalModifierType, pokemon.id, zCrystal, existingZCrystals.length === 0);
+      },
+      "z_crystal",
+    );
+
+    this.zCrystal = zCrystal;
+
+    const heldItemSelectFilter = this.selectFilter;
+    this.selectFilter = (pokemon: PlayerPokemon) => {
+      const heldItemResult = heldItemSelectFilter?.(pokemon);
+      if (heldItemResult != null) {
+        return heldItemResult;
+      }
+
+      return getValidZCrystalsForPokemon(pokemon).includes(zCrystal) ? null : PartyUiHandler.NoEffectMessage;
+    };
   }
 }
 
@@ -906,6 +950,33 @@ export class BerryModifierType extends PokemonHeldItemModifierType implements Ge
   }
 }
 
+function getRandomBerryModifierType(): BerryModifierType {
+  const berryTypes = getEnumValues(BerryType);
+  let randBerryType: BerryType;
+  const rand = randSeedInt(12);
+  if (rand < 2) {
+    randBerryType = BerryType.SITRUS;
+  } else if (rand < 4) {
+    randBerryType = BerryType.LUM;
+  } else if (rand < 6) {
+    randBerryType = BerryType.LEPPA;
+  } else {
+    randBerryType = berryTypes[randSeedInt(berryTypes.length - 3) + 2];
+  }
+  return new BerryModifierType(randBerryType);
+}
+
+function getMirrorHerbModifierType(): PokemonHeldItemModifierType {
+  const ret = new PokemonHeldItemModifierType(
+    "modifierType:ModifierType.MIRROR_HERB",
+    "mirror_herb",
+    (type, args) => new MirrorHerbModifier(type, (args[0] as Pokemon).id),
+    "berry",
+  );
+  ret.id = "MIRROR_HERB";
+  return ret;
+}
+
 enum AttackTypeBoosterItem {
   SILK_SCARF,
   BLACK_BELT,
@@ -925,6 +996,41 @@ enum AttackTypeBoosterItem {
   DRAGON_FANG,
   BLACK_GLASSES,
   FAIRY_FEATHER,
+}
+
+enum TypeGemItem {
+  NORMAL_GEM,
+  FIGHTING_GEM,
+  FLYING_GEM,
+  POISON_GEM,
+  GROUND_GEM,
+  ROCK_GEM,
+  BUG_GEM,
+  GHOST_GEM,
+  STEEL_GEM,
+  FIRE_GEM,
+  WATER_GEM,
+  GRASS_GEM,
+  ELECTRIC_GEM,
+  PSYCHIC_GEM,
+  ICE_GEM,
+  DRAGON_GEM,
+  DARK_GEM,
+  FAIRY_GEM,
+}
+
+function isRegularItemType(type: PokemonType): boolean {
+  return type >= PokemonType.NORMAL && type <= PokemonType.FAIRY;
+}
+
+function getAttackMoveItemTypes(pokemon: Pokemon, pokemonMove: PokemonMove): PokemonType[] {
+  const move = pokemonMove.getMove();
+  if (!move.is("AttackMove")) {
+    return [];
+  }
+
+  const variableTypeAttr = move.getAttrs("VariableMoveTypeAttr")[0];
+  return (variableTypeAttr?.getTypesForItemSpawn(pokemon, move) ?? [move.type]).filter(isRegularItemType);
 }
 
 export class AttackTypeBoosterModifierType
@@ -1220,6 +1326,50 @@ export class PokemonMultiHitModifierType extends PokemonHeldItemModifierType {
   }
 }
 
+export class TypeGemModifierType extends PokemonHeldItemModifierType implements GeneratedPersistentModifierType {
+  public moveType: PokemonType;
+  public boostPercent: number;
+
+  constructor(moveType: PokemonType, boostPercent: number) {
+    super(
+      "",
+      `${TypeGemItem[moveType]?.toLowerCase()}`,
+      (_type, args) => new TypeGemModifier(this, (args[0] as Pokemon).id, moveType, boostPercent),
+      "type_gem",
+    );
+
+    this.moveType = moveType;
+    this.boostPercent = boostPercent;
+
+    const heldItemSelectFilter = this.selectFilter;
+    this.selectFilter = (pokemon: PlayerPokemon) => {
+      const heldItemResult = heldItemSelectFilter?.(pokemon);
+      if (heldItemResult != null) {
+        return heldItemResult;
+      }
+
+      return pokemon.getMoveset(true).some(move => move && getAttackMoveItemTypes(pokemon, move).includes(moveType))
+        ? null
+        : PartyUiHandler.NoEffectMessage;
+    };
+  }
+
+  get name(): string {
+    return i18next.t(`modifierType:TypeGemItem.${TypeGemItem[this.moveType]?.toLowerCase()}`);
+  }
+
+  getDescription(): string {
+    return i18next.t("modifierType:ModifierType.TypeGemModifierType.description", {
+      moveType: i18next.t(`pokemonInfo:type.${toCamelCase(PokemonType[this.moveType])}`),
+      boostPercent: this.boostPercent,
+    });
+  }
+
+  getPregenArgs(): any[] {
+    return [this.moveType];
+  }
+}
+
 export class LoadedDiceModifierType extends PokemonHeldItemModifierType {
   constructor(localeKey: string, iconImage: string) {
     super(
@@ -1467,6 +1617,52 @@ class AttackTypeBoosterModifierTypeGenerator extends ModifierTypeGenerator {
       for (const [type, typeWeight] of attackMoveTypeWeights.entries()) {
         if (randInt < weight + typeWeight) {
           return new AttackTypeBoosterModifierType(type, TYPE_BOOST_ITEM_BOOST_PERCENT);
+        }
+        weight += typeWeight;
+      }
+
+      return null;
+    });
+  }
+}
+
+class TypeGemModifierTypeGenerator extends ModifierTypeGenerator {
+  constructor() {
+    super((party: readonly Pokemon[], pregenArgs?: any[]) => {
+      if (pregenArgs && pregenArgs.length === 1 && pregenArgs[0] in PokemonType) {
+        const moveType = pregenArgs[0] as PokemonType;
+        return isRegularItemType(moveType) ? new TypeGemModifierType(moveType, TYPE_GEM_BOOST_PERCENT) : null;
+      }
+
+      const attackMoveTypeWeights = new Map<PokemonType, number>();
+      let totalWeight = 0;
+
+      for (const pokemon of party) {
+        if (!pokemon.isAllowedInChallenge()) {
+          continue;
+        }
+
+        for (const pokemonMove of pokemon.getMoveset()) {
+          for (const type of getAttackMoveItemTypes(pokemon, pokemonMove)) {
+            const currentWeight = attackMoveTypeWeights.get(type) ?? 0;
+            if (currentWeight < 3) {
+              attackMoveTypeWeights.set(type, currentWeight + 1);
+              totalWeight++;
+            }
+          }
+        }
+      }
+
+      if (attackMoveTypeWeights.size === 0) {
+        return null;
+      }
+
+      const randInt = randSeedInt(totalWeight);
+      let weight = 0;
+
+      for (const [type, typeWeight] of attackMoveTypeWeights.entries()) {
+        if (randInt < weight + typeWeight) {
+          return new TypeGemModifierType(type, TYPE_GEM_BOOST_PERCENT);
         }
         weight += typeWeight;
       }
@@ -1945,12 +2141,16 @@ export type GeneratorModifierOverride = {
       type?: Nature;
     }
   | {
-      name: keyof Pick<typeof modifierTypeInitObj, "ATTACK_TYPE_BOOSTER" | "TERA_SHARD">;
+      name: keyof Pick<typeof modifierTypeInitObj, "ATTACK_TYPE_BOOSTER" | "TERA_SHARD" | "TYPE_GEM">;
       type?: PokemonType;
     }
   | {
       name: keyof Pick<typeof modifierTypeInitObj, "BERRY">;
       type?: BerryType;
+    }
+  | {
+      name: keyof Pick<typeof modifierTypeInitObj, "Z_CRYSTAL">;
+      type?: ZCrystal;
     }
   | {
       name: keyof Pick<typeof modifierTypeInitObj, "EVOLUTION_ITEM" | "RARE_EVOLUTION_ITEM">;
@@ -2012,6 +2212,69 @@ const modifierTypeInitObj = Object.freeze({
       "tera_orb",
       (type, _args) => new TerastallizeAccessModifier(type),
     ),
+  Z_RING: () =>
+    new ModifierType(
+      "modifierType:ModifierType.Z_RING",
+      "z_ring",
+      (type, _args) => new ZMoveAccessModifier(type),
+    ),
+  Z_CRYSTAL: () =>
+    new ModifierTypeGenerator((party: readonly Pokemon[], pregenArgs?: any[]) => {
+      const zCrystalValues = Object.values(ZCrystal) as ZCrystal[];
+      if (pregenArgs && pregenArgs.length === 1 && zCrystalValues.includes(pregenArgs[0] as ZCrystal)) {
+        const zCrystal = pregenArgs[0] as ZCrystal;
+        return new ZCrystalModifierType(getZCrystalLocaleKey(zCrystal), zCrystal);
+      }
+
+      const isEnemyParty = party.some(pokemon => !pokemon.isPlayer());
+      if (!isEnemyParty && !hasZMoveAccessForParty(party)) {
+        return null;
+      }
+
+      const validCrystals = getValidZCrystalsForParty(party);
+      if (validCrystals.length === 0) {
+        return null;
+      }
+
+      const zCrystal = randSeedItem(validCrystals);
+      return new ZCrystalModifierType(getZCrystalLocaleKey(zCrystal), zCrystal);
+    }),
+  ALORAICHIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.ALORAICHIUM_Z", ZCrystal.ALORAICHIUM_Z),
+  BUGINIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.BUGINIUM_Z", ZCrystal.BUGINIUM_Z),
+  DARKINIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.DARKINIUM_Z", ZCrystal.DARKINIUM_Z),
+  DECIDIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.DECIDIUM_Z", ZCrystal.DECIDIUM_Z),
+  DRAGONIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.DRAGONIUM_Z", ZCrystal.DRAGONIUM_Z),
+  EEVIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.EEVIUM_Z", ZCrystal.EEVIUM_Z),
+  ELECTRIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.ELECTRIUM_Z", ZCrystal.ELECTRIUM_Z),
+  FAIRIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.FAIRIUM_Z", ZCrystal.FAIRIUM_Z),
+  FIGHTINIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.FIGHTINIUM_Z", ZCrystal.FIGHTINIUM_Z),
+  FIRIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.FIRIUM_Z", ZCrystal.FIRIUM_Z),
+  FLYINIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.FLYINIUM_Z", ZCrystal.FLYINIUM_Z),
+  GHOSTIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.GHOSTIUM_Z", ZCrystal.GHOSTIUM_Z),
+  GRASSIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.GRASSIUM_Z", ZCrystal.GRASSIUM_Z),
+  GROUNDIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.GROUNDIUM_Z", ZCrystal.GROUNDIUM_Z),
+  ICIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.ICIUM_Z", ZCrystal.ICIUM_Z),
+  INCINIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.INCINIUM_Z", ZCrystal.INCINIUM_Z),
+  KOMMONIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.KOMMONIUM_Z", ZCrystal.KOMMONIUM_Z),
+  LUNALIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.LUNALIUM_Z", ZCrystal.LUNALIUM_Z),
+  LYCANIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.LYCANIUM_Z", ZCrystal.LYCANIUM_Z),
+  MARSHADIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.MARSHADIUM_Z", ZCrystal.MARSHADIUM_Z),
+  MEWNIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.MEWNIUM_Z", ZCrystal.MEWNIUM_Z),
+  MIMIKIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.MIMIKIUM_Z", ZCrystal.MIMIKIUM_Z),
+  NORMALIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.NORMALIUM_Z", ZCrystal.NORMALIUM_Z),
+  PIKANIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.PIKANIUM_Z", ZCrystal.PIKANIUM_Z),
+  PIKASHUNIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.PIKASHUNIUM_Z", ZCrystal.PIKASHUNIUM_Z),
+  POISONIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.POISONIUM_Z", ZCrystal.POISONIUM_Z),
+  PRIMARIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.PRIMARIUM_Z", ZCrystal.PRIMARIUM_Z),
+  PSYCHIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.PSYCHIUM_Z", ZCrystal.PSYCHIUM_Z),
+  ROCKIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.ROCKIUM_Z", ZCrystal.ROCKIUM_Z),
+  SNORLIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.SNORLIUM_Z", ZCrystal.SNORLIUM_Z),
+  SOLGANIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.SOLGANIUM_Z", ZCrystal.SOLGANIUM_Z),
+  STEELIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.STEELIUM_Z", ZCrystal.STEELIUM_Z),
+  TAPUNIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.TAPUNIUM_Z", ZCrystal.TAPUNIUM_Z),
+  ULTRANECROZIUM_Z: () =>
+    new ZCrystalModifierType("modifierType:ModifierType.ULTRANECROZIUM_Z", ZCrystal.ULTRANECROZIUM_Z),
+  WATERIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.WATERIUM_Z", ZCrystal.WATERIUM_Z),
 
   MAP: () => new ModifierType("modifierType:ModifierType.MAP", "map", (type, _args) => new MapModifier(type)),
 
@@ -2084,12 +2347,7 @@ const modifierTypeInitObj = Object.freeze({
       (type, args) => new ResetNegativeStatStageModifier(type, (args[0] as Pokemon).id),
     ),
 
-  MIRROR_HERB: () =>
-    new PokemonHeldItemModifierType(
-      "modifierType:ModifierType.MIRROR_HERB",
-      "mirror_herb",
-      (type, args) => new MirrorHerbModifier(type, (args[0] as Pokemon).id),
-    ),
+  MIRROR_HERB: () => getMirrorHerbModifierType(),
 
   ETHER: () => new PokemonPpRestoreModifierType("modifierType:ModifierType.ETHER", "ether", 10),
   MAX_ETHER: () => new PokemonPpRestoreModifierType("modifierType:ModifierType.MAX_ETHER", "max_ether", -1),
@@ -2189,6 +2447,7 @@ const modifierTypeInitObj = Object.freeze({
   BASE_STAT_BOOSTER: () => new BaseStatBoosterModifierTypeGenerator(),
 
   ATTACK_TYPE_BOOSTER: () => new AttackTypeBoosterModifierTypeGenerator(),
+  TYPE_GEM: () => new TypeGemModifierTypeGenerator(),
 
   MINT: () =>
     new ModifierTypeGenerator((_party: readonly Pokemon[], pregenArgs?: any[]) => {
@@ -2243,19 +2502,10 @@ const modifierTypeInitObj = Object.freeze({
       if (pregenArgs && pregenArgs.length === 1 && pregenArgs[0] in BerryType) {
         return new BerryModifierType(pregenArgs[0] as BerryType);
       }
-      const berryTypes = getEnumValues(BerryType);
-      let randBerryType: BerryType;
-      const rand = randSeedInt(12);
-      if (rand < 2) {
-        randBerryType = BerryType.SITRUS;
-      } else if (rand < 4) {
-        randBerryType = BerryType.LUM;
-      } else if (rand < 6) {
-        randBerryType = BerryType.LEPPA;
-      } else {
-        randBerryType = berryTypes[randSeedInt(berryTypes.length - 3) + 2];
+      if (!randSeedInt(3)) {
+        return getMirrorHerbModifierType();
       }
-      return new BerryModifierType(randBerryType);
+      return getRandomBerryModifierType();
     }),
 
   TM_COMMON: () => new TmModifierTypeGenerator(ModifierTier.COMMON),
@@ -3333,6 +3583,8 @@ export function getPokeblockModifierTypeOption(
 const ModifierTypeConstructorMap = Object.freeze({
   ModifierTypeGenerator,
   PokemonHeldItemModifierType,
+  TypeGemModifierType,
+  ZCrystalModifierType,
 });
 
 /**

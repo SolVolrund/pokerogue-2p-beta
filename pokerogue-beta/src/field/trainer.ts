@@ -465,6 +465,27 @@ export class Trainer extends Phaser.GameObjects.Container {
     return ret;
   }
 
+  private getTeraPartyIndexForPokemon(pokemon: EnemyPokemon): number {
+    if (this.shouldUseTwoPlayerNamedPartnerParty() && !this.shouldUseTateLizaPairParty()) {
+      return globalScene.currentBattle.enemyParty
+        .filter(p => p.trainerSlot === pokemon.trainerSlot)
+        .findIndex(p => p.id === pokemon.id);
+    }
+
+    return pokemon.initialTeamIndex;
+  }
+
+  isInstantTeraTarget(pokemon: EnemyPokemon): boolean {
+    const config = this.getConfigForTrainerSlot(pokemon.trainerSlot);
+    const teraPartyIndex = this.getTeraPartyIndexForPokemon(pokemon);
+
+    return (
+      teraPartyIndex >= 0
+      && config.trainerAI.teraMode === TeraAIMode.INSTANT_TERA
+      && config.trainerAI.instantTeras.includes(teraPartyIndex)
+    );
+  }
+
   private getSpriteKeyForIndex(spriteIndex: number): string {
     const trainerSlot =
       spriteIndex === 1
@@ -1416,9 +1437,8 @@ export class Trainer extends Phaser.GameObjects.Container {
    */
   shouldTera(pokemon: EnemyPokemon): boolean {
     if (
-      this.config.trainerAI.teraMode === TeraAIMode.INSTANT_TERA
+      this.isInstantTeraTarget(pokemon)
       && !pokemon.isTerastallized
-      && this.config.trainerAI.instantTeras.includes(pokemon.initialTeamIndex)
       && !globalScene.currentBattle.enemyFaintsHistory.some(f => f.pokemon.id === pokemon.id)
     ) {
       return true;

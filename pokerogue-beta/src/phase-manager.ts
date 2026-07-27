@@ -50,6 +50,7 @@ import { LevelUpPhase } from "#phases/level-up-phase";
 import { LoadMoveAnimPhase } from "#phases/load-move-anim-phase";
 import { LoginPhase } from "#phases/login-phase";
 import { MessagePhase } from "#phases/message-phase";
+import { MiningPhase } from "#phases/mining-phase";
 import { ModifierRewardPhase } from "#phases/modifier-reward-phase";
 import { MoneyRewardPhase } from "#phases/money-reward-phase";
 import { MoveAnimPhase } from "#phases/move-anim-phase";
@@ -115,6 +116,7 @@ import { UnavailablePhase } from "#phases/unavailable-phase";
 import { UnlockPhase } from "#phases/unlock-phase";
 import { VictoryPhase } from "#phases/victory-phase";
 import { WeatherEffectPhase } from "#phases/weather-effect-phase";
+import { ZMovePhase } from "#phases/z-move-phase";
 import type { PhaseConditionFunc, PhaseMap, PhaseString } from "#types/phase-types";
 import type { NonEmptyTuple } from "type-fest";
 import { ContestAppealPhase } from "./phases/contests/contest-appeal-phase";
@@ -185,6 +187,7 @@ const PHASES = Object.freeze({
   LoadMoveAnimPhase,
   LoginPhase,
   MessagePhase,
+  MiningPhase,
   ModifierRewardPhase,
   MoneyRewardPhase,
   MoveAnimPhase,
@@ -248,6 +251,7 @@ const PHASES = Object.freeze({
   UnlockPhase,
   VictoryPhase,
   WeatherEffectPhase,
+  ZMovePhase,
 });
 
 // This type export cannot be moved to `@types`, as `Phases` is intentionally private to this file

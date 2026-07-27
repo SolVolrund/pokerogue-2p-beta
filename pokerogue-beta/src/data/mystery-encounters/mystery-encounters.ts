@@ -22,6 +22,7 @@ import { GtsMalfunctionEncounter } from "#mystery-encounters/gts-malfunction-enc
 import { ItIsDangerousToGoAloneEncounter } from "#mystery-encounters/it-is-dangerous-to-go-alone-encounter";
 import { LegendaryConflictEncounter } from "#mystery-encounters/legendary-conflict-encounter";
 import { LostAtSeaEncounter } from "#mystery-encounters/lost-at-sea-encounter";
+import { MiningEncounter } from "#mystery-encounters/mining-encounter";
 import { MysteriousChallengersEncounter } from "#mystery-encounters/mysterious-challengers-encounter";
 import { MysteriousChestEncounter } from "#mystery-encounters/mysterious-chest-encounter";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
@@ -220,22 +221,22 @@ export const mysteryEncountersByBiome = new Map<BiomeId, MysteryEncounterType[]>
   [BiomeId.SEABED, []],
   [BiomeId.MOUNTAIN, []],
   [BiomeId.BADLANDS, [MysteryEncounterType.DANCING_LESSONS]],
-  [BiomeId.CAVE, [MysteryEncounterType.THE_STRONG_STUFF]],
+  [BiomeId.CAVE, [MysteryEncounterType.THE_STRONG_STUFF, MysteryEncounterType.MINING]],
   [BiomeId.DESERT, [MysteryEncounterType.DANCING_LESSONS]],
-  [BiomeId.ICE_CAVE, []],
+  [BiomeId.ICE_CAVE, [MysteryEncounterType.MINING]],
   [BiomeId.MEADOW, []],
   [BiomeId.POWER_PLANT, []],
   [BiomeId.VOLCANO, [MysteryEncounterType.FIERY_FALLOUT, MysteryEncounterType.DANCING_LESSONS]],
   [BiomeId.GRAVEYARD, []],
   [BiomeId.DOJO, []],
   [BiomeId.FACTORY, []],
-  [BiomeId.RUINS, []],
+  [BiomeId.RUINS, [MysteryEncounterType.MINING]],
   [BiomeId.WASTELAND, [MysteryEncounterType.DANCING_LESSONS]],
   [BiomeId.ABYSS, [MysteryEncounterType.DANCING_LESSONS]],
   [BiomeId.SPACE, [MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER]],
   [BiomeId.CONSTRUCTION_SITE, []],
   [BiomeId.JUNGLE, [MysteryEncounterType.SAFARI_ZONE]],
-  [BiomeId.FAIRY_CAVE, []],
+  [BiomeId.FAIRY_CAVE, [MysteryEncounterType.MINING]],
   [BiomeId.TEMPLE, []],
   [BiomeId.SLUM, []],
   [BiomeId.SNOWY_FOREST, []],
@@ -286,6 +287,7 @@ export function initMysteryEncounters() {
   allMysteryEncounters[MysteryEncounterType.FARAWAY_ISLAND_TREASURE] = FarawayIslandTreasureEncounter;
   allMysteryEncounters[MysteryEncounterType.CONTEST_HALL] = ContestHallEncounter;
   allMysteryEncounters[MysteryEncounterType.DEJA_VU] = DejaVuEncounter;
+  allMysteryEncounters[MysteryEncounterType.MINING] = MiningEncounter;
 
   // Add extreme encounters to biome map
   extremeBiomeEncounters.forEach(encounter => {

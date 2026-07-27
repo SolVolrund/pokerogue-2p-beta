@@ -15,6 +15,7 @@ import { PartyUiHandler } from "#ui/party-ui-handler";
 import { addTextObject } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { canTerastallize } from "#utils/pokemon-utils";
+import { getZMoveForPokemonMove } from "#utils/z-move-utils";
 import i18next from "i18next";
 
 export class CommandUiHandler extends UiHandler {
@@ -22,6 +23,8 @@ export class CommandUiHandler extends UiHandler {
   private cursorObj: Phaser.GameObjects.Image | null;
 
   private teraButton: Phaser.GameObjects.Sprite;
+  private zMoveButton: Phaser.GameObjects.Sprite;
+  private zMoveButtonHighlight: Phaser.GameObjects.Sprite;
 
   protected fieldIndex = 0;
   protected cursor2 = 0;
@@ -66,6 +69,19 @@ export class CommandUiHandler extends UiHandler {
     });
     this.commandsContainer.add(this.teraButton);
 
+    this.zMoveButtonHighlight = globalScene.add.sprite(-52, 15, "items", "z_ring");
+    this.zMoveButtonHighlight.setName("z-move-button-highlight");
+    this.zMoveButtonHighlight.setScale(0.6);
+    this.zMoveButtonHighlight.setTintFill(0xffffcc);
+    this.zMoveButtonHighlight.setAlpha(0.55);
+    this.zMoveButtonHighlight.setVisible(false);
+    this.commandsContainer.add(this.zMoveButtonHighlight);
+
+    this.zMoveButton = globalScene.add.sprite(-52, 15, "items", "z_ring");
+    this.zMoveButton.setName("z-move-button");
+    this.zMoveButton.setScale(0.45);
+    this.commandsContainer.add(this.zMoveButton);
+
     for (let c = 0; c < commands.length; c++) {
       const commandText = addTextObject(
         c % 2 === 0 ? 0 : 55.8,
@@ -105,7 +121,10 @@ export class CommandUiHandler extends UiHandler {
 
     this.commandsContainer.setVisible(true);
 
-    if (this.canTera()) {
+    const canTera = this.canTera();
+    const canZMove = this.canZMove();
+
+    if (canTera) {
       this.teraButton.setVisible(true);
       this.teraButton.setFrame(PokemonType[this.getActivePokemon()!.getTeraType()].toLowerCase());
     } else {
@@ -114,7 +133,18 @@ export class CommandUiHandler extends UiHandler {
         this.setCursor(Command.FIGHT);
       }
     }
+    if (canZMove) {
+      this.updateZMoveButtonFrame();
+      this.zMoveButton.setVisible(true);
+    } else {
+      this.zMoveButton.setVisible(false);
+      this.zMoveButtonHighlight.setVisible(false);
+      if (this.getCursor() === Command.Z_MOVE) {
+        this.setCursor(Command.FIGHT);
+      }
+    }
     this.toggleTeraButton();
+    this.toggleZMoveButton();
 
     const pokemonName = (
       this.getActivePokemon()
@@ -125,7 +155,7 @@ export class CommandUiHandler extends UiHandler {
     messageHandler.bg.setVisible(true);
     messageHandler.commandWindow.setVisible(true);
     messageHandler.movesWindowContainer.setVisible(false);
-    messageHandler.message.setWordWrapWidth(this.canTera() ? 910 : 1110);
+    messageHandler.message.setWordWrapWidth(canTera || canZMove ? 910 : 1110);
     messageHandler.showText(i18next.t("commandUiHandler:actionMessage", { pokemonName }), 0);
 
     if (this.getCursor() === Command.POKEMON) {
@@ -176,6 +206,14 @@ export class CommandUiHandler extends UiHandler {
             );
             success = true;
             break;
+          case Command.Z_MOVE:
+            ui.setMode(
+              UiMode.FIGHT,
+              commandPhase.getFieldIndex(),
+              Command.Z_MOVE,
+            );
+            success = true;
+            break;
         }
       } else {
         (globalScene.phaseManager.getCurrentPhase() as CommandPhase).cancel();
@@ -195,17 +233,19 @@ export class CommandUiHandler extends UiHandler {
         case Button.LEFT:
           if (cursor === Command.BALL || cursor === Command.RUN) {
             success = this.setCursor(cursor - 1);
-          } else if ((cursor === Command.FIGHT || cursor === Command.POKEMON) && this.canTera()) {
-            success = this.setCursor(Command.TERA);
-            this.toggleTeraButton();
+          } else if ((cursor === Command.FIGHT || cursor === Command.POKEMON) && (this.canTera() || this.canZMove())) {
+            success = this.setCursor(this.canTera() ? Command.TERA : Command.Z_MOVE);
+          } else if (cursor === Command.TERA && this.canZMove()) {
+            success = this.setCursor(Command.Z_MOVE);
           }
           break;
         case Button.RIGHT:
           if (cursor === Command.FIGHT || cursor === Command.POKEMON) {
             success = this.setCursor(cursor + 1);
+          } else if (cursor === Command.Z_MOVE) {
+            success = this.setCursor(this.canTera() ? Command.TERA : Command.FIGHT);
           } else if (cursor === Command.TERA) {
             success = this.setCursor(Command.FIGHT);
-            this.toggleTeraButton();
           }
           break;
       }
@@ -327,6 +367,48 @@ export class CommandUiHandler extends UiHandler {
     return canTera && currentTeras + plannedTera < MAX_TERAS_PER_ARENA;
   }
 
+  canZMove(): boolean {
+    const activePokemon = this.getActivePokemon();
+    if (!activePokemon) {
+      return false;
+    }
+
+    const playerIndex = globalScene.getPlayerIndexForPokemon(activePokemon) ?? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
+    const plannedZMoves = globalScene.getPlayerFieldOwners().reduce<number>((count, owner, fieldSlot) => {
+      if (owner !== playerIndex || fieldSlot === this.fieldIndex) {
+        return count;
+      }
+
+      const battlerIndex = globalScene.getPlayerBattlerIndex(fieldSlot);
+      return count + +(globalScene.currentBattle.preTurnCommands[battlerIndex]?.command === Command.Z_MOVE);
+    }, 0);
+
+    return !!this.getUsableZMoveSelection(activePokemon) && globalScene.arena.isPlayerZMoveReady(playerIndex) && plannedZMoves === 0;
+  }
+
+  private getUsableZMoveSelection(activePokemon = this.getActivePokemon()) {
+    if (!activePokemon) {
+      return;
+    }
+
+    for (const move of activePokemon.getMoveset()) {
+      const selection = getZMoveForPokemonMove(activePokemon, move);
+      if (selection) {
+        return selection;
+      }
+    }
+  }
+
+  private updateZMoveButtonFrame(): void {
+    const selection = this.getUsableZMoveSelection();
+    if (!selection) {
+      return;
+    }
+
+    this.zMoveButton.setFrame(selection.zCrystal);
+    this.zMoveButtonHighlight.setFrame(selection.zCrystal);
+  }
+
   toggleTeraButton() {
     const activePokemon = this.getActivePokemon();
     if (!activePokemon) {
@@ -339,6 +421,14 @@ export class CommandUiHandler extends UiHandler {
       teraColor: getTypeRgb(activePokemon.getTeraType()),
       isTerastallized: this.getCursor() === Command.TERA,
     });
+  }
+
+  toggleZMoveButton() {
+    const selected = this.getCursor() === Command.Z_MOVE;
+
+    this.updateZMoveButtonFrame();
+    this.zMoveButton?.setAlpha(selected ? 1 : 0.8);
+    this.zMoveButtonHighlight?.setVisible(selected && this.zMoveButton.visible);
   }
 
   getCursor(): number {
@@ -362,7 +452,10 @@ export class CommandUiHandler extends UiHandler {
       this.commandsContainer.add(this.cursorObj);
     }
 
-    if (cursor === Command.TERA) {
+    this.toggleTeraButton();
+    this.toggleZMoveButton();
+
+    if (cursor === Command.TERA || cursor === Command.Z_MOVE) {
       this.cursorObj.setVisible(false);
     } else {
       this.cursorObj.setPosition(-5 + (cursor % 2 === 1 ? 56 : 0), 8 + (cursor >= 2 ? 16 : 0));
@@ -382,6 +475,8 @@ export class CommandUiHandler extends UiHandler {
     this.getUi().getMessageHandler().commandWindow?.setVisible(false);
     this.commandsContainer?.setVisible(false);
     this.teraButton?.setVisible(false);
+    this.zMoveButton?.setVisible(false);
+    this.zMoveButtonHighlight?.setVisible(false);
     this.eraseCursor();
   }
 

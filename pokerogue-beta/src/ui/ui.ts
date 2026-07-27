@@ -69,6 +69,7 @@ import { executeIf } from "#utils/common";
 import i18next from "i18next";
 import { AdminUiHandler } from "./handlers/admin-ui-handler";
 import { AlphWallUiHandler } from "./handlers/alph-wall-ui-handler";
+import { MiningInputUiHandler } from "./handlers/mining-input-ui-handler";
 import { RenameRunFormUiHandler } from "./handlers/rename-run-ui-handler";
 
 const transitionModes = [
@@ -120,6 +121,7 @@ const noTransitionModes = [
   UiMode.RUN_INFO,
   UiMode.CHANGE_PASSWORD_FORM,
   UiMode.CONTEST_INPUT,
+  UiMode.MINING_INPUT,
 ];
 
 // biome-ignore lint/style/useNamingConvention: a unique case (only 2 letters)
@@ -199,6 +201,7 @@ export class UI extends Phaser.GameObjects.Container {
       new ChangePasswordFormUiHandler(),
       new SettingsEventsUiHandler(),
       new ContestInputUiHandler(),
+      new MiningInputUiHandler(),
       new AlphWallUiHandler(),
     ];
   }

@@ -28,6 +28,7 @@ import type { MoveTargetSet } from "#types/move-target-set";
 import type { TurnMove } from "#types/turn-move";
 import { shouldAiRepositionToCenter } from "#utils/ai-targeting";
 import { getComputerPartnerImprovedSwitchIndex, isComputerPartnerFieldIndex } from "#utils/computer-partner-ai";
+import { getZMoveForPokemonMove } from "#utils/z-move-utils";
 import {
   type ComputerPartnerCaptureDecisionOptions,
   estimateComputerPartnerMoveDamageRatio,
@@ -411,6 +412,52 @@ export class CommandPhase extends FieldPhase {
     );
   }
 
+  private upgradeComputerPartnerZMove(
+    playerIndex: PlayerIndex,
+    playerPokemon: PlayerPokemon,
+    turnMove: TurnMove,
+  ): TurnMove {
+    if (
+      turnMove.move === MoveId.NONE
+      || turnMove.useMode !== MoveUseMode.NORMAL
+      || this.getComputerPartnerBlockedCaptureTargets(playerIndex).length > 0
+      || !globalScene.arena.isPlayerZMoveReady(playerIndex)
+    ) {
+      return turnMove;
+    }
+
+    const sourceMove = playerPokemon.getMoveset().find(move => move.moveId === turnMove.move);
+    const zMoveSelection = sourceMove ? getZMoveForPokemonMove(playerPokemon, sourceMove) : undefined;
+    if (!zMoveSelection) {
+      return turnMove;
+    }
+
+    return {
+      ...turnMove,
+      move: zMoveSelection.moveId,
+      targets: playerPokemon.getNextTargets(zMoveSelection.moveId),
+      zMove: {
+        sourceMove: zMoveSelection.sourceMoveId,
+        ...(zMoveSelection.power !== undefined ? { power: zMoveSelection.power } : {}),
+      },
+    };
+  }
+
+  private queueComputerPartnerFightCommand(nextMove: TurnMove): void {
+    if (nextMove.zMove) {
+      this.setPreTurnCommand({
+        command: Command.Z_MOVE,
+        targets: [this.getBattlerIndex()],
+      });
+    }
+
+    this.setTurnCommand({
+      command: Command.FIGHT,
+      move: nextMove,
+      skip: nextMove.move === MoveId.NONE,
+    });
+  }
+
   private getQueuedCaptureDamageRatios(excludedBattlerIndex: number): Map<number, number> {
     const plannedDamageRatios = new Map<number, number>();
     const enemyTargetsByBattlerIndex = new Map<number, EnemyPokemon>(
@@ -502,12 +549,12 @@ export class CommandPhase extends FieldPhase {
     playerPokemon.aiType = globalScene.plannerAiEnabled ? AiType.PLANNER : AiType.SMART;
     globalScene.aiCommandInProgress = true;
     try {
-      const nextMove = this.protectReservedCaptureTargets(playerIndex, playerPokemon, playerPokemon.getNextMove());
-      this.setTurnCommand({
-        command: Command.FIGHT,
-        move: nextMove,
-        skip: nextMove.move === MoveId.NONE,
-      });
+      const nextMove = this.upgradeComputerPartnerZMove(
+        playerIndex,
+        playerPokemon,
+        this.protectReservedCaptureTargets(playerIndex, playerPokemon, playerPokemon.getNextMove()),
+      );
+      this.queueComputerPartnerFightCommand(nextMove);
     } finally {
       playerPokemon.aiType = previousAiType;
       globalScene.aiCommandInProgress = false;
@@ -539,12 +586,12 @@ export class CommandPhase extends FieldPhase {
     playerPokemon.aiType = globalScene.plannerAiEnabled ? AiType.PLANNER : AiType.SMART;
     globalScene.aiCommandInProgress = true;
     try {
-      const nextMove = this.protectReservedCaptureTargets(playerIndex, playerPokemon, playerPokemon.getNextMove());
-      this.setTurnCommand({
-        command: Command.FIGHT,
-        move: nextMove,
-        skip: nextMove.move === MoveId.NONE,
-      });
+      const nextMove = this.upgradeComputerPartnerZMove(
+        playerIndex,
+        playerPokemon,
+        this.protectReservedCaptureTargets(playerIndex, playerPokemon, playerPokemon.getNextMove()),
+      );
+      this.queueComputerPartnerFightCommand(nextMove);
     } finally {
       playerPokemon.aiType = previousAiType;
       globalScene.aiCommandInProgress = false;
@@ -756,13 +803,13 @@ export class CommandPhase extends FieldPhase {
    * - Validates whether the move can be used, using struggle if not
    * - Constructs the turn command and inserts it into the battle's turn commands
    *
-   * @param command - The command to handle (FIGHT or TERA)
+   * @param command - The command to handle (FIGHT, TERA, or Z_MOVE)
    * @param cursor - The index that the cursor is placed on, or -1 if no move can be selected.
    * @param ignorePP - Whether to ignore PP when checking if the move can be used.
    * @param move - The move to force the command to use, if any.
    */
   private handleFightCommand(
-    command: Command.FIGHT | Command.TERA,
+    command: Command.FIGHT | Command.TERA | Command.Z_MOVE,
     cursor: number,
     useMode: MoveUseMode = MoveUseMode.NORMAL,
     move?: TurnMove,
@@ -781,12 +828,57 @@ export class CommandPhase extends FieldPhase {
       return false;
     }
 
-    const moveId = useStruggle ? MoveId.STRUGGLE : this.computeMoveId(playerPokemon, cursor, move);
+    const sourcePokemonMove = cursor > -1 ? playerPokemon.getMoveset()[cursor] : undefined;
+    const zMoveSelection =
+      !useStruggle && command === Command.Z_MOVE && sourcePokemonMove
+        ? getZMoveForPokemonMove(playerPokemon, sourcePokemonMove)
+        : undefined;
+
+    if (command === Command.Z_MOVE && !zMoveSelection) {
+      this.queueFightErrorMessage(i18next.t("battle:noUsableZMove"));
+      return false;
+    }
+
+    const playerIndex = globalScene.getPlayerIndexForPokemon(playerPokemon) ?? 0;
+    if (command === Command.Z_MOVE) {
+      const remainingRechargeWaves = globalScene.arena.getPlayerZMoveRechargeWavesRemaining(playerIndex);
+      if (remainingRechargeWaves > 0) {
+        this.queueFightErrorMessage(i18next.t("battle:zRingRecharging", { waves: remainingRechargeWaves }));
+        return false;
+      }
+
+      const plannedZMoves = globalScene.getPlayerFieldOwners().reduce<number>((count, owner, fieldSlot) => {
+        if (owner !== playerIndex || fieldSlot === this.fieldIndex) {
+          return count;
+        }
+
+        const battlerIndex = globalScene.getPlayerBattlerIndex(fieldSlot);
+        return count + +(globalScene.currentBattle.preTurnCommands[battlerIndex]?.command === Command.Z_MOVE);
+      }, 0);
+      if (plannedZMoves > 0) {
+        this.queueFightErrorMessage(i18next.t("battle:noUsableZMove"));
+        return false;
+      }
+    }
+
+    const moveId = useStruggle ? MoveId.STRUGGLE : (zMoveSelection?.moveId ?? this.computeMoveId(playerPokemon, cursor, move));
 
     const turnCommand: TurnCommand = {
       command: Command.FIGHT,
       cursor,
-      move: { move: moveId, targets: [], useMode },
+      move: {
+        move: moveId,
+        targets: [],
+        useMode,
+        ...(zMoveSelection
+          ? {
+              zMove: {
+                sourceMove: zMoveSelection.sourceMoveId,
+                ...(zMoveSelection.power !== undefined ? { power: zMoveSelection.power } : {}),
+              },
+            }
+          : {}),
+      },
       args: [useMode, move],
     };
     const preTurnCommand: TurnCommand = {
@@ -1204,7 +1296,12 @@ export class CommandPhase extends FieldPhase {
    * @param move - For {@linkcode Command.FIGHT}, the move to use
    * @returns Whether the command was successful
    */
-  handleCommand(command: Command.FIGHT | Command.TERA, cursor: number, useMode?: MoveUseMode, move?: TurnMove): boolean;
+  handleCommand(
+    command: Command.FIGHT | Command.TERA | Command.Z_MOVE,
+    cursor: number,
+    useMode?: MoveUseMode,
+    move?: TurnMove,
+  ): boolean;
   handleCommand(command: Command.POKEMON, cursor: number, useBaton: boolean): boolean;
   handleCommand(command: Command.REPOSITION, cursor: FieldPosition): boolean;
   handleCommand(command: Command.BALL | Command.RUN, cursor: number): boolean;
@@ -1220,6 +1317,7 @@ export class CommandPhase extends FieldPhase {
 
     switch (command) {
       case Command.TERA:
+      case Command.Z_MOVE:
       case Command.FIGHT:
         success = this.handleFightCommand(command, cursor, typeof useMode === "boolean" ? undefined : useMode, move);
         break;

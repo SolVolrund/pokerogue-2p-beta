@@ -1,6 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
 import type { PlayerIndex } from "#app/battle-scene";
+import { ExpGainsSpeed } from "#enums/exp-gains-speed";
 import type { PlayerPokemon } from "#field/pokemon";
 import { ExpBoosterModifier } from "#modifiers/modifier";
 import { PlayerPartyMemberPokemonPhase } from "#phases/player-party-member-pokemon-phase";
@@ -32,6 +33,18 @@ export class ExpPhase extends PlayerPartyMemberPokemonPhase {
     const exp = new ValueHolder(this.expValue);
     globalScene.applyModifiersForPlayer(ExpBoosterModifier, this.playerIndex, exp);
     exp.value = Math.floor(exp.value);
+
+    if (globalScene.expGainsSpeed === ExpGainsSpeed.SKIP) {
+      const lastLevel = pokemon.level;
+      pokemon.addExp(exp.value);
+      const newLevel = pokemon.level;
+      if (newLevel > lastLevel) {
+        globalScene.phaseManager.unshiftNew("LevelUpPhase", this.partyMemberIndex, lastLevel, newLevel, this.playerIndex);
+      }
+      pokemon.showExpGain(lastLevel).then(() => this.end());
+      return;
+    }
+
     globalScene.ui.showText(
       i18next.t("battle:expGain", {
         pokemonName: getPokemonNameWithAffix(pokemon),

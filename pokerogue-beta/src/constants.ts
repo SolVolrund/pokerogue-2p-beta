@@ -113,6 +113,9 @@ export const RARE_CANDY_FRIENDSHIP_CAP = 200;
  */
 export const MAX_TERAS_PER_ARENA = 1;
 
+/** How many waves must pass before the same player's Z-Ring can be used again. */
+export const Z_RING_RECHARGE_WAVES = 15;
+
 /** Moves that can only be learned with a memory-mushroom */
 export const RELEARN_MOVE = -1;
 

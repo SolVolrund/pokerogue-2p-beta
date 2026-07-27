@@ -608,8 +608,8 @@ export const BerriesAboundEncounter: MysteryEncounter = MysteryEncounterBuilder.
       enemySpeed: bossPokemon.getStat(Stat.SPD),
       numBerries,
     } satisfies BerriesAboundData;
-    const fastestPokemon =
-      fastestPokemonByPlayer[globalScene.activePlayerIndex] ?? getFastestPokemonForPlayer(globalScene.activePlayerIndex);
+    const initialPlayerIndex = getMysteryEncounterPlayerIndexes()[0] ?? 0;
+    const fastestPokemon = fastestPokemonByPlayer[initialPlayerIndex] ?? getFastestPokemonForPlayer(initialPlayerIndex);
     encounter.setDialogueToken("fastestPokemon", fastestPokemon.getNameToRender());
 
     return true;

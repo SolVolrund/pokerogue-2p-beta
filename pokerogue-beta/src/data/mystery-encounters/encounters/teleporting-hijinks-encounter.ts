@@ -530,7 +530,7 @@ async function animateBiomeChange(nextBiome: BiomeId): Promise<void> {
 
   const previousBiome = globalScene.arena.biomeId;
   await globalScene.loadBiomeAssets(nextBiome);
-  globalScene.newArena(nextBiome);
+  globalScene.newArena(nextBiome, 0, true);
 
   const biomeKey = getBiomeAssetKey(nextBiome);
   const bgTexture = `${biomeKey}_bg`;

@@ -26,6 +26,8 @@ import {
   TerastallizeModifierType,
   TmModifierType,
   TurnHeldItemTransferModifierType,
+  TypeGemModifierType,
+  ZCrystalModifierType,
   type ModifierType,
   type ModifierTypeOption,
 } from "#modifiers/modifier-type";
@@ -39,6 +41,7 @@ import {
   type ComputerPartnerRole,
 } from "#utils/computer-partner-profile";
 import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
+import { getValidZCrystalsForPokemon } from "#utils/z-move-utils";
 
 export type ComputerPartnerRecoveryItemId =
   | "POTION"
@@ -164,20 +167,21 @@ const REWARD_PRIORITY: Partial<Record<ComputerPartnerRecoveryItemId | string, nu
   LEFTOVERS: 1,
   DYNAMAX_BAND: 2,
   MEGA_BRACELET: 3,
-  RARE_FORM_CHANGE_ITEM: 4,
-  GRIP_CLAW: 5,
-  BERRY_POUCH: 6,
-  SHELL_BELL: 7,
-  SCOPE_LENS: 8,
-  KINGS_ROCK: 9,
-  FOCUS_BAND: 10,
-  BATON: 11,
-  CATCHING_CHARM: 12,
-  ABILITY_CHARM: 13,
-  SOUL_DEW: 14,
-  ROGUE_BALL: 15,
-  RELIC_GOLD: 16,
-  SUPER_EXP_CHARM: 17,
+  Z_RING: 4,
+  RARE_FORM_CHANGE_ITEM: 5,
+  GRIP_CLAW: 6,
+  BERRY_POUCH: 7,
+  SHELL_BELL: 8,
+  SCOPE_LENS: 9,
+  KINGS_ROCK: 10,
+  FOCUS_BAND: 11,
+  BATON: 12,
+  CATCHING_CHARM: 13,
+  ABILITY_CHARM: 14,
+  SOUL_DEW: 15,
+  ROGUE_BALL: 16,
+  RELIC_GOLD: 17,
+  SUPER_EXP_CHARM: 18,
 
   GOLDEN_PUNCH: 1,
   RARE_EVOLUTION_ITEM: 2,
@@ -212,6 +216,8 @@ const REWARD_PRIORITY: Partial<Record<ComputerPartnerRecoveryItemId | string, nu
   BASE_STAT_BOOSTER: 3,
   TERA_SHARD: 4,
   TM_GREAT: 5,
+  TYPE_GEM: 6,
+  Z_CRYSTAL: 6,
   GREAT_BALL: 6,
   PP_UP: 7,
   SACRED_ASH: 8,
@@ -422,6 +428,45 @@ function chooseAttackTypeBoosterTarget(type: AttackTypeBoosterModifierType, part
   return getTargetablePartyIndexes(type, party, pokemon =>
     pokemon.isOfType(type.moveType, { includeTeraType: false, returnOriginalTypesIfStellar: true }),
   )[0];
+}
+
+function chooseTypeGemTarget(type: TypeGemModifierType, party: PlayerPokemon[]): RewardTarget | undefined {
+  return chooseScoredPokemonTarget(type, party, (pokemon, targetPokemonIndex) => {
+    const matchingMoves = getKnownMoves(pokemon)
+      .map(move => move.getMove())
+      .filter(move => move.is("AttackMove") && move.type === type.moveType);
+    if (!matchingMoves.length) {
+      return undefined;
+    }
+
+    const strongestMovePower = matchingMoves.map(move => move.power).sort((a, b) => b - a)[0] ?? 0;
+    const stabBonus = pokemon.isOfType(type.moveType, {
+      includeTeraType: false,
+      returnOriginalTypesIfStellar: true,
+    })
+      ? 50
+      : 0;
+
+    return strongestMovePower + matchingMoves.length * 10 + stabBonus + getAttackingStatScore(pokemon, targetPokemonIndex) / 10;
+  });
+}
+
+function chooseZCrystalTarget(
+  type: ZCrystalModifierType,
+  party: PlayerPokemon[],
+  profile?: ComputerPartnerProfile,
+): RewardTarget | undefined {
+  return chooseScoredPokemonTarget(type, party, (pokemon, targetPokemonIndex) => {
+    if (!getValidZCrystalsForPokemon(pokemon).includes(type.zCrystal)) {
+      return undefined;
+    }
+
+    const aceBonus = profile && isComputerPartnerAcePokemon(pokemon, profile) ? 120 : 0;
+    const usableCrystalCount = getKnownMoves(pokemon)
+      .filter(move => getValidZCrystalsForPokemon(pokemon).includes(type.zCrystal)).length;
+
+    return aceBonus + usableCrystalCount * 35 + getAttackingStatScore(pokemon, targetPokemonIndex) / 10;
+  });
 }
 
 function chooseLoadedDiceTarget(type: PokemonModifierType, party: PlayerPokemon[]): RewardTarget | undefined {
@@ -1096,6 +1141,14 @@ function getRewardTarget(
 
   if (itemId === "LOADED_DICE") {
     return chooseLoadedDiceTarget(type, party);
+  }
+
+  if (type instanceof TypeGemModifierType) {
+    return chooseTypeGemTarget(type, party);
+  }
+
+  if (type instanceof ZCrystalModifierType) {
+    return chooseZCrystalTarget(type, party, context.computerPartnerProfile);
   }
 
   if (type instanceof AttackTypeBoosterModifierType) {
