@@ -320,6 +320,16 @@ function moveHeldItemModifiers(
   }
 }
 
+function markGtsMalfunctionCustody(pokemon: PlayerPokemon, originalPlayerIndex: PlayerIndex): void {
+  pokemon.gtsMalfunctionOriginalPlayerIndex ??= originalPlayerIndex;
+}
+
+function updateGtsMalfunctionCustody(pokemon: PlayerPokemon, currentPlayerIndex: PlayerIndex): void {
+  if (pokemon.gtsMalfunctionOriginalPlayerIndex === currentPlayerIndex) {
+    pokemon.gtsMalfunctionOriginalPlayerIndex = undefined;
+  }
+}
+
 function swapPlayerPokemon(
   firstPlayerIndex: PlayerIndex,
   firstPartyIndex: number,
@@ -338,8 +348,14 @@ function swapPlayerPokemon(
   const firstPokemonHeldItems = getPlayerHeldItemModifiers(firstPokemon, firstPlayerIndex);
   const secondPokemonHeldItems = getPlayerHeldItemModifiers(secondPokemon, secondPlayerIndex);
 
+  markGtsMalfunctionCustody(firstPokemon, firstPlayerIndex);
+  markGtsMalfunctionCustody(secondPokemon, secondPlayerIndex);
+
   firstParty[firstPartyIndex] = secondPokemon;
   secondParty[secondPartyIndex] = firstPokemon;
+
+  updateGtsMalfunctionCustody(secondPokemon, firstPlayerIndex);
+  updateGtsMalfunctionCustody(firstPokemon, secondPlayerIndex);
 
   moveHeldItemModifiers(firstPokemonHeldItems, firstPlayerIndex, secondPlayerIndex);
   moveHeldItemModifiers(secondPokemonHeldItems, secondPlayerIndex, firstPlayerIndex);

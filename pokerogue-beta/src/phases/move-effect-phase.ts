@@ -676,7 +676,7 @@ export class MoveEffectPhase extends PokemonPhase {
    */
   protected applyMoveDamage(user: Pokemon, target: Pokemon, effectiveness: TypeDamageMultiplier): MoveDamageTuple {
     // TODO: make sure this doesn't break anything, possibly find better solution
-    if (this.move.hasAttr("HealOnAllyAttr") && target === user.getAlly()) {
+    if (this.move.hasAttr("HealOnAllyAttr") && user.isAlly(target)) {
       return [HitCheckResult.HIT, 0, false];
     }
 

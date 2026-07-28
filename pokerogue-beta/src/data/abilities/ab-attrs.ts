@@ -757,8 +757,7 @@ export class PostDefendStatStageChangeAbAttr extends PostDefendAbAttr {
     }
 
     if (this.allOthers) {
-      const ally = pokemon.getAlly();
-      const otherPokemon = ally == null ? pokemon.getOpponents() : pokemon.getOpponents().concat([ally]);
+      const otherPokemon = pokemon.getOpponents().concat(pokemon.getAllies());
       for (const other of otherPokemon) {
         globalScene.phaseManager.unshiftNew("StatStageChangePhase", {
           battlerIndex: other.getBattlerIndex(),
@@ -2460,6 +2459,7 @@ export class PostSummonStatStageChangeAbAttr extends PostSummonAbAttr {
 export class PostSummonAllyHealAbAttr extends PostSummonAbAttr {
   private readonly healRatio: number;
   private readonly showAnim: boolean;
+  private target: Pokemon | undefined;
 
   constructor(healRatio: number, showAnim = false) {
     super();
@@ -2469,11 +2469,17 @@ export class PostSummonAllyHealAbAttr extends PostSummonAbAttr {
   }
 
   override canApply({ pokemon }: AbAttrBaseParams): boolean {
-    return pokemon.getAlly()?.isActive(true) ?? false;
+    this.target = pokemon
+      .getAllies()
+      .reduce<Pokemon | undefined>(
+        (lowestHpAlly, ally) => !lowestHpAlly || ally.getHpRatio() < lowestHpAlly.getHpRatio() ? ally : lowestHpAlly,
+        undefined,
+      );
+    return this.target != null;
   }
 
   override apply({ pokemon, simulated }: AbAttrBaseParams): void {
-    const target = pokemon.getAlly();
+    const target = this.target;
     if (!simulated && target != null) {
       globalScene.phaseManager.unshiftNew(
         "PokemonHealPhase",
@@ -2496,21 +2502,22 @@ export class PostSummonAllyHealAbAttr extends PostSummonAbAttr {
  */
 export class PostSummonClearAllyStatStagesAbAttr extends PostSummonAbAttr {
   override canApply({ pokemon }: AbAttrBaseParams): boolean {
-    return pokemon.getAlly()?.isActive(true) ?? false;
+    return pokemon.getAllies().length > 0;
   }
 
   override apply({ pokemon, simulated }: AbAttrBaseParams): void {
-    const target = pokemon.getAlly();
-    if (!simulated && target != null) {
-      for (const s of BATTLE_STATS) {
-        target.setStatStage(s, 0);
-      }
+    if (!simulated) {
+      for (const target of pokemon.getAllies()) {
+        for (const s of BATTLE_STATS) {
+          target.setStatStage(s, 0);
+        }
 
-      globalScene.phaseManager.queueMessage(
-        i18next.t("abilityTriggers:postSummonClearAllyStats", {
-          pokemonNameWithAffix: getPokemonNameWithAffix(target),
-        }),
-      );
+        globalScene.phaseManager.queueMessage(
+          i18next.t("abilityTriggers:postSummonClearAllyStats", {
+            pokemonNameWithAffix: getPokemonNameWithAffix(target),
+          }),
+        );
+      }
     }
   }
 }
@@ -2758,7 +2765,7 @@ export class PostSummonCopyAllyStatsAbAttr extends PostSummonAbAttr {
       return false;
     }
 
-    const ally = pokemon.getAlly();
+    const ally = pokemon.getAllies()[0];
     if (!ally?.isActive(true)) {
       return false;
     }
@@ -2898,6 +2905,8 @@ export class PostSummonFormChangeByWeatherAbAttr extends PostSummonAbAttr {
  * causing attacks that target the source to always miss.
  */
 export class CommanderAbAttr extends AbAttr {
+  private ally: Pokemon | undefined;
+
   constructor() {
     super(true);
   }
@@ -2906,7 +2915,8 @@ export class CommanderAbAttr extends AbAttr {
     // If the ally Dondozo is fainted or was previously "commanded" by
     // another Pokemon, this effect cannot apply.
     // TODO: Should this work with X + Dondozo fusions?
-    const ally = pokemon.getAlly();
+    const ally = pokemon.getAllies().find(p => p.species.speciesId === SpeciesId.DONDOZO);
+    this.ally = ally;
     return (
       globalScene.currentBattle?.double
       && ally != null
@@ -2923,7 +2933,7 @@ export class CommanderAbAttr extends AbAttr {
       // Play an animation of the source jumping into the ally Dondozo's mouth
       globalScene.triggerPokemonBattleAnim(pokemon, PokemonAnimType.COMMANDER_APPLY);
       // Apply boosts from this effect to the ally Dondozo
-      pokemon.getAlly()?.addTag(BattlerTagType.COMMANDED, 0, MoveId.NONE, pokemon.id);
+      this.ally?.addTag(BattlerTagType.COMMANDED, 0, MoveId.NONE, pokemon.id);
       // Cancel the source Pokemon's next move (if a move is queued)
       globalScene.phaseManager.tryRemovePhase("MovePhase", phase => phase.pokemon === pokemon);
     }
@@ -4119,7 +4129,10 @@ export class PostTurnResetStatusAbAttr extends PostTurnAbAttr {
 
   override canApply({ pokemon }: AbAttrBaseParams): boolean {
     if (this.allyTarget) {
-      this.target = pokemon.getAlly();
+      this.target = pokemon.getAllies().find(ally => {
+        const effect = ally.status?.effect;
+        return !!effect && effect !== StatusEffect.FAINT;
+      });
     } else {
       this.target = pokemon;
     }
@@ -4979,7 +4992,7 @@ export class PostFaintContactDamageAbAttr extends PostFaintAbAttr {
 export class PostFaintHPDamageAbAttr extends PostFaintAbAttr {
   override apply({ simulated, pokemon, move, attacker }: PostFaintAbAttrParams): void {
     // return early if the user died to indirect damage, target has magic guard or was KO'd by an ally
-    if (!move || !attacker || simulated || attacker.getAlly() === pokemon) {
+    if (!move || !attacker || simulated || attacker.isAlly(pokemon)) {
       return;
     }
 

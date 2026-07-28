@@ -1899,7 +1899,7 @@ export class PartyUiHandler extends MessageUiHandler {
         if (this.partyUiMode === PartyUiMode.RELEASE) {
           const selectCallback = this.selectCallback;
           this.selectCallback = null;
-          selectCallback?.(this.cursor, PartyOption.RELEASE);
+          selectCallback?.(slotIndex, PartyOption.RELEASE);
         }
         this.showText("", 0);
       },

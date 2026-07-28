@@ -590,7 +590,7 @@ function estimateDamage(user: Pokemon, target: Pokemon, move: Move) {
     move,
     ignoreAbility: !target.waveData.abilityRevealed,
     ignoreSourceAbility: false,
-    ignoreAllyAbility: !target.getAlly()?.waveData.abilityRevealed,
+    ignoreAllyAbility: !target.getAllies().some(ally => ally.waveData.abilityRevealed),
     ignoreSourceAllyAbility: false,
     isCritical: move.hasAttr("CritOnlyAttr") || !!user.getTag(BattlerTagType.ALWAYS_CRIT),
     simulated: true,

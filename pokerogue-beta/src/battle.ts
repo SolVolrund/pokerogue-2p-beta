@@ -12,6 +12,7 @@ import type { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import type { PokeballType } from "#enums/pokeball";
 import { SpeciesFormKey } from "#enums/species-form-key";
 import { SpeciesId } from "#enums/species-id";
+import { TrainerSlot } from "#enums/trainer-slot";
 import { TrainerType } from "#enums/trainer-type";
 import { TrainerVariant } from "#enums/trainer-variant";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
@@ -97,6 +98,7 @@ export class Battle {
   public enemyFaints = 0;
   public playerFaintsHistory: FaintLogEntry[] = [];
   public enemyFaintsHistory: FaintLogEntry[] = [];
+  public enemyTeraUsedTrainerSlots: Set<TrainerSlot> = new Set<TrainerSlot>();
 
   public mysteryEncounterType?: MysteryEncounterType | undefined;
   /** If the current battle is a Mystery Encounter, this will always be defined */
@@ -115,6 +117,19 @@ export class Battle {
     phase: number;
     usedSpeciesIds: SpeciesId[];
   };
+
+  public hasEnemyTrainerSlotUsedTera(trainerSlot: TrainerSlot): boolean {
+    return this.enemyTeraUsedTrainerSlots.has(trainerSlot);
+  }
+
+  public reserveEnemyTrainerSlotTera(trainerSlot: TrainerSlot): boolean {
+    if (this.hasEnemyTrainerSlotUsedTera(trainerSlot)) {
+      return false;
+    }
+
+    this.enemyTeraUsedTrainerSlots.add(trainerSlot);
+    return true;
+  }
 
   /**
    * Tracker for whether the last run attempt failed.

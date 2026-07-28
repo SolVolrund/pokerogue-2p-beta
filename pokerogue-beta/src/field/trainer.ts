@@ -486,6 +486,17 @@ export class Trainer extends Phaser.GameObjects.Container {
     );
   }
 
+  getTeraUsageTrainerSlot(pokemon: EnemyPokemon): TrainerSlot {
+    switch (pokemon.trainerSlot) {
+      case TrainerSlot.TRAINER_PARTNER:
+        return this.partnerConfig ? TrainerSlot.TRAINER_PARTNER : TrainerSlot.TRAINER;
+      case TrainerSlot.TRAINER_PARTNER_2:
+        return this.partnerConfig2 ? TrainerSlot.TRAINER_PARTNER_2 : TrainerSlot.TRAINER;
+      default:
+        return TrainerSlot.TRAINER;
+    }
+  }
+
   private getSpriteKeyForIndex(spriteIndex: number): string {
     const trainerSlot =
       spriteIndex === 1
@@ -1436,9 +1447,12 @@ export class Trainer extends Phaser.GameObjects.Container {
    * @returns boolean Whether the EnemyPokemon should Terastalize this turn
    */
   shouldTera(pokemon: EnemyPokemon): boolean {
+    const teraUsageTrainerSlot = this.getTeraUsageTrainerSlot(pokemon);
+
     if (
       this.isInstantTeraTarget(pokemon)
       && !pokemon.isTerastallized
+      && !globalScene.currentBattle.hasEnemyTrainerSlotUsedTera(teraUsageTrainerSlot)
       && !globalScene.currentBattle.enemyFaintsHistory.some(f => f.pokemon.id === pokemon.id)
     ) {
       return true;

@@ -37,7 +37,15 @@ function getTextWithDialogueTokens(keyOrString: string): string | null {
     return i18next.t(keyOrString, tokens) as string;
   }
 
-  return keyOrString ?? null;
+  return injectDialogueTokens(keyOrString, tokens);
+}
+
+function injectDialogueTokens(text: string, tokens?: Record<string, string>): string {
+  if (!tokens) {
+    return text;
+  }
+
+  return text.replace(/\{\{\s*([^{}\s]+)\s*\}\}/g, (match, tokenName: string) => tokens[tokenName] ?? match);
 }
 
 /**

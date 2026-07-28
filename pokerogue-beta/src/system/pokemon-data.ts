@@ -1,4 +1,5 @@
 import { globalScene } from "#app/global-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import type { Gender } from "#data/gender";
 import { CustomPokemonData, PokemonBattleData, PokemonSummonData } from "#data/pokemon-data";
 import { Status } from "#data/status-effect";
@@ -49,6 +50,7 @@ export class PokemonData {
   public isTerastallized: boolean;
   public stellarTypesBoosted: PokemonType[];
   public computerPartnerAce: boolean;
+  public gtsMalfunctionOriginalPlayerIndex: PlayerIndex | undefined;
 
   public fusionSpecies: SpeciesId;
   public fusionFormIndex: number;
@@ -123,6 +125,10 @@ export class PokemonData {
     this.isTerastallized = !!source.isTerastallized;
     this.stellarTypesBoosted = source.stellarTypesBoosted ?? [];
     this.computerPartnerAce = !!source.computerPartnerAce;
+    this.gtsMalfunctionOriginalPlayerIndex =
+      typeof source.gtsMalfunctionOriginalPlayerIndex === "number"
+        ? (source.gtsMalfunctionOriginalPlayerIndex as PlayerIndex)
+        : undefined;
 
     this.fusionSpecies = sourcePokemon?.fusionSpecies?.speciesId ?? source.fusionSpecies;
     this.fusionFormIndex = source.fusionFormIndex;

@@ -559,7 +559,9 @@ function buildPokePoachersIntroSpriteConfigs(scenario: PokePoachersScenario) {
 
 function setPokePoachersDialogueTokens(scenario: PokePoachersScenario): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
-  encounter.setDialogueToken("legendaryPokemon", getPokemonSpecies(scenario.protectedSpeciesId).getName());
+  const legendaryPokemonName = getPokemonSpecies(scenario.protectedSpeciesId).getName();
+  encounter.setDialogueToken("legendaryPokemon", legendaryPokemonName);
+  encounter.setDialogueToken("legendarypokemon", legendaryPokemonName);
   encounter.setDialogueToken(
     "poachers",
     scenario.poacherTrainerTypes.map(trainerType => trainerConfigs[trainerType].name).join(" and "),

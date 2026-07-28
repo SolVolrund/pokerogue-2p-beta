@@ -153,7 +153,12 @@ export class EnemyCommandPhase extends FieldPhase {
   }
 
   private shouldTera(pokemon: EnemyPokemon): boolean {
-    return !!globalScene.currentBattle.trainer?.shouldTera(pokemon);
+    const trainer = globalScene.currentBattle.trainer;
+    if (!trainer?.shouldTera(pokemon)) {
+      return false;
+    }
+
+    return globalScene.currentBattle.reserveEnemyTrainerSlotTera(trainer.getTeraUsageTrainerSlot(pokemon));
   }
 
   private upgradeEnemyZMove(pokemon: EnemyPokemon, turnMove: TurnMove): TurnMove {

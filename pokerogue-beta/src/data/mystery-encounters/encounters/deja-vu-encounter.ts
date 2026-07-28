@@ -6,9 +6,11 @@ import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { PartyMemberStrength } from "#enums/party-member-strength";
 import { PlayerGender } from "#enums/player-gender";
+import { getPlayerTrainerSpriteFrontTextureKey } from "#enums/player-trainer-sprite";
 import { TrainerSlot } from "#enums/trainer-slot";
 import { TrainerType } from "#enums/trainer-type";
 import { UiMode } from "#enums/ui-mode";
+import type { MysteryEncounterSpriteConfig } from "#field/mystery-encounter-intro";
 import type { PlayerPokemon } from "#field/pokemon";
 import * as Modifier from "#modifiers/modifier";
 import { PokemonHeldItemModifier } from "#modifiers/modifier";
@@ -80,6 +82,7 @@ export const DejaVuEncounter: MysteryEncounter = MysteryEncounterBuilder.withEnc
       choices: [],
       rewardPlayerIndexes: [],
     } satisfies DejaVuData;
+    encounter.spriteConfigs = buildDejaVuIntroSpriteConfigs(contexts);
     encounter.onRewards = applyDejaVuRewards;
     return true;
   })
@@ -107,6 +110,31 @@ function getVotingPlayerIndexes(): PlayerIndex[] {
 
 function getGhostForPlayer(playerIndex: PlayerIndex): DejaVuGhostData | undefined {
   return getGhostContexts().find(context => context.playerIndex === playerIndex)?.ghost;
+}
+
+function buildDejaVuIntroSpriteConfigs(contexts: DejaVuGhostContext[]): MysteryEncounterSpriteConfig[] {
+  const humanContexts = contexts.filter(context => !globalScene.isComputerPartnerPlayer(context.playerIndex));
+  const visualContexts = humanContexts.length > 0 ? humanContexts : contexts;
+
+  return visualContexts.map((context, index) => ({
+    spriteKey: getPlayerTrainerSpriteFrontTextureKey(globalScene.getTrainerSprite(context.playerIndex)),
+    fileRoot: "trainer",
+    hasShadow: true,
+    tint: 0.5,
+    x: getDejaVuIntroSpriteX(index, visualContexts.length),
+    y: 4,
+    repeat: true,
+  }));
+}
+
+function getDejaVuIntroSpriteX(index: number, count: number): number {
+  if (count <= 1) {
+    return 4;
+  }
+  if (count === 2) {
+    return index === 0 ? -24 : 32;
+  }
+  return [-36, 4, 44][index] ?? 4;
 }
 
 function buildDejaVuOption(optionIndex: DejaVuOptionIndex): MysteryEncounterOption {
@@ -286,7 +314,7 @@ function createDejaVuEnemyPartyConfig(playerIndexes: PlayerIndex[]): EnemyPartyC
   const contexts = getGhostContexts().filter(context => playerIndexes.includes(context.playerIndex));
   const pokemonConfigs = createDejaVuEnemyPokemonConfigs(playerIndexes);
   const trainerConfigsForGhosts = contexts.map(context =>
-    getAlternateTrainerConfig(context.ghost, context.ghost.party.length),
+    getAlternateTrainerConfig(context.ghost, context.ghost.party.length, context.playerIndex),
   );
 
   return {
@@ -302,12 +330,13 @@ function createDejaVuEnemyPartyConfig(playerIndexes: PlayerIndex[]): EnemyPartyC
   };
 }
 
-function getAlternateTrainerConfig(ghost: DejaVuGhostData, partySize: number) {
+function getAlternateTrainerConfig(ghost: DejaVuGhostData, partySize: number, playerIndex: PlayerIndex) {
   const trainerConfig =
     trainerConfigs[
       ghost.playerGender === PlayerGender.FEMALE ? TrainerType.PLAYER_F_ALTERNATE : TrainerType.PLAYER_M_ALTERNATE
     ].clone();
 
+  trainerConfig.setSpriteKey(getPlayerTrainerSpriteFrontTextureKey(globalScene.getTrainerSprite(playerIndex)));
   trainerConfig.setPartyTemplates(new TrainerPartyTemplate(partySize, PartyMemberStrength.STRONG));
   return trainerConfig;
 }
@@ -355,6 +384,7 @@ function promptGhostPokemonChoice(
     const options: OptionSelectItem[] = ghost.party.map(entry => ({
       label: getGhostPokemonLabel(entry),
       handler: () => {
+        globalScene.ui.setModeWithoutClear(UiMode.MESSAGE);
         resolve(entry);
         return true;
       },
@@ -376,6 +406,7 @@ function promptGhostPokemonChoice(
     options.push({
       label: i18next.t(`${namespace}:reward.skip`),
       handler: () => {
+        globalScene.ui.setModeWithoutClear(UiMode.MESSAGE);
         resolve(undefined);
         return true;
       },

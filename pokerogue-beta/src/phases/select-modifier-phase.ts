@@ -17,6 +17,7 @@ import type { ModifierTier } from "#enums/modifier-tier";
 import { LearnMoveType } from "#enums/learn-move-type";
 import type { MoveId } from "#enums/move-id";
 import { UiMode } from "#enums/ui-mode";
+import type { PlayerPokemon } from "#field/pokemon";
 import type { Modifier } from "#modifiers/modifier";
 import {
   ExtraModifierModifier,
@@ -876,6 +877,12 @@ export class SelectModifierPhase extends BattlePhase {
     }
   }
 
+  private updateGtsMalfunctionCustodyAfterTrade(pokemon: PlayerPokemon, currentPlayerIndex: PlayerIndex): void {
+    if (pokemon.gtsMalfunctionOriginalPlayerIndex === currentPlayerIndex) {
+      pokemon.gtsMalfunctionOriginalPlayerIndex = undefined;
+    }
+  }
+
   private tradePlayerPokemon(
     firstPlayerIndex: PlayerIndex,
     firstPartyIndex: number,
@@ -896,6 +903,9 @@ export class SelectModifierPhase extends BattlePhase {
 
     firstParty[firstPartyIndex] = secondPokemon;
     secondParty[secondPartyIndex] = firstPokemon;
+
+    this.updateGtsMalfunctionCustodyAfterTrade(secondPokemon, firstPlayerIndex);
+    this.updateGtsMalfunctionCustodyAfterTrade(firstPokemon, secondPlayerIndex);
 
     this.moveHeldItemModifiers(firstPokemonHeldItems, firstPlayerIndex, secondPlayerIndex);
     this.moveHeldItemModifiers(secondPokemonHeldItems, secondPlayerIndex, firstPlayerIndex);

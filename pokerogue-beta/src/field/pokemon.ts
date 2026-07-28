@@ -1666,8 +1666,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       });
     }
 
-    const ally = this.getAlly();
-    if (ally != null) {
+    for (const ally of this.getAllies()) {
       applyAbAttrs("AllyStatMultiplierAbAttr", {
         pokemon: ally,
         stat,
@@ -3490,6 +3489,14 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     );
   }
 
+  /**
+   * Check whether the specified Pokemon is allied with this one.
+   * Unlike {@linkcode getAlly}, this is relationship-based and supports triple battles.
+   */
+  public isAlly(target: Pokemon): boolean {
+    return this !== target && !this.isOpponent(target);
+  }
+
   getOpponent(targetIndex: number): Pokemon | null {
     const ret = this.getOpponents()[targetIndex];
     // TODO: why does this check for summonData and can we remove it?
@@ -3523,6 +3530,15 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
   getAlly(): Pokemon | undefined {
     return (this.isPlayer() ? globalScene.getPlayerField() : globalScene.getEnemyField())[this.getFieldIndex() ? 0 : 1];
+  }
+
+  /**
+   * Returns active allied Pokemon in non-speed order.
+   *
+   * @param onField - whether to also check if the Pokemon is currently on the field (defaults to true)
+   */
+  getAllies(onField = true): Pokemon[] {
+    return globalScene.getField(onField).filter((p): p is Pokemon => !!p && this.isAlly(p) && p.isActive(onField));
   }
 
   /**
@@ -3654,8 +3670,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       move: sourceMove,
     });
 
-    const ally = this.getAlly();
-    if (ally != null) {
+    for (const ally of this.getAllies()) {
       const ignore =
         this.hasAbilityWithAttr("MoveAbilityBypassAbAttr") || sourceMove.hasFlag(MoveFlags.IGNORE_ABILITIES);
       applyAbAttrs("AllyStatMultiplierAbAttr", {
@@ -4040,9 +4055,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     if (!ignoreAbility) {
       applyAbAttrs("ReceivedMoveDamageMultiplierAbAttr", abAttrParams);
 
-      const ally = this.getAlly();
-      // Additionally apply friend guard damage reduction if ally has it.
-      if (globalScene.currentBattle.double && ally?.isActive(true)) {
+      // Additionally apply Friend Guard damage reduction if any active ally has it.
+      for (const ally of this.getAllies()) {
         applyAbAttrs("AlliedFieldDamageReductionAbAttr", { ...abAttrParams, pokemon: ally });
       }
     }
@@ -5408,7 +5422,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     if (
       this.hasAbilityWithAttr("CommanderAbAttr")
       && globalScene.currentBattle.double
-      && this.getAlly()?.species.speciesId === SpeciesId.DONDOZO
+      && this.getAllies().some(ally => ally.species.speciesId === SpeciesId.DONDOZO)
     ) {
       this.setVisible(false);
     }
@@ -6067,6 +6081,7 @@ export class PlayerPokemon extends Pokemon {
   public aiType: AiType = AiType.SMART_RANDOM;
   public computerPartnerAce = false;
   public eonFluteGuest = false;
+  public gtsMalfunctionOriginalPlayerIndex: PlayerIndex | undefined = undefined;
 
   constructor(
     species: PokemonSpecies,
@@ -6082,6 +6097,14 @@ export class PlayerPokemon extends Pokemon {
   ) {
     super(106, 148, species, level, abilityIndex, formIndex, gender, shiny, variant, ivs, nature, dataSource);
     this.computerPartnerAce = !!(dataSource && "computerPartnerAce" in dataSource && dataSource.computerPartnerAce);
+    const gtsMalfunctionOriginalPlayerIndex =
+      dataSource && "gtsMalfunctionOriginalPlayerIndex" in dataSource
+        ? dataSource.gtsMalfunctionOriginalPlayerIndex
+        : undefined;
+    this.gtsMalfunctionOriginalPlayerIndex =
+      typeof gtsMalfunctionOriginalPlayerIndex === "number"
+        ? (gtsMalfunctionOriginalPlayerIndex as PlayerIndex)
+        : undefined;
 
     if (activeOverrides.STATUS_OVERRIDE) {
       this.status = new Status(activeOverrides.STATUS_OVERRIDE, 0, 4);
@@ -7039,7 +7062,7 @@ export class EnemyPokemon extends Pokemon {
                     move,
                     ignoreAbility: !p.waveData.abilityRevealed,
                     ignoreSourceAbility: false,
-                    ignoreAllyAbility: !p.getAlly()?.waveData.abilityRevealed,
+                    ignoreAllyAbility: !p.getAllies().some(ally => ally.waveData.abilityRevealed),
                     ignoreSourceAllyAbility: false,
                     isCritical,
                     simulated: true,

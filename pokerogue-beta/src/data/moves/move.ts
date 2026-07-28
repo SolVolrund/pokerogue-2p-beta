@@ -110,7 +110,12 @@ import {
   upperHandCondition,
   userSleptOrComatoseCondition,
 } from "#moves/move-condition";
-import { frenzyMissFunc, getCounterAttackTarget, getMoveTargets } from "#moves/move-utils";
+import {
+  arePokemonMoveTargetsAdjacent,
+  frenzyMissFunc,
+  getCounterAttackTarget,
+  getMoveTargets,
+} from "#moves/move-utils";
 import { PokemonMove } from "#moves/pokemon-move";
 import type { MovePhase } from "#phases/move-phase";
 import type { Constructor } from "#types/common";
@@ -1122,8 +1127,7 @@ export abstract class Move implements Localizable {
     };
 
     applyAbAttrs("VariableMovePowerAbAttr", abAttrParams);
-    const ally = source.getAlly();
-    if (ally != null) {
+    for (const ally of source.getAllies()) {
       applyAbAttrs("AllyMoveCategoryPowerBoostAbAttr", { ...abAttrParams, pokemon: ally });
     }
 
@@ -1371,7 +1375,7 @@ export abstract class Move implements Localizable {
       return false;
     }
 
-    if (this.hasAttr("HealOnAllyAttr") && target?.getAlly() === user) {
+    if (this.hasAttr("HealOnAllyAttr") && target != null && user.isAlly(target)) {
       return false;
     }
 
@@ -2672,25 +2676,28 @@ export class FlameBurstAttr extends MoveEffectAttr {
    * @returns A boolean indicating whether the effect was successfully applied.
    */
   apply(_user: Pokemon, target: Pokemon, _move: Move, _args: any[]): boolean {
-    const targetAlly = target.getAlly();
-    const cancelled = new BooleanHolder(false);
+    const targetAllies = target.getAllies().filter(ally => arePokemonMoveTargetsAdjacent(target, ally));
+    let applied = false;
 
-    if (targetAlly != null) {
+    for (const targetAlly of targetAllies) {
+      const cancelled = new BooleanHolder(false);
       applyAbAttrs("BlockNonDirectDamageAbAttr", { pokemon: targetAlly, cancelled });
+
+      if (cancelled.value || targetAlly.switchOutStatus) {
+        continue;
+      }
+
+      targetAlly.damageAndUpdate(Math.max(1, Math.floor((1 / 16) * targetAlly.getMaxHp())), {
+        result: HitResult.INDIRECT,
+      });
+      applied = true;
     }
 
-    if (cancelled.value || !targetAlly || targetAlly.switchOutStatus) {
-      return false;
-    }
-
-    targetAlly.damageAndUpdate(Math.max(1, Math.floor((1 / 16) * targetAlly.getMaxHp())), {
-      result: HitResult.INDIRECT,
-    });
-    return true;
+    return applied;
   }
 
   getTargetBenefitScore(_user: Pokemon, target: Pokemon, _move: Move): number {
-    return target.getAlly() == null ? 0 : -5;
+    return target.getAllies().some(ally => arePokemonMoveTargetsAdjacent(target, ally)) ? -5 : 0;
   }
 }
 
@@ -2863,7 +2870,7 @@ export class BoostHealAttr extends HealAttr {
 export class HealOnAllyAttr extends HealAttr {
   override canApply(user: Pokemon, target: Pokemon, _move: Move, _args?: any[]): boolean {
     // Don't trigger if not targeting an ally
-    return target === user.getAlly() && super.canApply(user, target, _move, _args);
+    return user.isAlly(target) && super.canApply(user, target, _move, _args);
   }
 
   override apply(user: Pokemon, target: Pokemon, _move: Move, _args: any[]): boolean {
@@ -7450,7 +7457,15 @@ export class RevivalBlessingAttr extends MoveEffectAttr {
         0,
         true,
       );
-      const allyPokemon = user.getAlly();
+      const allyPokemon = globalScene
+        .getEnemyField()
+        .find(
+          pokemonOnField =>
+            pokemonOnField !== user
+            && !user.isOpponent(pokemonOnField)
+            && pokemonOnField.isOnField()
+            && (pokemonOnField.isFainted() || pokemonOnField === pokemon),
+        );
       if (
         globalScene.currentBattle.double
         && globalScene.getEnemyParty().length > 1
@@ -8479,9 +8494,11 @@ export class RepeatMoveAttr extends MoveEffectAttr {
       globalScene.currentBattle.double
       && moveTargets.length === 1
       && firstTarget.isFainted()
-      && firstTarget !== target.getAlly()
+      && !target.isAlly(firstTarget)
     ) {
-      const ally = firstTarget.getAlly();
+      const ally = firstTarget
+        .getAllies()
+        .find(ally => ally.isActive() && arePokemonMoveTargetsAdjacent(target, ally));
       if (ally?.isActive()) {
         moveTargets = [ally.getBattlerIndex()];
       }
@@ -8810,18 +8827,20 @@ export class AbilityCopyAttr extends MoveEffectAttr {
     );
 
     user.setTempAbility(target.getAbility());
-    const ally = user.getAlly();
 
-    if (this.copyToPartner && globalScene.currentBattle?.double && ally != null && ally.hp) {
-      // TODO is this the best way to check that the ally is active?
-      globalScene.phaseManager.queueMessage(
-        i18next.t("moveTriggers:copiedTargetAbility", {
-          pokemonName: getPokemonNameWithAffix(ally),
-          targetName: getPokemonNameWithAffix(target),
-          abilityName: allAbilities[target.getAbility().id].name,
-        }),
-      );
-      ally.setTempAbility(target.getAbility());
+    if (this.copyToPartner && globalScene.currentBattle?.double) {
+      const allies = user.getAllies().filter(ally => ally.hp);
+      for (const ally of allies) {
+        // TODO is this the best way to check that the ally is active?
+        globalScene.phaseManager.queueMessage(
+          i18next.t("moveTriggers:copiedTargetAbility", {
+            pokemonName: getPokemonNameWithAffix(ally),
+            targetName: getPokemonNameWithAffix(target),
+            abilityName: allAbilities[target.getAbility().id].name,
+          }),
+        );
+        ally.setTempAbility(target.getAbility());
+      }
     }
 
     return true;
@@ -8829,10 +8848,9 @@ export class AbilityCopyAttr extends MoveEffectAttr {
 
   getCondition(): MoveConditionFunc {
     return (user, target, _move) => {
-      const ally = user.getAlly();
       let ret = target.getAbility().copiable && user.getAbility().replaceable;
       if (this.copyToPartner && globalScene.currentBattle?.double) {
-        ret = ret && (!ally?.hp || ally?.getAbility().replaceable);
+        ret = ret && user.getAllies().every(ally => !ally.hp || ally.getAbility().replaceable);
       } else {
         ret = ret && user.getAbility().id !== target.getAbility().id;
       }
@@ -11716,7 +11734,7 @@ export function initMoves() {
       .target(MoveTarget.USER_AND_ALLIES)
       .condition(
         (user, _target, _move) =>
-          !![user, user.getAlly()]
+          !![user, ...user.getAllies()]
             .filter(p => p?.isActive())
             .find(p => !![AbilityId.PLUS, AbilityId.MINUS].find(a => p?.hasAbility(a, false))),
       ),
@@ -11928,7 +11946,7 @@ export function initMoves() {
       .target(MoveTarget.USER_AND_ALLIES)
       .condition(
         (user, _target, _move) =>
-          !![user, user.getAlly()]
+          !![user, ...user.getAllies()]
             .filter(p => p?.isActive())
             .find(p => !![AbilityId.PLUS, AbilityId.MINUS].find(a => p?.hasAbility(a, false))),
       ),

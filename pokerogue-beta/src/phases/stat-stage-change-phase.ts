@@ -156,8 +156,7 @@ export class StatStageChangePhase extends PokemonPhase {
     applyAbAttrs("ProtectStatAbAttr", abAttrParams);
     applyAbAttrs("ConditionalUserFieldProtectStatAbAttr", abAttrParams);
 
-    const ally = pokemon.getAlly();
-    if (ally != null) {
+    for (const ally of pokemon.getAllies()) {
       applyAbAttrs("ConditionalUserFieldProtectStatAbAttr", { ...abAttrParams, pokemon: ally });
     }
 

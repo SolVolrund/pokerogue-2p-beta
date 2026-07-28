@@ -3,6 +3,7 @@ import { allMoves } from "#data/data-lists";
 import type { BattlerIndex } from "#enums/battler-index";
 import { Command } from "#enums/command";
 import { MoveId } from "#enums/move-id";
+import { getMoveTargets } from "#moves/move-utils";
 import { UiMode } from "#enums/ui-mode";
 import { PokemonPhase } from "#phases/pokemon-phase";
 
@@ -36,13 +37,14 @@ export class SelectTargetPhase extends PokemonPhase {
     const fieldSide = globalScene.getField();
 
     const user = fieldSide[this.battlerIndex];
-    const ally = user.getAlly();
-    const shouldDefaultToAlly =
-      globalScene.currentBattle.double // formatting
-      && !!move?.allyTargetDefault
-      && ally != null
-      && !ally.isFainted();
-    const defaultTargets = shouldDefaultToAlly ? [ally.getBattlerIndex()] : undefined;
+    const defaultAllyTarget =
+      globalScene.currentBattle.double && moveId && move?.allyTargetDefault
+        ? getMoveTargets(user, moveId).targets.find(targetIndex => {
+            const target = fieldSide[targetIndex];
+            return target && user.isAlly(target) && !target.isFainted();
+          })
+        : undefined;
+    const defaultTargets = defaultAllyTarget === undefined ? undefined : [defaultAllyTarget];
 
     if (globalScene.twoPlayerMode) {
       globalScene.waitForPlayerInput(globalScene.getPlayerIndexForFieldSlot(this.fieldIndex));

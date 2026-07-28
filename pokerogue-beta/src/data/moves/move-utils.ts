@@ -182,14 +182,18 @@ function getNearTargets(user: Pokemon, targets: Pokemon[]): Pokemon[] {
     return targets;
   }
 
-  return targets.filter(target => areTriplePokemonAdjacent(user, target));
+  return targets.filter(target => arePokemonMoveTargetsAdjacent(user, target));
 }
 
 function usesTripleAdjacency(): boolean {
   return (globalScene.currentBattle?.getBattlerCount() ?? 1) > 2;
 }
 
-function areTriplePokemonAdjacent(user: Pokemon, target: Pokemon): boolean {
+export function arePokemonMoveTargetsAdjacent(user: Pokemon, target: Pokemon): boolean {
+  if (!usesTripleAdjacency()) {
+    return user !== target;
+  }
+
   const userIndex = user.getBattlerIndex();
   const targetIndex = target.getBattlerIndex();
 

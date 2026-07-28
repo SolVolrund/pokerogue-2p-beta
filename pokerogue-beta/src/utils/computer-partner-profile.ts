@@ -1,4 +1,5 @@
 import { speciesDataRegistry } from "#app/global-species-data-registry";
+import { globalScene } from "#app/global-scene";
 import { speciesEggMoves } from "#balance/moves/egg-moves";
 import { EvoCondKey, EvolutionItem, type SpeciesFormEvolution } from "#balance/pokemon-evolutions";
 import {
@@ -823,7 +824,11 @@ export function getComputerPartnerReplacementScores(
             replacedPokemon,
             replacedPokemonIndex,
           }))
-          .filter(option => !isComputerPartnerAcePokemon(option.replacedPokemon, profile));
+          .filter(
+            option =>
+              !isComputerPartnerAcePokemon(option.replacedPokemon, profile)
+              && !isTemporaryHumanGtsMalfunctionPokemon(option.replacedPokemon),
+          );
 
   return replacementOptions.map(option => {
     const candidateParty =
@@ -886,6 +891,14 @@ export function isComputerPartnerAcePokemon(
     && pokemon.metBiome === -1
     && (pokemon.metSpecies === profile.starterSpeciesId || !!profile.aceStarterSpeciesIds?.includes(pokemon.metSpecies))
   );
+}
+
+export function isTemporaryHumanGtsMalfunctionPokemon(pokemon: PlayerPokemon | undefined): boolean {
+  if (!pokemon || pokemon.gtsMalfunctionOriginalPlayerIndex === undefined) {
+    return false;
+  }
+
+  return !globalScene.isComputerPartnerPlayer(pokemon.gtsMalfunctionOriginalPlayerIndex);
 }
 
 export function isComputerPartnerCandidateAllowed(
