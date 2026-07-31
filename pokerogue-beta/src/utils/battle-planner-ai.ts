@@ -1,22 +1,29 @@
+import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { globalScene } from "#app/global-scene";
+import { TerrainType } from "#data/terrain";
 import { getEffectiveWeatherForMove } from "#data/weather";
+import { AbilityId } from "#enums/ability-id";
 import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { MoveCategory } from "#enums/move-category";
 import { MoveId } from "#enums/move-id";
 import { MoveTarget } from "#enums/move-target";
 import { MoveUseMode } from "#enums/move-use-mode";
+import { PokemonType } from "#enums/pokemon-type";
 import { BATTLE_STATS, type BattleStat, Stat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
+import { WeatherType } from "#enums/weather-type";
 import type { Pokemon } from "#field/pokemon";
 import { type HealAttr, type Move, WeatherHealAttr } from "#moves/move";
 import { getMoveTargets } from "#moves/move-utils";
 import type { PokemonMove } from "#moves/pokemon-move";
 import type { TurnMove } from "#types/turn-move";
 import { getAiMoveTargetData } from "#utils/ai-targeting";
+import { BooleanHolder } from "#utils/common";
 
 const FAIL_SCORE = -100_000;
 const KO_SCORE = 220;
+const FUTURE_TURN_WEIGHTS = [0.65, 0.35] as const;
 const PLANNER_DEBUG_STORAGE_KEY = "pokeroguePlannerAiDebug";
 const PLANNER_DETAILED_DEBUG_STORAGE_KEY = "pokeroguePlannerAiDetailedDebug";
 const PLANNER_FIELD_LOG_ORDER = [
@@ -192,17 +199,25 @@ export function getPlannerSwitchIndex(
   const hpRatio = activePokemon.getHpRatio();
   const canThreatenKo = activePokemon
     .getOpponents()
-    .some(opponent => estimateBestDamage(activePokemon, opponent).damage >= opponent.hp);
+    .some(opponent => estimateBestDamage(activePokemon, opponent).damage >= getPlannerHp(opponent, activePokemon));
   const currentIncomingDamage = estimateIncomingDamage(activePokemon);
   const likelyFaints = currentIncomingDamage >= activePokemon.hp;
   const activePressure = getBestOffensivePressure(activePokemon);
   const canContributeThisTurn = !likelyFaints && (activePressure.maxDamageRatio >= 0.18 || canThreatenKo);
+  const switchOutMomentumScore = scoreSwitchOutMomentum(
+    activePokemon,
+    activePressure,
+    currentIncomingDamage,
+    likelyFaints,
+    canContributeThisTurn,
+  );
 
   const multiplierThreshold = isBossTrainer ? 1.6 : 2.1;
   const improvement = bestAdjustedScore - currentScore;
-  const severeMismatch = currentScore < 4 && improvement >= 4;
-  const strongUpgrade = bestAdjustedScore >= currentScore * multiplierThreshold;
-  const preserveLowHpThreat = hpRatio < 0.35 && improvement >= 3 && !canThreatenKo && !canContributeThisTurn;
+  const adjustedImprovement = improvement - switchOutMomentumScore;
+  const severeMismatch = currentScore < 4 && adjustedImprovement >= 4;
+  const strongUpgrade = bestAdjustedScore >= currentScore * multiplierThreshold && adjustedImprovement >= 2;
+  const preserveLowHpThreat = hpRatio < 0.35 && adjustedImprovement >= 3 && !canThreatenKo && !canContributeThisTurn;
   const escapeKo = likelyFaints && improvement >= 2 && !canThreatenKo;
 
   const candidateEvaluations = partyMemberScores
@@ -229,12 +244,14 @@ export function getPlannerSwitchIndex(
       bestAdjustedScore,
       switchMultiplier,
       improvement,
+      adjustedImprovement,
+      switchOutMomentumScore,
       currentIncomingDamage,
       likelyFaints,
       canContributeThisTurn,
       allyAlreadySwitching,
       decision: "stay",
-      reason: "switch threshold not met",
+      reason: switchOutMomentumScore > 0 ? "switch threshold not met; preserving momentum" : "switch threshold not met",
       candidates: candidateEvaluations,
     });
     return;
@@ -250,6 +267,8 @@ export function getPlannerSwitchIndex(
       bestAdjustedScore,
       switchMultiplier,
       improvement,
+      adjustedImprovement,
+      switchOutMomentumScore,
       currentIncomingDamage,
       likelyFaints,
       canContributeThisTurn,
@@ -272,6 +291,8 @@ export function getPlannerSwitchIndex(
     bestAdjustedScore,
     switchMultiplier,
     improvement,
+    adjustedImprovement,
+    switchOutMomentumScore,
     currentIncomingDamage,
     likelyFaints,
     canContributeThisTurn,
@@ -309,6 +330,8 @@ interface PlannerSwitchDebugSummary {
   bestAdjustedScore: number;
   switchMultiplier: number;
   improvement: number;
+  adjustedImprovement: number;
+  switchOutMomentumScore: number;
   currentIncomingDamage: number;
   likelyFaints: boolean;
   canContributeThisTurn: boolean;
@@ -329,6 +352,47 @@ interface PlannerSwitchCandidateContext {
   likelyActiveFaints: boolean;
   canActiveContribute: boolean;
   allyAlreadySwitching: boolean;
+}
+
+function scoreSwitchOutMomentum(
+  activePokemon: Pokemon,
+  activePressure: PlannerOffensivePressure,
+  currentIncomingDamage: number,
+  likelyFaints: boolean,
+  canContributeThisTurn: boolean,
+): number {
+  const offensiveMomentum =
+    scorePositiveStatStageMomentum(activePokemon, Stat.ATK, 1.35)
+    + scorePositiveStatStageMomentum(activePokemon, Stat.SPATK, 1.35);
+  const defensiveMomentum =
+    scorePositiveStatStageMomentum(activePokemon, Stat.DEF, 0.75)
+    + scorePositiveStatStageMomentum(activePokemon, Stat.SPDEF, 0.75);
+  const utilityMomentum =
+    scorePositiveStatStageMomentum(activePokemon, Stat.SPD, 0.55)
+    + scorePositiveStatStageMomentum(activePokemon, Stat.ACC, 0.35)
+    + scorePositiveStatStageMomentum(activePokemon, Stat.EVA, 0.55);
+  const pressureMomentum = Math.min(2.5, activePressure.maxDamageRatio * 2.2) + (activePressure.canKo ? 2.5 : 0);
+  const damagePressure =
+    currentIncomingDamage > 0 ? Math.min(1, currentIncomingDamage / Math.max(1, activePokemon.hp)) : 0;
+  const survivalMultiplier = likelyFaints ? 0.35 : 1 - damagePressure * 0.2;
+  const contributionMultiplier = canContributeThisTurn ? 1 : 0.45;
+
+  return clampPlannerScore(
+    (offensiveMomentum + defensiveMomentum + utilityMomentum + pressureMomentum)
+      * survivalMultiplier
+      * contributionMultiplier,
+    0,
+    12,
+  );
+}
+
+function scorePositiveStatStageMomentum(pokemon: Pokemon, stat: BattleStat, weight: number): number {
+  const stage = Math.max(0, pokemon.getStatStage(stat));
+  if (stage === 0) {
+    return 0;
+  }
+
+  return (getStatStageMultiplier(stage) - 1) * weight;
 }
 
 function scoreSwitchCandidate(context: PlannerSwitchCandidateContext): PlannerSwitchCandidate | undefined {
@@ -673,6 +737,8 @@ function logPlannerSwitchEvaluations(activePokemon: Pokemon, summary: PlannerSwi
       bestAdjusted: formatPlannerScore(summary.bestAdjustedScore),
       multiplier: formatPlannerScore(summary.switchMultiplier),
       improvement: formatPlannerScore(summary.improvement),
+      adjusted: formatPlannerScore(summary.adjustedImprovement),
+      momentumCost: formatPlannerScore(summary.switchOutMomentumScore),
       incoming: formatPlannerScore(summary.currentIncomingDamage),
       likelyFaints: summary.likelyFaints,
       canAct: summary.canContributeThisTurn,
@@ -848,7 +914,7 @@ function formatPlannerTargets(targets: BattlerIndex[]): string {
 
 function formatPlannerHpForLog(pokemon: Pokemon, projectedHp: number | undefined): string {
   const hp = projectedHp ?? pokemon.hp;
-  return `${getPlannerPokemonLabel(pokemon)} ${Math.max(0, hp)}/${pokemon.getMaxHp()}`;
+  return `${getPlannerPokemonLabel(pokemon)} ${Math.max(0, hp)}/${getPlannerMaxHp(pokemon)}`;
 }
 
 function formatPlannerStatStages(pokemon: Pokemon): string {
@@ -868,7 +934,152 @@ function getPokemonAtBattlerIndex(battlerIndex: BattlerIndex): Pokemon | undefin
 }
 
 function getPlannerPokemonLabel(pokemon: Pokemon): string {
-  return pokemon.name;
+  return pokemon.getNameToRender({ useIllusion: true });
+}
+
+function shouldUsePlannerIllusion(viewer: Pokemon | undefined, target: Pokemon): boolean {
+  return !!viewer && viewer.isOpponent(target) && !!target.summonData.illusion;
+}
+
+function getPlannerHp(pokemon: Pokemon, viewer?: Pokemon): number {
+  return shouldUsePlannerIllusion(viewer, pokemon) ? pokemon.getHp(true) : pokemon.hp;
+}
+
+function getPlannerMaxHp(pokemon: Pokemon, viewer?: Pokemon): number {
+  return shouldUsePlannerIllusion(viewer, pokemon) ? pokemon.getMaxHp(true) : pokemon.getMaxHp();
+}
+
+function getPlannerVisibleTypes(viewer: Pokemon, target: Pokemon): PokemonType[] {
+  return target.getTypes({
+    returnOriginalTypesIfStellar: true,
+    useIllusion: shouldUsePlannerIllusion(viewer, target),
+  });
+}
+
+function isPlannerAbilityKnown(viewer: Pokemon, target: Pokemon): boolean {
+  return !viewer.isOpponent(target) || target.waveData.abilityRevealed || hasPlannerGuaranteedAbility(viewer, target);
+}
+
+function hasPlannerGuaranteedAbility(viewer: Pokemon, target: Pokemon): boolean {
+  const speciesForm = target.getSpeciesForm(false, shouldUsePlannerIllusion(viewer, target));
+  const possibleAbilities = new Set<AbilityId>();
+
+  for (let abilityIndex = 0; abilityIndex < speciesForm.getAbilityCount(); abilityIndex++) {
+    const abilityId = speciesForm.getAbility(abilityIndex);
+    if (abilityId !== AbilityId.NONE) {
+      possibleAbilities.add(abilityId);
+    }
+  }
+
+  return possibleAbilities.size === 1;
+}
+
+function isPlannerGroundedForStatus(viewer: Pokemon, target: Pokemon): boolean {
+  if (isPlannerAbilityKnown(viewer, target)) {
+    return target.isGrounded();
+  }
+
+  return !getPlannerVisibleTypes(viewer, target).includes(PokemonType.FLYING);
+}
+
+function canPlannerBypassPoisonTypeStatusImmunity(source: Pokemon): boolean {
+  return source.hasAbility(AbilityId.CORROSION);
+}
+
+function canPlannerSetStatus(source: Pokemon, target: Pokemon, effect: StatusEffect): boolean {
+  if (!source.isOpponent(target)) {
+    return target.canSetStatus(effect, true, false, source);
+  }
+
+  if (effect !== StatusEffect.FAINT) {
+    if (target.status || target.turnData.pendingStatus) {
+      return false;
+    }
+
+    if (isPlannerGroundedForStatus(source, target) && globalScene.arena.terrain?.terrainType === TerrainType.MISTY) {
+      return false;
+    }
+  }
+
+  const visibleTypes = getPlannerVisibleTypes(source, target);
+
+  switch (effect) {
+    case StatusEffect.POISON:
+    case StatusEffect.TOXIC:
+      if (
+        visibleTypes.some(
+          type =>
+            (type === PokemonType.POISON || type === PokemonType.STEEL)
+            && !canPlannerBypassPoisonTypeStatusImmunity(source),
+        )
+      ) {
+        return false;
+      }
+      break;
+    case StatusEffect.PARALYSIS:
+      if (visibleTypes.includes(PokemonType.ELECTRIC)) {
+        return false;
+      }
+      break;
+    case StatusEffect.SLEEP:
+      if (isPlannerGroundedForStatus(source, target) && globalScene.arena.terrainType === TerrainType.ELECTRIC) {
+        return false;
+      }
+      break;
+    case StatusEffect.FREEZE:
+      if (
+        visibleTypes.includes(PokemonType.ICE)
+        || globalScene.arena.weatherType === WeatherType.SUNNY
+        || globalScene.arena.weatherType === WeatherType.HARSH_SUN
+      ) {
+        return false;
+      }
+      break;
+    case StatusEffect.BURN:
+      if (visibleTypes.includes(PokemonType.FIRE)) {
+        return false;
+      }
+      break;
+  }
+
+  if (hasKnownPlannerStatusImmunity(source, target, target, effect)) {
+    return false;
+  }
+
+  for (const ally of target.getAllies()) {
+    if (hasKnownPlannerStatusImmunity(source, ally, target, effect)) {
+      return false;
+    }
+  }
+
+  return !target.isSafeguarded(source);
+}
+
+function hasKnownPlannerStatusImmunity(
+  source: Pokemon,
+  abilityOwner: Pokemon,
+  target: Pokemon,
+  effect: StatusEffect,
+): boolean {
+  if (!isPlannerAbilityKnown(source, abilityOwner)) {
+    return false;
+  }
+
+  const cancelled = new BooleanHolder(false);
+  if (abilityOwner === target) {
+    applyAbAttrs("StatusEffectImmunityAbAttr", { pokemon: target, effect, cancelled, simulated: true });
+  } else {
+    applyAbAttrs("UserFieldStatusEffectImmunityAbAttr", {
+      pokemon: abilityOwner,
+      effect,
+      cancelled,
+      simulated: true,
+      target,
+      source,
+    });
+  }
+
+  return cancelled.value;
 }
 
 function getBattlerLogLabel(battlerIndex: BattlerIndex): string {
@@ -938,7 +1149,7 @@ function createPlannerSearchAction(user: Pokemon, choice: PlannerMoveChoice, mov
         pokemon: target,
         battlerIndex: target.getBattlerIndex(),
         damage,
-        hpAfterAction: target.hp - damage,
+        hpAfterAction: getPlannerHp(target, user) - damage,
         actsBeforeUser: !moveActsBeforeTarget,
       };
     });
@@ -1007,7 +1218,7 @@ function getSearchSurvivalScore(
 ): number {
   const residualDamage = estimateEndOfTurnResidualDamage(state.user.pokemon);
   const incomingBefore = estimateIncomingDamage(state.user.pokemon) + residualDamage;
-  const incomingAfter = estimateIncomingDamageAfterSearchAction(state, opponentTargets) + residualDamage;
+  const incomingAfter = estimateIncomingDamageAfterSearchAction(state, action, opponentTargets) + residualDamage;
   const preventedIncoming = Math.max(0, incomingBefore - incomingAfter);
   const preventedRatio = preventedIncoming / Math.max(1, state.user.maxHp);
   const projectedUserHp = getProjectedHpAfterDirectHealing(
@@ -1048,6 +1259,7 @@ function getSearchSurvivalScore(
 
 function estimateIncomingDamageAfterSearchAction(
   state: PlannerSearchState,
+  action: PlannerSearchAction,
   opponentTargets: PlannerSearchTarget[],
 ): number {
   return state.opponents.reduce((highestDamage, opponent) => {
@@ -1057,8 +1269,93 @@ function estimateIncomingDamageAfterSearchAction(
       return highestDamage;
     }
 
-    return Math.max(highestDamage, estimateBestDamage(opponent.pokemon, state.user.pokemon).damage);
+    return Math.max(
+      highestDamage,
+      estimateBestDamageAfterPlannerAction(opponent.pokemon, state.user.pokemon, action).damage,
+    );
   }, 0);
+}
+
+function estimateBestDamageAfterPlannerAction(
+  attacker: Pokemon,
+  defender: Pokemon,
+  action: PlannerSearchAction,
+): { damage: number } {
+  const actionTarget = action.targets.find(target => target.pokemon === attacker);
+  const damageBeforeAction = estimateBestDamage(attacker, defender).damage;
+  if (!actionTarget || actionTarget.actsBeforeUser || damageBeforeAction <= 0) {
+    return { damage: damageBeforeAction };
+  }
+
+  const physicalDamage = estimateBestDamageByCategory(attacker, defender, MoveCategory.PHYSICAL);
+  const specialDamage = estimateBestDamageByCategory(attacker, defender, MoveCategory.SPECIAL);
+  const physicalScale = getPlannerActionOutgoingDamageScale(action.user, attacker, action.move, MoveCategory.PHYSICAL);
+  const specialScale = getPlannerActionOutgoingDamageScale(action.user, attacker, action.move, MoveCategory.SPECIAL);
+  const scaledDamage = Math.max(physicalDamage * physicalScale, specialDamage * specialScale);
+
+  return { damage: Math.min(damageBeforeAction, scaledDamage) };
+}
+
+function getPlannerActionOutgoingDamageScale(
+  user: Pokemon,
+  target: Pokemon,
+  move: Move,
+  category: MoveCategory.PHYSICAL | MoveCategory.SPECIAL,
+): number {
+  const attackStat = category === MoveCategory.PHYSICAL ? Stat.ATK : Stat.SPATK;
+  const stageScale = move.getAttrs("StatStageChangeAttr").reduce((scale, attr) => {
+    const stages = attr.getLevels(user);
+    if (attr.selfTarget || stages >= 0 || !attr.stats.includes(attackStat)) {
+      return scale;
+    }
+
+    const appliedStages = getAppliedStatStageDelta(target, attackStat, stages);
+    if (appliedStages === 0) {
+      return scale;
+    }
+
+    return (
+      scale
+      * (getStatStageMultiplier(target.getStatStage(attackStat) + appliedStages)
+        / getStatStageMultiplier(target.getStatStage(attackStat)))
+    );
+  }, 1);
+
+  const statusScale = getPlannerActionStatusDamageScale(user, target, move, category);
+  return clampPlannerScore(stageScale * statusScale, 0, 1);
+}
+
+function getPlannerActionStatusDamageScale(
+  user: Pokemon,
+  target: Pokemon,
+  move: Move,
+  category: MoveCategory.PHYSICAL | MoveCategory.SPECIAL,
+): number {
+  if (target.status) {
+    return 1;
+  }
+
+  return move.getAttrs("StatusEffectAttr").reduce((scale, attr) => {
+    const effects = getStatusEffectsForPlanner(attr);
+    if (!effects.some(effect => canPlannerSetStatus(user, target, effect))) {
+      return scale;
+    }
+
+    if (effects.includes(StatusEffect.SLEEP) || effects.includes(StatusEffect.FREEZE)) {
+      return 0;
+    }
+
+    let nextScale = scale;
+    if (effects.includes(StatusEffect.PARALYSIS)) {
+      nextScale *= 0.75;
+    }
+
+    if (category === MoveCategory.PHYSICAL && effects.includes(StatusEffect.BURN)) {
+      nextScale *= 0.5;
+    }
+
+    return nextScale;
+  }, 1);
 }
 
 function getSpreadFollowupScore(user: Pokemon, opponentTargets: PlannerSearchTarget[]): number {
@@ -1072,8 +1369,10 @@ function getSpreadFollowupScore(user: Pokemon, opponentTargets: PlannerSearchTar
   }
 
   const averageRemainingRatio =
-    damagedTargets.reduce((total, target) => total + target.hpAfterAction / Math.max(1, target.pokemon.getMaxHp()), 0)
-    / damagedTargets.length;
+    damagedTargets.reduce(
+      (total, target) => total + target.hpAfterAction / Math.max(1, getPlannerMaxHp(target.pokemon, user)),
+      0,
+    ) / damagedTargets.length;
 
   const allyCanCleanUp = globalScene
     .getField(true)
@@ -1100,7 +1399,12 @@ function getSearchWastedTurnPenalty(
     return 0;
   }
 
-  const incomingAfter = estimateIncomingDamageAfterSearchAction(state, opponentTargets);
+  const incomingAfter = estimateIncomingDamageAfterSearchAction(state, action, opponentTargets);
+  const usefulStatusScore = Math.max(
+    action.choice.breakdown?.status ?? 0,
+    action.choice.breakdown?.enemyStatus ?? 0,
+    action.choice.breakdown?.setup ?? 0,
+  );
   const hasSaferDamageOption = state.user.pokemon
     .getMoveset()
     .map(pokemonMove => pokemonMove.getMove())
@@ -1108,6 +1412,10 @@ function getSearchWastedTurnPenalty(
     .some(move =>
       state.opponents.some(opponent => estimateDamage(state.user.pokemon, opponent.pokemon, move).damage > 0),
     );
+
+  if (usefulStatusScore >= 20) {
+    return 0;
+  }
 
   return incomingAfter >= state.user.hp * 0.5 && hasSaferDamageOption ? 20 : 0;
 }
@@ -1161,7 +1469,7 @@ function scoreMoveAgainstTargetDetailed(
     breakdown.protect = statusScore.protect;
     score += breakdown.status;
 
-    if (targetIsOpponent && statusScore.total <= 0) {
+    if (targetIsOpponent && statusScore.total < 0) {
       breakdown.badStatus = -Math.min(90, 35 + targetThreatScore * 0.2);
       score += breakdown.badStatus;
     }
@@ -1198,9 +1506,11 @@ function getBenefitScore(user: Pokemon, target: Pokemon, move: Move, targetIsOpp
 function scoreAttackMove(user: Pokemon, target: Pokemon, move: Move, targetIsOpponent: boolean): number {
   const damage = estimateDamage(user, target, move);
   const accuracy = getAccuracyFactor(user, target, move);
-  const damageRatio = target.hp > 0 ? damage.damage / target.hp : 0;
-  const maxHpRatio = target.getMaxHp() > 0 ? damage.damage / target.getMaxHp() : 0;
-  const isKo = damage.damage >= target.hp;
+  const targetHp = getPlannerHp(target, user);
+  const targetMaxHp = getPlannerMaxHp(target, user);
+  const damageRatio = targetHp > 0 ? damage.damage / targetHp : 0;
+  const maxHpRatio = targetMaxHp > 0 ? damage.damage / targetMaxHp : 0;
+  const isKo = damage.damage >= targetHp;
 
   if (!targetIsOpponent) {
     return getAllyAttackPenalty(damageRatio, maxHpRatio, accuracy);
@@ -1229,17 +1539,15 @@ function scoreStatusMoveDetailed(
 } {
   const incomingDamage = estimateIncomingDamage(user);
   const canSurviveSetup = incomingDamage < user.hp || move.priority > 0;
-  const healing = getHealingMoveScore(user, target, move, targetIsOpponent);
-  const setup = getSetupMoveScore(user, move, canSurviveSetup);
+  const healing =
+    getHealingMoveScore(user, target, move, targetIsOpponent)
+    + getStatusCureMoveScore(user, target, move, targetIsOpponent);
+  const futureValue = getFutureStatusMoveValue(user, target, move, targetIsOpponent, targetThreatScore);
+  const setup = getSetupMoveScore(user, move, canSurviveSetup) + (targetIsOpponent ? 0 : futureValue);
   const sideSupport = getSideSupportMoveScore(user, move, incomingDamage);
-  const enemyStatus = getOpponentStatusMoveScore(
-    user,
-    target,
-    move,
-    targetIsOpponent,
-    incomingDamage,
-    targetThreatScore,
-  );
+  const enemyStatus =
+    getOpponentStatusMoveScore(user, target, move, targetIsOpponent, incomingDamage, targetThreatScore)
+    + (targetIsOpponent ? futureValue : 0);
   const redundancy = getStatusMoveRedundancyPenalty(target, targetIsOpponent);
   const protect = getProtectMoveScore(user, move, incomingDamage);
 
@@ -1437,6 +1745,116 @@ function getHealingMoveScore(user: Pokemon, target: Pokemon, move: Move, targetI
   }, 0);
 }
 
+function getStatusCureMoveScore(user: Pokemon, target: Pokemon, move: Move, targetIsOpponent: boolean): number {
+  let bestScore = 0;
+
+  if (move.getAttrs("PartyStatusCureAttr").length > 0) {
+    if (target !== user) {
+      return bestScore;
+    }
+
+    const partyScore = getPlannerPartyStatusCureTargets(user).reduce((total, pokemon) => {
+      if (!pokemon.status || pokemon.isFainted()) {
+        return total;
+      }
+
+      return total + getStatusBurdenScore(pokemon, user) * (pokemon === user ? 1 : 0.82);
+    }, 0);
+
+    bestScore = Math.max(bestScore, Math.min(190, partyScore));
+  }
+
+  for (const attr of move.getAttrs("HealStatusEffectAttr")) {
+    const curedPokemon = attr.selfTarget ? user : target;
+    const curesOpponent = user.isOpponent(curedPokemon);
+    if (targetIsOpponent || curesOpponent || !curedPokemon.status || !attr.isOfEffect(curedPokemon.status.effect)) {
+      continue;
+    }
+
+    bestScore = Math.max(bestScore, getStatusBurdenScore(curedPokemon, user));
+  }
+
+  if (move.id === MoveId.REST && user.status && user.status.effect !== StatusEffect.SLEEP) {
+    bestScore = Math.max(bestScore, getStatusBurdenScore(user, user) * 0.55);
+  }
+
+  return bestScore;
+}
+
+function getPlannerPartyStatusCureTargets(user: Pokemon): Pokemon[] {
+  if (!user.isPlayer()) {
+    return globalScene.getEnemyParty();
+  }
+
+  const userPlayerIndex = globalScene.getPlayerIndexForPokemon(user);
+  const userIsEnemySide =
+    userPlayerIndex !== undefined && globalScene.isMysteryEncounterEnemySidePlayer(userPlayerIndex);
+
+  if (!globalScene.twoPlayerMode) {
+    return globalScene.getPlayerParty(userPlayerIndex ?? globalScene.activePlayerIndex);
+  }
+
+  return globalScene
+    .getActivePlayerIndexes()
+    .filter(playerIndex => globalScene.isMysteryEncounterEnemySidePlayer(playerIndex) === userIsEnemySide)
+    .flatMap(playerIndex => globalScene.getPlayerParty(playerIndex));
+}
+
+function getStatusBurdenScore(pokemon: Pokemon, healer: Pokemon): number {
+  const status = pokemon.status;
+  if (!status) {
+    return 0;
+  }
+
+  const maxHp = Math.max(1, pokemon.getMaxHp());
+  const incomingDamage = estimateIncomingDamage(pokemon);
+  const residualDamage = estimateEndOfTurnResidualDamage(pokemon);
+  const dangerRatio = Math.min(1.5, (incomingDamage + residualDamage) / Math.max(1, pokemon.hp));
+  const pressure = getBestOffensivePressure(pokemon);
+  const outgoingDamage = estimateBestDamageAgainstSide(pokemon, getActiveSidePokemon(healer, false));
+  const residualScore =
+    residualDamage > 0 ? scoreFutureDamageSwing(residualDamage * getFutureTurnWeightTotal(), maxHp, 95, 1.8) : 0;
+  const dangerBonus = dangerRatio >= 1 ? 42 : dangerRatio >= 0.5 ? 20 : 0;
+
+  switch (status.effect) {
+    case StatusEffect.SLEEP:
+    case StatusEffect.FREEZE:
+      return clampPlannerScore(
+        48
+          + scoreFutureDamageSwing(outgoingDamage * getFutureTurnWeightTotal(), maxHp, 110, 2)
+          + Math.min(35, (incomingDamage / maxHp) * 60)
+          + (pressure.canKo ? 22 : 0),
+        0,
+        155,
+      );
+    case StatusEffect.PARALYSIS:
+      return clampPlannerScore(
+        28
+          + Math.min(45, pressure.maxDamageRatio * 36)
+          + Math.min(36, scoreFutureSpeedBoost(healer, pokemon, 2) * 0.7)
+          + dangerBonus,
+        0,
+        125,
+      );
+    case StatusEffect.BURN: {
+      const physicalPenalty = targetReliesOnAttackCategory(pokemon, MoveCategory.PHYSICAL)
+        ? Math.min(76, pressure.maxDamageRatio * 70 + (pressure.canKo ? 24 : 0))
+        : 0;
+      return clampPlannerScore(22 + residualScore + physicalPenalty + dangerBonus, 0, 145);
+    }
+    case StatusEffect.TOXIC:
+      return clampPlannerScore(
+        26 + residualScore * 1.35 + Math.min(48, status.toxicTurnCount * 9 + dangerRatio * 22) + dangerBonus,
+        0,
+        155,
+      );
+    case StatusEffect.POISON:
+      return clampPlannerScore(18 + residualScore + dangerBonus, 0, 105);
+    default:
+      return 0;
+  }
+}
+
 function getHealingRatioForAttr(user: Pokemon, move: Move, attr: HealAttr): number {
   if (attr instanceof WeatherHealAttr) {
     return attr.getWeatherHealRatio(getEffectiveWeatherForMove(user));
@@ -1525,12 +1943,15 @@ function getOpponentStatusMoveScore(
   }
 
   const statStageScore = getOpponentStatStageMoveScore(user, target, move, incomingDamage);
-  const hasImmediateDisruption = move.hasAttr("StatusEffectAttr") || move.hasAttr("ForceSwitchOutAttr");
+  const hasUsableStatusEffect = move
+    .getAttrs("StatusEffectAttr")
+    .some(attr => getStatusEffectsForPlanner(attr).some(effect => canPlannerSetStatus(user, target, effect)));
+  const hasImmediateDisruption = hasUsableStatusEffect || move.hasAttr("ForceSwitchOutAttr");
   const tempoRisk = isHighTempoStatusRisk(user, target, move, incomingDamage);
 
   let score = statStageScore;
 
-  if (move.hasAttr("StatusEffectAttr")) {
+  if (hasUsableStatusEffect) {
     score += Math.min(60, targetThreatScore * 0.35);
   }
 
@@ -1630,6 +2051,340 @@ function scoreDefensiveStatDrop(
   return 12 * stages - (tempoRisk ? 34 * stages : 0);
 }
 
+function getFutureStatusMoveValue(
+  user: Pokemon,
+  target: Pokemon,
+  move: Move,
+  targetIsOpponent: boolean,
+  targetThreatScore: number,
+): number {
+  const statStageValue = getFutureStatStageMoveValue(user, target, move);
+  const statusValue = targetIsOpponent ? getFutureStatusEffectMoveValue(user, target, move, targetThreatScore) : 0;
+  const accuracy = getAccuracyFactor(user, target, move);
+
+  return clampPlannerScore((statStageValue + statusValue) * accuracy, -80, 190);
+}
+
+function getFutureStatStageMoveValue(user: Pokemon, target: Pokemon, move: Move): number {
+  return move.getAttrs("StatStageChangeAttr").reduce((total, attr) => {
+    const affectedPokemon = attr.selfTarget ? user : target;
+    const stages = attr.getLevels(user);
+    if (stages === 0) {
+      return total;
+    }
+
+    const affectsOpponent = user.isOpponent(affectedPokemon);
+    if (affectsOpponent && stages < 0) {
+      return total + getFutureOpponentStatDropValue(user, affectedPokemon, attr.stats, stages);
+    }
+
+    if (!affectsOpponent && stages > 0) {
+      return total + getFutureAllyStatBoostValue(user, affectedPokemon, attr.stats, stages);
+    }
+
+    return total - Math.min(90, Math.abs(stages) * attr.stats.length * 18);
+  }, 0);
+}
+
+function getFutureOpponentStatDropValue(user: Pokemon, target: Pokemon, stats: BattleStat[], stages: number): number {
+  return stats.reduce((total, stat) => {
+    const appliedStages = getAppliedStatStageDelta(target, stat, stages);
+    if (appliedStages === 0) {
+      return total;
+    }
+
+    switch (stat) {
+      case Stat.ATK:
+        return total + scoreFutureOutgoingDamagePrevention(user, target, MoveCategory.PHYSICAL, appliedStages);
+      case Stat.SPATK:
+        return total + scoreFutureOutgoingDamagePrevention(user, target, MoveCategory.SPECIAL, appliedStages);
+      case Stat.DEF:
+        return total + scoreFutureIncomingDamageGain(user, target, MoveCategory.PHYSICAL, appliedStages);
+      case Stat.SPDEF:
+        return total + scoreFutureIncomingDamageGain(user, target, MoveCategory.SPECIAL, appliedStages);
+      case Stat.SPD:
+        return total + scoreFutureSpeedDrop(user, target, Math.abs(appliedStages));
+      case Stat.ACC:
+        return total + scoreFutureAccuracyDrop(user, target, Math.abs(appliedStages));
+      case Stat.EVA:
+        return total + scoreFutureEvasionDrop(user, target, Math.abs(appliedStages));
+      default:
+        return total;
+    }
+  }, 0);
+}
+
+function getFutureAllyStatBoostValue(user: Pokemon, target: Pokemon, stats: BattleStat[], stages: number): number {
+  return stats.reduce((total, stat) => {
+    const appliedStages = getAppliedStatStageDelta(target, stat, stages);
+    if (appliedStages === 0) {
+      return total;
+    }
+
+    switch (stat) {
+      case Stat.ATK:
+        return total + scoreFutureAllyOffenseBoost(user, target, MoveCategory.PHYSICAL, appliedStages);
+      case Stat.SPATK:
+        return total + scoreFutureAllyOffenseBoost(user, target, MoveCategory.SPECIAL, appliedStages);
+      case Stat.DEF:
+        return total + scoreFutureAllyDefenseBoost(user, target, MoveCategory.PHYSICAL, appliedStages);
+      case Stat.SPDEF:
+        return total + scoreFutureAllyDefenseBoost(user, target, MoveCategory.SPECIAL, appliedStages);
+      case Stat.SPD:
+        return total + scoreFutureSpeedBoost(user, target, appliedStages);
+      case Stat.ACC:
+        return total + Math.min(42, appliedStages * 18 + getBestOffensivePressure(target).maxDamageRatio * 18);
+      case Stat.EVA:
+        return total + Math.min(50, appliedStages * 16 + estimateIncomingDamage(target) * 1.4);
+      default:
+        return total;
+    }
+  }, 0);
+}
+
+function scoreFutureOutgoingDamagePrevention(
+  user: Pokemon,
+  target: Pokemon,
+  category: MoveCategory.PHYSICAL | MoveCategory.SPECIAL,
+  appliedStages: number,
+): number {
+  if (!targetReliesOnAttackCategory(target, category)) {
+    return -35 * Math.abs(appliedStages);
+  }
+
+  const friendlySide = getActiveSidePokemon(user, true);
+  const damageScale =
+    getStatStageMultiplier(
+      target.getStatStage(category === MoveCategory.PHYSICAL ? Stat.ATK : Stat.SPATK) + appliedStages,
+    ) / getStatStageMultiplier(target.getStatStage(category === MoveCategory.PHYSICAL ? Stat.ATK : Stat.SPATK));
+  const preventedDamage = friendlySide.reduce((total, defender) => {
+    const incomingDamage = estimateBestDamageByCategory(target, defender, category);
+    return total + incomingDamage * Math.max(0, 1 - damageScale);
+  }, 0);
+
+  return scoreFutureDamageSwing(preventedDamage * getFutureTurnWeightTotal(), getAverageMaxHp(friendlySide), 125, 2.4);
+}
+
+function scoreFutureIncomingDamageGain(
+  user: Pokemon,
+  target: Pokemon,
+  category: MoveCategory.PHYSICAL | MoveCategory.SPECIAL,
+  appliedStages: number,
+): number {
+  const attackers = getActiveSidePokemon(user, true);
+  const stat = category === MoveCategory.PHYSICAL ? Stat.DEF : Stat.SPDEF;
+  const damageScale =
+    getStatStageMultiplier(target.getStatStage(stat))
+    / getStatStageMultiplier(target.getStatStage(stat) + appliedStages);
+  const currentDamage = attackers.reduce(
+    (highestDamage, attacker) => Math.max(highestDamage, estimateBestDamageByCategory(attacker, target, category)),
+    0,
+  );
+  const gainedDamage = currentDamage * Math.max(0, damageScale - 1);
+  const targetHp = getPlannerHp(target, user);
+  const targetMaxHp = getPlannerMaxHp(target, user);
+  const koEnableBonus = currentDamage < targetHp && currentDamage + gainedDamage >= targetHp ? 48 : 0;
+
+  return scoreFutureDamageSwing(gainedDamage * getFutureTurnWeightTotal(), targetMaxHp, 120, 2.2) + koEnableBonus;
+}
+
+function scoreFutureAllyOffenseBoost(
+  user: Pokemon,
+  target: Pokemon,
+  category: MoveCategory.PHYSICAL | MoveCategory.SPECIAL,
+  appliedStages: number,
+): number {
+  const opponents = getActiveSidePokemon(user, false);
+  const stat = category === MoveCategory.PHYSICAL ? Stat.ATK : Stat.SPATK;
+  const damageScale =
+    getStatStageMultiplier(target.getStatStage(stat) + appliedStages)
+    / getStatStageMultiplier(target.getStatStage(stat));
+  const currentDamage = opponents.reduce(
+    (highestDamage, opponent) => Math.max(highestDamage, estimateBestDamageByCategory(target, opponent, category)),
+    0,
+  );
+  const gainedDamage = currentDamage * Math.max(0, damageScale - 1);
+
+  return scoreFutureDamageSwing(gainedDamage * getFutureTurnWeightTotal(), getAverageMaxHp(opponents), 118, 2.1);
+}
+
+function scoreFutureAllyDefenseBoost(
+  user: Pokemon,
+  target: Pokemon,
+  category: MoveCategory.PHYSICAL | MoveCategory.SPECIAL,
+  appliedStages: number,
+): number {
+  const opponents = getActiveSidePokemon(user, false);
+  const stat = category === MoveCategory.PHYSICAL ? Stat.DEF : Stat.SPDEF;
+  const damageScale =
+    getStatStageMultiplier(target.getStatStage(stat))
+    / getStatStageMultiplier(target.getStatStage(stat) + appliedStages);
+  const preventedDamage = opponents.reduce((total, opponent) => {
+    const incomingDamage = estimateBestDamageByCategory(opponent, target, category);
+    return total + incomingDamage * Math.max(0, 1 - damageScale);
+  }, 0);
+
+  return scoreFutureDamageSwing(preventedDamage * getFutureTurnWeightTotal(), target.getMaxHp(), 125, 2.4);
+}
+
+function getFutureStatusEffectMoveValue(user: Pokemon, target: Pokemon, move: Move, targetThreatScore: number): number {
+  return move.getAttrs("StatusEffectAttr").reduce((bestScore, attr) => {
+    const effects = getStatusEffectsForPlanner(attr);
+    const attrBestScore = effects.reduce((bestEffectScore, effect) => {
+      if (!canPlannerSetStatus(user, target, effect)) {
+        return bestEffectScore;
+      }
+
+      return Math.max(bestEffectScore, scoreFutureStatusEffect(user, target, effect, targetThreatScore));
+    }, 0);
+
+    return Math.max(bestScore, attrBestScore);
+  }, 0);
+}
+
+function getStatusEffectsForPlanner(attr: { effect: StatusEffect }): readonly StatusEffect[] {
+  const possibleMultiStatusAttr = attr as { effect: StatusEffect; effects?: readonly StatusEffect[] };
+  return possibleMultiStatusAttr.effects ?? [possibleMultiStatusAttr.effect];
+}
+
+function scoreFutureStatusEffect(
+  user: Pokemon,
+  target: Pokemon,
+  effect: StatusEffect,
+  targetThreatScore: number,
+): number {
+  const friendlySide = getActiveSidePokemon(user, true);
+  const threatDamage = estimateBestDamageAgainstSide(target, friendlySide);
+  const targetMaxHp = getPlannerMaxHp(target, user);
+
+  switch (effect) {
+    case StatusEffect.SLEEP:
+    case StatusEffect.FREEZE:
+      return clampPlannerScore(
+        scoreFutureDamageSwing(threatDamage * 1.45, getAverageMaxHp(friendlySide), 140, 2.5)
+          + Math.min(55, targetThreatScore * 0.2),
+        0,
+        170,
+      );
+    case StatusEffect.PARALYSIS:
+      return clampPlannerScore(
+        scoreFutureDamageSwing(threatDamage * 0.32, getAverageMaxHp(friendlySide), 95, 1.8)
+          + scoreFutureSpeedDrop(user, target, 2)
+          + Math.min(28, targetThreatScore * 0.1),
+        0,
+        135,
+      );
+    case StatusEffect.BURN: {
+      const physicalThreat = targetReliesOnAttackCategory(target, MoveCategory.PHYSICAL)
+        ? scoreFutureOutgoingDamagePrevention(user, target, MoveCategory.PHYSICAL, -2) * 0.85
+        : 0;
+      const residualDamage = Math.max(1, Math.floor(targetMaxHp / 8)) * getFutureTurnWeightTotal();
+      return clampPlannerScore(physicalThreat + scoreFutureDamageSwing(residualDamage, targetMaxHp, 90, 2), 0, 145);
+    }
+    case StatusEffect.TOXIC:
+      return clampPlannerScore(scoreFutureDamageSwing(targetMaxHp * 0.18, targetMaxHp, 95, 1.8), 0, 110);
+    case StatusEffect.POISON:
+      return clampPlannerScore(scoreFutureDamageSwing(targetMaxHp * 0.125, targetMaxHp, 72, 1.4), 0, 85);
+    default:
+      return 0;
+  }
+}
+
+function scoreFutureSpeedDrop(user: Pokemon, target: Pokemon, stages: number): number {
+  const friendlySide = getActiveSidePokemon(user, true);
+  const flips = friendlySide.filter(
+    pokemon =>
+      pokemon.getEffectiveStat(Stat.SPD, { opponent: target })
+        < target.getEffectiveStat(Stat.SPD, { opponent: pokemon })
+      && pokemon.getEffectiveStat(Stat.SPD, { opponent: target }) * getSpeedStageApproximation(stages)
+        >= target.getEffectiveStat(Stat.SPD, { opponent: pokemon }),
+  ).length;
+
+  return Math.min(55, stages * 12 + flips * 18);
+}
+
+function scoreFutureSpeedBoost(user: Pokemon, target: Pokemon, stages: number): number {
+  const opponents = getActiveSidePokemon(user, false);
+  const flips = opponents.filter(
+    opponent =>
+      target.getEffectiveStat(Stat.SPD, { opponent }) < opponent.getEffectiveStat(Stat.SPD, { opponent: target })
+      && target.getEffectiveStat(Stat.SPD, { opponent }) * getSpeedStageApproximation(stages)
+        >= opponent.getEffectiveStat(Stat.SPD, { opponent: target }),
+  ).length;
+
+  return Math.min(55, stages * 12 + flips * 18 + getBestOffensivePressure(target).maxDamageRatio * 16);
+}
+
+function scoreFutureAccuracyDrop(user: Pokemon, target: Pokemon, stages: number): number {
+  const friendlySide = getActiveSidePokemon(user, true);
+  const threatDamage = estimateBestDamageAgainstSide(target, friendlySide);
+  return scoreFutureDamageSwing(threatDamage * Math.min(0.5, stages * 0.2), getAverageMaxHp(friendlySide), 95, 1.7);
+}
+
+function scoreFutureEvasionDrop(user: Pokemon, target: Pokemon, stages: number): number {
+  const friendlySide = getActiveSidePokemon(user, true);
+  const pressureDamage = estimateBestDamageAgainstSideFromCategory(friendlySide, target);
+  return scoreFutureDamageSwing(pressureDamage * Math.min(0.45, stages * 0.16), getPlannerMaxHp(target, user), 85, 1.4);
+}
+
+function getAppliedStatStageDelta(pokemon: Pokemon, stat: BattleStat, stages: number): number {
+  const currentStage = pokemon.getStatStage(stat);
+  return Math.max(-6, Math.min(6, currentStage + stages)) - currentStage;
+}
+
+function getStatStageMultiplier(stage: number): number {
+  return stage >= 0 ? (2 + stage) / 2 : 2 / (2 - stage);
+}
+
+function getSpeedStageApproximation(stages: number): number {
+  return getStatStageMultiplier(Math.min(6, Math.max(1, stages)));
+}
+
+function getFutureTurnWeightTotal(): number {
+  return FUTURE_TURN_WEIGHTS.reduce((total, weight) => total + weight, 0);
+}
+
+function scoreFutureDamageSwing(damage: number, referenceHp: number, ratioWeight: number, flatWeight: number): number {
+  if (damage <= 0) {
+    return 0;
+  }
+
+  return Math.min(120, (damage / Math.max(1, referenceHp)) * ratioWeight + damage * flatWeight);
+}
+
+function getActiveSidePokemon(referencePokemon: Pokemon, sameSide: boolean): Pokemon[] {
+  return globalScene
+    .getField(true)
+    .filter(pokemon => pokemon.isAllowedInBattle() && !pokemon.isFainted())
+    .filter(pokemon => (sameSide ? !referencePokemon.isOpponent(pokemon) : referencePokemon.isOpponent(pokemon)));
+}
+
+function getAverageMaxHp(pokemon: Pokemon[]): number {
+  if (pokemon.length === 0) {
+    return 1;
+  }
+
+  return pokemon.reduce((total, currentPokemon) => total + currentPokemon.getMaxHp(), 0) / pokemon.length;
+}
+
+function estimateBestDamageAgainstSide(attacker: Pokemon, defenders: Pokemon[]): number {
+  return defenders.reduce(
+    (highestDamage, defender) => Math.max(highestDamage, estimateBestDamage(attacker, defender).damage),
+    0,
+  );
+}
+
+function estimateBestDamageAgainstSideFromCategory(attackers: Pokemon[], defender: Pokemon): number {
+  return attackers.reduce(
+    (highestDamage, attacker) => Math.max(highestDamage, estimateBestDamage(attacker, defender).damage),
+    0,
+  );
+}
+
+function clampPlannerScore(score: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, score));
+}
+
 function isHighTempoStatusRisk(user: Pokemon, target: Pokemon, move: Move, incomingDamage: number): boolean {
   const slowerOrTied =
     move.priority <= 0
@@ -1646,15 +2401,27 @@ function getProtectMoveScore(user: Pokemon, move: Move, incomingDamage: number):
 }
 
 function estimateDamage(user: Pokemon, target: Pokemon, move: Move) {
+  const ignoreAbility = !target.waveData.abilityRevealed;
+  const useIllusion = shouldUsePlannerIllusion(user, target);
+  const effectiveness = useIllusion
+    ? target.getAttackTypeEffectiveness(user.getMoveType(move, true, target), {
+        source: user,
+        simulated: true,
+        move,
+        useIllusion: true,
+      })
+    : undefined;
+
   return target.getAttackDamage({
     source: user,
     move,
-    ignoreAbility: !target.waveData.abilityRevealed,
+    ignoreAbility,
     ignoreSourceAbility: false,
     ignoreAllyAbility: !target.getAllies().some(ally => ally.waveData.abilityRevealed),
     ignoreSourceAllyAbility: false,
     isCritical: move.hasAttr("CritOnlyAttr") || !!user.getTag(BattlerTagType.ALWAYS_CRIT),
     simulated: true,
+    ...(effectiveness === undefined ? {} : { effectiveness }),
   });
 }
 
@@ -1721,10 +2488,11 @@ function getBestOffensivePressure(user: Pokemon): PlannerOffensivePressure {
   return user.getOpponents().reduce<PlannerOffensivePressure>(
     (best, opponent) => {
       const damage = estimateBestDamage(user, opponent).damage;
-      const maxDamageRatio = opponent.hp > 0 ? damage / opponent.hp : 0;
+      const opponentHp = getPlannerHp(opponent, user);
+      const maxDamageRatio = opponentHp > 0 ? damage / opponentHp : 0;
       return {
         maxDamageRatio: Math.max(best.maxDamageRatio, maxDamageRatio),
-        canKo: best.canKo || damage >= opponent.hp,
+        canKo: best.canKo || damage >= opponentHp,
       };
     },
     { maxDamageRatio: 0, canKo: false },
@@ -1762,7 +2530,7 @@ function enemySideCanExploitDefenseDrop(
   return globalScene
     .getField(true)
     .filter(pokemon => !user.isOpponent(pokemon) && pokemon.isAllowedInBattle())
-    .some(pokemon => estimateBestDamageByCategory(pokemon, target, category) >= target.getMaxHp() * 0.18);
+    .some(pokemon => estimateBestDamageByCategory(pokemon, target, category) >= getPlannerMaxHp(target, user) * 0.18);
 }
 
 function getPlannerMoveTargets(user: Pokemon, moveId: MoveId): BattlerIndex[] {
@@ -1849,11 +2617,13 @@ function getTargetPressureAgainstEnemyPartyMember(
   const evaluatePressure = () => {
     const incomingDamage = estimateBestDamage(target, defender).damage;
     const answerDamage = estimateBestDamage(defender, target).damage;
+    const targetHp = getPlannerHp(target, defender);
+    const targetMaxHp = getPlannerMaxHp(target, defender);
     return {
       incomingRatio: defender.getMaxHp() > 0 ? incomingDamage / defender.getMaxHp() : 0,
-      answerRatio: target.getMaxHp() > 0 ? answerDamage / target.getMaxHp() : 0,
+      answerRatio: targetMaxHp > 0 ? answerDamage / targetMaxHp : 0,
       canBeKoed: incomingDamage >= defender.hp,
-      canAnswerKo: answerDamage >= target.hp,
+      canAnswerKo: answerDamage >= targetHp,
     };
   };
 
