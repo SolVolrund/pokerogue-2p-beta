@@ -1,10 +1,12 @@
-import { globalScene } from "#app/global-scene";
 import type { PlayerIndex } from "#app/battle-scene";
+import { globalScene } from "#app/global-scene";
 import { EntryHazardTag } from "#data/arena-tag";
 import { allMoves } from "#data/data-lists";
 import { ArenaTagSide } from "#enums/arena-tag-side";
+import { Command } from "#enums/command";
 import type { MoveId } from "#enums/move-id";
 import type { PlayerPokemon } from "#field/pokemon";
+import { getPlannerSwitchIndex } from "#utils/battle-planner-ai";
 import { isDawnEntryHazardMove } from "#utils/computer-partner-hazard-support";
 import { getComputerPartnerProfile, isComputerPartnerAcePokemon } from "#utils/computer-partner-profile";
 
@@ -51,7 +53,7 @@ export function getSortedComputerPartnerPartyMemberMatchupScores(
 
 export function getComputerPartnerNextSummonIndex(partyMemberScores: [number, number][]): number | undefined {
   if (partyMemberScores.length === 0) {
-    return undefined;
+    return;
   }
 
   const sortedPartyMemberScores = getSortedComputerPartnerPartyMemberMatchupScores(partyMemberScores);
@@ -68,8 +70,10 @@ export function getComputerPartnerNextSummonIndex(partyMemberScores: [number, nu
 
 export function getComputerPartnerBestSwitchIndex(playerIndex: PlayerIndex): number | undefined {
   const partyMemberScores = getComputerPartnerPartyMemberMatchupScores(playerIndex);
-  return getDawnEntryHazardSwitchIndex(playerIndex, partyMemberScores)
-    ?? getComputerPartnerNextSummonIndex(partyMemberScores);
+  return (
+    getDawnEntryHazardSwitchIndex(playerIndex, partyMemberScores)
+    ?? getComputerPartnerNextSummonIndex(partyMemberScores)
+  );
 }
 
 export function getComputerPartnerImprovedSwitchIndex(
@@ -80,12 +84,12 @@ export function getComputerPartnerImprovedSwitchIndex(
   const playerIndex = globalScene.getPlayerIndexForFieldSlot(fieldIndex);
   const playerPokemon = globalScene.getPlayerPokemonForFieldSlot(fieldIndex);
   if (!playerPokemon) {
-    return undefined;
+    return;
   }
 
   const partyMemberScores = getComputerPartnerPartyMemberMatchupScores(playerIndex);
   if (partyMemberScores.length === 0) {
-    return undefined;
+    return;
   }
 
   const dawnHazardSwitchIndex = getDawnEntryHazardSwitchIndex(playerIndex, partyMemberScores, playerPokemon);
@@ -95,7 +99,33 @@ export function getComputerPartnerImprovedSwitchIndex(
 
   const opponents = playerPokemon.getOpponents();
   if (opponents.length === 0) {
-    return undefined;
+    return;
+  }
+
+  if (globalScene.plannerAiEnabled) {
+    const reservedSwitchIndexes = new Set<number>();
+    globalScene.getPlayerField().forEach((fieldPokemon, allyFieldIndex) => {
+      const turnCommand = globalScene.currentBattle.turnCommands[globalScene.getPlayerBattlerIndex(allyFieldIndex)];
+      if (
+        fieldPokemon !== playerPokemon
+        && isComputerPartnerFieldIndex(allyFieldIndex)
+        && globalScene.getPlayerIndexForFieldSlot(allyFieldIndex) === playerIndex
+        && turnCommand?.command === Command.POKEMON
+        && typeof turnCommand.cursor === "number"
+      ) {
+        reservedSwitchIndexes.add(turnCommand.cursor);
+      }
+    });
+    const allyAlreadySwitching = reservedSwitchIndexes.size > 0;
+
+    return getPlannerSwitchIndex(
+      playerPokemon,
+      partyMemberScores,
+      switchMultiplier,
+      false,
+      allyAlreadySwitching,
+      reservedSwitchIndexes,
+    );
   }
 
   const matchupScore =
@@ -107,7 +137,7 @@ export function getComputerPartnerImprovedSwitchIndex(
     return getComputerPartnerNextSummonIndex(partyMemberScores);
   }
 
-  return undefined;
+  return;
 }
 
 function getDawnEntryHazardSwitchIndex(
@@ -117,15 +147,15 @@ function getDawnEntryHazardSwitchIndex(
 ): number | undefined {
   const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
   if (profile.key !== "dawn_zorua") {
-    return undefined;
+    return;
   }
 
   if (globalScene.arena.findTagsOnSide(t => t instanceof EntryHazardTag, ArenaTagSide.ENEMY).length > 0) {
-    return undefined;
+    return;
   }
 
   if (activePokemon && hasDawnEntryHazardMove(activePokemon)) {
-    return undefined;
+    return;
   }
 
   const party = globalScene.getPlayerParty(playerIndex);
@@ -135,9 +165,7 @@ function getDawnEntryHazardSwitchIndex(
     .filter(({ pokemon }) => !!pokemon && hasDawnEntryHazardMove(pokemon))
     .map(({ partyIndex, pokemon }) => ({
       partyIndex,
-      score:
-        (matchupScores.get(partyIndex) ?? 0)
-        + getDawnHazardSwitchRoleBonus(profile, partyIndex, pokemon),
+      score: (matchupScores.get(partyIndex) ?? 0) + getDawnHazardSwitchRoleBonus(profile, partyIndex, pokemon),
     }))
     .sort((a, b) => b.score - a.score);
 
@@ -156,7 +184,7 @@ function getDawnHazardSwitchRoleBonus(
   partyIndex: number,
   pokemon: Parameters<typeof isComputerPartnerAcePokemon>[0],
 ): number {
-  const role = isComputerPartnerAcePokemon(pokemon, profile) ? "ace" : profile.roles[partyIndex] ?? "balanced";
+  const role = isComputerPartnerAcePokemon(pokemon, profile) ? "ace" : (profile.roles[partyIndex] ?? "balanced");
   switch (role) {
     case "speed":
       return 12;

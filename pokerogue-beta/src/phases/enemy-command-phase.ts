@@ -92,12 +92,18 @@ export class EnemyCommandPhase extends FieldPhase {
 
           const switchMultiplier = 1 - (battle.enemySwitchCounter ? Math.pow(0.1, 1 / battle.enemySwitchCounter) : 0);
           const usePlannerSwitch = globalScene.plannerAiEnabled && enemyPokemon.aiType === AiType.PLANNER;
-          const allyAlreadySwitching = globalScene.getEnemyField().some((fieldPokemon, fieldIndex) => {
-            return (
+          const reservedSwitchIndexes = new Set<number>();
+          globalScene.getEnemyField().forEach((fieldPokemon, fieldIndex) => {
+            const turnCommand = battle.turnCommands[globalScene.getEnemyBattlerIndex(fieldIndex)];
+            if (
               fieldPokemon !== enemyPokemon
-              && battle.turnCommands[globalScene.getEnemyBattlerIndex(fieldIndex)]?.command === Command.POKEMON
-            );
+              && turnCommand?.command === Command.POKEMON
+              && typeof turnCommand.cursor === "number"
+            ) {
+              reservedSwitchIndexes.add(turnCommand.cursor);
+            }
           });
+          const allyAlreadySwitching = reservedSwitchIndexes.size > 0;
 
           const plannerSwitchIndex = usePlannerSwitch
             ? getPlannerSwitchIndex(
@@ -106,6 +112,7 @@ export class EnemyCommandPhase extends FieldPhase {
                 switchMultiplier,
                 trainer.config.isBoss,
                 allyAlreadySwitching,
+                reservedSwitchIndexes,
               )
             : undefined;
           const legacyShouldSwitch =
@@ -191,7 +198,7 @@ export class EnemyCommandPhase extends FieldPhase {
       targets,
       zMove: {
         sourceMove: zMoveSelection.sourceMoveId,
-        ...(zMoveSelection.power !== undefined ? { power: zMoveSelection.power } : {}),
+        ...(zMoveSelection.power === undefined ? {} : { power: zMoveSelection.power }),
       },
     };
   }

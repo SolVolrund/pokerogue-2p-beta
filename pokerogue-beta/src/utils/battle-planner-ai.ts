@@ -24,6 +24,34 @@ import { BooleanHolder } from "#utils/common";
 const FAIL_SCORE = -100_000;
 const KO_SCORE = 220;
 const FUTURE_TURN_WEIGHTS = [0.65, 0.35] as const;
+const EMERGENCY_SWITCH_MIN_HP_RATIO = 0.55;
+const EMERGENCY_SWITCH_MIN_IMPROVEMENT = 0.5;
+const PLANNER_IQ_PROFILES = {
+  low: {
+    label: "low",
+    weights: [60, 30, 10],
+    minScoreRatios: [1, 0.75, 0.6],
+    maxScoreGaps: [0, 40, 70],
+  },
+  mid: {
+    label: "mid",
+    weights: [70, 25, 5],
+    minScoreRatios: [1, 0.8, 0.65],
+    maxScoreGaps: [0, 34, 58],
+  },
+  high: {
+    label: "high",
+    weights: [80, 20, 0],
+    minScoreRatios: [1, 0.86, 0.72],
+    maxScoreGaps: [0, 26, 44],
+  },
+  boss: {
+    label: "boss",
+    weights: [90, 10, 0],
+    minScoreRatios: [1, 0.9, 0.78],
+    maxScoreGaps: [0, 18, 30],
+  },
+} as const;
 const PLANNER_DEBUG_STORAGE_KEY = "pokeroguePlannerAiDebug";
 const PLANNER_DETAILED_DEBUG_STORAGE_KEY = "pokeroguePlannerAiDetailedDebug";
 const PLANNER_FIELD_LOG_ORDER = [
@@ -135,27 +163,23 @@ interface PlannerSearchEvaluation {
   wastedTurnPenalty: number;
 }
 
-interface PlannerTargetScore {
-  battlerIndex: BattlerIndex;
-  score: number;
-  breakdown: PlannerMoveScoreBreakdown;
-}
-
 interface PlannerOffensivePressure {
   maxDamageRatio: number;
   canKo: boolean;
 }
 
+type PlannerIqProfile = (typeof PLANNER_IQ_PROFILES)[keyof typeof PLANNER_IQ_PROFILES];
+
 export function choosePlannerMove(user: Pokemon, movePool: PokemonMove[]): TurnMove {
   installPlannerDebugConsoleHelper();
 
   const choices = movePool
-    .map(move => scorePlannerMove(user, move))
+    .flatMap(move => scorePlannerMoveCandidates(user, move))
     .filter((scoredMove): scoredMove is PlannerMoveChoice => !!scoredMove)
     .map(choice => scorePlannerChoiceByOneTurnSearch(user, choice))
     .sort((a, b) => b.score - a.score);
 
-  const chosenMove = chooseFromBestPlannerChoices(choices);
+  const chosenMove = chooseFromBestPlannerChoices(user, choices);
   logPlannerMoveEvaluations(user, choices, chosenMove);
 
   if (!chosenMove) {
@@ -180,6 +204,7 @@ export function getPlannerSwitchIndex(
   switchMultiplier: number,
   isBossTrainer = false,
   allyAlreadySwitching = false,
+  reservedPartyIndexes: ReadonlySet<number> = new Set(),
 ): number | undefined {
   installPlannerDebugConsoleHelper();
 
@@ -187,9 +212,9 @@ export function getPlannerSwitchIndex(
     return;
   }
 
-  const enemyParty = globalScene.getEnemyParty();
-  const activePartyIndex = enemyParty.indexOf(activePokemon as (typeof enemyParty)[number]);
-  if (activePokemon.isPlayer() || activePartyIndex === -1) {
+  const switchParty = getPlannerSwitchParty(activePokemon);
+  const activePartyIndex = switchParty?.indexOf(activePokemon);
+  if (!switchParty || activePartyIndex === undefined || activePartyIndex === -1) {
     return;
   }
 
@@ -218,13 +243,13 @@ export function getPlannerSwitchIndex(
   const severeMismatch = currentScore < 4 && adjustedImprovement >= 4;
   const strongUpgrade = bestAdjustedScore >= currentScore * multiplierThreshold && adjustedImprovement >= 2;
   const preserveLowHpThreat = hpRatio < 0.35 && adjustedImprovement >= 3 && !canThreatenKo && !canContributeThisTurn;
-  const escapeKo = likelyFaints && improvement >= 2 && !canThreatenKo;
 
   const candidateEvaluations = partyMemberScores
     .map(([partyIndex, score]) =>
       scoreSwitchCandidate({
         activePokemon,
-        candidate: enemyParty[partyIndex],
+        candidate: switchParty[partyIndex],
+        switchParty,
         partyIndex,
         matchupScore: score,
         bestMatchupScore: bestScore,
@@ -232,12 +257,22 @@ export function getPlannerSwitchIndex(
         likelyActiveFaints: likelyFaints,
         canActiveContribute: canContributeThisTurn,
         allyAlreadySwitching,
+        reservedPartyIndexes,
       }),
     )
     .filter((candidate): candidate is PlannerSwitchCandidate => !!candidate)
     .sort((a, b) => b.score - a.score);
 
+  const viableCandidates = candidateEvaluations.filter(candidate => candidate.score > FAIL_SCORE);
+  const emergencyCandidates = viableCandidates.filter(candidate => candidate.debug.emergencySafe);
+  const escapeKo =
+    likelyFaints && !canThreatenKo && improvement >= EMERGENCY_SWITCH_MIN_IMPROVEMENT && emergencyCandidates.length > 0;
+
   if (!severeMismatch && !strongUpgrade && !preserveLowHpThreat && !escapeKo) {
+    const unsafeEmergencyReason =
+      likelyFaints && !canThreatenKo && improvement >= EMERGENCY_SWITCH_MIN_IMPROVEMENT
+        ? "; no switch-in stays healthy enough"
+        : "";
     logPlannerSwitchEvaluations(activePokemon, {
       activeScore: currentScore,
       bestScore,
@@ -251,15 +286,17 @@ export function getPlannerSwitchIndex(
       canContributeThisTurn,
       allyAlreadySwitching,
       decision: "stay",
-      reason: switchOutMomentumScore > 0 ? "switch threshold not met; preserving momentum" : "switch threshold not met",
+      reason:
+        switchOutMomentumScore > 0
+          ? `switch threshold not met; preserving momentum${unsafeEmergencyReason}`
+          : `switch threshold not met${unsafeEmergencyReason}`,
       candidates: candidateEvaluations,
     });
     return;
   }
 
-  const viableCandidates = candidateEvaluations.filter(candidate => candidate.score > FAIL_SCORE);
-
-  const bestCandidateScore = viableCandidates[0]?.score;
+  const selectableCandidates = escapeKo ? emergencyCandidates : viableCandidates;
+  const bestCandidateScore = selectableCandidates[0]?.score;
   if (bestCandidateScore === undefined) {
     logPlannerSwitchEvaluations(activePokemon, {
       activeScore: currentScore,
@@ -280,7 +317,7 @@ export function getPlannerSwitchIndex(
     return;
   }
 
-  const bestIndexes = viableCandidates
+  const bestIndexes = selectableCandidates
     .filter(candidate => candidate.score >= bestCandidateScore - 0.5)
     .map(candidate => candidate.partyIndex);
 
@@ -298,7 +335,7 @@ export function getPlannerSwitchIndex(
     canContributeThisTurn,
     allyAlreadySwitching,
     decision: `switch -> ${chosenPartyIndex}`,
-    reason: "switch threshold met",
+    reason: escapeKo ? "emergency switch preserves a fainting active" : "switch threshold met",
     candidates: candidateEvaluations,
     chosenPartyIndex,
   });
@@ -321,6 +358,8 @@ interface PlannerSwitchCandidateDebug {
   switchInDamageRatio: number;
   pressure: number;
   canKo: boolean;
+  canTakeFollowup: boolean;
+  emergencySafe: boolean;
   reasons: string[];
 }
 
@@ -345,6 +384,7 @@ interface PlannerSwitchDebugSummary {
 interface PlannerSwitchCandidateContext {
   activePokemon: Pokemon;
   candidate?: Pokemon;
+  switchParty: Pokemon[];
   partyIndex: number;
   matchupScore: number;
   bestMatchupScore: number;
@@ -352,6 +392,7 @@ interface PlannerSwitchCandidateContext {
   likelyActiveFaints: boolean;
   canActiveContribute: boolean;
   allyAlreadySwitching: boolean;
+  reservedPartyIndexes: ReadonlySet<number>;
 }
 
 function scoreSwitchOutMomentum(
@@ -399,6 +440,7 @@ function scoreSwitchCandidate(context: PlannerSwitchCandidateContext): PlannerSw
   const {
     activePokemon,
     candidate,
+    switchParty,
     partyIndex,
     matchupScore,
     bestMatchupScore,
@@ -406,13 +448,37 @@ function scoreSwitchCandidate(context: PlannerSwitchCandidateContext): PlannerSw
     likelyActiveFaints,
     canActiveContribute,
     allyAlreadySwitching,
+    reservedPartyIndexes,
   } = context;
 
-  if (!candidate?.isAllowedInBattle() || candidate.isOnField()) {
+  if (!candidate) {
     return;
   }
 
-  const switchIn = evaluateSwitchIn(activePokemon, candidate);
+  const debug: PlannerSwitchCandidateDebug = {
+    pokemonName: getPlannerPokemonLabel(candidate),
+    matchupScore,
+    incomingDamage: 0,
+    hpAfterSwitch: candidate.hp,
+    hpAfterSwitchRatio: candidate.getHpRatio(),
+    switchInDamageRatio: 0,
+    pressure: 0,
+    canKo: false,
+    canTakeFollowup: false,
+    emergencySafe: false,
+    reasons: [],
+  };
+
+  if (reservedPartyIndexes.has(partyIndex)) {
+    debug.reasons.push("reserved by ally switch");
+    return { partyIndex, score: FAIL_SCORE, debug };
+  }
+
+  if (!candidate.isAllowedInBattle() || candidate.isOnField()) {
+    return;
+  }
+
+  const switchIn = evaluateSwitchIn(activePokemon, candidate, switchParty);
   if (!switchIn) {
     return;
   }
@@ -423,18 +489,18 @@ function scoreSwitchCandidate(context: PlannerSwitchCandidateContext): PlannerSw
   const getsKoedOnEntry = hpAfterSwitch <= 0;
   const getsCrippledOnEntry = hpAfterSwitchRatio < 0.28;
   const candidateHasPlan = switchIn.offensivePressure.maxDamageRatio >= 0.22 || switchIn.offensivePressure.canKo;
+  const canTakeFollowup = hpAfterSwitch > switchIn.incomingDamage;
+  const hasImmediateThreat = switchIn.offensivePressure.canKo || switchIn.offensivePressure.maxDamageRatio >= 0.5;
+  const emergencySafe = hpAfterSwitchRatio >= EMERGENCY_SWITCH_MIN_HP_RATIO && (canTakeFollowup || hasImmediateThreat);
   const candidateIsBestMatchup = matchupScore === bestMatchupScore;
-  const debug: PlannerSwitchCandidateDebug = {
-    pokemonName: getPlannerPokemonLabel(candidate),
-    matchupScore,
-    incomingDamage: switchIn.incomingDamage,
-    hpAfterSwitch,
-    hpAfterSwitchRatio,
-    switchInDamageRatio,
-    pressure: switchIn.offensivePressure.maxDamageRatio,
-    canKo: switchIn.offensivePressure.canKo,
-    reasons: [],
-  };
+  debug.incomingDamage = switchIn.incomingDamage;
+  debug.hpAfterSwitch = hpAfterSwitch;
+  debug.hpAfterSwitchRatio = hpAfterSwitchRatio;
+  debug.switchInDamageRatio = switchInDamageRatio;
+  debug.pressure = switchIn.offensivePressure.maxDamageRatio;
+  debug.canKo = switchIn.offensivePressure.canKo;
+  debug.canTakeFollowup = canTakeFollowup;
+  debug.emergencySafe = emergencySafe;
 
   if (getsKoedOnEntry) {
     debug.reasons.push("KO on entry");
@@ -459,7 +525,8 @@ function scoreSwitchCandidate(context: PlannerSwitchCandidateContext): PlannerSw
   let score = matchupScore * 3;
   score += candidateIsBestMatchup ? 2 : 0;
   score += switchIn.offensivePressure.canKo ? 3 : switchIn.offensivePressure.maxDamageRatio * 4;
-  score += likelyActiveFaints && hpAfterSwitchRatio > 0.45 ? 3 : 0;
+  score += likelyActiveFaints && emergencySafe ? 6 : 0;
+  score += likelyActiveFaints && !emergencySafe && hpAfterSwitchRatio > 0.45 ? 2 : 0;
   score -= switchInDamageRatio * 7;
   score -= getsCrippledOnEntry ? 4 : 0;
   score -= canActiveContribute ? 3 : 0;
@@ -472,41 +539,64 @@ function scoreSwitchCandidate(context: PlannerSwitchCandidateContext): PlannerSw
 function evaluateSwitchIn(
   activePokemon: Pokemon,
   candidate: Pokemon,
+  switchParty: Pokemon[],
 ): { incomingDamage: number; offensivePressure: PlannerOffensivePressure } | undefined {
-  return withEnemyPartySlotSimulation(activePokemon, candidate, () => ({
+  return withPlannerPartySlotSimulation(activePokemon, candidate, switchParty, () => ({
     incomingDamage: estimateIncomingDamage(candidate),
     offensivePressure: getBestOffensivePressure(candidate),
   }));
 }
 
+function getPlannerSwitchParty(activePokemon: Pokemon): Pokemon[] | undefined {
+  if (activePokemon.isPlayer()) {
+    const playerIndex = globalScene.getPlayerIndexForPokemon(activePokemon);
+    return playerIndex === undefined ? undefined : (globalScene.getPlayerParty(playerIndex) as unknown as Pokemon[]);
+  }
+
+  return globalScene.getEnemyParty() as unknown as Pokemon[];
+}
+
 function withEnemyPartySlotSimulation<T>(activePokemon: Pokemon, candidate: Pokemon, callback: () => T): T | undefined {
-  const enemyParty = globalScene.getEnemyParty();
-  const activePartyIndex = enemyParty.indexOf(activePokemon as (typeof enemyParty)[number]);
-  const candidatePartyIndex = enemyParty.indexOf(candidate as (typeof enemyParty)[number]);
+  return withPlannerPartySlotSimulation(
+    activePokemon,
+    candidate,
+    globalScene.getEnemyParty() as unknown as Pokemon[],
+    callback,
+  );
+}
+
+function withPlannerPartySlotSimulation<T>(
+  activePokemon: Pokemon,
+  candidate: Pokemon,
+  switchParty: Pokemon[],
+  callback: () => T,
+): T | undefined {
+  const activePartyIndex = switchParty.indexOf(activePokemon);
+  const candidatePartyIndex = switchParty.indexOf(candidate);
 
   if (activePartyIndex === -1 || candidatePartyIndex === -1 || activePartyIndex === candidatePartyIndex) {
     return;
   }
 
-  enemyParty[activePartyIndex] = candidate as (typeof enemyParty)[number];
-  enemyParty[candidatePartyIndex] = activePokemon as (typeof enemyParty)[number];
+  switchParty[activePartyIndex] = candidate;
+  switchParty[candidatePartyIndex] = activePokemon;
   try {
     return callback();
   } finally {
-    enemyParty[activePartyIndex] = activePokemon as (typeof enemyParty)[number];
-    enemyParty[candidatePartyIndex] = candidate as (typeof enemyParty)[number];
+    switchParty[activePartyIndex] = activePokemon;
+    switchParty[candidatePartyIndex] = candidate;
   }
 }
 
-function scorePlannerMove(user: Pokemon, pokemonMove: PokemonMove): PlannerMoveChoice | undefined {
+function scorePlannerMoveCandidates(user: Pokemon, pokemonMove: PokemonMove): PlannerMoveChoice[] {
   const move = pokemonMove.getMove();
   if (!move) {
-    return;
+    return [];
   }
 
   const targetData = getAiMoveTargetData(user, move.id);
   if (targetData.lacksRequiredOpponent) {
-    return;
+    return [];
   }
 
   const { targetSet } = targetData;
@@ -516,32 +606,37 @@ function scorePlannerMove(user: Pokemon, pokemonMove: PokemonMove): PlannerMoveC
     const targetIndexes = targets.map(fieldTarget => fieldTarget.getBattlerIndex());
     const scores = targets.map(fieldTarget => scoreMoveAgainstTargetDetailed(user, fieldTarget, move));
     const score = scores.reduce((total, targetScore) => total + targetScore.score, 0);
-    return {
-      move: pokemonMove,
-      targets: targetIndexes,
-      score,
-      targetCandidates: [
-        {
-          targets: targetIndexes,
-          baseScore: score,
-          breakdown: mergePlannerMoveScoreBreakdowns(scores.map(targetScore => targetScore.breakdown)),
-        },
-      ],
-      breakdown: mergePlannerMoveScoreBreakdowns(scores.map(targetScore => targetScore.breakdown)),
-    };
+    const breakdown = mergePlannerMoveScoreBreakdowns(scores.map(targetScore => targetScore.breakdown));
+    return [
+      {
+        move: pokemonMove,
+        targets: targetIndexes,
+        score,
+        targetCandidates: [
+          {
+            targets: targetIndexes,
+            baseScore: score,
+            breakdown,
+          },
+        ],
+        breakdown,
+      },
+    ];
   }
 
   if (targets.length === 0) {
     if (move.hasAttr("CounterDamageAttr")) {
-      return {
-        move: pokemonMove,
-        targets: [BattlerIndex.ATTACKER],
-        score: 30,
-        targetCandidates: [{ targets: [BattlerIndex.ATTACKER], baseScore: 30 }],
-      };
+      return [
+        {
+          move: pokemonMove,
+          targets: [BattlerIndex.ATTACKER],
+          score: 30,
+          targetCandidates: [{ targets: [BattlerIndex.ATTACKER], baseScore: 30 }],
+        },
+      ];
     }
 
-    return;
+    return [];
   }
 
   const targetScores = targets
@@ -555,22 +650,17 @@ function scorePlannerMove(user: Pokemon, pokemonMove: PokemonMove): PlannerMoveC
     })
     .sort((a, b) => b.score - a.score);
 
-  const chosenTarget = chooseFromBestTargets(targetScores);
-  if (!chosenTarget) {
-    return;
-  }
-
-  return {
+  return targetScores.map(targetScore => ({
     move: pokemonMove,
-    targets: [chosenTarget.battlerIndex],
-    score: chosenTarget.score,
-    breakdown: chosenTarget.breakdown,
-    targetCandidates: targetScores.map(targetScore => ({
-      targets: [targetScore.battlerIndex],
-      baseScore: targetScore.score,
-      breakdown: targetScore.breakdown,
+    targets: [targetScore.battlerIndex],
+    score: targetScore.score,
+    breakdown: targetScore.breakdown,
+    targetCandidates: targetScores.map(candidate => ({
+      targets: [candidate.battlerIndex],
+      baseScore: candidate.score,
+      breakdown: candidate.breakdown,
     })),
-  };
+  }));
 }
 
 function scorePlannerChoiceByOneTurnSearch(user: Pokemon, choice: PlannerMoveChoice): PlannerMoveChoice {
@@ -695,11 +785,20 @@ function logPlannerMoveEvaluations(
   const chosenLabel = chosenMove
     ? `${chosenMove.move.getName()} -> ${formatPlannerTargets(chosenMove.targets)}`
     : "none";
+  const iqProfile = getPlannerIqProfile(user);
+  const iqWeights = new Map(
+    getPlannerIqEligibleChoices(getPlannerIqViableChoices(choices), iqProfile).map(rankedChoice => [
+      rankedChoice.choice,
+      rankedChoice.weight,
+    ]),
+  );
   console.groupCollapsed(
-    `[Planner AI] ${getPlannerPokemonLabel(user)} evaluated ${choices.length} choices; chose ${chosenLabel}`,
+    `[Planner AI] ${getPlannerPokemonLabel(user)} evaluated ${choices.length} choices; IQ ${iqProfile.label}; chose ${chosenLabel}`,
   );
   console.table(
-    choices.map(choice => ({
+    choices.map((choice, index) => ({
+      rank: index + 1,
+      iqWeight: iqWeights.get(choice) ?? 0,
       move: choice.move.getName(),
       target: formatPlannerTargets(choice.targets),
       result: choice.debug?.result ?? "fallback score only",
@@ -760,6 +859,8 @@ function logPlannerSwitchEvaluations(activePokemon: Pokemon, summary: PlannerSwi
       dmgRatio: formatPlannerScore(candidate.debug.switchInDamageRatio),
       pressure: formatPlannerScore(candidate.debug.pressure),
       canKo: candidate.debug.canKo,
+      canTakeFollowup: candidate.debug.canTakeFollowup,
+      emergencySafe: candidate.debug.emergencySafe,
       reasons: candidate.debug.reasons.join(", "),
     })),
   );
@@ -2657,24 +2758,85 @@ function getAverageMatchupScore(pokemon: Pokemon): number {
   );
 }
 
-function chooseFromBestPlannerChoices(choices: PlannerMoveChoice[]): PlannerMoveChoice | undefined {
+function chooseFromBestPlannerChoices(user: Pokemon, choices: PlannerMoveChoice[]): PlannerMoveChoice | undefined {
   if (choices.length === 0) {
     return;
   }
 
-  const topScore = choices[0].score;
-  const closeChoices = choices.filter(choice => choice.score >= topScore - 8);
-  return closeChoices[globalScene.randBattleSeedInt(closeChoices.length)];
-}
-
-function chooseFromBestTargets(targetScores: PlannerTargetScore[]): PlannerTargetScore | undefined {
-  if (targetScores.length === 0) {
-    return;
+  const iqProfile = getPlannerIqProfile(user);
+  const viableChoices = getPlannerIqViableChoices(choices);
+  if (viableChoices.length === 0) {
+    return choices[0];
   }
 
-  const topScore = targetScores[0].score;
-  const closeTargets = targetScores.filter(target => target.score >= topScore - 6);
-  return closeTargets[globalScene.randBattleSeedInt(closeTargets.length)];
+  const rankedChoices = getPlannerIqEligibleChoices(viableChoices, iqProfile);
+  const totalWeight = rankedChoices.reduce((total, rankedChoice) => total + rankedChoice.weight, 0);
+  if (totalWeight <= 0) {
+    return rankedChoices[0]?.choice ?? viableChoices[0];
+  }
+
+  let roll = globalScene.randBattleSeedInt(totalWeight);
+  for (const rankedChoice of rankedChoices) {
+    roll -= rankedChoice.weight;
+    if (roll < 0) {
+      return rankedChoice.choice;
+    }
+  }
+
+  return rankedChoices[0]?.choice ?? viableChoices[0];
+}
+
+function getPlannerIqProfile(user: Pokemon): PlannerIqProfile {
+  if (user.isBoss()) {
+    return PLANNER_IQ_PROFILES.boss;
+  }
+
+  return PLANNER_IQ_PROFILES.mid;
+}
+
+function getPlannerIqViableChoices(choices: PlannerMoveChoice[]): PlannerMoveChoice[] {
+  const nonFailChoices = choices.filter(choice => choice.score > FAIL_SCORE / 2);
+  const nonNegativeChoices = nonFailChoices.filter(choice => choice.score >= 0);
+  return nonNegativeChoices.length > 0 ? nonNegativeChoices : nonFailChoices;
+}
+
+function getPlannerIqEligibleChoices(
+  choices: PlannerMoveChoice[],
+  iqProfile: PlannerIqProfile,
+): { choice: PlannerMoveChoice; weight: number }[] {
+  const bestScore = choices[0]?.score ?? 0;
+  return choices
+    .slice(0, iqProfile.weights.length)
+    .map((choice, rank) => ({ choice, rank, weight: iqProfile.weights[rank] ?? 0 }))
+    .filter(
+      ({ choice, rank, weight }) =>
+        weight > 0 && isPlannerIqChoiceWithinReason(choice.score, bestScore, rank, iqProfile),
+    );
+}
+
+function isPlannerIqChoiceWithinReason(
+  score: number,
+  bestScore: number,
+  rank: number,
+  iqProfile: PlannerIqProfile,
+): boolean {
+  if (rank === 0) {
+    return true;
+  }
+
+  if (score <= FAIL_SCORE / 2) {
+    return false;
+  }
+
+  if (bestScore < 0) {
+    return score >= bestScore - 12;
+  }
+
+  if (score < 0) {
+    return false;
+  }
+
+  return score >= bestScore * iqProfile.minScoreRatios[rank] || bestScore - score <= iqProfile.maxScoreGaps[rank];
 }
 
 installPlannerDebugConsoleHelper();
