@@ -29,6 +29,7 @@ uniform vec3 duskTint;
 uniform vec3 nightTint;
 uniform float teraTime;
 uniform vec3 teraColor;
+uniform vec3 crystalColor;
 uniform bool hasShadow;
 uniform bool yCenter;
 uniform float fieldScale;
@@ -187,6 +188,31 @@ void main() {
 
 	//  Multiply texture tint
 	vec4 color = texture * texel;
+
+	if (color.a > 0.0 && all(lessThan(vec3(0.0), crystalColor))) {
+		float brightness = dot(color.rgb, lumaF);
+		vec3 sourceHsv = rgb2hsv(color.rgb);
+		vec3 crystalHsv = rgb2hsv(crystalColor);
+		float highlight = smoothstep(0.68, 1.0, brightness);
+		float outline = 1.0 - smoothstep(0.0, 0.18, brightness);
+		float crystalSaturation = clamp(0.35 + sourceHsv.g * 0.45, 0.35, 0.85);
+		float crystalValue = clamp(mix(sourceHsv.b, brightness * 1.22 + 0.06, 0.65) + highlight * 0.18, 0.0, 1.0);
+		crystalSaturation = mix(crystalSaturation, crystalSaturation * 0.65, highlight);
+
+		vec3 crystalRgb = hsv2rgb(vec3(crystalHsv.r, crystalSaturation, crystalValue));
+		crystalRgb = mix(crystalRgb, vec3(0.9, 0.96, 1.0), highlight * 0.25);
+		crystalRgb = mix(crystalRgb, crystalColor * 0.35, outline * 0.75);
+		color.rgb = mix(color.rgb, crystalRgb, 0.92);
+
+		vec2 relUv = (outTexCoord.xy - texFrameUv.xy) / (size.xy / texSize.xy);
+		vec2 crystalTexCoord = vec2(relUv.x * (size.x / 200.0), relUv.y * (size.y / 120.0));
+		vec4 crystalPatternCol = texture2D(uMainSampler[1], crystalTexCoord);
+		float floorValue = 86.0 / 255.0;
+		vec3 crystalPatternHsv = rgb2hsv(crystalPatternCol.rgb);
+		crystalPatternCol.rgb = hsv2rgb(vec3((crystalPatternHsv.b - floorValue) * 4.0 + crystalTexCoord.x * fieldScale / 2.0 + crystalTexCoord.y * fieldScale / 2.0 + teraTime * 255.0, crystalPatternHsv.b, crystalPatternHsv.b));
+		crystalPatternCol.rgb = mix(crystalPatternCol.rgb, crystalColor, 0.65);
+		color.rgb = blendOverlay(color.rgb, crystalPatternCol.rgb);
+	}
 
 	if (color.a > 0.0 && all(lessThan(vec3(0.0), teraColor))) {
 		vec2 relUv = (outTexCoord.xy - texFrameUv.xy) / (size.xy / texSize.xy);

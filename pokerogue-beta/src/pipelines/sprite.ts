@@ -23,6 +23,7 @@ export class SpritePipeline extends FieldSpritePipeline {
 
     this.set1f("teraTime", 0)
       .set3fv("teraColor", [0, 0, 0])
+      .set3fv("crystalColor", [0, 0, 0])
       .setBoolean("hasShadow", false)
       .setBoolean("yCenter", false)
       .set2f("relPosition", 0, 0)
@@ -43,6 +44,11 @@ export class SpritePipeline extends FieldSpritePipeline {
     const data = sprite.pipelineData;
     const tone = data["tone"] as number[];
     const teraColor = (data["isTerastallized"] as boolean) ? ((data["teraColor"] as number[]) ?? [0, 0, 0]) : [0, 0, 0];
+    const pokemonParent = sprite.parentContainer instanceof Pokemon ? sprite.parentContainer : undefined;
+    const isCrystalized = pokemonParent ? pokemonParent.isCrystalized() : (data["isCrystalized"] as boolean);
+    const crystalColor = isCrystalized
+      ? (pokemonParent?.getCrystalColor() ?? ((data["crystalColor"] as number[]) || [0, 0, 0]))
+      : [0, 0, 0];
     const hasShadow = data["hasShadow"] as boolean;
     const yShadowOffset = data["yShadowOffset"] as number;
     const ignoreFieldPos = data["ignoreFieldPos"] as boolean;
@@ -69,6 +75,10 @@ export class SpritePipeline extends FieldSpritePipeline {
       .set3fv(
         "teraColor",
         teraColor.map(c => c / 255),
+      )
+      .set3fv(
+        "crystalColor",
+        crystalColor.map(c => c / 255),
       )
       .setBoolean("hasShadow", hasShadow)
       .setBoolean("yCenter", sprite.originY === 0.5)

@@ -61,6 +61,31 @@ const TATE_LIZA_STRONG_PAIRS: TateLizaPair[] = [
 const TRAINER_PARTNER_SEED_OFFSET = 0x7fff;
 const TRAINER_PARTNER_2_SEED_OFFSET = 0x3fff;
 
+const TRAINER_ANIMATION_FRAME_SEQUENCES: Partial<Record<string, number[]>> = {
+  molly_hale: [1, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13],
+};
+
+function getTrainerAnimationFrameNames(trainerKey: string) {
+  const frameSequence = TRAINER_ANIMATION_FRAME_SEQUENCES[trainerKey];
+  if (frameSequence) {
+    return frameSequence.map(frame =>
+      globalScene.anims.generateFrameNames(trainerKey, {
+        zeroPad: 4,
+        suffix: ".png",
+        start: frame,
+        end: frame,
+      })[0],
+    );
+  }
+
+  return globalScene.anims.generateFrameNames(trainerKey, {
+    zeroPad: 4,
+    suffix: ".png",
+    start: 1,
+    end: 128,
+  });
+}
+
 function isTateLizaTrainerType(trainerType?: TrainerType): boolean {
   return trainerType === TrainerType.TATE || trainerType === TrainerType.LIZA;
 }
@@ -1298,12 +1323,7 @@ export class Trainer extends Phaser.GameObjects.Container {
         console.warn = () => {};
         const frameEntries = trainerKeys.map(trainerKey => ({
           trainerKey,
-          frameNames: globalScene.anims.generateFrameNames(trainerKey, {
-            zeroPad: 4,
-            suffix: ".png",
-            start: 1,
-            end: 128,
-          }),
+          frameNames: getTrainerAnimationFrameNames(trainerKey),
         }));
         console.warn = originalWarn;
 

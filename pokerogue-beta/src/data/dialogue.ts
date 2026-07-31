@@ -1855,6 +1855,11 @@ export const trainerTypeDialogue: TrainerTypeDialogue = {
     victory: ["dialogue:kieran.victory.1"],
     defeat: ["dialogue:kieran.defeat.1"],
   },
+  [TrainerType.MOLLY_HALE]: {
+    encounter: ["dialogue:mollyHale.encounter.1"],
+    victory: ["dialogue:mollyHale.victory.1"],
+    defeat: ["dialogue:mollyHale.defeat.1"],
+  },
   [TrainerType.RIVAL]: [
     {
       encounter: ["dialogue:rival.encounter.1"],

@@ -4,6 +4,7 @@ import { Gender } from "#data/gender";
 import type { PlayerPokemon } from "#field/pokemon";
 import type { Starter } from "#types/save-data";
 import {
+  type ComputerPartnerStarter,
   type ComputerPartnerKey,
   createComputerPartnerStarter,
   getComputerPartnerProfile,
@@ -91,11 +92,14 @@ function applyComputerPartnerIdentity(
   globalScene.setComputerPartnerKey(playerIndex, profile.key);
 }
 
-function createPartnerPokemon(starter: Starter, isAce: boolean): PlayerPokemon {
-  const species = getPokemonSpecies(starter.speciesId);
+function createPartnerPokemon(starter: ComputerPartnerStarter, isAce: boolean): PlayerPokemon {
+  const level = getComputerPartnerJoinLevel();
+  const species = starter.evolveAtJoin
+    ? getPokemonSpecies(getPokemonSpecies(starter.speciesId).getTrainerSpeciesForLevel(level, true))
+    : getPokemonSpecies(starter.speciesId);
   const pokemon = globalScene.addPlayerPokemon(
     species,
-    getComputerPartnerJoinLevel(),
+    level,
     starter.abilityIndex,
     starter.formIndex,
     getStarterGender(starter),

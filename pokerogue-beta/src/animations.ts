@@ -187,6 +187,9 @@ export class Animation {
       case PokeballType.MASTER_BALL:
         this.doMbOpenParticles(x, y);
         break;
+      case PokeballType.GLASS_BALL:
+        this.doDefaultPbOpenParticles(x, y, 96);
+        break;
     }
   }
 

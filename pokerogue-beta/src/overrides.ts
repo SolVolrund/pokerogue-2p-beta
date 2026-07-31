@@ -56,11 +56,13 @@ import type { IntClosedRange, TupleOf } from "type-fest";
 const overrides: Partial<InstanceType<OverridesType>> = {
 //  STARTING_WAVE_OVERRIDE: 2,
 //  STARTING_BIOME_OVERRIDE: BiomeId.FARAWAY_ISLAND,
-//  BATTLE_TYPE_OVERRIDE: BattleType.WILD,
-//  RANDOM_TRAINER_OVERRIDE: {trainerType: TrainerType.DAWN_ZORUA},
+  BATTLE_TYPE_OVERRIDE: BattleType.TRAINER,
+  RANDOM_TRAINER_OVERRIDE: {trainerType: TrainerType.MOLLY_HALE},
 //  ENEMY_SPECIES_OVERRIDE: SpeciesId.UNOWN,
 //  ENEMY_LEVEL_OVERRIDE: 5,
 //  ENEMY_HELD_ITEMS_OVERRIDE: [{ name: "UNOWN_BOX" }],
+//  FIRST_WILD_ENCOUNTER_SPECIES_OVERRIDE: SpeciesId.ENTEI,
+//  ENEMY_CRYSTALIZATION_OVERRIDE: true,
 //  ALPH_TILE_STOCKPILE_OVERRIDE: false,
 };
 
@@ -248,6 +250,10 @@ class DefaultOverrides {
   readonly ENEMY_MOVESET_OVERRIDE: MoveId | MoveId[] = [];
   readonly ENEMY_SHINY_OVERRIDE: boolean | null = null;
   readonly ENEMY_VARIANT_OVERRIDE: Variant | null = null;
+  /** Temporarily crystalizes spawned enemy Pokemon for visual testing. */
+  readonly ENEMY_CRYSTALIZATION_OVERRIDE: boolean = false;
+  /** Optional RGB override for ENEMY_CRYSTALIZATION_OVERRIDE. Defaults to the standard crystal blue. */
+  readonly ENEMY_CRYSTALIZATION_COLOR_OVERRIDE: [number, number, number] | null = null;
 
   /**
    * Overrides the IVs of enemy pokemon. Values must never be outside the range `0` to `31`!

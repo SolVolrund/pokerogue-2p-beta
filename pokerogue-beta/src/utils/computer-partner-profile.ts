@@ -81,7 +81,12 @@ export interface ComputerPartnerStarterConfig {
   points?: number;
   nature?: Nature;
   moveset?: Starter["moveset"];
+  evolveAtJoin?: boolean;
 }
+
+export type ComputerPartnerStarter = Starter & {
+  evolveAtJoin?: boolean;
+};
 
 export interface ComputerPartnerSlotScore {
   slotIndex: number;
@@ -279,11 +284,11 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
     requiresUnlock: true,
     startingStarters: [
       { speciesId: SpeciesId.LATIOS },
-      { speciesId: SpeciesId.CATERPIE },
-      { speciesId: SpeciesId.ODDISH },
-      { speciesId: SpeciesId.POLIWAG },
-      { speciesId: SpeciesId.YANMA },
-      { speciesId: SpeciesId.WOOPER },
+      { speciesId: SpeciesId.CATERPIE, evolveAtJoin: true },
+      { speciesId: SpeciesId.ODDISH, evolveAtJoin: true },
+      { speciesId: SpeciesId.POLIWAG, evolveAtJoin: true },
+      { speciesId: SpeciesId.YANMA, evolveAtJoin: true },
+      { speciesId: SpeciesId.WOOPER, evolveAtJoin: true },
     ],
   },
   duplica_ditto: {
@@ -341,7 +346,7 @@ export function getComputerPartnerProfileWithRolePreferences(
 export function createComputerPartnerStarter(
   profile: ComputerPartnerProfile,
   progress?: ComputerPartnerProgressData,
-): Starter[] {
+): ComputerPartnerStarter[] {
   if (progress) {
     spendComputerPartnerStarterProgress(profile, progress);
   }
@@ -440,7 +445,7 @@ function createComputerPartnerStarterData(
   profile: ComputerPartnerProfile,
   starter: ComputerPartnerStarterConfig,
   progress?: ComputerPartnerProgressData,
-): Starter {
+): ComputerPartnerStarter {
   const progressSpeciesId = getComputerPartnerProgressSpeciesId(starter.speciesId);
   const progressEntries = progress ? ensureComputerPartnerProgressEntries(profile, starter, progress) : undefined;
   const dexEntry = progressEntries?.dexEntry;
@@ -449,7 +454,7 @@ function createComputerPartnerStarterData(
   const dexProps = getComputerPartnerStarterDexProps(species, dexEntry);
   const ivs = dexEntry?.ivs;
 
-  return {
+  const ret: ComputerPartnerStarter = {
     speciesId: starter.speciesId,
     shiny: dexProps.shiny,
     variant: dexProps.variant,
@@ -466,6 +471,10 @@ function createComputerPartnerStarterData(
     pokerus: false,
     ivs: ivs && ivs.length > 0 ? [...ivs] : [...DEFAULT_PARTNER_IVS],
   };
+  if (starter.evolveAtJoin) {
+    ret.evolveAtJoin = true;
+  }
+  return ret;
 }
 
 function getComputerPartnerStarterMoveset(

@@ -24,6 +24,7 @@ import { MoveId } from "#enums/move-id";
 import { TrainerType } from "#enums/trainer-type";
 import { TrainerVariant } from "#enums/trainer-variant";
 import { TextStyle } from "#enums/text-style";
+import { populateVariantColors } from "#sprites/variant";
 import { trainerConfigs } from "#trainers/trainer-config";
 import { addTextObject } from "#ui/text";
 import { getFrameMs } from "#utils/common";
@@ -705,7 +706,24 @@ export class ContestUi {
   }
 
   private initializeContestPokemonSprite(sprite: Phaser.GameObjects.Sprite, contestant: ContestParticipant): void {
-    globalScene.initPokemonSprite(sprite, contestant.pokemon);
+    const pokemon = contestant.pokemon;
+    globalScene.initPokemonSprite(sprite, pokemon);
+
+    if (!pokemon) {
+      return;
+    }
+
+    sprite
+      .setPipelineData("spriteKey", sprite.texture.key)
+      .setPipelineData("shiny", pokemon.shiny)
+      .setPipelineData("variant", pokemon.variant);
+
+    ["spriteColors", "fusionSpriteColors"].forEach(key => {
+      delete sprite.pipelineData[`${key}Base`];
+      const sourceKey = pokemon.summonData.speciesForm ? `${key}Base` : key;
+      sprite.pipelineData[sourceKey] =
+        pokemon.getSprite().pipelineData[sourceKey] ?? pokemon.getSprite().pipelineData[key] ?? [];
+    });
   }
 
   private async createIntroPokemonSprite(
@@ -788,9 +806,14 @@ export class ContestUi {
 
 async function loadContestantPokemonSpriteAssets(contestant: ContestParticipant, back: boolean): Promise<string | undefined> {
   if (contestant.pokemon) {
-    const textureKey = contestant.pokemon.getBattleSpriteKey(back, false);
+    const pokemon = contestant.pokemon;
+    const textureKey = pokemon.getBattleSpriteKey(back, false);
     if (!isPokemonSpriteReady(textureKey)) {
-      await loadContestPokemonAtlas(textureKey, contestant.pokemon.getBattleSpriteAtlasPath(back, false));
+      await loadContestPokemonAtlas(textureKey, pokemon.getBattleSpriteAtlasPath(back, false));
+    }
+
+    if (pokemon.isShiny(true)) {
+      await populateVariantColors(pokemon, back, false);
     }
 
     return isPokemonSpriteReady(textureKey) ? textureKey : undefined;

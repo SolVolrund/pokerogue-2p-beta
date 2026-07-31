@@ -251,6 +251,8 @@ function getAiTurnMove(user: EnemyPokemon | PlayerPokemon, moveId: MoveId, useMo
   };
 }
 
+export const DEFAULT_CRYSTAL_COLOR: [number, number, number] = [0x30, 0x50, 0xa5];
+
 export abstract class Pokemon extends Phaser.GameObjects.Container {
   /**
    * This pokemon's {@link https://bulbapedia.bulbagarden.net/wiki/Personality_value | Personality value/PID},
@@ -321,6 +323,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   public teraType: PokemonType;
   /** Whether this Pokémon is currently Terastallized */
   public isTerastallized: boolean;
+  /** Battle-only crystal visual override for scripted encounters. */
+  public crystalized = false;
+  public crystalColor: [number, number, number] | null = null;
   /** The set of Types that have been boosted by this Pokémon's Stellar Terastallization. */
   // TODO: Make this an actual set that is serialized to/from an array
   public stellarTypesBoosted: PokemonType[];
@@ -601,6 +606,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
         hasShadow: !!hasShadow,
         teraColor: getTypeRgb(this.getTeraType()),
         isTerastallized: this.isTerastallized,
+        crystalColor: this.getCrystalColor(),
+        isCrystalized: this.isCrystalized(),
       });
       return ret;
     };
@@ -1329,13 +1336,37 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     this.setScale(this.getSpriteScale());
   }
 
-  async updateSpritePipelineData(): Promise<void> {
+  public isCrystalized(): boolean {
+    return this.crystalized;
+  }
+
+  public getCrystalColor(): [number, number, number] {
+    return this.crystalColor ?? DEFAULT_CRYSTAL_COLOR;
+  }
+
+  public setCrystalized(crystalized = true, color: [number, number, number] = DEFAULT_CRYSTAL_COLOR): void {
+    this.crystalized = crystalized;
+    this.crystalColor = crystalized ? color : null;
+    this.applySpritePipelineData();
+  }
+
+  public clearCrystalized(): void {
+    this.setCrystalized(false);
+  }
+
+  private applySpritePipelineData(): void {
     [this.getSprite(), this.getTintSprite()]
       .filter(s => !!s)
       .forEach(s => {
         s.pipelineData["teraColor"] = getTypeRgb(this.getTeraType());
         s.pipelineData["isTerastallized"] = this.isTerastallized;
+        s.pipelineData["crystalColor"] = this.getCrystalColor();
+        s.pipelineData["isCrystalized"] = this.isCrystalized();
       });
+  }
+
+  async updateSpritePipelineData(): Promise<void> {
+    this.applySpritePipelineData();
     await this.updateInfo(true);
   }
 
@@ -5444,6 +5475,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     }
     this.summonData = new PokemonSummonData();
     this.tempSummonData = new PokemonTempSummonData();
+    this.applySpritePipelineData();
     this.updateInfo();
   }
 

@@ -314,6 +314,7 @@ export enum TrainerType {
   DUPLICA,
   BIANCA,
   BIANCA_LATIAS,
+  MOLLY_HALE,
 
   // #endregion Champions
 

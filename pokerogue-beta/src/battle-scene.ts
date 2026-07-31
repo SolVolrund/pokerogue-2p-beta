@@ -105,7 +105,7 @@ import { Arena, getBiomeAssetKey, getBiomeHasProps } from "#field/arena";
 import { ArenaBase } from "#field/arena-base";
 import { DamageNumberHandler } from "#field/damage-number-handler";
 import type { Pokemon } from "#field/pokemon";
-import { EnemyPokemon, PlayerPokemon } from "#field/pokemon";
+import { DEFAULT_CRYSTAL_COLOR, EnemyPokemon, PlayerPokemon } from "#field/pokemon";
 import { PokemonSpriteSparkleHandler } from "#field/pokemon-sprite-sparkle-handler";
 import { Trainer } from "#field/trainer";
 import type { Modifier, ModifierPredicate } from "#modifiers/modifier";
@@ -209,7 +209,8 @@ import { decodeNickname, getPokemonSpecies } from "#utils/pokemon-utils";
 import { capitalizeFirstLetterOnly } from "#utils/strings";
 import i18next from "i18next";
 import Phaser from "phaser";
-export type PokeballCounts = Record<Exclude<PokeballType, PokeballType.LUXURY_BALL>, number>;
+type PlayerCatchPokeballType = Exclude<PokeballType, PokeballType.LUXURY_BALL | PokeballType.GLASS_BALL>;
+export type PokeballCounts = Record<PlayerCatchPokeballType, number>;
 export type TwoPlayerIndex = 0 | 1;
 export type PlayerIndex = TwoPlayerIndex | 2;
 export type InputOwner = PlayerIndex | "both" | "none";
@@ -390,7 +391,7 @@ interface TwoPlayerRewardDebugState {
 function createDefaultPokeballCounts(): PokeballCounts {
   const pokeballCounts = Object.fromEntries(
     getEnumValues(PokeballType)
-      .filter(pt => pt !== PokeballType.LUXURY_BALL)
+      .filter(pt => pt !== PokeballType.LUXURY_BALL && pt !== PokeballType.GLASS_BALL)
       .map(t => [t, 0]),
   ) as PokeballCounts;
 
@@ -2997,6 +2998,9 @@ export class BattleScene extends SceneBase {
     if (activeOverrides.ENEMY_FUSION_OVERRIDE) {
       pokemon.generateFusionSpecies();
     }
+    if (activeOverrides.ENEMY_CRYSTALIZATION_OVERRIDE) {
+      pokemon.setCrystalized(true, activeOverrides.ENEMY_CRYSTALIZATION_COLOR_OVERRIDE ?? DEFAULT_CRYSTAL_COLOR);
+    }
 
     if (boss && !dataSource) {
       const secondaryIvs = getIvsFromId(randSeedInt(4294967296));
@@ -4297,6 +4301,8 @@ export class BattleScene extends SceneBase {
       ignoreOverride,
       teraColor: pokemon ? getTypeRgb(pokemon.getTeraType()) : undefined,
       isTerastallized: pokemon ? pokemon.isTerastallized : false,
+      crystalColor: pokemon ? pokemon.getCrystalColor() : undefined,
+      isCrystalized: pokemon ? pokemon.isCrystalized() : false,
     });
     this.spriteSparkleHandler.add(sprite);
     return sprite;

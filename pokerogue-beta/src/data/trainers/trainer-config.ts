@@ -1069,6 +1069,17 @@ function getDuplicaDittoPartyMemberFunc(): PartyMemberFunc {
   });
 }
 
+function setupMollyCrystalPokemon(p: EnemyPokemon, moveset?: MoveId[]): void {
+  p.pokeball = PokeballType.GLASS_BALL;
+  p.setCrystalized(true);
+
+  if (moveset) {
+    p.moveset = moveset.map(moveId => new PokemonMove(moveId));
+  } else {
+    p.generateAndPopulateMoveset();
+  }
+}
+
 // biome-ignore lint/correctness/noUnusedVariables: potentially useful
 function getSpeciesFilterRandomPartyMemberFunc(
   originalSpeciesFilter: PokemonSpeciesFilter,
@@ -5543,7 +5554,7 @@ export const trainerConfigs: TrainerConfigs = {
     })
     .setInstantTera(5), // Tera Fighting Hydrapple
 
-  [TrainerType.DAWN_ZORUA]: new TrainerConfig(++t)
+  [TrainerType.DAWN_ZORUA]: new TrainerConfig(TrainerType.DAWN_ZORUA)
     .setName("Dawn")
     .setPartyTemplates(trainerPartyTemplates.ONE_STRONGER_ONE_AVG_TWO_STRONG_ONE_AVG_ONE_STRONGER)
     .setBattleBgm("battle_trainer")
@@ -5579,7 +5590,7 @@ export const trainerConfigs: TrainerConfigs = {
     )
     .setPartyMemberFunc(5, getDawnIllusionPairMemberFunc(false)),
 
-  [TrainerType.BIANCA]: new TrainerConfig(++t)
+  [TrainerType.BIANCA]: new TrainerConfig(TrainerType.BIANCA)
     .setName("Bianca")
     .setSpriteKey("bianca")
     .setHasCharSprite()
@@ -5664,7 +5675,7 @@ export const trainerConfigs: TrainerConfigs = {
       }),
     ),
 
-  [TrainerType.BIANCA_LATIAS]: new TrainerConfig(++t)
+  [TrainerType.BIANCA_LATIAS]: new TrainerConfig(TrainerType.BIANCA_LATIAS)
     .setName("Bianca")
     .setSpriteKey("bianca_latias")
     .setHasCharSprite()
@@ -5673,35 +5684,35 @@ export const trainerConfigs: TrainerConfigs = {
     .setMixedBattleBgm("battle_trainer")
     .setPartyMemberFunc(
       0,
-      getRandomPartyMemberFunc([SpeciesId.POLIWAG], TrainerSlot.TRAINER, true, p => {
+      getRandomPartyMemberFunc([SpeciesId.POLIWAG], TrainerSlot.TRAINER, false, p => {
         p.passive = true;
         p.generateAndPopulateMoveset();
       }),
     )
     .setPartyMemberFunc(
       1,
-      getRandomPartyMemberFunc([SpeciesId.CATERPIE], TrainerSlot.TRAINER, true, p => {
+      getRandomPartyMemberFunc([SpeciesId.CATERPIE], TrainerSlot.TRAINER, false, p => {
         p.passive = true;
         p.generateAndPopulateMoveset();
       }),
     )
     .setPartyMemberFunc(
       2,
-      getRandomPartyMemberFunc([SpeciesId.ODDISH], TrainerSlot.TRAINER, true, p => {
+      getRandomPartyMemberFunc([SpeciesId.ODDISH], TrainerSlot.TRAINER, false, p => {
         p.passive = true;
         p.generateAndPopulateMoveset();
       }),
     )
     .setPartyMemberFunc(
       3,
-      getRandomPartyMemberFunc([SpeciesId.YANMA], TrainerSlot.TRAINER, true, p => {
+      getRandomPartyMemberFunc([SpeciesId.YANMA], TrainerSlot.TRAINER, false, p => {
         p.passive = true;
         p.generateAndPopulateMoveset();
       }),
     )
     .setPartyMemberFunc(
       4,
-      getRandomPartyMemberFunc([SpeciesId.WOOPER], TrainerSlot.TRAINER, true, p => {
+      getRandomPartyMemberFunc([SpeciesId.WOOPER], TrainerSlot.TRAINER, false, p => {
         p.passive = true;
         p.generateAndPopulateMoveset();
       }),
@@ -5719,7 +5730,57 @@ export const trainerConfigs: TrainerConfigs = {
       }),
     ),
 
-  [TrainerType.DUPLICA_DITTO]: new TrainerConfig(++t)
+  [TrainerType.MOLLY_HALE]: new TrainerConfig(TrainerType.MOLLY_HALE)
+    .setName("Molly")
+    .setSpriteKey("molly_hale")
+    .setHasCharSprite()
+    .setPartyTemplates(trainerPartyTemplates.THREE_AVG_TWO_STRONG_ONE_STRONGER)
+    .setBattleBgm("battle_trainer")
+    .setMixedBattleBgm("battle_trainer")
+    .setPartyMemberFunc(
+      0,
+      getRandomPartyMemberFunc([SpeciesId.TEDDIURSA], TrainerSlot.TRAINER, false, p => {
+        setupMollyCrystalPokemon(p);
+      }),
+    )
+    .setPartyMemberFunc(
+      1,
+      getRandomPartyMemberFunc([SpeciesId.PHANPY], TrainerSlot.TRAINER, false, p => {
+        setupMollyCrystalPokemon(p);
+      }),
+    )
+    .setPartyMemberFunc(
+      2,
+      getRandomPartyMemberFunc([SpeciesId.MANTYKE], TrainerSlot.TRAINER, false, p => {
+        setupMollyCrystalPokemon(p);
+      }),
+    )
+    .setPartyMemberFunc(
+      3,
+      getRandomPartyMemberFunc([SpeciesId.FLAAFFY], TrainerSlot.TRAINER, false, p => {
+        setupMollyCrystalPokemon(p);
+      }),
+    )
+    .setPartyMemberFunc(
+      4,
+      getRandomPartyMemberFunc([SpeciesId.HORSEA], TrainerSlot.TRAINER, false, p => {
+        setupMollyCrystalPokemon(p);
+      }),
+    )
+    .setPartyMemberFunc(
+      5,
+      getRandomPartyMemberFunc([SpeciesId.ENTEI], TrainerSlot.TRAINER, true, p => {
+        p.passive = true;
+        setupMollyCrystalPokemon(p, [
+          MoveId.SACRED_FIRE,
+          MoveId.EXTREME_SPEED,
+          MoveId.STONE_EDGE,
+          MoveId.SOLAR_BEAM,
+        ]);
+      }),
+    ),
+
+  [TrainerType.DUPLICA_DITTO]: new TrainerConfig(TrainerType.DUPLICA_DITTO)
     .setName("Duplica")
     .setPartyTemplates(trainerPartyTemplates.SIX_STRONG)
     .setBattleBgm("battle_trainer")
@@ -5731,7 +5792,7 @@ export const trainerConfigs: TrainerConfigs = {
     .setPartyMemberFunc(4, getDuplicaDittoPartyMemberFunc())
     .setPartyMemberFunc(5, getDuplicaDittoPartyMemberFunc()),
 
-  [TrainerType.DUPLICA]: new TrainerConfig(++t)
+  [TrainerType.DUPLICA]: new TrainerConfig(TrainerType.DUPLICA)
     .setName("Duplica")
     .setPartyTemplates(trainerPartyTemplates.SIX_WEAK_BALANCED)
     .setBattleBgm("battle_trainer")

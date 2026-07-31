@@ -49,6 +49,8 @@ export class PokemonData {
   public teraType: PokemonType;
   public isTerastallized: boolean;
   public stellarTypesBoosted: PokemonType[];
+  public crystalized: boolean;
+  public crystalColor: [number, number, number] | null;
   public computerPartnerAce: boolean;
   public gtsMalfunctionOriginalPlayerIndex: PlayerIndex | undefined;
 
@@ -124,6 +126,10 @@ export class PokemonData {
     this.teraType = source.teraType as PokemonType;
     this.isTerastallized = !!source.isTerastallized;
     this.stellarTypesBoosted = source.stellarTypesBoosted ?? [];
+    this.crystalized = sourcePokemon?.isCrystalized() ?? !!source.crystalized;
+    this.crystalColor = sourcePokemon?.isCrystalized()
+      ? sourcePokemon.getCrystalColor()
+      : (source.crystalColor ?? null);
     this.computerPartnerAce = !!source.computerPartnerAce;
     this.gtsMalfunctionOriginalPlayerIndex =
       typeof source.gtsMalfunctionOriginalPlayerIndex === "number"
@@ -194,6 +200,9 @@ export class PokemonData {
         this.summonData.speciesForm.speciesId,
         this.summonDataSpeciesFormIndex,
       );
+    }
+    if (this.crystalized) {
+      ret.setCrystalized(true, this.crystalColor ?? undefined);
     }
     return ret;
   }
