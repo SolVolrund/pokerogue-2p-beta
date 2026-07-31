@@ -26,7 +26,9 @@ import { getMoveTargets } from "#moves/move-utils";
 import { FieldPhase } from "#phases/field-phase";
 import type { MoveTargetSet } from "#types/move-target-set";
 import type { TurnMove } from "#types/turn-move";
+import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { shouldAiRepositionToCenter } from "#utils/ai-targeting";
+import { getPlannerRepositionTarget } from "#utils/battle-planner-ai";
 import { getComputerPartnerImprovedSwitchIndex, isComputerPartnerFieldIndex } from "#utils/computer-partner-ai";
 import { getZMoveForPokemonMove } from "#utils/z-move-utils";
 import {
@@ -36,6 +38,7 @@ import {
   getComputerPartnerCaptureDecisionsFromInterests,
   isComputerPartnerMoveSafeForCaptureTarget,
 } from "#utils/computer-partner-capture-ai";
+import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
 import i18next from "i18next";
 
 const CAPTURE_CLAIM_BALL_TYPES = [
@@ -45,6 +48,14 @@ const CAPTURE_CLAIM_BALL_TYPES = [
   PokeballType.ROGUE_BALL,
   PokeballType.MASTER_BALL,
 ] as const;
+
+type ComputerPartnerRepositionConsent = "always" | "never";
+
+interface ComputerPartnerRepositionRequest {
+  requesterPlayerIndex: PlayerIndex;
+  targetPlayerIndex: PlayerIndex;
+  targetPosition: FieldPosition;
+}
 
 export class CommandPhase extends FieldPhase {
   public readonly phaseName = "CommandPhase";
@@ -121,6 +132,144 @@ export class CommandPhase extends FieldPhase {
         : 0);
 
     return getComputerPartnerImprovedSwitchIndex(this.fieldIndex, switchMultiplier);
+  }
+
+  private shouldComputerPartnerReposition(): FieldPosition | undefined {
+    if (!globalScene.plannerAiEnabled) {
+      return;
+    }
+
+    const playerPokemon = this.getPokemon();
+    if (playerPokemon.getMoveQueue().length > 0) {
+      return;
+    }
+
+    const allyAlreadyRepositioning = globalScene.getPlayerField().some((fieldPokemon, allyFieldIndex) => {
+      if (fieldPokemon === playerPokemon) {
+        return false;
+      }
+
+      return (
+        globalScene.currentBattle.turnCommands[globalScene.getPlayerBattlerIndex(allyFieldIndex)]?.command
+        === Command.REPOSITION
+      );
+    });
+
+    return getPlannerRepositionTarget(playerPokemon, allyAlreadyRepositioning);
+  }
+
+  private getComputerPartnerRepositionRequest(
+    requesterPlayerIndex: PlayerIndex,
+    targetPosition: FieldPosition,
+  ): ComputerPartnerRepositionRequest | undefined {
+    const fieldOwners = globalScene.getPlayerFieldOwners();
+    for (let fieldSlot = 0; fieldSlot < fieldOwners.length; fieldSlot++) {
+      const pokemon = globalScene.getPlayerPokemonForFieldSlot(fieldSlot);
+      if (!pokemon?.isAllowedInBattle() || pokemon.isFainted() || pokemon.fieldPosition !== targetPosition) {
+        continue;
+      }
+
+      const targetPlayerIndex = globalScene.getPlayerIndexForFieldSlot(fieldSlot);
+      if (targetPlayerIndex === requesterPlayerIndex || globalScene.isComputerPartnerPlayer(targetPlayerIndex)) {
+        return;
+      }
+
+      return {
+        requesterPlayerIndex,
+        targetPlayerIndex,
+        targetPosition,
+      };
+    }
+  }
+
+  private getComputerPartnerRepositionConsentKey(request: ComputerPartnerRepositionRequest): string {
+    return `${request.requesterPlayerIndex}:${request.targetPlayerIndex}`;
+  }
+
+  private getComputerPartnerRepositionConsent(
+    request: ComputerPartnerRepositionRequest,
+  ): ComputerPartnerRepositionConsent | undefined {
+    return globalScene.currentBattle.computerPartnerRepositionConsent[
+      this.getComputerPartnerRepositionConsentKey(request)
+    ];
+  }
+
+  private setComputerPartnerRepositionConsent(
+    request: ComputerPartnerRepositionRequest,
+    consent: ComputerPartnerRepositionConsent,
+  ): void {
+    globalScene.currentBattle.computerPartnerRepositionConsent[
+      this.getComputerPartnerRepositionConsentKey(request)
+    ] = consent;
+  }
+
+  private queueComputerPartnerRepositionCommand(playerIndex: PlayerIndex, targetPosition: FieldPosition): void {
+    this.setTurnCommand({
+      command: Command.REPOSITION,
+      cursor: targetPosition,
+      playerIndex,
+    });
+    this.end();
+  }
+
+  private promptComputerPartnerRepositionConsent(
+    request: ComputerPartnerRepositionRequest,
+    onAllowed: () => void,
+    onDenied: () => void,
+  ): void {
+    const partnerName = getComputerPartnerProfile(
+      globalScene.getComputerPartnerKey(request.requesterPlayerIndex),
+    ).name;
+    const options: OptionSelectItem[] = [
+      {
+        label: "Yes",
+        handler: () => {
+          globalScene.ui.setModeWithoutClear(UiMode.MESSAGE);
+          onAllowed();
+          return true;
+        },
+      },
+      {
+        label: "No",
+        handler: () => {
+          globalScene.ui.setModeWithoutClear(UiMode.MESSAGE);
+          onDenied();
+          return true;
+        },
+      },
+      {
+        label: "Always!",
+        handler: () => {
+          this.setComputerPartnerRepositionConsent(request, "always");
+          globalScene.ui.setModeWithoutClear(UiMode.MESSAGE);
+          onAllowed();
+          return true;
+        },
+      },
+      {
+        label: "Stop Asking!",
+        handler: () => {
+          this.setComputerPartnerRepositionConsent(request, "never");
+          globalScene.ui.setModeWithoutClear(UiMode.MESSAGE);
+          onDenied();
+          return true;
+        },
+      },
+    ];
+    const config: OptionSelectConfig = {
+      options,
+      maxOptions: options.length,
+      noCancel: true,
+    };
+
+    globalScene.waitForPlayerInput(request.targetPlayerIndex);
+    globalScene.ui.showText(
+      `${partnerName} wants to switch with you.`,
+      null,
+      () => globalScene.ui.setMode(UiMode.OPTION_SELECT, config),
+      0,
+      true,
+    );
   }
 
   private handleComputerPartnerCaptureCommand(playerPokemon: PlayerPokemon): boolean {
@@ -517,19 +666,46 @@ export class CommandPhase extends FieldPhase {
   private handleComputerPartnerCommand(): boolean {
     const playerPokemon = this.getPokemon();
     const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
-    const previousAiType = playerPokemon.aiType;
 
     if (this.handleComputerPartnerCaptureCommand(playerPokemon)) {
       return true;
     }
 
+    return this.continueComputerPartnerCommand(playerPokemon, playerIndex);
+  }
+
+  private continueComputerPartnerCommand(
+    playerPokemon: PlayerPokemon,
+    playerIndex: PlayerIndex,
+    skipOptionalReposition = false,
+  ): boolean {
     if (shouldAiRepositionToCenter(playerPokemon)) {
-      this.setTurnCommand({
-        command: Command.REPOSITION,
-        cursor: FieldPosition.CENTER,
-        playerIndex,
-      });
-      this.end();
+      this.queueComputerPartnerRepositionCommand(playerIndex, FieldPosition.CENTER);
+      return true;
+    }
+
+    const repositionTarget = skipOptionalReposition ? undefined : this.shouldComputerPartnerReposition();
+    if (repositionTarget !== undefined) {
+      const repositionRequest = this.getComputerPartnerRepositionRequest(playerIndex, repositionTarget);
+      if (!repositionRequest) {
+        this.queueComputerPartnerRepositionCommand(playerIndex, repositionTarget);
+        return true;
+      }
+
+      switch (this.getComputerPartnerRepositionConsent(repositionRequest)) {
+        case "always":
+          this.queueComputerPartnerRepositionCommand(playerIndex, repositionTarget);
+          break;
+        case "never":
+          return this.continueComputerPartnerCommand(playerPokemon, playerIndex, true);
+        default:
+          this.promptComputerPartnerRepositionConsent(
+            repositionRequest,
+            () => this.queueComputerPartnerRepositionCommand(playerIndex, repositionTarget),
+            () => this.continueComputerPartnerCommand(playerPokemon, playerIndex, true),
+          );
+          break;
+      }
       return true;
     }
 
@@ -546,6 +722,7 @@ export class CommandPhase extends FieldPhase {
       return true;
     }
 
+    const previousAiType = playerPokemon.aiType;
     playerPokemon.aiType = globalScene.plannerAiEnabled ? AiType.PLANNER : AiType.SMART;
     globalScene.aiCommandInProgress = true;
     try {
@@ -577,6 +754,17 @@ export class CommandPhase extends FieldPhase {
       this.setTurnCommand({
         command: Command.REPOSITION,
         cursor: FieldPosition.CENTER,
+        playerIndex,
+      });
+      this.end();
+      return true;
+    }
+
+    const repositionTarget = this.shouldComputerPartnerReposition();
+    if (repositionTarget !== undefined) {
+      this.setTurnCommand({
+        command: Command.REPOSITION,
+        cursor: repositionTarget,
         playerIndex,
       });
       this.end();

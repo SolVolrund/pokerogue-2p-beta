@@ -56,8 +56,8 @@ import type { IntClosedRange, TupleOf } from "type-fest";
 const overrides: Partial<InstanceType<OverridesType>> = {
 //  STARTING_WAVE_OVERRIDE: 2,
 //  STARTING_BIOME_OVERRIDE: BiomeId.FARAWAY_ISLAND,
-  BATTLE_TYPE_OVERRIDE: BattleType.TRAINER,
-  RANDOM_TRAINER_OVERRIDE: {trainerType: TrainerType.MOLLY_HALE},
+//  BATTLE_TYPE_OVERRIDE: BattleType.TRAINER,
+//  RANDOM_TRAINER_OVERRIDE: {trainerType: TrainerType.MOLLY_HALE},
 //  ENEMY_SPECIES_OVERRIDE: SpeciesId.UNOWN,
 //  ENEMY_LEVEL_OVERRIDE: 5,
 //  ENEMY_HELD_ITEMS_OVERRIDE: [{ name: "UNOWN_BOX" }],

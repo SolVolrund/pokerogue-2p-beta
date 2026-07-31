@@ -110,6 +110,7 @@ export class Battle {
   public computerPartnerReservedCaptureTargetId: number | undefined;
   public computerPartnerCaptureInterests: Array<{ playerIndex: PlayerIndex; interests: ComputerPartnerCaptureInterest[] }> = [];
   public computerPartnerWildCaptureDisabled = false;
+  public computerPartnerRepositionConsent: Record<string, "always" | "never"> = {};
   public eonFluteSummonedPlayerIndexes: PlayerIndex[] = [];
   public classicFinalBossSpeciesId: SpeciesId | undefined;
   public mewGauntletState?: {

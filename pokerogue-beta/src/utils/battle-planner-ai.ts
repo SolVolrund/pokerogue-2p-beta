@@ -5,6 +5,7 @@ import { getEffectiveWeatherForMove } from "#data/weather";
 import { AbilityId } from "#enums/ability-id";
 import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
+import { FieldPosition } from "#enums/field-position";
 import { MoveCategory } from "#enums/move-category";
 import { MoveId } from "#enums/move-id";
 import { MoveTarget } from "#enums/move-target";
@@ -25,6 +26,7 @@ const FAIL_SCORE = -100_000;
 const KO_SCORE = 220;
 const FUTURE_TURN_WEIGHTS = [0.65, 0.35] as const;
 const EMERGENCY_SWITCH_MIN_HP_RATIO = 0.55;
+const EMERGENCY_SWITCH_THREAT_HP_RATIO = 0.55;
 const EMERGENCY_SWITCH_MIN_IMPROVEMENT = 0.5;
 const PLANNER_IQ_PROFILES = {
   low: {
@@ -32,24 +34,28 @@ const PLANNER_IQ_PROFILES = {
     weights: [60, 30, 10],
     minScoreRatios: [1, 0.75, 0.6],
     maxScoreGaps: [0, 40, 70],
+    switchThreatWeights: [1, 0, 0],
   },
   mid: {
     label: "mid",
     weights: [70, 25, 5],
     minScoreRatios: [1, 0.8, 0.65],
     maxScoreGaps: [0, 34, 58],
+    switchThreatWeights: [1, 0.35, 0.15],
   },
   high: {
     label: "high",
     weights: [80, 20, 0],
     minScoreRatios: [1, 0.86, 0.72],
     maxScoreGaps: [0, 26, 44],
+    switchThreatWeights: [1, 0.6, 0.25],
   },
   boss: {
     label: "boss",
     weights: [90, 10, 0],
     minScoreRatios: [1, 0.9, 0.78],
     maxScoreGaps: [0, 18, 30],
+    switchThreatWeights: [1, 0.75, 0.4],
   },
 } as const;
 const PLANNER_DEBUG_STORAGE_KEY = "pokeroguePlannerAiDebug";
@@ -168,6 +174,27 @@ interface PlannerOffensivePressure {
   canKo: boolean;
 }
 
+interface PlannerIncomingThreat {
+  attacker: Pokemon;
+  move: Move;
+  damage: number;
+  label: string;
+  moveName: string;
+}
+
+interface PlannerIncomingDamageEstimate {
+  incomingDamage: number;
+  incomingThreats: string;
+  threats: PlannerIncomingThreat[];
+  strongestThreat?: PlannerIncomingThreat;
+}
+
+interface PlannerIncomingTimeline {
+  totalDamage: number;
+  damageBeforeAction: number;
+  damageAfterAction: number;
+}
+
 type PlannerIqProfile = (typeof PLANNER_IQ_PROFILES)[keyof typeof PLANNER_IQ_PROFILES];
 
 export function choosePlannerMove(user: Pokemon, movePool: PokemonMove[]): TurnMove {
@@ -225,14 +252,21 @@ export function getPlannerSwitchIndex(
   const canThreatenKo = activePokemon
     .getOpponents()
     .some(opponent => estimateBestDamage(activePokemon, opponent).damage >= getPlannerHp(opponent, activePokemon));
-  const currentIncomingDamage = estimateIncomingDamage(activePokemon);
-  const likelyFaints = currentIncomingDamage >= activePokemon.hp;
+  const currentIncoming = estimateIncomingDamageDetailed(activePokemon);
+  const currentIncomingDamage = currentIncoming.incomingDamage;
+  const likelyFaintsWithoutAction = currentIncomingDamage >= activePokemon.hp;
+  const activeEscapeOption = likelyFaintsWithoutAction
+    ? getActiveEmergencyEscapeOption(activePokemon, currentIncoming)
+    : undefined;
+  const effectiveIncomingDamage = activeEscapeOption?.projectedIncomingDamage ?? currentIncomingDamage;
+  const likelyFaints = likelyFaintsWithoutAction && !activeEscapeOption;
   const activePressure = getBestOffensivePressure(activePokemon);
-  const canContributeThisTurn = !likelyFaints && (activePressure.maxDamageRatio >= 0.18 || canThreatenKo);
+  const canContributeThisTurn =
+    !likelyFaints && (activePressure.maxDamageRatio >= 0.18 || canThreatenKo || !!activeEscapeOption);
   const switchOutMomentumScore = scoreSwitchOutMomentum(
     activePokemon,
     activePressure,
-    currentIncomingDamage,
+    effectiveIncomingDamage,
     likelyFaints,
     canContributeThisTurn,
   );
@@ -282,6 +316,8 @@ export function getPlannerSwitchIndex(
       adjustedImprovement,
       switchOutMomentumScore,
       currentIncomingDamage,
+      currentIncomingThreats: currentIncoming.incomingThreats,
+      activeEscapeOption,
       likelyFaints,
       canContributeThisTurn,
       allyAlreadySwitching,
@@ -307,6 +343,8 @@ export function getPlannerSwitchIndex(
       adjustedImprovement,
       switchOutMomentumScore,
       currentIncomingDamage,
+      currentIncomingThreats: currentIncoming.incomingThreats,
+      activeEscapeOption,
       likelyFaints,
       canContributeThisTurn,
       allyAlreadySwitching,
@@ -331,6 +369,8 @@ export function getPlannerSwitchIndex(
     adjustedImprovement,
     switchOutMomentumScore,
     currentIncomingDamage,
+    currentIncomingThreats: currentIncoming.incomingThreats,
+    activeEscapeOption,
     likelyFaints,
     canContributeThisTurn,
     allyAlreadySwitching,
@@ -343,6 +383,74 @@ export function getPlannerSwitchIndex(
   return chosenPartyIndex;
 }
 
+export function getPlannerRepositionTarget(
+  activePokemon: Pokemon,
+  allyAlreadyRepositioning = false,
+): FieldPosition | undefined {
+  installPlannerDebugConsoleHelper();
+
+  if ((globalScene.currentBattle?.getBattlerCount() ?? 1) < 3 || activePokemon.getOpponents().length === 0) {
+    return;
+  }
+
+  const activeAllies = getActiveSidePokemon(activePokemon, true).filter(
+    ally => ally !== activePokemon && ally.fieldPosition !== activePokemon.fieldPosition,
+  );
+  if (activeAllies.length === 0) {
+    return;
+  }
+
+  const activeBefore = getPlannerLaneState(activePokemon);
+  const activeCanContribute = activeBefore.pressure >= 0.22 || activeBefore.canKo;
+  const activeNeedsHelp =
+    activeBefore.likelyFaints
+    || activeBefore.incomingDamage >= activePokemon.hp * 0.55
+    || activeBefore.matchupScore < 2.2
+    || !activeCanContribute;
+
+  const candidates = activeAllies
+    .map(ally => scorePlannerRepositionCandidate(activePokemon, ally, activeBefore))
+    .sort((a, b) => b.score - a.score);
+
+  const viableCandidates = candidates.filter(candidate => candidate.score > FAIL_SCORE);
+  const bestCandidate = viableCandidates[0];
+  const shouldReposition =
+    !allyAlreadyRepositioning
+    && activeNeedsHelp
+    && bestCandidate
+    && bestCandidate.debug.activeGain >= (activeBefore.likelyFaints ? 0.7 : 1.2)
+    && bestCandidate.debug.totalGain >= (activeBefore.likelyFaints ? 0.4 : 1.4);
+
+  if (!shouldReposition || !bestCandidate) {
+    logPlannerRepositionEvaluations(activePokemon, {
+      activeBefore,
+      allyAlreadyRepositioning,
+      decision: "stay",
+      reason: allyAlreadyRepositioning
+        ? "ally already repositioning"
+        : activeNeedsHelp
+          ? "no safe ally lane swap"
+          : "current lane is acceptable",
+      candidates,
+    });
+    return;
+  }
+
+  const bestScore = bestCandidate.score;
+  const bestTargets = viableCandidates.filter(candidate => candidate.score >= bestScore - 0.4);
+  const chosenCandidate = bestTargets[globalScene.randBattleSeedInt(bestTargets.length)];
+  logPlannerRepositionEvaluations(activePokemon, {
+    activeBefore,
+    allyAlreadyRepositioning,
+    decision: `switch to ${formatPlannerFieldPosition(chosenCandidate.targetPosition)}`,
+    reason: "active ally has a better lane matchup",
+    candidates,
+    chosenTargetPosition: chosenCandidate.targetPosition,
+  });
+
+  return chosenCandidate.targetPosition;
+}
+
 interface PlannerSwitchCandidate {
   partyIndex: number;
   score: number;
@@ -353,6 +461,7 @@ interface PlannerSwitchCandidateDebug {
   pokemonName: string;
   matchupScore: number;
   incomingDamage: number;
+  incomingThreats: string;
   hpAfterSwitch: number;
   hpAfterSwitchRatio: number;
   switchInDamageRatio: number;
@@ -372,6 +481,8 @@ interface PlannerSwitchDebugSummary {
   adjustedImprovement: number;
   switchOutMomentumScore: number;
   currentIncomingDamage: number;
+  currentIncomingThreats: string;
+  activeEscapeOption: PlannerActiveEscapeOption | undefined;
   likelyFaints: boolean;
   canContributeThisTurn: boolean;
   allyAlreadySwitching: boolean;
@@ -379,6 +490,54 @@ interface PlannerSwitchDebugSummary {
   reason: string;
   candidates: PlannerSwitchCandidate[];
   chosenPartyIndex?: number;
+}
+
+interface PlannerActiveEscapeOption {
+  label: string;
+  projectedIncomingDamage: number;
+}
+
+interface PlannerLaneState {
+  score: number;
+  matchupScore: number;
+  incomingDamage: number;
+  incomingThreats: string;
+  hpAfter: number;
+  hpAfterRatio: number;
+  pressure: number;
+  canKo: boolean;
+  likelyFaints: boolean;
+  canTakeFollowup: boolean;
+}
+
+interface PlannerRepositionCandidate {
+  targetPosition: FieldPosition;
+  ally: Pokemon;
+  score: number;
+  debug: PlannerRepositionCandidateDebug;
+}
+
+interface PlannerRepositionCandidateDebug {
+  allyName: string;
+  from: FieldPosition;
+  to: FieldPosition;
+  activeBefore: PlannerLaneState;
+  activeAfter: PlannerLaneState;
+  allyBefore: PlannerLaneState;
+  allyAfter: PlannerLaneState;
+  activeGain: number;
+  allyDelta: number;
+  totalGain: number;
+  reasons: string[];
+}
+
+interface PlannerRepositionDebugSummary {
+  activeBefore: PlannerLaneState;
+  allyAlreadyRepositioning: boolean;
+  decision: string;
+  reason: string;
+  candidates: PlannerRepositionCandidate[];
+  chosenTargetPosition?: FieldPosition;
 }
 
 interface PlannerSwitchCandidateContext {
@@ -436,6 +595,117 @@ function scorePositiveStatStageMomentum(pokemon: Pokemon, stat: BattleStat, weig
   return (getStatStageMultiplier(stage) - 1) * weight;
 }
 
+function scorePlannerRepositionCandidate(
+  activePokemon: Pokemon,
+  ally: Pokemon,
+  activeBefore: PlannerLaneState,
+): PlannerRepositionCandidate {
+  const allyBefore = getPlannerLaneState(ally);
+  const targetPosition = ally.fieldPosition;
+  const debug: PlannerRepositionCandidateDebug = {
+    allyName: getPlannerPokemonLabel(ally),
+    from: activePokemon.fieldPosition,
+    to: targetPosition,
+    activeBefore,
+    activeAfter: activeBefore,
+    allyBefore,
+    allyAfter: allyBefore,
+    activeGain: 0,
+    allyDelta: 0,
+    totalGain: 0,
+    reasons: [],
+  };
+
+  const swapResult = withPlannerFieldPositionSimulation(activePokemon, ally, () => ({
+    activeAfter: getPlannerLaneState(activePokemon),
+    allyAfter: getPlannerLaneState(ally),
+  }));
+
+  debug.activeAfter = swapResult.activeAfter;
+  debug.allyAfter = swapResult.allyAfter;
+  debug.activeGain = swapResult.activeAfter.score - activeBefore.score;
+  debug.allyDelta = swapResult.allyAfter.score - allyBefore.score;
+  debug.totalGain = debug.activeGain + debug.allyDelta * 0.75;
+
+  const sacrificesHealthyAlly =
+    swapResult.allyAfter.likelyFaints && !allyBefore.likelyFaints && !swapResult.allyAfter.canKo;
+  const cripplesAlly =
+    swapResult.allyAfter.hpAfterRatio < 0.35
+    && swapResult.allyAfter.hpAfterRatio < allyBefore.hpAfterRatio - 0.2
+    && !swapResult.allyAfter.canKo;
+  const worsensActive =
+    swapResult.activeAfter.hpAfterRatio < activeBefore.hpAfterRatio - 0.15 && !swapResult.activeAfter.canKo;
+
+  if (sacrificesHealthyAlly) {
+    debug.reasons.push("would sacrifice ally");
+    return { targetPosition, ally, score: FAIL_SCORE, debug };
+  }
+
+  if (cripplesAlly) {
+    debug.reasons.push("would leave ally too low");
+    return { targetPosition, ally, score: FAIL_SCORE, debug };
+  }
+
+  if (worsensActive) {
+    debug.reasons.push("worsens active lane");
+    return { targetPosition, ally, score: FAIL_SCORE, debug };
+  }
+
+  let score = debug.totalGain;
+  score += activeBefore.likelyFaints && !swapResult.activeAfter.likelyFaints ? 3 : 0;
+  score += swapResult.activeAfter.canKo && !activeBefore.canKo ? 1.5 : 0;
+  score += swapResult.allyAfter.canKo && !allyBefore.canKo ? 0.8 : 0;
+  score -= swapResult.allyAfter.likelyFaints ? 2.5 : 0;
+  debug.reasons.push("viable");
+
+  return { targetPosition, ally, score, debug };
+}
+
+function getPlannerLaneState(pokemon: Pokemon): PlannerLaneState {
+  const incoming = estimateIncomingDamageDetailed(pokemon);
+  const offensivePressure = getBestOffensivePressure(pokemon);
+  const hpAfter = pokemon.hp - incoming.incomingDamage;
+  const hpAfterRatio = pokemon.getMaxHp() > 0 ? hpAfter / pokemon.getMaxHp() : 0;
+  const incomingRatio = pokemon.hp > 0 ? incoming.incomingDamage / pokemon.hp : 0;
+  const likelyFaints = incoming.incomingDamage >= pokemon.hp;
+  const canTakeFollowup = hpAfter > incoming.incomingDamage && hpAfterRatio >= 0.25;
+  const matchupScore = getAverageMatchupScore(pokemon);
+  const score =
+    matchupScore * 2.2
+    + offensivePressure.maxDamageRatio * 5
+    + (offensivePressure.canKo ? 3.2 : 0)
+    + clampPlannerScore(hpAfterRatio, 0, 1) * 2
+    - clampPlannerScore(incomingRatio * 5, 0, 10)
+    - (likelyFaints ? 6 : 0)
+    + (canTakeFollowup ? 0.8 : 0);
+
+  return {
+    score,
+    matchupScore,
+    incomingDamage: incoming.incomingDamage,
+    incomingThreats: incoming.incomingThreats,
+    hpAfter,
+    hpAfterRatio,
+    pressure: offensivePressure.maxDamageRatio,
+    canKo: offensivePressure.canKo,
+    likelyFaints,
+    canTakeFollowup,
+  };
+}
+
+function withPlannerFieldPositionSimulation<T>(activePokemon: Pokemon, ally: Pokemon, callback: () => T): T {
+  const activePosition = activePokemon.fieldPosition;
+  const allyPosition = ally.fieldPosition;
+  activePokemon.fieldPosition = allyPosition;
+  ally.fieldPosition = activePosition;
+  try {
+    return callback();
+  } finally {
+    activePokemon.fieldPosition = activePosition;
+    ally.fieldPosition = allyPosition;
+  }
+}
+
 function scoreSwitchCandidate(context: PlannerSwitchCandidateContext): PlannerSwitchCandidate | undefined {
   const {
     activePokemon,
@@ -459,6 +729,7 @@ function scoreSwitchCandidate(context: PlannerSwitchCandidateContext): PlannerSw
     pokemonName: getPlannerPokemonLabel(candidate),
     matchupScore,
     incomingDamage: 0,
+    incomingThreats: "",
     hpAfterSwitch: candidate.hp,
     hpAfterSwitchRatio: candidate.getHpRatio(),
     switchInDamageRatio: 0,
@@ -491,9 +762,12 @@ function scoreSwitchCandidate(context: PlannerSwitchCandidateContext): PlannerSw
   const candidateHasPlan = switchIn.offensivePressure.maxDamageRatio >= 0.22 || switchIn.offensivePressure.canKo;
   const canTakeFollowup = hpAfterSwitch > switchIn.incomingDamage;
   const hasImmediateThreat = switchIn.offensivePressure.canKo || switchIn.offensivePressure.maxDamageRatio >= 0.5;
-  const emergencySafe = hpAfterSwitchRatio >= EMERGENCY_SWITCH_MIN_HP_RATIO && (canTakeFollowup || hasImmediateThreat);
+  const emergencySafe =
+    (hpAfterSwitchRatio >= EMERGENCY_SWITCH_MIN_HP_RATIO && (canTakeFollowup || hasImmediateThreat))
+    || (hpAfterSwitchRatio >= EMERGENCY_SWITCH_THREAT_HP_RATIO && hasImmediateThreat && canTakeFollowup);
   const candidateIsBestMatchup = matchupScore === bestMatchupScore;
   debug.incomingDamage = switchIn.incomingDamage;
+  debug.incomingThreats = switchIn.incomingThreats;
   debug.hpAfterSwitch = hpAfterSwitch;
   debug.hpAfterSwitchRatio = hpAfterSwitchRatio;
   debug.switchInDamageRatio = switchInDamageRatio;
@@ -540,9 +814,10 @@ function evaluateSwitchIn(
   activePokemon: Pokemon,
   candidate: Pokemon,
   switchParty: Pokemon[],
-): { incomingDamage: number; offensivePressure: PlannerOffensivePressure } | undefined {
+): { incomingDamage: number; incomingThreats: string; offensivePressure: PlannerOffensivePressure } | undefined {
+  const switchIncomingDamage = estimateSwitchIncomingDamage(activePokemon, candidate);
   return withPlannerPartySlotSimulation(activePokemon, candidate, switchParty, () => ({
-    incomingDamage: estimateIncomingDamage(candidate),
+    ...switchIncomingDamage,
     offensivePressure: getBestOffensivePressure(candidate),
   }));
 }
@@ -839,6 +1114,8 @@ function logPlannerSwitchEvaluations(activePokemon: Pokemon, summary: PlannerSwi
       adjusted: formatPlannerScore(summary.adjustedImprovement),
       momentumCost: formatPlannerScore(summary.switchOutMomentumScore),
       incoming: formatPlannerScore(summary.currentIncomingDamage),
+      incomingHits: summary.currentIncomingThreats,
+      escape: summary.activeEscapeOption?.label ?? "",
       likelyFaints: summary.likelyFaints,
       canAct: summary.canContributeThisTurn,
       allySwitching: summary.allyAlreadySwitching,
@@ -854,6 +1131,7 @@ function logPlannerSwitchEvaluations(activePokemon: Pokemon, summary: PlannerSwi
       score: formatPlannerScore(candidate.score),
       matchup: formatPlannerScore(candidate.debug.matchupScore),
       incoming: formatPlannerScore(candidate.debug.incomingDamage),
+      incomingHits: candidate.debug.incomingThreats,
       hpAfter: formatPlannerScore(candidate.debug.hpAfterSwitch),
       hpRatio: formatPlannerScore(candidate.debug.hpAfterSwitchRatio),
       dmgRatio: formatPlannerScore(candidate.debug.switchInDamageRatio),
@@ -861,6 +1139,56 @@ function logPlannerSwitchEvaluations(activePokemon: Pokemon, summary: PlannerSwi
       canKo: candidate.debug.canKo,
       canTakeFollowup: candidate.debug.canTakeFollowup,
       emergencySafe: candidate.debug.emergencySafe,
+      reasons: candidate.debug.reasons.join(", "),
+    })),
+  );
+  console.groupEnd();
+}
+
+function logPlannerRepositionEvaluations(activePokemon: Pokemon, summary: PlannerRepositionDebugSummary): void {
+  if (!isPlannerDebugEnabled()) {
+    return;
+  }
+
+  console.groupCollapsed(
+    `[Planner AI] ${getPlannerPokemonLabel(activePokemon)} lane switch check: ${summary.decision} (${summary.reason})`,
+  );
+  console.table([
+    {
+      active: getPlannerPokemonLabel(activePokemon),
+      position: formatPlannerFieldPosition(activePokemon.fieldPosition),
+      score: formatPlannerScore(summary.activeBefore.score),
+      matchup: formatPlannerScore(summary.activeBefore.matchupScore),
+      incoming: formatPlannerScore(summary.activeBefore.incomingDamage),
+      incomingHits: summary.activeBefore.incomingThreats,
+      hpAfter: formatPlannerScore(summary.activeBefore.hpAfter),
+      hpRatio: formatPlannerScore(summary.activeBefore.hpAfterRatio),
+      pressure: formatPlannerScore(summary.activeBefore.pressure),
+      canKo: summary.activeBefore.canKo,
+      likelyFaints: summary.activeBefore.likelyFaints,
+      allyRepositioning: summary.allyAlreadyRepositioning,
+      decision: summary.decision,
+      reason: summary.reason,
+    },
+  ]);
+  console.table(
+    summary.candidates.map(candidate => ({
+      chosen: candidate.targetPosition === summary.chosenTargetPosition,
+      ally: candidate.debug.allyName,
+      swapTo: formatPlannerFieldPosition(candidate.targetPosition),
+      score: formatPlannerScore(candidate.score),
+      activeGain: formatPlannerScore(candidate.debug.activeGain),
+      allyDelta: formatPlannerScore(candidate.debug.allyDelta),
+      totalGain: formatPlannerScore(candidate.debug.totalGain),
+      activeAfter: formatPlannerScore(candidate.debug.activeAfter.score),
+      activeIncoming: formatPlannerScore(candidate.debug.activeAfter.incomingDamage),
+      activeHits: candidate.debug.activeAfter.incomingThreats,
+      activeHpRatio: formatPlannerScore(candidate.debug.activeAfter.hpAfterRatio),
+      allyAfter: formatPlannerScore(candidate.debug.allyAfter.score),
+      allyIncoming: formatPlannerScore(candidate.debug.allyAfter.incomingDamage),
+      allyHits: candidate.debug.allyAfter.incomingThreats,
+      allyHpRatio: formatPlannerScore(candidate.debug.allyAfter.hpAfterRatio),
+      allyCanKo: candidate.debug.allyAfter.canKo,
       reasons: candidate.debug.reasons.join(", "),
     })),
   );
@@ -1028,6 +1356,10 @@ function formatPlannerStatStages(pokemon: Pokemon): string {
 
 function formatPlannerScore(score: number): number {
   return Math.round(score * 10) / 10;
+}
+
+function formatPlannerFieldPosition(position: FieldPosition): string {
+  return FieldPosition[position] ?? `${position}`;
 }
 
 function getPokemonAtBattlerIndex(battlerIndex: BattlerIndex): Pokemon | undefined {
@@ -1235,14 +1567,15 @@ function createPlannerSearchPokemon(pokemon: Pokemon): PlannerSearchPokemon {
 
 function createPlannerSearchAction(user: Pokemon, choice: PlannerMoveChoice, move: Move): PlannerSearchAction {
   const field = globalScene.getField();
+  const actionPriority = move.getPriority(user);
   const targets = choice.targets
     .map(battlerIndex => field[battlerIndex])
     .filter((target): target is Pokemon => !!target && target.isAllowedInBattle())
     .map(target => {
       const damage = move.category === MoveCategory.STATUS ? 0 : estimateDamage(user, target, move).damage;
       const moveActsBeforeTarget =
-        move.priority > getBestMovePriority(target)
-        || (move.priority === getBestMovePriority(target)
+        actionPriority > getBestMovePriority(target)
+        || (actionPriority === getBestMovePriority(target)
           && user.getEffectiveStat(Stat.SPD, { opponent: target })
             >= target.getEffectiveStat(Stat.SPD, { opponent: user }));
 
@@ -1261,7 +1594,7 @@ function createPlannerSearchAction(user: Pokemon, choice: PlannerMoveChoice, mov
     user,
     move,
     targets,
-    priority: move.priority,
+    priority: actionPriority,
   };
 }
 
@@ -1318,8 +1651,9 @@ function getSearchSurvivalScore(
   opponentTargets: PlannerSearchTarget[],
 ): number {
   const residualDamage = estimateEndOfTurnResidualDamage(state.user.pokemon);
-  const incomingBefore = estimateIncomingDamage(state.user.pokemon) + residualDamage;
-  const incomingAfter = estimateIncomingDamageAfterSearchAction(state, action, opponentTargets) + residualDamage;
+  const incomingBefore = estimateIncomingDamageDetailed(state.user.pokemon).incomingDamage + residualDamage;
+  const incomingTimeline = estimateIncomingTimelineAfterSearchAction(state, action, opponentTargets);
+  const incomingAfter = incomingTimeline.totalDamage + residualDamage;
   const preventedIncoming = Math.max(0, incomingBefore - incomingAfter);
   const preventedRatio = preventedIncoming / Math.max(1, state.user.maxHp);
   const projectedUserHp = getProjectedHpAfterDirectHealing(
@@ -1329,17 +1663,17 @@ function getSearchSurvivalScore(
     action.targets,
   );
   const projectedHeal = Math.max(0, projectedUserHp - state.user.hp);
+  const survivesUntilAction = incomingTimeline.damageBeforeAction < state.user.hp;
   const healPreventsFaint =
     projectedHeal > 0
+    && survivesUntilAction
     && incomingAfter >= state.user.hp
-    && incomingAfter < projectedUserHp
-    && canHealBeforeLikelyKo(state.user.pokemon, state.user.pokemon, action.move, projectedHeal, incomingAfter);
-  const survivalHp =
-    projectedHeal > 0
-    && canHealBeforeLikelyKo(state.user.pokemon, state.user.pokemon, action.move, projectedHeal, incomingAfter)
-      ? projectedUserHp
-      : state.user.hp;
-  const stillFaints = incomingAfter >= survivalHp;
+    && incomingTimeline.damageAfterAction + residualDamage
+      < state.user.hp - incomingTimeline.damageBeforeAction + projectedHeal;
+  const survivalHp = survivesUntilAction && projectedHeal > 0 ? projectedUserHp : state.user.hp;
+  const stillFaints =
+    incomingTimeline.damageBeforeAction >= state.user.hp
+    || incomingTimeline.damageAfterAction + residualDamage >= survivalHp - incomingTimeline.damageBeforeAction;
   const wasInDanger = incomingBefore >= state.user.hp || incomingBefore >= state.user.maxHp * 0.45;
 
   let score = Math.min(55, preventedRatio * 90);
@@ -1363,38 +1697,101 @@ function estimateIncomingDamageAfterSearchAction(
   action: PlannerSearchAction,
   opponentTargets: PlannerSearchTarget[],
 ): number {
-  return state.opponents.reduce((highestDamage, opponent) => {
-    const target = opponentTargets.find(searchTarget => searchTarget.pokemon === opponent.pokemon);
-    const preventedFromActing = target && target.hpAfterAction <= 0 && !target.actsBeforeUser;
-    if (preventedFromActing) {
-      return highestDamage;
-    }
-
-    return Math.max(
-      highestDamage,
-      estimateBestDamageAfterPlannerAction(opponent.pokemon, state.user.pokemon, action).damage,
-    );
-  }, 0);
+  return estimateIncomingTimelineAfterSearchAction(state, action, opponentTargets).totalDamage;
 }
 
-function estimateBestDamageAfterPlannerAction(
-  attacker: Pokemon,
-  defender: Pokemon,
+function getPlannerDamagingCategory(move: Move): MoveCategory.PHYSICAL | MoveCategory.SPECIAL | undefined {
+  return move.category === MoveCategory.PHYSICAL || move.category === MoveCategory.SPECIAL ? move.category : undefined;
+}
+
+function estimateIncomingTimelineAfterSearchAction(
+  state: PlannerSearchState,
   action: PlannerSearchAction,
-): { damage: number } {
-  const actionTarget = action.targets.find(target => target.pokemon === attacker);
-  const damageBeforeAction = estimateBestDamage(attacker, defender).damage;
-  if (!actionTarget || actionTarget.actsBeforeUser || damageBeforeAction <= 0) {
-    return { damage: damageBeforeAction };
+  opponentTargets: PlannerSearchTarget[],
+): PlannerIncomingTimeline {
+  const incoming = estimateIncomingDamageDetailed(state.user.pokemon);
+  return incoming.threats.reduce<PlannerIncomingTimeline>(
+    (timeline, threat) => {
+      const actsBeforeThreat = doesMoveActBeforeThreat(state.user.pokemon, threat.attacker, action.move, threat.move);
+      const damage = getIncomingThreatDamageAfterPlannerAction(
+        threat,
+        state,
+        action,
+        opponentTargets,
+        actsBeforeThreat,
+      );
+      if (actsBeforeThreat) {
+        timeline.damageAfterAction += damage;
+      } else {
+        timeline.damageBeforeAction += damage;
+      }
+      timeline.totalDamage += damage;
+      return timeline;
+    },
+    { totalDamage: 0, damageBeforeAction: 0, damageAfterAction: 0 },
+  );
+}
+
+function getIncomingThreatDamageAfterPlannerAction(
+  threat: PlannerIncomingThreat,
+  state: PlannerSearchState,
+  action: PlannerSearchAction,
+  opponentTargets: PlannerSearchTarget[],
+  actsBeforeThreat: boolean,
+): number {
+  if (!actsBeforeThreat) {
+    return threat.damage;
   }
 
-  const physicalDamage = estimateBestDamageByCategory(attacker, defender, MoveCategory.PHYSICAL);
-  const specialDamage = estimateBestDamageByCategory(attacker, defender, MoveCategory.SPECIAL);
-  const physicalScale = getPlannerActionOutgoingDamageScale(action.user, attacker, action.move, MoveCategory.PHYSICAL);
-  const specialScale = getPlannerActionOutgoingDamageScale(action.user, attacker, action.move, MoveCategory.SPECIAL);
-  const scaledDamage = Math.max(physicalDamage * physicalScale, specialDamage * specialScale);
+  if (action.move.hasAttr("ProtectAttr")) {
+    return 0;
+  }
 
-  return { damage: Math.min(damageBeforeAction, scaledDamage) };
+  const target = opponentTargets.find(searchTarget => searchTarget.pokemon === threat.attacker);
+  if (target && target.hpAfterAction <= 0) {
+    return 0;
+  }
+
+  let damage = threat.damage;
+  const threatCategory = getPlannerDamagingCategory(threat.move);
+  if (target) {
+    damage *= threatCategory
+      ? getPlannerActionOutgoingDamageScale(state.user.pokemon, threat.attacker, action.move, threatCategory)
+      : 1;
+  }
+
+  if (threatCategory && action.targets.some(target => target.pokemon === state.user.pokemon)) {
+    damage *= getPlannerActionIncomingDamageScale(state.user.pokemon, action.move, threatCategory);
+  }
+
+  return damage;
+}
+
+function getPlannerActionIncomingDamageScale(
+  user: Pokemon,
+  move: Move,
+  category: MoveCategory.PHYSICAL | MoveCategory.SPECIAL,
+): number {
+  const defenseStat = category === MoveCategory.PHYSICAL ? Stat.DEF : Stat.SPDEF;
+  const stageScale = move.getAttrs("StatStageChangeAttr").reduce((scale, attr) => {
+    const stages = attr.getLevels(user);
+    if (!attr.selfTarget || stages <= 0 || !attr.stats.includes(defenseStat)) {
+      return scale;
+    }
+
+    const appliedStages = getAppliedStatStageDelta(user, defenseStat, stages);
+    if (appliedStages === 0) {
+      return scale;
+    }
+
+    return (
+      scale
+      * (getStatStageMultiplier(user.getStatStage(defenseStat))
+        / getStatStageMultiplier(user.getStatStage(defenseStat) + appliedStages))
+    );
+  }, 1);
+
+  return clampPlannerScore(stageScale, 0, 1);
 }
 
 function getPlannerActionOutgoingDamageScale(
@@ -2010,9 +2407,10 @@ function canHealBeforeLikelyKo(
 
 function doesMoveActBeforeOpponent(user: Pokemon, opponent: Pokemon, move: Move): boolean {
   const opponentPriority = getBestMovePriority(opponent);
+  const movePriority = move.getPriority(user);
   return (
-    move.priority > opponentPriority
-    || (move.priority === opponentPriority
+    movePriority > opponentPriority
+    || (movePriority === opponentPriority
       && user.getEffectiveStat(Stat.SPD, { opponent }) >= opponent.getEffectiveStat(Stat.SPD, { opponent: user }))
   );
 }
@@ -2556,6 +2954,237 @@ function estimateIncomingDamage(user: Pokemon): number {
   return user
     .getOpponents()
     .reduce((highestDamage, opponent) => Math.max(highestDamage, estimateBestDamage(opponent, user).damage), 0);
+}
+
+function estimateIncomingDamageDetailed(user: Pokemon): PlannerIncomingDamageEstimate {
+  const threats = user
+    .getOpponents()
+    .map(
+      opponent =>
+        opponent
+          .getMoveset()
+          .map(pokemonMove => pokemonMove.getMove())
+          .filter(move => !!move && move.category !== MoveCategory.STATUS)
+          .filter(move => !!move && canMoveReachTarget(opponent, user, move.id))
+          .map(move => ({
+            attacker: opponent,
+            move,
+            label: getPlannerPokemonLabel(opponent),
+            moveName: move.name,
+            damage: estimateDamage(opponent, user, move).damage,
+          }))
+          .sort((a, b) => b.damage - a.damage)[0],
+    )
+    .filter((threat): threat is PlannerIncomingThreat => !!threat && threat.damage > 0)
+    .sort((a, b) => compareIncomingThreatOrder(user, a, b));
+
+  if (threats.length === 0) {
+    return { incomingDamage: 0, incomingThreats: "", threats: [] };
+  }
+
+  const incomingDamage = threats.reduce((total, threat) => total + threat.damage, 0);
+  const strongestThreat = threats.reduce((strongest, threat) =>
+    threat.damage > strongest.damage ? threat : strongest,
+  );
+  return {
+    incomingDamage,
+    incomingThreats: threats
+      .map(threat => `${threat.label} ${threat.moveName} ${formatPlannerScore(threat.damage)}`)
+      .join(" + "),
+    threats,
+    strongestThreat,
+  };
+}
+
+function compareIncomingThreatOrder(user: Pokemon, a: PlannerIncomingThreat, b: PlannerIncomingThreat): number {
+  const aPriority = a.move.getPriority(a.attacker);
+  const bPriority = b.move.getPriority(b.attacker);
+  if (aPriority !== bPriority) {
+    return bPriority - aPriority;
+  }
+
+  const aSpeed = a.attacker.getEffectiveStat(Stat.SPD, { opponent: user });
+  const bSpeed = b.attacker.getEffectiveStat(Stat.SPD, { opponent: user });
+  if (aSpeed !== bSpeed) {
+    return bSpeed - aSpeed;
+  }
+
+  return b.damage - a.damage;
+}
+
+function getActiveEmergencyEscapeOption(
+  user: Pokemon,
+  incoming: PlannerIncomingDamageEstimate,
+): PlannerActiveEscapeOption | undefined {
+  if (incoming.incomingDamage < user.hp || incoming.threats.length === 0) {
+    return;
+  }
+
+  const options = user
+    .getMoveset()
+    .flatMap(pokemonMove =>
+      scorePlannerMoveCandidates(user, pokemonMove).map(choice => ({
+        pokemonMove,
+        choice,
+        move: pokemonMove.getMove(),
+      })),
+    )
+    .filter((option): option is { pokemonMove: PokemonMove; choice: PlannerMoveChoice; move: Move } => !!option.move)
+    .map(option => getActiveEmergencyEscapeFromChoice(user, incoming, option.choice, option.move))
+    .filter((option): option is PlannerActiveEscapeOption => !!option)
+    .sort((a, b) => a.projectedIncomingDamage - b.projectedIncomingDamage);
+
+  return options[0];
+}
+
+function getActiveEmergencyEscapeFromChoice(
+  user: Pokemon,
+  incoming: PlannerIncomingDamageEstimate,
+  choice: PlannerMoveChoice,
+  move: Move,
+): PlannerActiveEscapeOption | undefined {
+  const firstThreat = incoming.threats[0];
+  const strongestThreat = incoming.strongestThreat ?? firstThreat;
+  if (!firstThreat || !strongestThreat) {
+    return;
+  }
+
+  const actionTargets = createPlannerSearchAction(user, choice, move).targets;
+
+  if (move.hasAttr("ProtectAttr") && doesMoveActBeforeThreat(user, firstThreat.attacker, move, firstThreat.move)) {
+    return {
+      label: `${move.name} blocks incoming hits`,
+      projectedIncomingDamage: 0,
+    };
+  }
+
+  const projectedIncomingDamage = incoming.threats.reduce((total, threat) => {
+    const actsBeforeThreat = doesMoveActBeforeThreat(user, threat.attacker, move, threat.move);
+    if (!actsBeforeThreat) {
+      return total + threat.damage;
+    }
+
+    if (move.hasAttr("ProtectAttr")) {
+      return total;
+    }
+
+    let damage = threat.damage;
+    const threatCategory = getPlannerDamagingCategory(threat.move);
+    const targetsThreat = choice.targets.includes(threat.attacker.getBattlerIndex());
+    if (
+      targetsThreat
+      && doesMoveWork(user, threat.attacker, move)
+      && getAccuracyFactor(user, threat.attacker, move) >= 0.85
+    ) {
+      const userDamage = move.category === MoveCategory.STATUS ? 0 : estimateDamage(user, threat.attacker, move).damage;
+      if (userDamage >= getPlannerHp(threat.attacker, user)) {
+        return total;
+      }
+      damage *= threatCategory ? getPlannerActionOutgoingDamageScale(user, threat.attacker, move, threatCategory) : 1;
+    }
+
+    if (threatCategory && actionTargets.some(target => target.pokemon === user)) {
+      damage *= getPlannerActionIncomingDamageScale(user, move, threatCategory);
+    }
+
+    return total + damage;
+  }, 0);
+
+  const damageBeforeAction = incoming.threats
+    .filter(threat => !doesMoveActBeforeThreat(user, threat.attacker, move, threat.move))
+    .reduce((total, threat) => total + threat.damage, 0);
+
+  const projectedHp = getProjectedHpAfterDirectHealing(user, user, move, actionTargets);
+  if (
+    projectedHp > user.hp
+    && damageBeforeAction < user.hp
+    && projectedIncomingDamage < projectedHp
+    && projectedIncomingDamage < incoming.incomingDamage
+  ) {
+    return {
+      label: `${move.name} heals through incoming hits`,
+      projectedIncomingDamage,
+    };
+  }
+
+  if (projectedIncomingDamage < user.hp && projectedIncomingDamage < incoming.incomingDamage) {
+    const label = actionTargets.some(target => target.pokemon === user)
+      ? `${move.name} reduces later hits to ${formatPlannerScore(projectedIncomingDamage)}`
+      : `${move.name} handles ${strongestThreat.label} ${strongestThreat.moveName}`;
+    return { label, projectedIncomingDamage };
+  }
+}
+
+function doesMoveActBeforeThreat(user: Pokemon, attacker: Pokemon, move: Move, threatMove: Move): boolean {
+  const movePriority = move.getPriority(user);
+  const threatPriority = threatMove.getPriority(attacker);
+  return (
+    movePriority > threatPriority
+    || (movePriority === threatPriority
+      && user.getEffectiveStat(Stat.SPD, { opponent: attacker })
+        >= attacker.getEffectiveStat(Stat.SPD, { opponent: user }))
+  );
+}
+
+function estimateSwitchIncomingDamage(
+  activePokemon: Pokemon,
+  switchTarget: Pokemon,
+): { incomingDamage: number; incomingThreats: string } {
+  const weightedThreats = activePokemon
+    .getOpponents()
+    .map(opponent => estimateLikelySwitchInDamage(opponent, activePokemon, switchTarget))
+    .filter(threat => !!threat)
+    .filter(threat => threat.damage > 0)
+    .sort((a, b) => b.damage - a.damage)
+    .slice(0, 3);
+
+  if (weightedThreats.length === 0) {
+    return { incomingDamage: 0, incomingThreats: "" };
+  }
+
+  const weights = getPlannerIqProfile(activePokemon).switchThreatWeights;
+  const incomingDamage = weightedThreats.reduce(
+    (total, threat, index) => total + threat.damage * (weights[index] ?? 0),
+    0,
+  );
+  const incomingThreats = weightedThreats
+    .map((threat, index) => {
+      const weight = weights[index] ?? 0;
+      const threatText = `${threat.label} ${threat.moveName} ${formatPlannerScore(threat.damage)} (slot ${formatPlannerScore(threat.activeSlotDamage)})`;
+      return weight === 1 ? threatText : `${threatText}x${formatPlannerScore(weight)}`;
+    })
+    .join(" + ");
+
+  return { incomingDamage, incomingThreats };
+}
+
+function estimateLikelySwitchInDamage(
+  attacker: Pokemon,
+  activeSlotTarget: Pokemon,
+  switchTarget: Pokemon,
+): { label: string; moveName: string; damage: number; activeSlotDamage: number } | undefined {
+  const likelyMove = attacker
+    .getMoveset()
+    .map(pokemonMove => pokemonMove.getMove())
+    .filter(move => !!move && move.category !== MoveCategory.STATUS)
+    .filter(move => !!move && canMoveReachTarget(attacker, activeSlotTarget, move.id))
+    .map(move => ({
+      move,
+      activeSlotDamage: estimateDamage(attacker, activeSlotTarget, move).damage,
+      switchDamage: estimateDamage(attacker, switchTarget, move).damage,
+    }))
+    .sort((a, b) => b.activeSlotDamage - a.activeSlotDamage || b.switchDamage - a.switchDamage)[0];
+
+  if (!likelyMove) {
+    return;
+  }
+
+  return {
+    label: getPlannerPokemonLabel(attacker),
+    moveName: likelyMove.move.name,
+    damage: likelyMove.switchDamage,
+    activeSlotDamage: likelyMove.activeSlotDamage,
+  };
 }
 
 function estimateEndOfTurnResidualDamage(pokemon: Pokemon): number {

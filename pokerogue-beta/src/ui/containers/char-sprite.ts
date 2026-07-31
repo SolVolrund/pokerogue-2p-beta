@@ -44,7 +44,7 @@ export class CharSprite extends Phaser.GameObjects.Container {
         return;
       }
 
-      this.sprite.setTexture(key, variant);
+      this.setSpriteTexture(this.sprite, key, variant);
 
       globalScene.fieldUI.bringToTop(this);
 
@@ -70,7 +70,7 @@ export class CharSprite extends Phaser.GameObjects.Container {
     return new Promise(resolve => {
       globalScene.fieldUI.bringToTop(this);
 
-      this.transitionSprite.setTexture(this.key, variant);
+      this.setSpriteTexture(this.transitionSprite, this.key, variant);
       this.transitionSprite.setAlpha(0);
       this.transitionSprite.setVisible(true);
       globalScene.tweens.add({
@@ -79,13 +79,23 @@ export class CharSprite extends Phaser.GameObjects.Container {
         duration: 250,
         ease: "Sine.easeIn",
         onComplete: () => {
-          this.sprite.setTexture(this.key, variant);
+          this.setSpriteTexture(this.sprite, this.key, variant);
           this.transitionSprite.setVisible(false);
           resolve();
         },
       });
       this.variant = variant;
     });
+  }
+
+  private setSpriteTexture(sprite: Phaser.GameObjects.Sprite, key: string, variant: string): void {
+    const texture = globalScene.textures.get(key);
+    if (texture.key === MissingTextureKey) {
+      sprite.setTexture(key);
+      return;
+    }
+
+    sprite.setTexture(key, texture.has(variant) ? variant : undefined);
   }
 
   hide(): Promise<void> {

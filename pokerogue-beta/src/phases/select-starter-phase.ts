@@ -187,7 +187,7 @@ export class SelectStarterPhase extends Phase {
         starterPokemon.computerPartnerAce = isComputerPartnerStarterAce(computerPartnerProfile, starter, i);
       }
       if (starter.moveset) {
-        starterPokemon.tryPopulateMoveset(starter.moveset);
+        starterPokemon.tryPopulateMoveset(starter.moveset, globalScene.isComputerPartnerPlayer(playerIndex));
       }
       if (starter.passive) {
         starterPokemon.passive = true;

@@ -6862,6 +6862,9 @@ export class AddBattlerTagAttr extends MoveEffectAttr {
       case BattlerTagType.MINIMIZED:
       case BattlerTagType.ALWAYS_GET_HIT:
         return 0;
+      case BattlerTagType.IGNORE_DARK:
+      case BattlerTagType.IGNORE_GHOST:
+        return -2;
       case BattlerTagType.INGRAIN:
       case BattlerTagType.IGNORE_ACCURACY:
       case BattlerTagType.AQUA_RING:

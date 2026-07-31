@@ -111,7 +111,7 @@ function createPartnerPokemon(starter: ComputerPartnerStarter, isAce: boolean): 
 
   pokemon.computerPartnerAce = isAce;
   if (starter.moveset) {
-    pokemon.tryPopulateMoveset(starter.moveset);
+    pokemon.tryPopulateMoveset(starter.moveset, true);
   }
   if (starter.passive) {
     pokemon.passive = true;

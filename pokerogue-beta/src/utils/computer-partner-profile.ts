@@ -10,6 +10,7 @@ import {
 } from "#balance/rates";
 import { getPassiveCandyCount, getSameSpeciesEggCandyCounts, getValueReductionCandyCounts } from "#balance/starters";
 import { MAX_STARTER_CANDY_COUNT } from "#constants/game-constants";
+import { allMoves } from "#data/data-lists";
 import type { PokemonSpecies } from "#data/pokemon-species";
 import { getTypeDamageMultiplier } from "#data/type";
 import { AbilityAttr } from "#enums/ability-attr";
@@ -119,6 +120,34 @@ interface ProjectedPartnerPokemon {
   growthCost: number;
 }
 
+interface ComputerPartnerStarterProgressDebugState {
+  candyCount: number;
+  valueReduction: number;
+  eggMoves: number;
+  eggMoveNames: string;
+  passiveAttr: number;
+  abilityAttr: number;
+  hatchedCount: number;
+}
+
+interface ComputerPartnerStarterSelectionDebugRow {
+  order: number;
+  species: string;
+  selected: boolean;
+  basePoints: number;
+  pointsAfterReduction: number;
+  remainingBefore: number;
+  remainingAfter: number;
+  valueReductionBefore: number;
+  valueReductionAfter: number;
+  candyBefore: number;
+  candyAfter: number;
+  eggMovesBefore: string;
+  eggMovesAfter: string;
+  finalMoves: string;
+  skipReason: string;
+}
+
 const DEFAULT_PARTNER_IVS = [10, 10, 10, 10, 10, 10];
 const COMPUTER_PARTNER_STARTER_POINT_LIMIT = 10;
 const MAX_STARTER_MOVE_COUNT = 4;
@@ -128,6 +157,7 @@ const TEAM_REPLACEMENT_IMPROVEMENT_RATIO = 1.03;
 const TEAM_FILL_IMPROVEMENT_RATIO = 1.005;
 const LEVEL_GROWTH_COST = 0.45;
 const MAX_LEVEL_GROWTH_COST = 20;
+const DEBUG_COMPUTER_PARTNER_STARTERS = true;
 const COMMON_EVOLUTION_ITEM_COST = 8;
 const RARE_EVOLUTION_ITEM_COST = 12;
 const EVOLUTION_CONDITION_COST = 5;
@@ -347,11 +377,18 @@ export function createComputerPartnerStarter(
   profile: ComputerPartnerProfile,
   progress?: ComputerPartnerProgressData,
 ): ComputerPartnerStarter[] {
+  const progressBeforeSpending = getComputerPartnerStarterProgressSnapshot(profile, progress);
   if (progress) {
     spendComputerPartnerStarterProgress(profile, progress);
   }
+  const progressAfterSpending = getComputerPartnerStarterProgressSnapshot(profile, progress);
 
-  const startingStarters = getComputerPartnerStartingStarters(profile, progress);
+  const startingStarters = getComputerPartnerStartingStarters(
+    profile,
+    progress,
+    progressBeforeSpending,
+    progressAfterSpending,
+  );
 
   if (startingStarters.length === 0) {
     return [];
@@ -371,10 +408,18 @@ export function isComputerPartnerStarterAce(
 function getComputerPartnerStartingStarters(
   profile: ComputerPartnerProfile,
   progress?: ComputerPartnerProgressData,
+  progressBeforeSpending?: Map<SpeciesId, ComputerPartnerStarterProgressDebugState>,
+  progressAfterSpending?: Map<SpeciesId, ComputerPartnerStarterProgressDebugState>,
 ): ComputerPartnerStarterConfig[] {
   const startingStarters = profile.startingStarters;
   if (startingStarters && startingStarters.length > 0) {
-    return buildComputerPartnerStarterTeam(startingStarters, progress);
+    return buildComputerPartnerStarterTeam(
+      profile,
+      startingStarters,
+      progress,
+      progressBeforeSpending,
+      progressAfterSpending,
+    );
   }
 
   if (!profile.starterSpeciesId) {
@@ -394,8 +439,11 @@ function getComputerPartnerStartingStarters(
 }
 
 function buildComputerPartnerStarterTeam(
+  profile: ComputerPartnerProfile,
   starters: ComputerPartnerStarterConfig[],
   progress?: ComputerPartnerProgressData,
+  progressBeforeSpending?: Map<SpeciesId, ComputerPartnerStarterProgressDebugState>,
+  progressAfterSpending?: Map<SpeciesId, ComputerPartnerStarterProgressDebugState>,
 ): ComputerPartnerStarterConfig[] {
   const [ace, ...candidates] = starters;
 
@@ -404,18 +452,62 @@ function buildComputerPartnerStarterTeam(
   }
 
   const selectedStarters = [ace];
-  let remainingPoints = COMPUTER_PARTNER_STARTER_POINT_LIMIT - getComputerPartnerStarterPoints(ace, progress);
+  const debugRows: ComputerPartnerStarterSelectionDebugRow[] = [];
+  const acePoints = getComputerPartnerStarterPoints(ace, progress);
+  let remainingPoints = COMPUTER_PARTNER_STARTER_POINT_LIMIT - acePoints;
+  debugRows.push(
+    getComputerPartnerStarterSelectionDebugRow(
+      ace,
+      0,
+      true,
+      COMPUTER_PARTNER_STARTER_POINT_LIMIT,
+      remainingPoints,
+      progress,
+      progressBeforeSpending,
+      progressAfterSpending,
+      "ace",
+    ),
+  );
 
-  for (const starter of randSeedShuffle([...candidates])) {
+  const shuffledCandidates = randSeedShuffle([...candidates]);
+  for (const [index, starter] of shuffledCandidates.entries()) {
     const points = getComputerPartnerStarterPoints(starter, progress);
+    const remainingBefore = remainingPoints;
     if (points > remainingPoints) {
+      debugRows.push(
+        getComputerPartnerStarterSelectionDebugRow(
+          starter,
+          index + 1,
+          false,
+          remainingBefore,
+          remainingBefore,
+          progress,
+          progressBeforeSpending,
+          progressAfterSpending,
+          `cost ${points} exceeds remaining ${remainingBefore}`,
+        ),
+      );
       continue;
     }
 
     selectedStarters.push(starter);
     remainingPoints -= points;
+    debugRows.push(
+      getComputerPartnerStarterSelectionDebugRow(
+        starter,
+        index + 1,
+        true,
+        remainingBefore,
+        remainingPoints,
+        progress,
+        progressBeforeSpending,
+        progressAfterSpending,
+        "",
+      ),
+    );
   }
 
+  debugComputerPartnerStarterSelection(profile, debugRows);
   return selectedStarters;
 }
 
@@ -427,6 +519,95 @@ function getComputerPartnerStarterPoints(
   const progressSpeciesId = getComputerPartnerProgressSpeciesId(starter.speciesId);
   const valueReduction = progress?.starterData[progressSpeciesId]?.valueReduction ?? 0;
   return reduceComputerPartnerStarterPoints(basePoints, valueReduction);
+}
+
+function getComputerPartnerStarterProgressSnapshot(
+  profile: ComputerPartnerProfile,
+  progress?: ComputerPartnerProgressData,
+): Map<SpeciesId, ComputerPartnerStarterProgressDebugState> | undefined {
+  if (!progress || !profile.startingStarters?.length) {
+    return undefined;
+  }
+
+  const snapshot = new Map<SpeciesId, ComputerPartnerStarterProgressDebugState>();
+  for (const starter of profile.startingStarters) {
+    const progressSpeciesId = getComputerPartnerProgressSpeciesId(starter.speciesId);
+    const starterEntry = progress.starterData[progressSpeciesId];
+    const dexEntry = progress.dexData[progressSpeciesId];
+    snapshot.set(progressSpeciesId, {
+      candyCount: starterEntry?.candyCount ?? 0,
+      valueReduction: starterEntry?.valueReduction ?? 0,
+      eggMoves: starterEntry?.eggMoves ?? 0,
+      eggMoveNames: formatComputerPartnerEggMoves(progressSpeciesId, starterEntry?.eggMoves ?? 0),
+      passiveAttr: starterEntry?.passiveAttr ?? 0,
+      abilityAttr: starterEntry?.abilityAttr ?? 0,
+      hatchedCount: dexEntry?.hatchedCount ?? 0,
+    });
+  }
+
+  return snapshot;
+}
+
+function getComputerPartnerStarterSelectionDebugRow(
+  starter: ComputerPartnerStarterConfig,
+  order: number,
+  selected: boolean,
+  remainingBefore: number,
+  remainingAfter: number,
+  progress?: ComputerPartnerProgressData,
+  progressBeforeSpending?: Map<SpeciesId, ComputerPartnerStarterProgressDebugState>,
+  progressAfterSpending?: Map<SpeciesId, ComputerPartnerStarterProgressDebugState>,
+  skipReason = "",
+): ComputerPartnerStarterSelectionDebugRow {
+  const progressSpeciesId = getComputerPartnerProgressSpeciesId(starter.speciesId);
+  const progressBefore = progressBeforeSpending?.get(progressSpeciesId);
+  const progressAfter = progressAfterSpending?.get(progressSpeciesId);
+  const finalMoves = getComputerPartnerStarterMoveset(
+    starter,
+    progress?.starterData[progressSpeciesId],
+  );
+
+  return {
+    order,
+    species: getPokemonSpecies(starter.speciesId).name,
+    selected,
+    basePoints: getComputerPartnerStarterBasePoints(starter),
+    pointsAfterReduction: getComputerPartnerStarterPoints(starter, progress),
+    remainingBefore,
+    remainingAfter,
+    valueReductionBefore: progressBefore?.valueReduction ?? 0,
+    valueReductionAfter: progressAfter?.valueReduction ?? 0,
+    candyBefore: progressBefore?.candyCount ?? 0,
+    candyAfter: progressAfter?.candyCount ?? 0,
+    eggMovesBefore: progressBefore?.eggMoveNames ?? "",
+    eggMovesAfter: progressAfter?.eggMoveNames ?? "",
+    finalMoves: finalMoves.map(move => allMoves[move]?.name ?? MoveId[move] ?? `${move}`).join(", "),
+    skipReason,
+  };
+}
+
+function formatComputerPartnerEggMoves(speciesId: SpeciesId, eggMovesAttr: number): string {
+  const eggMoves = Object.hasOwn(speciesEggMoves, speciesId) ? speciesEggMoves[speciesId] : [];
+  return eggMoves
+    .filter((_move, index) => !!(eggMovesAttr & (1 << index)))
+    .map(move => allMoves[move]?.name ?? MoveId[move] ?? `${move}`)
+    .join(", ");
+}
+
+function debugComputerPartnerStarterSelection(
+  profile: ComputerPartnerProfile,
+  rows: ComputerPartnerStarterSelectionDebugRow[],
+): void {
+  if (!DEBUG_COMPUTER_PARTNER_STARTERS || rows.length === 0) {
+    return;
+  }
+
+  const selectedCount = rows.filter(row => row.selected).length;
+  console.groupCollapsed(
+    `[Computer Partner Team] ${profile.name} (${profile.key}) selected ${selectedCount}/${rows.length} starters`,
+  );
+  console.table(rows);
+  console.groupEnd();
 }
 
 function getComputerPartnerStarterBasePoints(starter: ComputerPartnerStarterConfig): number {

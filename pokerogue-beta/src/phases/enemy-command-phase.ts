@@ -11,7 +11,7 @@ import type { EnemyPokemon } from "#field/pokemon";
 import { FieldPhase } from "#phases/field-phase";
 import type { TurnMove } from "#types/turn-move";
 import { shouldAiRepositionToCenter } from "#utils/ai-targeting";
-import { getPlannerSwitchIndex } from "#utils/battle-planner-ai";
+import { getPlannerRepositionTarget, getPlannerSwitchIndex } from "#utils/battle-planner-ai";
 import { isMysteryEncounterSwitchProtectedPokemon } from "#utils/mystery-encounter-switch-protection";
 import { getZMoveForPokemonMove } from "#utils/z-move-utils";
 
@@ -65,6 +65,27 @@ export class EnemyCommandPhase extends FieldPhase {
       return this.end();
     }
 
+    const usePlannerAi = globalScene.plannerAiEnabled && enemyPokemon.aiType === AiType.PLANNER;
+    if (!this.skipTurn && usePlannerAi) {
+      const allyAlreadyRepositioning = globalScene.getEnemyField().some((fieldPokemon, fieldIndex) => {
+        if (fieldPokemon === enemyPokemon) {
+          return false;
+        }
+
+        return battle.turnCommands[globalScene.getEnemyBattlerIndex(fieldIndex)]?.command === Command.REPOSITION;
+      });
+      const repositionTarget = getPlannerRepositionTarget(enemyPokemon, allyAlreadyRepositioning);
+      if (repositionTarget !== undefined) {
+        battle.turnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = {
+          command: Command.REPOSITION,
+          cursor: repositionTarget,
+          skip: this.skipTurn,
+        };
+
+        return this.end();
+      }
+    }
+
     /**
      * If the enemy has a trainer, decide whether or not the enemy should switch
      * to another member in its party.
@@ -91,7 +112,7 @@ export class EnemyCommandPhase extends FieldPhase {
           const sortedPartyMemberScores = trainer.getSortedPartyMemberMatchupScores(partyMemberScores);
 
           const switchMultiplier = 1 - (battle.enemySwitchCounter ? Math.pow(0.1, 1 / battle.enemySwitchCounter) : 0);
-          const usePlannerSwitch = globalScene.plannerAiEnabled && enemyPokemon.aiType === AiType.PLANNER;
+          const usePlannerSwitch = usePlannerAi;
           const reservedSwitchIndexes = new Set<number>();
           globalScene.getEnemyField().forEach((fieldPokemon, fieldIndex) => {
             const turnCommand = battle.turnCommands[globalScene.getEnemyBattlerIndex(fieldIndex)];

@@ -1182,11 +1182,16 @@ export class SummaryUiHandler extends UiHandler {
         this.applyStatsViewMode();
 
         const itemModifiers = (
-          globalScene.findModifiers(
-            m => m instanceof PokemonHeldItemModifier && m.pokemonId === this.pokemon?.id,
-            this.playerParty,
-          ) as PokemonHeldItemModifier[]
-        ).sort(modifierSortFunc);
+          this.playerParty
+            ? globalScene.findModifiersForPlayer(
+                m => m instanceof PokemonHeldItemModifier && m.pokemonId === this.pokemon?.id,
+                this.playerIndex,
+              )
+            : globalScene.findModifiers(
+                m => m instanceof PokemonHeldItemModifier && m.pokemonId === this.pokemon?.id,
+                false,
+              )
+        ).sort(modifierSortFunc) as PokemonHeldItemModifier[];
 
         itemModifiers.forEach((item, i) => {
           const icon = item.getIcon(true);
