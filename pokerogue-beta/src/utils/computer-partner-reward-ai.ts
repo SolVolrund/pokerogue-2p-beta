@@ -209,7 +209,10 @@ const REWARD_PRIORITY: Partial<Record<ComputerPartnerRecoveryItemId | string, nu
   EVIOLITE: 22,
   FLAME_ORB: 23,
   TOXIC_ORB: 24,
-  RARER_CANDY: 25,
+  STICKY_BARBS: 25,
+  LAGGING_TAIL: 26,
+  IRON_BALL: 27,
+  RARER_CANDY: 28,
 
   EVOLUTION_ITEM: 1,
   SPECIES_STAT_BOOSTER: 2,
@@ -833,6 +836,19 @@ function chooseOrbTarget(type: PokemonModifierType, itemId: string, party: Playe
     getOrbTargetScore(itemId, pokemon, targetPokemonIndex));
 }
 
+function chooseKlutzItemTarget(type: PokemonModifierType, itemId: string, party: PlayerPokemon[]): RewardTarget | undefined {
+  return chooseScoredPokemonTarget(type, party, (pokemon, targetPokemonIndex) => {
+    if (!pokemon.hasAbility(AbilityId.KLUTZ, false, true)) {
+      return undefined;
+    }
+    if (pokemon.getHeldItems().some(item => item.type.id === itemId)) {
+      return undefined;
+    }
+
+    return 300 - targetPokemonIndex;
+  });
+}
+
 function getBetterOffensiveStat(pokemon: PlayerPokemon): PermanentStat {
   return pokemon.getStat(Stat.ATK) >= pokemon.getStat(Stat.SPATK) ? Stat.ATK : Stat.SPATK;
 }
@@ -1158,6 +1174,10 @@ function getRewardTarget(
 
   if (itemId === "FLAME_ORB" || itemId === "TOXIC_ORB") {
     return chooseOrbTarget(type, itemId, party);
+  }
+
+  if (itemId === "STICKY_BARBS" || itemId === "LAGGING_TAIL" || itemId === "IRON_BALL") {
+    return chooseKlutzItemTarget(type, itemId, party);
   }
 
   if (itemId === "LOADED_DICE") {
