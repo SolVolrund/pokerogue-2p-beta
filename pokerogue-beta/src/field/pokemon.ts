@@ -122,6 +122,7 @@ import {
   EvoTrackerModifier,
   GrandLaurelModifier,
   HiddenAbilityRateBoosterModifier,
+  IronBallModifier,
   PokemonBaseStatFlatModifier,
   PokemonBaseStatTotalModifier,
   PokemonFormChangeItemModifier,
@@ -2602,9 +2603,11 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   public isGrounded(): boolean {
     const isLevitating = new ValueHolder(false);
     applyAbAttrs("LevitatingAbAttr", { pokemon: this, isLevitating });
+    const hasIronBall = this.getHeldItems().some(item => item instanceof IronBallModifier);
 
     return (
       !!this.getTag(GroundedTag)
+      || hasIronBall
       || (!this.isOfType(PokemonType.FLYING, { returnOriginalTypesIfStellar: true })
         && !isLevitating.value
         && !this.getTag(BattlerTagType.FLOATING)

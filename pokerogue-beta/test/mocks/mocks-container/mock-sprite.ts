@@ -154,6 +154,11 @@ export class MockSprite implements MockGameObject {
     return this;
   }
 
+  setX(x: number): this {
+    this.phaserSprite.setX(x);
+    return this;
+  }
+
   setFlipY(flip: boolean): this {
     // Sets the vertical flip state of this Game Object.
     this.phaserSprite.setFlipY(flip);

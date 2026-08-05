@@ -1,6 +1,6 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { globalScene } from "#app/global-scene";
-import { LapsingPersistentModifier, LapsingPokemonHeldItemModifier } from "#modifiers/modifier";
+import { BerryPotModifier, LapsingPersistentModifier, LapsingPokemonHeldItemModifier } from "#modifiers/modifier";
 import { BattlePhase } from "#phases/battle-phase";
 
 export class BattleEndPhase extends BattlePhase {
@@ -59,6 +59,7 @@ export class BattleEndPhase extends BattlePhase {
       globalScene.currentBattle.pickUpScatteredMoney();
     }
 
+    globalScene.recoverBattleTransferredHeldItems(playerIndexes);
     globalScene.clearEnemyHeldItemModifiers();
     for (const p of globalScene.getEnemyParty()) {
       try {
@@ -69,6 +70,19 @@ export class BattleEndPhase extends BattlePhase {
     }
 
     for (const playerIndex of playerIndexes) {
+      if (this.isVictory) {
+        const berryPotModifiers = globalScene.findModifiersForPlayer(
+          m => m instanceof BerryPotModifier,
+          playerIndex,
+        ) as BerryPotModifier[];
+        for (const modifier of berryPotModifiers) {
+          const pokemon = globalScene.getPokemonById(modifier.pokemonId);
+          if (pokemon) {
+            modifier.tryGrowBerry(pokemon);
+          }
+        }
+      }
+
       const lapsingModifiers = globalScene.findModifiersForPlayer(
         m => m instanceof LapsingPersistentModifier || m instanceof LapsingPokemonHeldItemModifier,
         playerIndex,

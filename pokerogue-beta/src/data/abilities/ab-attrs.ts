@@ -4,7 +4,7 @@ import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
 import type { EntryHazardTag, SuppressAbilitiesTag } from "#data/arena-tag";
 import { type BattlerTag, CritBoostTag } from "#data/battler-tags";
-import { getBerryEffectFunc } from "#data/berry";
+import { getBerryEffectFunc, getBerryName } from "#data/berry";
 import { allAbilities, allMoves } from "#data/data-lists";
 import { SpeciesFormChangeAbilityTrigger, SpeciesFormChangeWeatherTrigger } from "#data/form-change-triggers";
 import { getPokeballName } from "#data/pokeball";
@@ -4706,6 +4706,129 @@ export class DoubleBerryEffectAbAttr extends AbAttr {
  */
 export class PreventBerryUseAbAttr extends CancelInteractionAbAttr {}
 
+export interface PostAllyBerryUsedAbAttrParams extends AbAttrBaseParams {
+  /** The allied Pokemon that ate the berry */
+  readonly consumer: Pokemon;
+  /** The type of berry that was eaten */
+  readonly berryType: BerryType;
+  /** Whether another Symbiosis user has already passed off a berry for this use */
+  readonly transferred: BooleanHolder;
+}
+
+export class PostAllyBerryUsedAbAttr extends AbAttr {
+  private berryModifier?: BerryModifier | undefined;
+
+  override canApply({ simulated, pokemon, consumer, berryType, transferred }: PostAllyBerryUsedAbAttrParams): boolean {
+    if (simulated || transferred.value || !pokemon.isAlly(consumer)) {
+      this.berryModifier = undefined;
+      return false;
+    }
+
+    this.berryModifier = globalScene.findModifierForPokemon(
+      m => m instanceof BerryModifier && m.pokemonId === pokemon.id && m.berryType === berryType,
+      pokemon,
+    ) as BerryModifier | undefined;
+
+    return !!this.berryModifier && this.canPassBerry(this.berryModifier, consumer);
+  }
+
+  override apply({ pokemon, consumer, transferred }: PostAllyBerryUsedAbAttrParams): void {
+    if (transferred.value || !this.berryModifier) {
+      this.berryModifier = undefined;
+      return;
+    }
+
+    const passedBerryType = this.berryModifier.berryType;
+    if (this.passBerry(pokemon, consumer, this.berryModifier)) {
+      transferred.value = true;
+      globalScene.updateModifiers(
+        pokemon.isPlayer(),
+        true,
+        pokemon.isPlayer() ? globalScene.getPlayerIndexForPokemon(pokemon) : undefined,
+      );
+      globalScene.updateModifiers(
+        consumer.isPlayer(),
+        true,
+        consumer.isPlayer() ? globalScene.getPlayerIndexForPokemon(consumer) : undefined,
+      );
+      globalScene.phaseManager.queueMessage(
+        i18next.t("abilityTriggers:symbiosis", {
+          pokemonNameWithAffix: getPokemonNameWithAffix(pokemon),
+          allyNameWithAffix: getPokemonNameWithAffix(consumer),
+          berryName: getBerryName(passedBerryType),
+        }),
+      );
+    }
+    this.berryModifier = undefined;
+  }
+
+  private canPassBerry(berryModifier: BerryModifier, consumer: Pokemon): boolean {
+    if (!berryModifier.isTransferable) {
+      return false;
+    }
+
+    const matchingModifier = this.getMatchingBerryModifier(berryModifier, consumer);
+    return !matchingModifier || matchingModifier.stackCount < matchingModifier.getMaxStackCount();
+  }
+
+  private passBerry(source: Pokemon, consumer: Pokemon, berryModifier: BerryModifier): boolean {
+    const matchingModifier = this.getMatchingBerryModifier(berryModifier, consumer);
+    if (matchingModifier && matchingModifier.stackCount >= matchingModifier.getMaxStackCount()) {
+      return false;
+    }
+
+    const newItemModifier = berryModifier.clone() as BerryModifier;
+    newItemModifier.pokemonId = consumer.id;
+    newItemModifier.stackCount = matchingModifier ? matchingModifier.stackCount + 1 : 1;
+
+    berryModifier.stackCount--;
+    if (
+      berryModifier.stackCount <= 0
+      && !globalScene.removeModifier(
+        berryModifier,
+        source.isEnemy(),
+        source.isPlayer() ? globalScene.getPlayerIndexForPokemon(source) : undefined,
+      )
+    ) {
+      return false;
+    }
+
+    if (
+      matchingModifier
+      && !globalScene.removeModifier(
+        matchingModifier,
+        consumer.isEnemy(),
+        consumer.isPlayer() ? globalScene.getPlayerIndexForPokemon(consumer) : undefined,
+      )
+    ) {
+      return false;
+    }
+
+    if (consumer.isPlayer()) {
+      globalScene.addModifier(
+        newItemModifier,
+        true,
+        true,
+        false,
+        true,
+        undefined,
+        globalScene.getPlayerIndexForPokemon(consumer),
+      );
+    } else {
+      globalScene.addEnemyModifier(newItemModifier, true, true);
+    }
+    applyAbAttrs("PostItemLostAbAttr", { pokemon: source });
+    return true;
+  }
+
+  private getMatchingBerryModifier(berryModifier: BerryModifier, pokemon: Pokemon): BerryModifier | undefined {
+    return globalScene.findModifierForPokemon(
+      m => m instanceof BerryModifier && m.matchType(berryModifier) && m.pokemonId === pokemon.id,
+      pokemon,
+    ) as BerryModifier | undefined;
+  }
+}
+
 /**
  * A Pokemon with this ability heals by a percentage of their maximum hp after eating a berry
  * @param healPercent - Percent of Max HP to heal
@@ -6224,6 +6347,7 @@ export const AbilityAttrs = Object.freeze({
   NoTransformAbilityAbAttr,
   NonSuperEffectiveImmunityAbAttr,
   PokemonTypeChangeAbAttr,
+  PostAllyBerryUsedAbAttr,
   PostAttackAbAttr,
   PostAttackApplyBattlerTagAbAttr,
   PostAttackApplyStatusEffectAbAttr,

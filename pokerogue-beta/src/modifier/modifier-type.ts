@@ -40,6 +40,7 @@ import {
   AddPokeballModifier,
   AddVoucherModifier,
   AttackTypeBoosterModifier,
+  BerryPotModifier,
   BaseStatModifier,
   BerryModifier,
   BoostBugSpawnModifier,
@@ -75,7 +76,9 @@ import {
   HealShopCostModifier,
   HiddenAbilityRateBoosterModifier,
   HitHealModifier,
+  IronBallModifier,
   IvScannerModifier,
+  LaggingTailModifier,
   LevelIncrementBoosterModifier,
   LegendaryHelperModifier,
   LinkingCordGoldModifier,
@@ -119,6 +122,7 @@ import {
   ShinyBadgeModifier,
   SpeciesCritBoosterModifier,
   SpeciesStatBoosterModifier,
+  StickyBarbModifier,
   SurviveDamageModifier,
   SwitchEffectTransferModifier,
   TempCritBoosterModifier,
@@ -2651,6 +2655,13 @@ const modifierTypeInitObj = Object.freeze({
       (type, _args) => new PreserveBerryModifier(type),
     ),
 
+  BERRY_POT: () =>
+    new PokemonHeldItemModifierType(
+      "modifierType:ModifierType.BERRY_POT",
+      "berry_pot",
+      (type, args) => new BerryPotModifier(type, (args[0] as Pokemon).id),
+    ),
+
   FOCUS_BAND: () =>
     new PokemonHeldItemModifierType(
       "modifierType:ModifierType.FOCUS_BAND",
@@ -2696,6 +2707,24 @@ const modifierTypeInitObj = Object.freeze({
       "modifierType:ModifierType.FLAME_ORB",
       "flame_orb",
       (type, args) => new TurnStatusEffectModifier(type, (args[0] as Pokemon).id),
+    ),
+  STICKY_BARBS: () =>
+    new PokemonHeldItemModifierType(
+      "modifierType:ModifierType.STICKY_BARBS",
+      "sticky_barbs",
+      (type, args) => new StickyBarbModifier(type, (args[0] as Pokemon).id),
+    ),
+  LAGGING_TAIL: () =>
+    new PokemonHeldItemModifierType(
+      "modifierType:ModifierType.LAGGING_TAIL",
+      "lag_tail",
+      (type, args) => new LaggingTailModifier(type, (args[0] as Pokemon).id),
+    ),
+  IRON_BALL: () =>
+    new PokemonHeldItemModifierType(
+      "modifierType:ModifierType.IRON_BALL",
+      "iron_ball",
+      (type, args) => new IronBallModifier(type, (args[0] as Pokemon).id),
     ),
 
   BATON: () =>

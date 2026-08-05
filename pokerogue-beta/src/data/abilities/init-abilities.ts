@@ -79,6 +79,7 @@ import {
   NonSuperEffectiveImmunityAbAttr,
   NoTransformAbilityAbAttr,
   PokemonTypeChangeAbAttr,
+  PostAllyBerryUsedAbAttr,
   PostAttackApplyBattlerTagAbAttr,
   PostAttackApplyStatusEffectAbAttr,
   PostAttackContactApplyStatusEffectAbAttr,
@@ -189,7 +190,7 @@ import {
 import { AbBuilder, type Ability } from "#abilities/ability";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
-import { GroundedTag, ProtectedTag } from "#data/battler-tags";
+import { ProtectedTag } from "#data/battler-tags";
 import { allAbilities, allMoves } from "#data/data-lists";
 import { Gender } from "#data/gender";
 import { getNonVolatileStatusEffects } from "#data/status-effect";
@@ -348,7 +349,7 @@ export function initAbilities() {
       .attr(
         AttackTypeImmunityAbAttr,
         PokemonType.GROUND,
-        (pokemon: Pokemon) => !pokemon.getTag(GroundedTag) && !globalScene.arena.getTag(ArenaTagType.GRAVITY),
+        (pokemon: Pokemon) => !pokemon.isGrounded() && !globalScene.arena.getTag(ArenaTagType.GRAVITY),
       )
       .attr(LevitatingAbAttr)
       .ignorable()
@@ -1228,7 +1229,7 @@ export function initAbilities() {
       .ignorable()
       .build(),
     new AbBuilder(AbilityId.SYMBIOSIS, 6) //
-      .unimplemented()
+      .attr(PostAllyBerryUsedAbAttr)
       .build(),
     new AbBuilder(AbilityId.TOUGH_CLAWS, 6) //
       .attr(MovePowerBoostAbAttr, (_user, _target, move) => move.hasFlag(MoveFlags.MAKES_CONTACT), 1.3)
@@ -2195,7 +2196,7 @@ export function initAbilities() {
       .attr(
         AttackTypeImmunityAbAttr,
         PokemonType.GROUND,
-        (pokemon: Pokemon) => !pokemon.getTag(GroundedTag) && !globalScene.arena.getTag(ArenaTagType.GRAVITY),
+        (pokemon: Pokemon) => !pokemon.isGrounded() && !globalScene.arena.getTag(ArenaTagType.GRAVITY),
       )
       .attr(LevitatingAbAttr)
       .attr(PostVictoryStatStageChangeAbAttr, beastBoostHighestStatCalc)

@@ -335,6 +335,20 @@ function initGreatModifierPool() {
     new WeightedModifierType(modifierTypes.TYPE_GEM, (party: Pokemon[]) =>
       party.some(hasTypeGemTarget) ? 2 : 0,
     ),
+    new WeightedModifierType(
+      modifierTypes.BERRY_POT,
+      (party: Pokemon[]) =>
+        party.some(p => {
+          if (!p.hasAbility(AbilityId.SYMBIOSIS, false, true)) {
+            return false;
+          }
+          const berryPot = p.getHeldItems().find(i => i.type.id === "BERRY_POT");
+          return !berryPot || berryPot.stackCount < berryPot.getMaxStackCount();
+        })
+          ? 4
+          : 0,
+      4,
+    ),
     new WeightedModifierType(modifierTypes.TERA_SHARD, (party: Pokemon[]) =>
       party.filter(
         p =>
@@ -566,6 +580,42 @@ function initUltraModifierPool() {
           ? 10
           : 0;
       },
+      10,
+    ),
+    new WeightedModifierType(
+      modifierTypes.STICKY_BARBS,
+      (party: Pokemon[]) =>
+        party.some(
+          p =>
+            p.hasAbility(AbilityId.KLUTZ, false, true)
+            && !p.getHeldItems().some(i => i.type.id === "STICKY_BARBS"),
+        )
+          ? 10
+          : 0,
+      10,
+    ),
+    new WeightedModifierType(
+      modifierTypes.LAGGING_TAIL,
+      (party: Pokemon[]) =>
+        party.some(
+          p =>
+            p.hasAbility(AbilityId.KLUTZ, false, true)
+            && !p.getHeldItems().some(i => i.type.id === "LAGGING_TAIL"),
+        )
+          ? 10
+          : 0,
+      10,
+    ),
+    new WeightedModifierType(
+      modifierTypes.IRON_BALL,
+      (party: Pokemon[]) =>
+        party.some(
+          p =>
+            p.hasAbility(AbilityId.KLUTZ, false, true)
+            && !p.getHeldItems().some(i => i.type.id === "IRON_BALL"),
+        )
+          ? 10
+          : 0,
       10,
     ),
     new WeightedModifierType(

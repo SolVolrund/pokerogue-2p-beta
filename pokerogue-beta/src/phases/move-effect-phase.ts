@@ -31,6 +31,7 @@ import {
   HitHealModifier,
   PokemonMultiHitModifier,
   ShinyBadgeModifier,
+  StickyBarbModifier,
   TypeGemModifier,
 } from "#modifiers/modifier";
 import { applyFilteredMoveAttrs, applyMoveAttrs } from "#moves/apply-attrs";
@@ -854,6 +855,10 @@ export class MoveEffectPhase extends PokemonPhase {
     this.applyHeldItemFlinchCheck(user, target, dealsDamage);
     this.applyOnGetHitAbEffects(user, target, dmgTuple);
     applyAbAttrs("PostAttackAbAttr", { pokemon: user, opponent: target, move: this.move, hitResult, damage });
+
+    if (dealsDamage && this.move.is("AttackMove")) {
+      globalScene.applyModifiersForPokemon(StickyBarbModifier, target, target, user, this.move);
+    }
 
     // We assume only enemy Pokemon are able to have the EnemyAttackStatusEffectChanceModifier from tokens
     if (!user.isPlayer() && this.move.is("AttackMove")) {

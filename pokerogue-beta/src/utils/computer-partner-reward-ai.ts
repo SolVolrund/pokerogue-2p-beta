@@ -216,6 +216,7 @@ const REWARD_PRIORITY: Partial<Record<ComputerPartnerRecoveryItemId | string, nu
   BASE_STAT_BOOSTER: 3,
   TERA_SHARD: 4,
   TM_GREAT: 5,
+  BERRY_POT: 6,
   TYPE_GEM: 6,
   Z_CRYSTAL: 6,
   GREAT_BALL: 6,
@@ -751,6 +752,22 @@ function getSpeciesStatBoosterTarget(type: SpeciesStatBoosterModifierType, party
   return targetPokemonIndex !== undefined ? toRewardTarget(targetPokemonIndex, 250) : undefined;
 }
 
+function getBerryPotTarget(type: PokemonModifierType, party: PlayerPokemon[]): RewardTarget | undefined {
+  return chooseScoredPokemonTarget(type, party, (pokemon, targetPokemonIndex) => {
+    if (!pokemon.hasAbility(AbilityId.SYMBIOSIS, false, true)) {
+      return undefined;
+    }
+
+    const berryPot = pokemon.getHeldItems().find(item => item.type.id === "BERRY_POT");
+    const stackCount = berryPot?.stackCount ?? 0;
+    if (stackCount >= 5) {
+      return undefined;
+    }
+
+    return 500 - stackCount * 75 - targetPokemonIndex;
+  });
+}
+
 function getBerryTarget(type: BerryModifierType, party: PlayerPokemon[], profile?: ComputerPartnerProfile): RewardTarget | undefined {
   const berryType = type.getPregenArgs()[0] as BerryType | undefined;
   const stat = berryType === undefined ? undefined : STAT_BERRY_STATS[berryType];
@@ -1007,6 +1024,10 @@ function getRewardTarget(
 
   if (type instanceof BerryModifierType) {
     return getBerryTarget(type, party, context.computerPartnerProfile);
+  }
+
+  if (itemId === "BERRY_POT") {
+    return getBerryPotTarget(type, party);
   }
 
   if (itemId === "MIRROR_HERB") {

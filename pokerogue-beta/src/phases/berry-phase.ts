@@ -1,6 +1,7 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
+import type { BerryType } from "#enums/berry-type";
 import { CommonAnim } from "#enums/move-anims-common";
 import { BerryUsedEvent } from "#events/battle-scene";
 import type { Pokemon } from "#field/pokemon";
@@ -64,6 +65,7 @@ export class BerryPhase extends FieldPhase {
       if (berryModifier.consumed) {
         berryModifier.consumed = false;
         pokemon.loseHeldItem(berryModifier);
+        this.applySymbiosis(pokemon, berryModifier.berryType);
       }
       globalScene.eventTarget.dispatchEvent(new BerryUsedEvent(berryModifier));
     }
@@ -75,5 +77,19 @@ export class BerryPhase extends FieldPhase {
 
     // AbilityId.CHEEK_POUCH only works once per round of nom noms
     applyAbAttrs("HealFromBerryUseAbAttr", { pokemon });
+  }
+
+  /**
+   * Give an allied Symbiosis Pokemon a chance to pass the same berry back to the eater.
+   * Only the first successful donor transfers a berry.
+   */
+  private applySymbiosis(consumer: Pokemon, berryType: BerryType): void {
+    const transferred = new BooleanHolder(false);
+    for (const ally of consumer.getAllies()) {
+      applyAbAttrs("PostAllyBerryUsedAbAttr", { pokemon: ally, consumer, berryType, transferred });
+      if (transferred.value) {
+        return;
+      }
+    }
   }
 }

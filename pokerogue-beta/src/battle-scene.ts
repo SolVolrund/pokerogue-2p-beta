@@ -12,6 +12,7 @@ import { getGameMode } from "#app/game-mode";
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { initGlobalScene } from "#app/global-scene";
+import { getPokemonNameWithAffix } from "#app/messages";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { starterColors } from "#app/global-vars/starter-colors";
 import { InputsController } from "#app/inputs-controller";
@@ -4780,7 +4781,7 @@ export class BattleScene extends SceneBase {
       return false;
     }
 
-    const source = itemModifier.pokemonId ? itemModifier.getPokemon() : null;
+    const source = itemModifier.pokemonId ? (itemModifier.getPokemon() ?? null) : null;
     const cancelled = new BooleanHolder(false);
 
     if (source && source.isPlayer() !== target.isPlayer()) {
@@ -4795,11 +4796,20 @@ export class BattleScene extends SceneBase {
     newItemModifier.pokemonId = target.id;
     const targetPlayerIndex = target.isPlayer() ? this.getPlayerIndexForPokemon(target) : undefined;
     const sourcePlayerIndex = source?.isPlayer() ? this.getPlayerIndexForPokemon(source) : undefined;
+    this.prepareRecoverableHeldItemTransfer(itemModifier, newItemModifier, source, sourcePlayerIndex);
     const matchingModifier = this.findModifier(
       m => m instanceof PokemonHeldItemModifier && m.matchType(itemModifier) && m.pokemonId === target.id,
       target.isPlayer(),
       targetPlayerIndex,
     ) as PokemonHeldItemModifier;
+
+    if (!newItemModifier.recoverableBattleTransfer && matchingModifier?.recoverableBattleTransfer) {
+      newItemModifier.recoverableBattleTransfer = { ...matchingModifier.recoverableBattleTransfer };
+    }
+
+    if (newItemModifier.recoverableBattleTransfer?.pokemonId === target.id) {
+      newItemModifier.recoverableBattleTransfer = undefined;
+    }
 
     if (matchingModifier) {
       const maxStackCount = matchingModifier.getMaxStackCount();
@@ -4849,6 +4859,94 @@ export class BattleScene extends SceneBase {
     }
     return false;
   }
+
+  private prepareRecoverableHeldItemTransfer(
+    sourceModifier: PokemonHeldItemModifier,
+    transferredModifier: PokemonHeldItemModifier,
+    source: Pokemon | null,
+    sourcePlayerIndex?: PlayerIndex,
+  ): void {
+    if (sourceModifier.recoverableBattleTransfer) {
+      transferredModifier.recoverableBattleTransfer = { ...sourceModifier.recoverableBattleTransfer };
+      return;
+    }
+
+    if (source?.isPlayer() && sourcePlayerIndex !== undefined && sourceModifier.isBattleTransferRecoverable()) {
+      transferredModifier.recoverableBattleTransfer = {
+        pokemonId: source.id,
+        playerIndex: sourcePlayerIndex,
+      };
+    }
+  }
+
+  recoverBattleTransferredHeldItems(playerIndexes: PlayerIndex[]): void {
+    const trackedItems = [
+      ...playerIndexes.flatMap(playerIndex =>
+        this.findModifiersForPlayer(
+          m => m instanceof PokemonHeldItemModifier && !!m.recoverableBattleTransfer,
+          playerIndex,
+        ).map(modifier => ({ modifier: modifier as PokemonHeldItemModifier, playerIndex })),
+      ),
+      ...this.findModifiers(m => m instanceof PokemonHeldItemModifier && !!m.recoverableBattleTransfer, false).map(
+        modifier => ({ modifier: modifier as PokemonHeldItemModifier, playerIndex: undefined }),
+      ),
+    ];
+    const recoveredPokemon = new Set<Pokemon>();
+
+    for (const { modifier, playerIndex } of trackedItems) {
+      const transferSource = modifier.recoverableBattleTransfer;
+      if (!transferSource) {
+        continue;
+      }
+
+      const originalPlayerIndex = transferSource.playerIndex as PlayerIndex;
+      const originalPokemon = this.getPokemonById(transferSource.pokemonId);
+      if (!originalPokemon?.isPlayer() || !playerIndexes.includes(originalPlayerIndex)) {
+        continue;
+      }
+
+      if (modifier.pokemonId === originalPokemon.id) {
+        modifier.recoverableBattleTransfer = undefined;
+        continue;
+      }
+
+      const currentHolder = modifier.getPokemon();
+      const existingOriginalItem = this.findModifierForPlayer(
+        m => m instanceof PokemonHeldItemModifier && m.matchType(modifier) && m.pokemonId === originalPokemon.id,
+        originalPlayerIndex,
+      ) as PokemonHeldItemModifier | undefined;
+      const originalCanHoldMore =
+        !existingOriginalItem || existingOriginalItem.getStackCount() < existingOriginalItem.getMaxStackCount();
+      const removed = this.removeModifier(
+        modifier,
+        currentHolder?.isEnemy() ?? playerIndex === undefined,
+        playerIndex,
+      );
+
+      if (!removed) {
+        continue;
+      }
+
+      if (originalCanHoldMore) {
+        const recoveredModifier = modifier.clone() as PokemonHeldItemModifier;
+        recoveredModifier.pokemonId = originalPokemon.id;
+        recoveredModifier.stackCount = modifier.stackCount;
+        recoveredModifier.recoverableBattleTransfer = undefined;
+        this.addModifier(recoveredModifier, true, false, false, true, undefined, originalPlayerIndex);
+      }
+
+      recoveredPokemon.add(originalPokemon);
+    }
+
+    for (const pokemon of recoveredPokemon) {
+      this.phaseManager.queueMessage(
+        i18next.t("modifier:recoverBattleTransferredItems", {
+          pokemonNameWithAffix: getPokemonNameWithAffix(pokemon),
+        }),
+      );
+    }
+  }
+
   /**
    * Attempt to discard one or more copies of a held item.
    * @param itemModifier - The {@linkcode PokemonHeldItemModifier} being discarded

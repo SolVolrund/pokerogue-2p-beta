@@ -72,6 +72,7 @@ import type { EnemyPokemon, Pokemon } from "#field/pokemon";
 import {
   AttackTypeBoosterModifier,
   BerryModifier,
+  LaggingTailModifier,
   LoadedDiceModifier,
   PokemonFormChangeItemModifier,
   PokemonHeldItemModifier,
@@ -1207,6 +1208,7 @@ export abstract class Move implements Localizable {
     const priority = new ValueHolder(this.priority);
     applyMoveAttrs("IncrementMovePriorityAttr", user, null, this, priority);
     applyAbAttrs("ChangeMovePriorityAbAttr", { pokemon: user, simulated, move: this, priority });
+    globalScene.applyModifiersForPokemon(LaggingTailModifier, user, user, this, priority);
 
     return priority.value;
   }
@@ -3321,6 +3323,179 @@ export class StealHeldItemChanceAttr extends MoveEffectAttr {
   getTargetBenefitScore(_user: Pokemon, target: Pokemon, _move: Move): number {
     const heldItems = this.getTargetHeldItems(target);
     return heldItems.length > 0 ? -5 : 0;
+  }
+}
+
+/**
+ * Gives one of the user's held items to the target. Used for Bestow.
+ */
+export class BestowHeldItemAttr extends MoveEffectAttr {
+  constructor() {
+    super(false);
+  }
+
+  apply(user: Pokemon, target: Pokemon, _move: Move, _args: any[]): boolean {
+    const bestowedItem = this.getBestowItem(user, target);
+    if (!bestowedItem || !globalScene.tryTransferHeldItemModifier(bestowedItem, target, false)) {
+      return false;
+    }
+
+    globalScene.phaseManager.queueMessage(
+      i18next.t("moveTriggers:bestowedItem", {
+        pokemonName: getPokemonNameWithAffix(user),
+        targetName: getPokemonNameWithAffix(target),
+        itemName: bestowedItem.type.name,
+      }),
+    );
+    return true;
+  }
+
+  getCondition(): MoveConditionFunc {
+    return (user, target) => !!this.getBestowItem(user, target);
+  }
+
+  private getBestowItem(user: Pokemon, target: Pokemon): PokemonHeldItemModifier | undefined {
+    const heldItems = user
+      .getHeldItems()
+      .filter(item => item.isTransferable && globalScene.canTransferHeldItemModifier(item, target));
+
+    if (heldItems.length === 0) {
+      return undefined;
+    }
+
+    const targetIsAlly = user.isPlayer() === target.isPlayer();
+    const preferredItems = targetIsAlly
+      ? heldItems.filter(item => !item.isBattleTransferRecoverable())
+      : heldItems.filter(item => item.isBattleTransferRecoverable());
+    return (preferredItems.length > 0 ? preferredItems : heldItems)[0];
+  }
+
+  getUserBenefitScore(user: Pokemon, target: Pokemon, _move: Move): number {
+    const item = this.getBestowItem(user, target);
+    if (!item) {
+      return 0;
+    }
+
+    if (user.isPlayer() === target.isPlayer()) {
+      return item.isBattleTransferRecoverable() ? -6 : 4;
+    }
+
+    return item.isBattleTransferRecoverable() ? 8 : -6;
+  }
+
+  getTargetBenefitScore(user: Pokemon, target: Pokemon, _move: Move): number {
+    const item = this.getBestowItem(user, target);
+    if (!item) {
+      return 0;
+    }
+
+    if (user.isPlayer() === target.isPlayer()) {
+      return item.isBattleTransferRecoverable() ? -6 : 4;
+    }
+
+    return item.isBattleTransferRecoverable() ? -8 : 6;
+  }
+}
+
+/**
+ * Swaps held items between the user and target. Used for Trick and Switcheroo.
+ */
+export class SwitchHeldItemAttr extends MoveEffectAttr {
+  constructor() {
+    super(false);
+  }
+
+  apply(user: Pokemon, target: Pokemon, _move: Move, _args: any[]): boolean {
+    const userItem = this.getUserItem(user, target);
+    const targetItem = this.getTargetItem(user, target);
+
+    if (!userItem && !targetItem) {
+      return false;
+    }
+
+    const userItemName = userItem?.type.name;
+    const targetItemName = targetItem?.type.name;
+
+    if (userItem && !globalScene.tryTransferHeldItemModifier(userItem, target, false)) {
+      return false;
+    }
+
+    if (targetItem && !globalScene.tryTransferHeldItemModifier(targetItem, user, false)) {
+      return false;
+    }
+
+    globalScene.phaseManager.queueMessage(
+      i18next.t("moveTriggers:switchedItems", {
+        pokemonName: getPokemonNameWithAffix(user),
+        targetName: getPokemonNameWithAffix(target),
+        userItemName,
+        targetItemName,
+        context: userItem && targetItem ? "swap" : userItem ? "give" : "take",
+      }),
+    );
+    return true;
+  }
+
+  getCondition(): MoveConditionFunc {
+    return (user, target) => !!this.getUserItem(user, target) || !!this.getTargetItem(user, target);
+  }
+
+  private getUserItem(user: Pokemon, target: Pokemon): PokemonHeldItemModifier | undefined {
+    const heldItems = this.getTransferableHeldItems(user, target);
+    if (heldItems.length === 0) {
+      return undefined;
+    }
+
+    const targetIsAlly = user.isPlayer() === target.isPlayer();
+    const preferredItems = targetIsAlly
+      ? heldItems.filter(item => !item.isBattleTransferRecoverable())
+      : heldItems.filter(item => item.isBattleTransferRecoverable());
+    return (preferredItems.length > 0 ? preferredItems : heldItems)[0];
+  }
+
+  private getTargetItem(user: Pokemon, target: Pokemon): PokemonHeldItemModifier | undefined {
+    const heldItems = this.getTransferableHeldItems(target, user);
+    if (heldItems.length === 0) {
+      return undefined;
+    }
+
+    const targetIsAlly = user.isPlayer() === target.isPlayer();
+    const preferredItems = targetIsAlly
+      ? heldItems.filter(item => item.isBattleTransferRecoverable())
+      : heldItems.filter(item => !item.isBattleTransferRecoverable());
+    if (!targetIsAlly) {
+      return preferredItems[0];
+    }
+    return (preferredItems.length > 0 ? preferredItems : heldItems)[0];
+  }
+
+  private getTransferableHeldItems(source: Pokemon, target: Pokemon): PokemonHeldItemModifier[] {
+    return source
+      .getHeldItems()
+      .filter(item => item.isTransferable && globalScene.canTransferHeldItemModifier(item, target));
+  }
+
+  getUserBenefitScore(user: Pokemon, target: Pokemon, _move: Move): number {
+    const userItem = this.getUserItem(user, target);
+    const targetItem = this.getTargetItem(user, target);
+
+    if (!userItem && !targetItem) {
+      return 0;
+    }
+
+    const targetIsAlly = user.isPlayer() === target.isPlayer();
+    let score = 0;
+    if (userItem) {
+      score += userItem.isBattleTransferRecoverable() === targetIsAlly ? -4 : 6;
+    }
+    if (targetItem) {
+      score += targetItem.isBattleTransferRecoverable() === targetIsAlly ? 4 : 6;
+    }
+    return score;
+  }
+
+  getTargetBenefitScore(user: Pokemon, target: Pokemon, _move: Move): number {
+    return -this.getUserBenefitScore(user, target, _move);
   }
 }
 
@@ -9501,6 +9676,8 @@ const MoveAttrs = Object.freeze({
   MultiStatusEffectAttr,
   PsychoShiftEffectAttr,
   StealHeldItemChanceAttr,
+  BestowHeldItemAttr,
+  SwitchHeldItemAttr,
   RemoveHeldItemAttr,
   EatBerryAttr,
   StealEatBerryAttr,
@@ -10579,7 +10756,7 @@ export function initMoves() {
       // should stack multiplicatively if used multiple times in 1 turn
       .edgeCase(),
     new StatusMove(MoveId.TRICK, PokemonType.PSYCHIC, 100, 10, -1, 0, 3) //
-      .unimplemented(),
+      .attr(SwitchHeldItemAttr),
     new StatusMove(MoveId.ROLE_PLAY, PokemonType.PSYCHIC, -1, 10, -1, 0, 3)
       .ignoresSubstitute()
       // TODO: Enable / remove once balance reaches a consensus on ability overrides during boss fights
@@ -11059,7 +11236,7 @@ export function initMoves() {
     new AttackMove(MoveId.EARTH_POWER, PokemonType.GROUND, MoveCategory.SPECIAL, 90, 100, 10, 10, 0, 4) //
       .attr(StatStageChangeAttr, [Stat.SPDEF], -1),
     new StatusMove(MoveId.SWITCHEROO, PokemonType.DARK, 100, 10, -1, 0, 4) //
-      .unimplemented(),
+      .attr(SwitchHeldItemAttr),
     new AttackMove(MoveId.GIGA_IMPACT, PokemonType.NORMAL, MoveCategory.PHYSICAL, 150, 90, 5, -1, 0, 4) //
       .attr(RechargeAttr),
     new SelfStatusMove(MoveId.NASTY_PLOT, PokemonType.DARK, -1, 20, -1, 0, 4) //
@@ -11420,7 +11597,7 @@ export function initMoves() {
     new StatusMove(MoveId.BESTOW, PokemonType.NORMAL, -1, 15, -1, 0, 5)
       .ignoresProtect()
       .ignoresSubstitute()
-      .unimplemented(),
+      .attr(BestowHeldItemAttr),
     new AttackMove(MoveId.INFERNO, PokemonType.FIRE, MoveCategory.SPECIAL, 100, 50, 5, 100, 0, 5) //
       .attr(StatusEffectAttr, StatusEffect.BURN),
     new AttackMove(MoveId.WATER_PLEDGE, PokemonType.WATER, MoveCategory.SPECIAL, 80, 100, 10, -1, 0, 5)

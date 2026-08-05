@@ -12,6 +12,7 @@ import {
   EnemyTurnHealModifier,
   GammaRayBurstModifier,
   ShinyBadgeModifier,
+  StickyBarbModifier,
   TurnHealModifier,
   TurnHeldItemTransferModifier,
   TurnStatusEffectModifier,
@@ -67,6 +68,7 @@ export class TurnEndPhase extends FieldPhase {
       }
 
       globalScene.applyModifiersForPokemon(TurnStatusEffectModifier, pokemon, pokemon);
+      globalScene.applyModifiersForPokemon(StickyBarbModifier, pokemon, pokemon);
       globalScene.applyModifiersForPokemon(TurnHeldItemTransferModifier, pokemon, pokemon);
       globalScene.applyModifiersForPokemon(GammaRayBurstModifier, pokemon, pokemon);
 

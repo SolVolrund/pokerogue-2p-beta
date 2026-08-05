@@ -21,12 +21,15 @@ import { SpeciesFormChange } from "#data/pokemon-forms";
 import { isRotomApplianceItem } from "#data/rotom";
 import { BattleType } from "#enums/battle-type";
 import { getStatusEffectHealText } from "#data/status-effect";
+import { AbilityId } from "#enums/ability-id";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BerryType } from "#enums/berry-type";
 import { Color, ShadowColor } from "#enums/color";
 import { FormChangeItem } from "#enums/form-change-item";
+import { HitResult } from "#enums/hit-result";
 import { LearnMoveType } from "#enums/learn-move-type";
 import { MultiHitType } from "#enums/multi-hit-type";
+import { MoveFlags } from "#enums/move-flags";
 import type { MoveId } from "#enums/move-id";
 import type { Nature } from "#enums/nature";
 import type { PokeballType } from "#enums/pokeball";
@@ -54,6 +57,7 @@ import type {
   TmModifierType,
   ZCrystalModifierType,
 } from "#modifiers/modifier-type";
+import type { Move } from "#moves/move";
 import type { VoucherType } from "#system/voucher";
 import type { ModifierInstanceMap, ModifierString } from "#types/modifier-types";
 import type { StatChange } from "#types/stat-change";
@@ -61,7 +65,9 @@ import { addModifierIconSprite } from "#ui/modifier-icon";
 import { addTextObject } from "#ui/text";
 import { hslToHex } from "#utils/color-utils";
 import { BooleanHolder, NumberHolder, randSeedFloat, toDmgValue } from "#utils/common";
+import { getEnumValues } from "#utils/enums";
 import { getModifierType } from "#utils/modifier-utils";
+import type { ValueHolder } from "#utils/value-holder";
 import i18next from "i18next";
 
 export type ModifierPredicate = (modifier: Modifier) => boolean;
@@ -789,6 +795,8 @@ export abstract class PokemonHeldItemModifier extends PersistentModifier {
   public pokemonId: number;
   /** Whether this item can be transfered to or stolen by another Pokemon. */
   public isTransferable = true;
+  /** The original player-side owner for battle-only item recovery after transfers. */
+  public recoverableBattleTransfer: { pokemonId: number; playerIndex: number } | undefined;
 
   constructor(type: ModifierType, pokemonId: number, stackCount?: number) {
     super(type, stackCount);
@@ -804,6 +812,10 @@ export abstract class PokemonHeldItemModifier extends PersistentModifier {
 
   getArgs(): any[] {
     return [this.pokemonId];
+  }
+
+  isBattleTransferRecoverable(): boolean {
+    return false;
   }
 
   /**
@@ -2139,6 +2151,136 @@ export class TurnStatusEffectModifier extends PokemonHeldItemModifier {
   getStatusEffect(): StatusEffect {
     return this.effect;
   }
+
+  override isBattleTransferRecoverable(): boolean {
+    return this.type.id === "TOXIC_ORB" || this.type.id === "FLAME_ORB";
+  }
+}
+
+export class StickyBarbModifier extends PokemonHeldItemModifier {
+  private static readonly DAMAGE_RATIO = 8;
+
+  matchType(modifier: Modifier): boolean {
+    return modifier instanceof StickyBarbModifier;
+  }
+
+  clone(): StickyBarbModifier {
+    return new StickyBarbModifier(this.type, this.pokemonId, this.stackCount);
+  }
+
+  override shouldApply(pokemon?: Pokemon, attacker?: Pokemon, move?: Move): boolean {
+    if (!super.shouldApply(pokemon, attacker, move) || !pokemon || pokemon.isFainted()) {
+      return false;
+    }
+
+    if (!attacker || !move) {
+      return true;
+    }
+
+    return (
+      !attacker.isFainted()
+      && move.doesFlagEffectApply({ flag: MoveFlags.MAKES_CONTACT, user: attacker, target: pokemon })
+    );
+  }
+
+  override apply(pokemon: Pokemon, attacker?: Pokemon, move?: Move): boolean {
+    if (attacker && move) {
+      return this.applyContactEffect(pokemon, attacker);
+    }
+
+    return this.applyDamage(pokemon);
+  }
+
+  private applyContactEffect(holder: Pokemon, attacker: Pokemon): boolean {
+    const damaged = this.applyDamage(attacker);
+    const transferred = globalScene.tryTransferHeldItemModifier(this, attacker, false);
+
+    if (transferred) {
+      globalScene.phaseManager.queueMessage(
+        i18next.t("modifier:stickyBarbTransferApply", {
+          typeName: this.type.name,
+          pokemonNameWithAffix: getPokemonNameWithAffix(holder),
+          attackerNameWithAffix: getPokemonNameWithAffix(attacker),
+        }),
+      );
+    }
+
+    return damaged || transferred;
+  }
+
+  private applyDamage(pokemon: Pokemon): boolean {
+    const cancelled = new BooleanHolder(false);
+    applyAbAttrs("BlockNonDirectDamageAbAttr", { pokemon, cancelled });
+
+    if (cancelled.value) {
+      return false;
+    }
+
+    globalScene.phaseManager.queueMessage(
+      i18next.t("modifier:stickyBarbDamageApply", {
+        pokemonNameWithAffix: getPokemonNameWithAffix(pokemon),
+        typeName: this.type.name,
+      }),
+    );
+
+    const damage = toDmgValue(pokemon.getMaxHp() / StickyBarbModifier.DAMAGE_RATIO);
+    pokemon.damageAndUpdate(damage, { result: HitResult.INDIRECT });
+    pokemon.turnData.damageTaken += damage;
+    return true;
+  }
+
+  getMaxHeldItemCount(_pokemon: Pokemon): number {
+    return 1;
+  }
+
+  override isBattleTransferRecoverable(): boolean {
+    return true;
+  }
+}
+
+export class LaggingTailModifier extends PokemonHeldItemModifier {
+  matchType(modifier: Modifier): boolean {
+    return modifier instanceof LaggingTailModifier;
+  }
+
+  clone(): LaggingTailModifier {
+    return new LaggingTailModifier(this.type, this.pokemonId, this.stackCount);
+  }
+
+  apply(_pokemon: Pokemon, _move: Move, priority: ValueHolder<number>): boolean {
+    priority.value -= this.stackCount;
+    return true;
+  }
+
+  getMaxHeldItemCount(_pokemon: Pokemon): number {
+    return 1;
+  }
+
+  override isBattleTransferRecoverable(): boolean {
+    return true;
+  }
+}
+
+export class IronBallModifier extends PokemonHeldItemModifier {
+  matchType(modifier: Modifier): boolean {
+    return modifier instanceof IronBallModifier;
+  }
+
+  clone(): IronBallModifier {
+    return new IronBallModifier(this.type, this.pokemonId, this.stackCount);
+  }
+
+  apply(_pokemon: Pokemon): boolean {
+    return true;
+  }
+
+  getMaxHeldItemCount(_pokemon: Pokemon): number {
+    return 1;
+  }
+
+  override isBattleTransferRecoverable(): boolean {
+    return true;
+  }
 }
 
 export class HitHealModifier extends PokemonHeldItemModifier {
@@ -2270,6 +2412,106 @@ export class BerryModifier extends PokemonHeldItemModifier {
       return 2;
     }
     return 3;
+  }
+}
+
+export class BerryPotModifier extends PokemonHeldItemModifier {
+  private wavesSinceBerry: number;
+
+  constructor(type: ModifierType, pokemonId: number, wavesSinceBerry?: number, stackCount?: number) {
+    super(type, pokemonId, stackCount);
+
+    this.wavesSinceBerry = wavesSinceBerry ?? 0;
+  }
+
+  matchType(modifier: Modifier) {
+    return modifier instanceof BerryPotModifier;
+  }
+
+  clone() {
+    return new BerryPotModifier(this.type, this.pokemonId, this.wavesSinceBerry, this.stackCount);
+  }
+
+  getArgs(): any[] {
+    return super.getArgs().concat(this.wavesSinceBerry);
+  }
+
+  getMaxHeldItemCount(pokemon?: Pokemon): number {
+    return pokemon?.hasAbility(AbilityId.SYMBIOSIS, false, true) ? 5 : 0;
+  }
+
+  apply(_pokemon: Pokemon): boolean {
+    return true;
+  }
+
+  tryGrowBerry(pokemon: Pokemon): boolean {
+    if (!this.shouldApply(pokemon)) {
+      return false;
+    }
+
+    this.wavesSinceBerry++;
+    const wavesRequired = Math.max(1, 6 - this.getStackCount());
+    if (this.wavesSinceBerry < wavesRequired) {
+      return false;
+    }
+
+    const availableBerries = getEnumValues(BerryType).filter(berryType => this.canAddBerry(pokemon, berryType));
+    if (availableBerries.length === 0) {
+      return false;
+    }
+
+    this.wavesSinceBerry = 0;
+    const berryType = availableBerries[pokemon.randBattleSeedInt(availableBerries.length)];
+    const existingBerry = globalScene.findModifierForPokemon(
+      m => m instanceof BerryModifier && m.pokemonId === pokemon.id && m.berryType === berryType,
+      pokemon,
+    ) as BerryModifier | undefined;
+
+    let berryName: string;
+    if (existingBerry) {
+      berryName = existingBerry.type.name;
+      existingBerry.stackCount++;
+    } else {
+      const berryModifierType = (
+        modifierTypes.BERRY() as { generateType: (party: readonly Pokemon[], pregenArgs?: unknown[]) => ModifierType }
+      ).generateType([pokemon], [berryType]);
+      berryName = berryModifierType.name;
+      const newBerry = new BerryModifier(berryModifierType, pokemon.id, berryType, 1);
+      const playerIndex = pokemon.isPlayer() ? globalScene.getPlayerIndexForPokemon(pokemon) : undefined;
+
+      if (pokemon.isPlayer()) {
+        globalScene.addModifier(newBerry, true, false, false, true, undefined, playerIndex);
+      } else {
+        globalScene.addEnemyModifier(newBerry, true, false);
+      }
+    }
+
+    globalScene.updateModifiers(
+      pokemon.isPlayer(),
+      undefined,
+      pokemon.isPlayer() ? globalScene.getPlayerIndexForPokemon(pokemon) : undefined,
+    );
+    globalScene.phaseManager.queueMessage(
+      i18next.t("modifier:berryPotGrowBerry", {
+        pokemonNameWithAffix: getPokemonNameWithAffix(pokemon),
+        berryName,
+        typeName: this.type.name,
+      }),
+    );
+    return true;
+  }
+
+  private canAddBerry(pokemon: Pokemon, berryType: BerryType): boolean {
+    const existingBerry = globalScene.findModifierForPokemon(
+      m => m instanceof BerryModifier && m.pokemonId === pokemon.id && m.berryType === berryType,
+      pokemon,
+    ) as BerryModifier | undefined;
+
+    if (!existingBerry) {
+      return true;
+    }
+
+    return existingBerry.stackCount < existingBerry.getMaxHeldItemCount(pokemon);
   }
 }
 
@@ -4679,9 +4921,13 @@ const ModifierClassMap = Object.freeze({
   FlinchChanceModifier,
   TurnHealModifier,
   TurnStatusEffectModifier,
+  StickyBarbModifier,
+  LaggingTailModifier,
+  IronBallModifier,
   HitHealModifier,
   LevelIncrementBoosterModifier,
   BerryModifier,
+  BerryPotModifier,
   PreserveBerryModifier,
   PokemonInstantReviveModifier,
   ResetNegativeStatStageModifier,
