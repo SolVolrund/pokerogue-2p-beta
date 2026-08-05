@@ -469,7 +469,7 @@ async function resolveItemTrade(choice: GlobalTradeSystemChoice): Promise<void> 
     tier++;
   }
 
-  regenerateModifierPoolThresholds(party, ModifierPoolType.PLAYER, 0);
+  regenerateModifierPoolThresholds(party, ModifierPoolType.PLAYER, 0, choice.playerIndex);
   let item: ModifierTypeOption | null = null;
   while (!item || item.type.id.includes("TM_")) {
     item = getPlayerModifierTypeOptions(1, party, [], {

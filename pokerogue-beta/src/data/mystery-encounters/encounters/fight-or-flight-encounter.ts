@@ -111,7 +111,7 @@ function getFightOrFlightReward(playerIndex: PlayerIndex, tier: ModifierTier): F
   globalScene.setActivePlayerIndex(playerIndex);
 
   const party = globalScene.getPlayerParty(playerIndex);
-  regenerateModifierPoolThresholds(party, ModifierPoolType.PLAYER, 0);
+  regenerateModifierPoolThresholds(party, ModifierPoolType.PLAYER, 0, playerIndex);
   let item: ModifierTypeOption | null = null;
   // TMs and Candy Jar excluded from possible rewards as they're too swingy in value for a singular item reward
   while (!item || item.type.id.includes("TM_") || item.type.id === "CANDY_JAR") {

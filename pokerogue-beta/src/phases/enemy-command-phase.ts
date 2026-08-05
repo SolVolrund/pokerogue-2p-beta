@@ -13,7 +13,7 @@ import type { TurnMove } from "#types/turn-move";
 import { shouldAiRepositionToCenter } from "#utils/ai-targeting";
 import { getPlannerRepositionTarget, getPlannerSwitchIndex } from "#utils/battle-planner-ai";
 import { isMysteryEncounterSwitchProtectedPokemon } from "#utils/mystery-encounter-switch-protection";
-import { getZMoveForPokemonMove } from "#utils/z-move-utils";
+import { getZMoveForPokemonMove, shouldSpendZMoveForTurnMove } from "#utils/z-move-utils";
 
 /**
  * Phase for determining an enemy AI's action for the next turn.
@@ -190,22 +190,33 @@ export class EnemyCommandPhase extends FieldPhase {
   }
 
   private upgradeEnemyZMove(pokemon: EnemyPokemon, turnMove: TurnMove): TurnMove {
+    const trainer = globalScene.currentBattle.trainer;
     if (
       globalScene.currentBattle.battleType !== BattleType.TRAINER
+      || !trainer
       || turnMove.move === MoveId.NONE
       || turnMove.useMode !== MoveUseMode.NORMAL
     ) {
       return turnMove;
     }
 
+    const zMoveUsageTrainerSlot = trainer.getTeraUsageTrainerSlot(pokemon);
+    if (globalScene.currentBattle.hasEnemyTrainerSlotUsedZMove(zMoveUsageTrainerSlot)) {
+      return turnMove;
+    }
+
     const sourceMove = pokemon.getMoveset().find(move => move.moveId === turnMove.move);
     const zMoveSelection = sourceMove ? getZMoveForPokemonMove(pokemon, sourceMove, true) : undefined;
-    if (!zMoveSelection) {
+    if (!zMoveSelection || !shouldSpendZMoveForTurnMove(pokemon, turnMove, zMoveSelection)) {
       return turnMove;
     }
 
     const targets = pokemon.getNextTargets(zMoveSelection.moveId);
     if (targets.length === 0) {
+      return turnMove;
+    }
+
+    if (!globalScene.currentBattle.reserveEnemyTrainerSlotZMove(zMoveUsageTrainerSlot)) {
       return turnMove;
     }
 

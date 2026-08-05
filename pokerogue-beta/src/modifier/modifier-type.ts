@@ -1,4 +1,5 @@
 import { TYPE_BOOST_ITEM_BOOST_PERCENT } from "#app/constants";
+import type { PlayerIndex } from "#app/battle-scene";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
@@ -2900,6 +2901,7 @@ export function regenerateModifierPoolThresholds(
   party: readonly Pokemon[],
   poolType: ModifierPoolType,
   rerollCount = 0,
+  playerIndex?: PlayerIndex,
 ) {
   const pool = getModifierPoolForType(poolType);
   itemPoolChecks.forEach((_v, k) => {
@@ -2920,10 +2922,13 @@ export function regenerateModifierPoolThresholds(
         let i = 0;
         pool[t].reduce((total: number, modifierType: WeightedModifierType) => {
           const weightedModifierType = modifierType as WeightedModifierType;
-          const existingModifiers = globalScene.findModifiers(
-            m => m.type.id === weightedModifierType.modifierType.id,
-            poolType === ModifierPoolType.PLAYER,
-          );
+          const existingModifiers =
+            poolType === ModifierPoolType.PLAYER
+              ? globalScene.findModifiersForPlayer(
+                  m => m.type.id === weightedModifierType.modifierType.id,
+                  playerIndex ?? globalScene.activePlayerIndex,
+                )
+              : globalScene.findModifiers(m => m.type.id === weightedModifierType.modifierType.id, false);
           const itemModifierType =
             weightedModifierType.modifierType instanceof ModifierTypeGenerator
               ? weightedModifierType.modifierType.generateType(party)

@@ -118,7 +118,7 @@ export class SelectModifierPhase extends BattlePhase {
 
     const party = globalScene.getPlayerParty(this.playerIndex);
     if (!this.isCopy) {
-      regenerateModifierPoolThresholds(party, this.getPoolType(), this.rerollCount);
+      regenerateModifierPoolThresholds(party, this.getPoolType(), this.rerollCount, this.playerIndex);
     }
     const modifierCount = this.getModifierCount();
 

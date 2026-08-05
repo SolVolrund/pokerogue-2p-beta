@@ -1,6 +1,8 @@
 import { globalScene } from "#app/global-scene";
 import type { PlayerIndex } from "#app/battle-scene";
 import { allMoves } from "#data/data-lists";
+import { BattlerTagType } from "#enums/battler-tag-type";
+import type { BattlerIndex } from "#enums/battler-index";
 import { MoveCategory } from "#enums/move-category";
 import { MoveId } from "#enums/move-id";
 import { PokemonType } from "#enums/pokemon-type";
@@ -8,7 +10,9 @@ import { SpeciesId } from "#enums/species-id";
 import { ZCrystal } from "#enums/z-crystal";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import { ZCrystalModifier, ZMoveAccessModifier } from "#modifiers/modifier";
+import type { Move } from "#moves/move";
 import type { PokemonMove } from "#moves/pokemon-move";
+import type { TurnMove } from "#types/turn-move";
 
 export interface ZMoveSelection {
   moveId: MoveId;
@@ -411,4 +415,74 @@ function getGenericZMoveSelection(
     power: getGenericZPower(move.power),
     zCrystal: zMoveData.crystal,
   };
+}
+
+export function shouldSpendZMoveForTurnMove(
+  pokemon: Pokemon,
+  turnMove: TurnMove,
+  zMoveSelection: ZMoveSelection,
+): boolean {
+  const sourceMove = allMoves[zMoveSelection.sourceMoveId];
+  const zMove = allMoves[zMoveSelection.moveId];
+  if (!sourceMove || !zMove) {
+    return false;
+  }
+
+  if (zMove.category === MoveCategory.STATUS || sourceMove.category === MoveCategory.STATUS) {
+    return true;
+  }
+
+  const targets = getOpposingTargetsForZSpendCheck(pokemon, turnMove.targets);
+  if (targets.length === 0) {
+    return false;
+  }
+
+  const normalKos = countEstimatedZSpendCheckKos(pokemon, sourceMove, targets);
+  const zKos = withTemporaryZMoveTurnData(pokemon, zMoveSelection, () =>
+    countEstimatedZSpendCheckKos(pokemon, zMove, targets),
+  );
+
+  return zKos > normalKos;
+}
+
+function getOpposingTargetsForZSpendCheck(pokemon: Pokemon, targetIndexes: readonly BattlerIndex[]): Pokemon[] {
+  const opponents = pokemon.getOpponents();
+  return targetIndexes
+    .map(targetIndex => globalScene.getField()[targetIndex])
+    .filter((target): target is Pokemon => !!target && opponents.includes(target));
+}
+
+function countEstimatedZSpendCheckKos(pokemon: Pokemon, move: Move, targets: readonly Pokemon[]): number {
+  return targets.filter(target => estimateZSpendCheckDamage(pokemon, target, move) >= target.hp).length;
+}
+
+function estimateZSpendCheckDamage(source: Pokemon, target: Pokemon, move: Move): number {
+  if (![MoveCategory.PHYSICAL, MoveCategory.SPECIAL].includes(move.category)) {
+    return 0;
+  }
+
+  const isCritical = move.hasAttr("CritOnlyAttr") || !!source.getTag(BattlerTagType.ALWAYS_CRIT);
+  return target.getAttackDamage({
+    source,
+    move,
+    ignoreAbility: !target.waveData.abilityRevealed,
+    ignoreSourceAbility: false,
+    ignoreAllyAbility: !target.getAllies().some(ally => ally.waveData.abilityRevealed),
+    ignoreSourceAllyAbility: false,
+    isCritical,
+    simulated: true,
+  }).damage;
+}
+
+function withTemporaryZMoveTurnData<T>(pokemon: Pokemon, zMoveSelection: ZMoveSelection, callback: () => T): T {
+  const previousPower = pokemon.turnData.zMovePower;
+  const previousSourceMove = pokemon.turnData.zMoveSourceMove;
+  pokemon.turnData.zMovePower = zMoveSelection.power;
+  pokemon.turnData.zMoveSourceMove = zMoveSelection.sourceMoveId;
+  try {
+    return callback();
+  } finally {
+    pokemon.turnData.zMovePower = previousPower;
+    pokemon.turnData.zMoveSourceMove = previousSourceMove;
+  }
 }

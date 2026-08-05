@@ -1,5 +1,6 @@
 import type { TurnCommand } from "#app/battle";
 import type { PlayerIndex } from "#app/battle-scene";
+import { MAX_TERAS_PER_ARENA } from "#app/constants";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
@@ -16,12 +17,13 @@ import { BattlerTagType } from "#enums/battler-tag-type";
 import { BiomeId } from "#enums/biome-id";
 import { Command } from "#enums/command";
 import { FieldPosition } from "#enums/field-position";
+import { MoveCategory } from "#enums/move-category";
 import { MoveId } from "#enums/move-id";
 import { isIgnorePP, isVirtual, MoveUseMode } from "#enums/move-use-mode";
 import { MysteryEncounterMode } from "#enums/mystery-encounter-mode";
 import { PokeballType } from "#enums/pokeball";
 import { UiMode } from "#enums/ui-mode";
-import type { EnemyPokemon, PlayerPokemon } from "#field/pokemon";
+import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
 import { getMoveTargets } from "#moves/move-utils";
 import { FieldPhase } from "#phases/field-phase";
 import type { MoveTargetSet } from "#types/move-target-set";
@@ -30,7 +32,7 @@ import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-s
 import { shouldAiRepositionToCenter } from "#utils/ai-targeting";
 import { getPlannerRepositionTarget } from "#utils/battle-planner-ai";
 import { getComputerPartnerImprovedSwitchIndex, isComputerPartnerFieldIndex } from "#utils/computer-partner-ai";
-import { getZMoveForPokemonMove } from "#utils/z-move-utils";
+import { getZMoveForPokemonMove, shouldSpendZMoveForTurnMove } from "#utils/z-move-utils";
 import {
   type ComputerPartnerCaptureDecisionOptions,
   estimateComputerPartnerMoveDamageRatio,
@@ -39,6 +41,7 @@ import {
   isComputerPartnerMoveSafeForCaptureTarget,
 } from "#utils/computer-partner-capture-ai";
 import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import { canSpeciesTera } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
 const CAPTURE_CLAIM_BALL_TYPES = [
@@ -577,7 +580,7 @@ export class CommandPhase extends FieldPhase {
 
     const sourceMove = playerPokemon.getMoveset().find(move => move.moveId === turnMove.move);
     const zMoveSelection = sourceMove ? getZMoveForPokemonMove(playerPokemon, sourceMove) : undefined;
-    if (!zMoveSelection) {
+    if (!zMoveSelection || !shouldSpendZMoveForTurnMove(playerPokemon, turnMove, zMoveSelection)) {
       return turnMove;
     }
 
@@ -592,10 +595,142 @@ export class CommandPhase extends FieldPhase {
     };
   }
 
-  private queueComputerPartnerFightCommand(nextMove: TurnMove): void {
+  private shouldComputerPartnerTera(
+    playerIndex: PlayerIndex,
+    playerPokemon: PlayerPokemon,
+    turnMove: TurnMove,
+  ): boolean {
+    if (
+      turnMove.move === MoveId.NONE
+      || turnMove.zMove
+      || playerPokemon.isTerastallized
+      || this.getComputerPartnerBlockedCaptureTargets(playerIndex).length > 0
+      || !canSpeciesTera(playerPokemon)
+      || !this.isPlayerTeraReadyForComputerPartner(playerIndex)
+    ) {
+      return false;
+    }
+
+    const move = allMoves[turnMove.move];
+    if (move && [MoveCategory.PHYSICAL, MoveCategory.SPECIAL].includes(move.category)) {
+      const targets = this.getOpposingTargetsForComputerPartnerTeraCheck(playerPokemon, turnMove.targets);
+      if (targets.length > 0) {
+        const normalKos = this.countEstimatedComputerPartnerMoveKos(playerPokemon, move, targets, false);
+        const teraKos = this.countEstimatedComputerPartnerMoveKos(playerPokemon, move, targets, true);
+        if (teraKos > normalKos) {
+          return true;
+        }
+      }
+    }
+
+    const normalIncoming = this.estimateIncomingDamageForComputerPartnerTeraCheck(playerPokemon, false);
+    if (normalIncoming < playerPokemon.hp) {
+      return false;
+    }
+
+    const teraIncoming = this.estimateIncomingDamageForComputerPartnerTeraCheck(playerPokemon, true);
+    return teraIncoming < playerPokemon.hp;
+  }
+
+  private isPlayerTeraReadyForComputerPartner(playerIndex: PlayerIndex): boolean {
+    const currentTeras = globalScene.arena.getPlayerTerasUsed(playerIndex);
+    const plannedTeras = globalScene.getPlayerFieldOwners().reduce<number>((count, owner, fieldSlot) => {
+      if (owner !== playerIndex || fieldSlot === this.fieldIndex) {
+        return count;
+      }
+
+      const battlerIndex = globalScene.getPlayerBattlerIndex(fieldSlot);
+      return count + +(globalScene.currentBattle.preTurnCommands[battlerIndex]?.command === Command.TERA);
+    }, 0);
+
+    return currentTeras + plannedTeras < MAX_TERAS_PER_ARENA;
+  }
+
+  private getOpposingTargetsForComputerPartnerTeraCheck(
+    playerPokemon: PlayerPokemon,
+    targetIndexes: readonly number[],
+  ): EnemyPokemon[] {
+    const opponents = playerPokemon.getOpponents();
+    return targetIndexes
+      .map(targetIndex => globalScene.getField()[targetIndex])
+      .filter((target): target is EnemyPokemon => !!target && opponents.includes(target));
+  }
+
+  private countEstimatedComputerPartnerMoveKos(
+    playerPokemon: PlayerPokemon,
+    move: (typeof allMoves)[MoveId],
+    targets: readonly EnemyPokemon[],
+    terastallized: boolean,
+  ): number {
+    return this.withTemporaryComputerPartnerTera(playerPokemon, terastallized, () =>
+      targets.filter(target => this.estimateComputerPartnerMoveDamage(playerPokemon, target, move) >= target.hp).length,
+    );
+  }
+
+  private estimateIncomingDamageForComputerPartnerTeraCheck(
+    playerPokemon: PlayerPokemon,
+    terastallized: boolean,
+  ): number {
+    return this.withTemporaryComputerPartnerTera(playerPokemon, terastallized, () =>
+      playerPokemon.getOpponents().reduce((total, opponent) => {
+        const strongestHit = opponent
+          .getMoveset()
+          .map(pokemonMove => pokemonMove.getMove())
+          .filter(move => [MoveCategory.PHYSICAL, MoveCategory.SPECIAL].includes(move.category))
+          .reduce((bestDamage, move) => {
+            return Math.max(bestDamage, this.estimateComputerPartnerMoveDamage(opponent, playerPokemon, move));
+          }, 0);
+
+        return total + strongestHit;
+      }, 0),
+    );
+  }
+
+  private estimateComputerPartnerMoveDamage(
+    source: Pokemon,
+    target: Pokemon,
+    move: (typeof allMoves)[MoveId],
+  ): number {
+    if (![MoveCategory.PHYSICAL, MoveCategory.SPECIAL].includes(move.category)) {
+      return 0;
+    }
+
+    const isCritical = move.hasAttr("CritOnlyAttr") || !!source.getTag(BattlerTagType.ALWAYS_CRIT);
+    return target.getAttackDamage({
+      source,
+      move,
+      ignoreAbility: !target.isPlayer() && !target.waveData.abilityRevealed,
+      ignoreSourceAbility: source.isPlayer() ? false : !source.waveData.abilityRevealed,
+      ignoreAllyAbility: !target.getAllies().some(ally => ally.waveData.abilityRevealed),
+      ignoreSourceAllyAbility: source.isPlayer() ? false : !source.getAllies().some(ally => ally.waveData.abilityRevealed),
+      isCritical,
+      simulated: true,
+    }).damage;
+  }
+
+  private withTemporaryComputerPartnerTera<T>(
+    playerPokemon: PlayerPokemon,
+    terastallized: boolean,
+    callback: () => T,
+  ): T {
+    const previousTerastallized = playerPokemon.isTerastallized;
+    playerPokemon.isTerastallized = terastallized;
+    try {
+      return callback();
+    } finally {
+      playerPokemon.isTerastallized = previousTerastallized;
+    }
+  }
+
+  private queueComputerPartnerFightCommand(nextMove: TurnMove, shouldTera = false): void {
     if (nextMove.zMove) {
       this.setPreTurnCommand({
         command: Command.Z_MOVE,
+        targets: [this.getBattlerIndex()],
+      });
+    } else if (shouldTera) {
+      this.setPreTurnCommand({
+        command: Command.TERA,
         targets: [this.getBattlerIndex()],
       });
     }
@@ -731,7 +866,10 @@ export class CommandPhase extends FieldPhase {
         playerPokemon,
         this.protectReservedCaptureTargets(playerIndex, playerPokemon, playerPokemon.getNextMove()),
       );
-      this.queueComputerPartnerFightCommand(nextMove);
+      this.queueComputerPartnerFightCommand(
+        nextMove,
+        this.shouldComputerPartnerTera(playerIndex, playerPokemon, nextMove),
+      );
     } finally {
       playerPokemon.aiType = previousAiType;
       globalScene.aiCommandInProgress = false;
@@ -779,7 +917,10 @@ export class CommandPhase extends FieldPhase {
         playerPokemon,
         this.protectReservedCaptureTargets(playerIndex, playerPokemon, playerPokemon.getNextMove()),
       );
-      this.queueComputerPartnerFightCommand(nextMove);
+      this.queueComputerPartnerFightCommand(
+        nextMove,
+        this.shouldComputerPartnerTera(playerIndex, playerPokemon, nextMove),
+      );
     } finally {
       playerPokemon.aiType = previousAiType;
       globalScene.aiCommandInProgress = false;

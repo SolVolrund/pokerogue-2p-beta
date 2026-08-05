@@ -99,6 +99,7 @@ export class Battle {
   public playerFaintsHistory: FaintLogEntry[] = [];
   public enemyFaintsHistory: FaintLogEntry[] = [];
   public enemyTeraUsedTrainerSlots: Set<TrainerSlot> = new Set<TrainerSlot>();
+  public enemyZMoveUsedTrainerSlots: Set<TrainerSlot> = new Set<TrainerSlot>();
 
   public mysteryEncounterType?: MysteryEncounterType | undefined;
   /** If the current battle is a Mystery Encounter, this will always be defined */
@@ -129,6 +130,19 @@ export class Battle {
     }
 
     this.enemyTeraUsedTrainerSlots.add(trainerSlot);
+    return true;
+  }
+
+  public hasEnemyTrainerSlotUsedZMove(trainerSlot: TrainerSlot): boolean {
+    return this.enemyZMoveUsedTrainerSlots.has(trainerSlot);
+  }
+
+  public reserveEnemyTrainerSlotZMove(trainerSlot: TrainerSlot): boolean {
+    if (this.hasEnemyTrainerSlotUsedZMove(trainerSlot)) {
+      return false;
+    }
+
+    this.enemyZMoveUsedTrainerSlots.add(trainerSlot);
     return true;
   }
 

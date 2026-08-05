@@ -10,6 +10,7 @@ import { MoveCategory } from "#enums/move-category";
 import { MoveId } from "#enums/move-id";
 import { MoveTarget } from "#enums/move-target";
 import { MoveUseMode } from "#enums/move-use-mode";
+import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { PokemonType } from "#enums/pokemon-type";
 import { BATTLE_STATS, type BattleStat, Stat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
@@ -123,6 +124,7 @@ interface PlannerMoveDebugEvaluation {
   totalScore: number;
   preventedThreatScore: number;
   survivalScore: number;
+  objectiveSurvivalScore: number;
   spreadFollowupScore: number;
   wastedTurnPenalty: number;
   result: string;
@@ -165,6 +167,7 @@ interface PlannerSearchEvaluation {
   score: number;
   preventedThreatScore: number;
   survivalScore: number;
+  objectiveSurvivalScore: number;
   spreadFollowupScore: number;
   wastedTurnPenalty: number;
 }
@@ -959,6 +962,7 @@ function scorePlannerChoiceByOneTurnSearch(user: Pokemon, choice: PlannerMoveCho
         totalScore,
         preventedThreatScore: evaluation.preventedThreatScore,
         survivalScore: evaluation.survivalScore,
+        objectiveSurvivalScore: evaluation.objectiveSurvivalScore,
         spreadFollowupScore: evaluation.spreadFollowupScore,
         wastedTurnPenalty: evaluation.wastedTurnPenalty,
         result: getPlannerActionResultText(action),
@@ -1082,6 +1086,7 @@ function logPlannerMoveEvaluations(
       total: formatPlannerScore(choice.score),
       prevented: formatPlannerScore(choice.debug?.preventedThreatScore ?? 0),
       survival: formatPlannerScore(choice.debug?.survivalScore ?? 0),
+      objective: formatPlannerScore(choice.debug?.objectiveSurvivalScore ?? 0),
       spread: formatPlannerScore(choice.debug?.spreadFollowupScore ?? 0),
       wasted: formatPlannerScore(choice.debug?.wastedTurnPenalty ?? 0),
       ...getPlannerBreakdownColumns(choice.breakdown),
@@ -1226,6 +1231,7 @@ function getPlannerDetailedTargetRows(
         total: formatPlannerScore(candidateChoice.score),
         prevented: formatPlannerScore(candidateChoice.debug?.preventedThreatScore ?? 0),
         survival: formatPlannerScore(candidateChoice.debug?.survivalScore ?? 0),
+        objective: formatPlannerScore(candidateChoice.debug?.objectiveSurvivalScore ?? 0),
         spread: formatPlannerScore(candidateChoice.debug?.spreadFollowupScore ?? 0),
         wasted: formatPlannerScore(candidateChoice.debug?.wastedTurnPenalty ?? 0),
         ...getPlannerBreakdownColumns(candidate.breakdown),
@@ -1604,6 +1610,7 @@ function evaluatePlannerSearchAction(state: PlannerSearchState, action: PlannerS
       score: 0,
       preventedThreatScore: 0,
       survivalScore: 0,
+      objectiveSurvivalScore: 0,
       spreadFollowupScore: 0,
       wastedTurnPenalty: 0,
     };
@@ -1613,13 +1620,15 @@ function evaluatePlannerSearchAction(state: PlannerSearchState, action: PlannerS
   const opponentTargets = action.targets.filter(target => user.isOpponent(target.pokemon));
   const preventedThreatScore = getPreventedThreatScore(state, opponentTargets);
   const survivalScore = getSearchSurvivalScore(state, action, opponentTargets);
+  const objectiveSurvivalScore = getObjectiveSurvivalScore(state, action, opponentTargets);
   const spreadFollowupScore = getSpreadFollowupScore(user, opponentTargets);
   const wastedTurnPenalty = getSearchWastedTurnPenalty(state, action, opponentTargets);
 
   return {
-    score: preventedThreatScore + survivalScore + spreadFollowupScore - wastedTurnPenalty,
+    score: preventedThreatScore + survivalScore + objectiveSurvivalScore + spreadFollowupScore - wastedTurnPenalty,
     preventedThreatScore,
     survivalScore,
+    objectiveSurvivalScore,
     spreadFollowupScore,
     wastedTurnPenalty,
   };
@@ -1690,6 +1699,84 @@ function getSearchSurvivalScore(
   }
 
   return score;
+}
+
+function getObjectiveSurvivalScore(
+  state: PlannerSearchState,
+  action: PlannerSearchAction,
+  opponentTargets: PlannerSearchTarget[],
+): number {
+  const objectivePriority = getProtectedObjectivePriority(state.user.pokemon);
+  if (objectivePriority <= 0) {
+    return 0;
+  }
+
+  const pokemon = state.user.pokemon;
+  const maxHp = Math.max(1, state.user.maxHp);
+  const residualDamage = estimateEndOfTurnResidualDamage(pokemon);
+  const nextResidualDamage = estimateNextEndOfTurnResidualDamage(pokemon);
+  const incomingTimeline = estimateIncomingTimelineAfterSearchAction(state, action, opponentTargets);
+  const incomingBefore = estimateIncomingDamageDetailed(pokemon).incomingDamage + residualDamage;
+  const projectedUserHp = getProjectedHpAfterDirectHealing(pokemon, pokemon, action.move, action.targets);
+  const directHeal = Math.max(0, projectedUserHp - state.user.hp);
+  const survivesUntilAction = incomingTimeline.damageBeforeAction < state.user.hp;
+  const baselineEndHp = state.user.hp - incomingBefore;
+  const actionEndHp = survivesUntilAction
+    ? projectedUserHp - incomingTimeline.damageBeforeAction - incomingTimeline.damageAfterAction - residualDamage
+    : 0;
+  const hpRatioAfterAction = actionEndHp / maxHp;
+  const isProtect = action.move.hasAttr("ProtectAttr");
+  const isWish = action.move.id === MoveId.WISH && action.targets.some(target => target.pokemon === pokemon);
+  const hasResidualPressure = residualDamage > 0 || nextResidualDamage > 0;
+
+  let score = 0;
+
+  if (baselineEndHp <= 0 && actionEndHp > 0) {
+    score += 280;
+  } else if (baselineEndHp <= maxHp * 0.3 && actionEndHp > baselineEndHp) {
+    score += Math.min(180, ((actionEndHp - baselineEndHp) / maxHp) * 180);
+  }
+
+  if (directHeal > 0) {
+    score += Math.min(160, (directHeal / maxHp) * 150 + (hasResidualPressure ? 36 : 0));
+    if (hpRatioAfterAction >= 0.5) {
+      score += 28;
+    } else if (hpRatioAfterAction >= 0.33) {
+      score += 14;
+    }
+  }
+
+  if (isProtect) {
+    const prevented = Math.max(0, incomingBefore - incomingTimeline.totalDamage - residualDamage);
+    score += Math.min(170, (prevented / maxHp) * 135 + (hasResidualPressure ? 24 : 0));
+  }
+
+  if (isWish) {
+    const missingHp = Math.max(0, maxHp - state.user.hp);
+    const futureHeal = Math.min(missingHp, Math.max(1, Math.floor(maxHp / 2)));
+    if (actionEndHp > 0 && futureHeal > 0) {
+      const wishSafetyMultiplier = hpRatioAfterAction >= 0.45 ? 1 : hpRatioAfterAction >= 0.25 ? 0.65 : 0.35;
+      score += Math.min(130, ((futureHeal / maxHp) * 125 + (hasResidualPressure ? 25 : 0)) * wishSafetyMultiplier);
+    }
+  }
+
+  if (hasResidualPressure && actionEndHp > 0) {
+    if (actionEndHp <= nextResidualDamage) {
+      score -= 75;
+    } else if (hpRatioAfterAction < 0.35) {
+      score += 36;
+    } else if (hpRatioAfterAction >= 0.55) {
+      score += 28;
+    }
+  }
+
+  if (actionEndHp <= 0) {
+    score -= baselineEndHp <= 0 ? 130 : 210;
+  } else if (hpRatioAfterAction >= 0.65) {
+    score += 26;
+  }
+
+  return clampPlannerScore(score * objectivePriority, -260, 380);
 }
 
 function estimateIncomingDamageAfterSearchAction(
@@ -1894,6 +1981,10 @@ function getSearchWastedTurnPenalty(
   }
 
   if (action.move.hasAttr("HealAttr")) {
+    return 0;
+  }
+
+  if (action.move.id === MoveId.WISH && getProtectedObjectivePriority(state.user.pokemon) > 0) {
     return 0;
   }
 
@@ -3203,6 +3294,50 @@ function estimateEndOfTurnResidualDamage(pokemon: Pokemon): number {
     default:
       return 0;
   }
+}
+
+function estimateNextEndOfTurnResidualDamage(pokemon: Pokemon): number {
+  const status = pokemon.status;
+  if (!status) {
+    return 0;
+  }
+
+  const maxHp = pokemon.getMaxHp();
+  switch (status.effect) {
+    case StatusEffect.BURN:
+    case StatusEffect.POISON:
+      return Math.max(1, Math.floor(maxHp / 8));
+    case StatusEffect.TOXIC:
+      return Math.max(1, Math.floor((maxHp * Math.max(1, status.toxicTurnCount + 2)) / 16));
+    default:
+      return 0;
+  }
+}
+
+function getProtectedObjectivePriority(pokemon: Pokemon): number {
+  const encounter = globalScene.currentBattle?.mysteryEncounter;
+  if (!encounter?.misc) {
+    return 0;
+  }
+
+  const data = encounter.misc as Record<string, unknown>;
+  if (
+    encounter.encounterType === MysteryEncounterType.POKE_POACHERS
+    && data.rescueActive === true
+    && data.protectedLegendaryId === pokemon.id
+  ) {
+    return 1.35;
+  }
+
+  if (
+    encounter.encounterType === MysteryEncounterType.LEGENDARY_CONFLICT
+    && data.legendaryConflictDuelActive === true
+    && data.helpedLegendaryId === pokemon.id
+  ) {
+    return 1.2;
+  }
+
+  return 0;
 }
 
 function getAverageActiveFieldMaxHp(): number {
