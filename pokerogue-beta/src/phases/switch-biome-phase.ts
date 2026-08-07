@@ -2,6 +2,7 @@ import { globalScene } from "#app/global-scene";
 import type { BiomeId } from "#enums/biome-id";
 import { getBiomeAssetKey } from "#field/arena";
 import { BattlePhase } from "#phases/battle-phase";
+import { isUnownCrystalGauntletWave } from "#utils/classic-final-boss-utils";
 
 export class SwitchBiomePhase extends BattlePhase {
   public readonly phaseName = "SwitchBiomePhase";
@@ -69,8 +70,11 @@ export class SwitchBiomePhase extends BattlePhase {
             if (globalScene.lastEnemyTrainer) {
               globalScene.lastEnemyTrainer.destroy();
             }
-            // Clear previous biome textures now that the transition is complete
-            globalScene.clearBiomeAssets(previousBiome);
+            // The crystal gauntlet cycles biomes quickly and can revisit END immediately for wave 220.
+            // Keep those assets warm so visible transition sprites never point at a cleared texture.
+            if (!isUnownCrystalGauntletWave(globalScene.currentBattle.waveIndex, globalScene.gameMode.modeId)) {
+              globalScene.clearBiomeAssets(previousBiome);
+            }
             this.end();
           },
         });

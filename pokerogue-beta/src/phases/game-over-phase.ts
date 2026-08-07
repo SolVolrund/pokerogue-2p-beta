@@ -30,6 +30,7 @@ import { TrainerData } from "#system/trainer-data";
 import { trainerConfigs } from "#trainers/trainer-config";
 import type { DejaVuGhostData, SessionSaveData } from "#types/save-data";
 import { checkSpeciesValidForChallenge, isNuzlockeChallenge } from "#utils/challenge-utils";
+import { isUnownCrystalGauntletWave } from "#utils/classic-final-boss-utils";
 import { fixedInt, isLocalServerConnected } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
@@ -52,7 +53,11 @@ export class GameOverPhase extends BattlePhase {
     globalScene.phaseManager.hideAbilityBar();
 
     // Failsafe if players somehow skip floor 200 in classic mode
-    if (globalScene.gameMode.isClassic && globalScene.currentBattle.waveIndex > 200) {
+    if (
+      globalScene.gameMode.isClassic
+      && globalScene.currentBattle.waveIndex > 200
+      && !isUnownCrystalGauntletWave(globalScene.currentBattle.waveIndex, globalScene.gameMode.modeId)
+    ) {
       this.isVictory = true;
     }
 
@@ -430,6 +435,9 @@ export class GameOverPhase extends BattlePhase {
       if (classicFinalBossSpeciesId === SpeciesId.MEW) {
         queueUnlock(Unlockables.OLD_SEA_MAP);
       }
+      if (classicFinalBossSpeciesId === SpeciesId.UNOWN) {
+        queueUnlock(Unlockables.UNOWN_BOX);
+      }
       queueUnlock(
         Unlockables.EVIOLITE,
         activePlayerIndexes.filter(playerIndex => globalScene
@@ -474,6 +482,7 @@ export class GameOverPhase extends BattlePhase {
       arena: new ArenaData(globalScene.arena),
       pokeballCounts: globalScene.pokeballCounts,
       money: Math.floor(globalScene.money),
+      unownCrystalMollyAppeared: globalScene.unownCrystalMollyAppeared,
       score: globalScene.score,
       waveIndex: globalScene.currentBattle.waveIndex,
       battleType: globalScene.currentBattle.battleType,

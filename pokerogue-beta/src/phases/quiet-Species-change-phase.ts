@@ -528,8 +528,8 @@ private getMewGauntletMoveIds(): MoveId[] | undefined{
       this.pokemon.bossSegmentIndex = CLASSIC_FINAL_BOSS_SEGMENTS - 1;
       this.pokemon.initBattleInfo();
       this.pokemon.cry();
-      this.applyMewEntryEffect();
       globalScene.phaseManager.cancelMove(p => p.pokemon === this.pokemon);
+      this.applyMewEntryEffect();
     }
     super.end();
   }

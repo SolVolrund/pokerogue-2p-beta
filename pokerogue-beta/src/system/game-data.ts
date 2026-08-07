@@ -202,6 +202,7 @@ export class GameData {
       [Unlockables.EVIOLITE]: false,
       [Unlockables.GAMMA_RAY_BURST]: false,
       [Unlockables.OLD_SEA_MAP]: false,
+      [Unlockables.UNOWN_BOX]: false,
       [Unlockables.GRAND_LAUREL]: false,
     };
     this.achvUnlocks = {};
@@ -1273,6 +1274,8 @@ export class GameData {
       money: Math.floor(globalScene.money),
       alphTiles: globalScene.getPlayerAlphTiles(0),
       alphLegendaryHelpersUsed: globalScene.getPlayerAlphLegendaryHelpersUsed(0),
+      unownCrystalMollyAppeared: globalScene.unownCrystalMollyAppeared,
+      unownFinalBossState: globalScene.currentBattle.unownFinalBossState,
       players: playerSessionData,
       twoPlayerMode: globalScene.twoPlayerMode,
       multiplayerPlayerCount: globalScene.twoPlayerMode ? globalScene.multiplayerPlayerCount : undefined,
@@ -1503,11 +1506,13 @@ export class GameData {
     globalScene.updateScoreText();
 
     globalScene.mysteryEncounterSaveData = new MysteryEncounterSaveData(fromSession.mysteryEncounterSaveData);
+    globalScene.unownCrystalMollyAppeared = fromSession.unownCrystalMollyAppeared ?? false;
     await globalScene.loadBiomeAssets(fromSession.arena.biome);
     globalScene.newArena(fromSession.arena.biome, fromSession.playerFaints);
 
     const battle = globalScene.newBattle(fromSession);
     const { battleType } = battle;
+    battle.unownFinalBossState = fromSession.unownFinalBossState;
     battle.enemyLevels = fromSession.enemyParty.map(p => p.level);
 
     globalScene.arena.init();

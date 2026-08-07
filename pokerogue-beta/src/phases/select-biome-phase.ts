@@ -8,6 +8,12 @@ import { MapModifier, MoneyInterestModifier, OldSeaMapModifier } from "#modifier
 import { BattlePhase } from "#phases/battle-phase";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { applyChallenges } from "#utils/challenge-utils";
+import {
+  isUnownCrystalEndWave,
+  isUnownCrystalGauntletWave,
+  isUnownRealFinalBossWave,
+  UNOWN_CRYSTAL_GAUNTLET_START_WAVE,
+} from "#utils/classic-final-boss-utils";
 import { BooleanHolder, getBiomeName, randSeedInt, randSeedItem } from "#utils/common";
 import { enumValueToKey } from "#utils/enums";
 
@@ -23,6 +29,11 @@ export class SelectBiomePhase extends BattlePhase {
     const currentBiome = globalScene.arena.biomeId;
     const currentWaveIndex = globalScene.currentBattle.waveIndex;
     const nextWaveIndex = currentWaveIndex + 1;
+
+    if (isUnownCrystalGauntletWave(nextWaveIndex, gameMode.modeId)) {
+      this.setNextBiomeAndEnd(this.getUnownCrystalGauntletNextBiome(nextWaveIndex), true);
+      return;
+    }
 
     if (
       (gameMode.isClassic && gameMode.isWaveFinal(nextWaveIndex + 9))
@@ -70,6 +81,23 @@ export class SelectBiomePhase extends BattlePhase {
     }
 
     this.setNextBiomeAndEnd(this.generateNextBiome(nextWaveIndex));
+  }
+
+  private getUnownCrystalGauntletNextBiome(nextWaveIndex: number): BiomeId {
+    if (
+      nextWaveIndex === UNOWN_CRYSTAL_GAUNTLET_START_WAVE
+      || isUnownCrystalEndWave(nextWaveIndex, globalScene.gameMode.modeId)
+      || isUnownRealFinalBossWave(nextWaveIndex, globalScene.gameMode.modeId)
+    ) {
+      return nextWaveIndex === UNOWN_CRYSTAL_GAUNTLET_START_WAVE ? BiomeId.TOWN : BiomeId.END;
+    }
+
+    const { biomeLinks } = allBiomes.get(globalScene.arena.biomeId);
+    const biomes: BiomeId[] = biomeLinks
+      .filter(b => !Array.isArray(b) || !randSeedInt(b[1]))
+      .map(b => (Array.isArray(b) ? b[0] : b));
+
+    return biomes.length ? randSeedItem(biomes) : this.generateNextBiome(nextWaveIndex);
   }
 
   private withOldSeaMapBiomeOptions(currentBiome: BiomeId, biomes: BiomeId[]): BiomeId[] {
@@ -215,12 +243,12 @@ export class SelectBiomePhase extends BattlePhase {
     this.setNextBiomeAndEnd(nextBiome);
   }
 
-  private setNextBiomeAndEnd(nextBiome: BiomeId): void {
+  private setNextBiomeAndEnd(nextBiome: BiomeId, skipRestStop = false): void {
     const gameMode = globalScene.gameMode;
     const currentWaveIndex = globalScene.currentBattle.waveIndex;
     const nextWaveIndex = currentWaveIndex + 1;
 
-    if (nextWaveIndex % 10 === 1) {
+    if (!skipRestStop && nextWaveIndex % 10 === 1) {
       if (globalScene.twoPlayerMode) {
         globalScene.getActivePlayerIndexes().forEach(playerIndex => {
           globalScene.applyModifierForPlayer(MoneyInterestModifier, playerIndex, playerIndex);

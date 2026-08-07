@@ -41,6 +41,7 @@ import {
   isComputerPartnerMoveSafeForCaptureTarget,
 } from "#utils/computer-partner-capture-ai";
 import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import { isUnownCrystalGauntletWave } from "#utils/classic-final-boss-utils";
 import { canSpeciesTera } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -1309,8 +1310,12 @@ export class CommandPhase extends FieldPhase {
     const missingMultipleStarters =
       gameData.getStarterCount(d => !!d.caughtAttr) < speciesDataRegistry.getAllStarters().length - 1;
     const isCatchableDailyBoss = isDailyFinalBoss() && (getDailyEventSeedBoss()?.catchable ?? false);
+    const isUnownCrystalGauntlet =
+      battleType === BattleType.WILD && isUnownCrystalGauntletWave(currentBattle.waveIndex, gameMode.modeId);
 
-    if (biomeId === BiomeId.END && battleType === BattleType.WILD) {
+    if (isUnownCrystalGauntlet) {
+      this.queueShowText("battle:noPokeballForce");
+    } else if (biomeId === BiomeId.END && battleType === BattleType.WILD) {
       if (
         (isClassic && !isClassicFinalBoss && someUncaughtSpeciesOnField)
         || (isFullFreshStart && !isClassicFinalBoss)

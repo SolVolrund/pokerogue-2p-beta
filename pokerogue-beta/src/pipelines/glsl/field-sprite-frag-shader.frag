@@ -28,6 +28,21 @@ uniform vec3 duskTint;
 uniform vec3 nightTint;
 uniform vec3 terrainColor;
 uniform float terrainColorRatio;
+uniform float crystalBiomeTime;
+uniform float crystalBiomeStrength;
+uniform vec3 crystalBiomeBaseColor;
+uniform vec3 crystalBiomeHighlightColor;
+uniform vec3 crystalBiomeShadowColor;
+uniform float crystalBiomeHueBlend;
+uniform float crystalBiomeSaturation;
+uniform float crystalBiomeBrightness;
+uniform float crystalBiomeContrast;
+uniform float crystalBiomeShadowStrength;
+uniform float crystalBiomeHighlightStrength;
+uniform float crystalBiomePatternStrength;
+uniform float crystalBiomePatternScale;
+uniform float crystalBiomeSparkle;
+uniform vec4 crystalBiomeMotion;
 
 float blendOverlay(float base, float blend) {
 	return base<0.5?(2.0*base*blend):(1.0-2.0*(1.0-base)*(1.0-blend));
@@ -124,6 +139,25 @@ vec3 blendHue(vec3 base, vec3 blend) {
 	return hsl2rgb(vec3(rgb2hsl(blend).r, baseHSL.g, baseHSL.b));
 }
 
+vec3 rgb2hsv(vec3 c) {
+	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+	vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+	vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+	float d = q.x - min(q.w, q.y);
+	float e = 1.0e-10;
+	return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+
+vec3 hsv2rgb(vec3 c) {
+	vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+	vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+	return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
+float positiveModulo(float value, float divisor) {
+	return mod(mod(value, divisor) + divisor, divisor);
+}
+
 void main() {
 	vec4 texture;
 
@@ -176,6 +210,42 @@ void main() {
 		&& (any(lessThan(vec3(0.0), terrainColor)))
 	) {
 		color.rgb = mix(color.rgb, blendHue(color.rgb, terrainColor), 1.0);
+	}
+
+	if (color.a > 0.0 && crystalBiomeStrength > 0.0) {
+		float luma = clamp(dot(color.rgb, vec3(0.299, 0.587, 0.114)), 0.0, 1.0);
+		vec3 sourceHsv = rgb2hsv(color.rgb);
+		vec3 baseHsv = rgb2hsv(crystalBiomeBaseColor);
+		float hueDistance = baseHsv.r - sourceHsv.r;
+		hueDistance -= floor(hueDistance + 0.5);
+		float hue = positiveModulo(sourceHsv.r + hueDistance * crystalBiomeHueBlend * crystalBiomeStrength, 1.0);
+		float saturation = clamp(sourceHsv.g * crystalBiomeSaturation, 0.0, 1.0);
+		float value = clamp(((sourceHsv.b - 0.5) * crystalBiomeContrast + 0.5) * crystalBiomeBrightness, 0.0, 1.0);
+		vec3 shifted = hsv2rgb(vec3(hue, saturation, value));
+
+		float shadow = (1.0 - smoothstep(0.08, 0.44, luma)) * crystalBiomeShadowStrength * crystalBiomeStrength;
+		float highlight = smoothstep(0.58, 1.0, luma) * crystalBiomeHighlightStrength * crystalBiomeStrength;
+		shifted = mix(shifted, crystalBiomeShadowColor, shadow);
+		shifted = mix(shifted, crystalBiomeHighlightColor, highlight);
+
+		vec2 patternUv = vec2(
+			positiveModulo(outTexCoord.x * crystalBiomePatternScale + crystalBiomeMotion.x + crystalBiomeTime * crystalBiomeMotion.z * 2.5, 1.0),
+			positiveModulo(outTexCoord.y * crystalBiomePatternScale + crystalBiomeMotion.y + crystalBiomeTime * crystalBiomeMotion.w * 2.5, 1.0)
+		);
+		vec4 crystalPatternCol = texture2D(uMainSampler[1], patternUv);
+		float floorValue = 86.0 / 255.0;
+		vec3 crystalPatternHsv = rgb2hsv(crystalPatternCol.rgb);
+		crystalPatternCol.rgb = hsv2rgb(vec3(
+			positiveModulo((crystalPatternHsv.b - floorValue) * 4.0 + patternUv.x * 0.5 + patternUv.y * 0.5 + crystalBiomeTime * 255.0, 1.0),
+			crystalPatternHsv.b,
+			crystalPatternHsv.b
+		));
+		crystalPatternCol.rgb = mix(crystalPatternCol.rgb, crystalBiomeBaseColor, 0.65);
+
+		vec3 crystal = mix(shifted, blendOverlay(shifted, crystalPatternCol.rgb), crystalBiomePatternStrength * crystalBiomeStrength);
+		float glint = smoothstep(0.74, 1.0, crystalPatternHsv.b) * crystalBiomeSparkle * crystalBiomeStrength * 0.28;
+		crystal = clamp(crystal + vec3(glint), 0.0, 1.0);
+		color.rgb = mix(color.rgb, crystal, color.a);
 	}
 
 	gl_FragColor = color;

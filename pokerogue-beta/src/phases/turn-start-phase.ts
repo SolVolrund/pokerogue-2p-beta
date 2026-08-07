@@ -1,19 +1,22 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import type { TurnCommand } from "#app/battle";
-import { allMoves } from "#data/data-lists";
 import { globalScene } from "#app/global-scene";
+import { allMoves } from "#data/data-lists";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import type { BattlerIndex } from "#enums/battler-index";
 import { Command } from "#enums/command";
-import { FieldPosition } from "#enums/field-position";
+import type { FieldPosition } from "#enums/field-position";
 import { MoveTarget } from "#enums/move-target";
+import { MoveUseMode } from "#enums/move-use-mode";
+import { SpeciesId } from "#enums/species-id";
 import { SwitchType } from "#enums/switch-type";
 import type { Pokemon } from "#field/pokemon";
 import { BypassSpeedChanceModifier } from "#modifiers/modifier";
 import { PokemonMove } from "#moves/pokemon-move";
 import { FieldPhase } from "#phases/field-phase";
-import { randSeedInt } from "#utils/common";
 import { areBattlerIndexesAllies, isEnemyBattlerIndex, isPlayerBattlerIndex } from "#utils/battler-index-utils";
+import { isUnownRealFinalBossWave } from "#utils/classic-final-boss-utils";
+import { randSeedInt } from "#utils/common";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 
 type FieldPositionSnapshot = Map<BattlerIndex, FieldPosition>;
@@ -184,8 +187,8 @@ export class TurnStartPhase extends FieldPhase {
     // TODO: This seems somewhat dubious
     const move = queuedMove.zMove
       ? new PokemonMove(queuedMove.move, 0, 0, undefined, queuedMove.zMove.sourceMove, queuedMove.zMove.power)
-      : pokemon.getMoveset().find(m => m.moveId === queuedMove.move && m.ppUsed < m.getMovePp())
-        ?? new PokemonMove(queuedMove.move);
+      : (pokemon.getMoveset().find(m => m.moveId === queuedMove.move && m.ppUsed < m.getMovePp())
+        ?? new PokemonMove(queuedMove.move));
 
     if (queuedMove.zMove) {
       globalScene.phaseManager.unshiftNew("LoadMoveAnimPhase", move.moveId);
@@ -202,6 +205,61 @@ export class TurnStartPhase extends FieldPhase {
       move,
       queuedMove.useMode,
     );
+    this.queueClassicFinalBossBonusActions(turnCommand, pokemon, move);
+  }
+
+  private queueClassicFinalBossBonusActions(turnCommand: TurnCommand, pokemon: Pokemon, move: PokemonMove): void {
+    const isUnownTeaserBoss =
+      pokemon.hasSpecies(SpeciesId.UNOWN)
+      && !isUnownRealFinalBossWave(globalScene.currentBattle.waveIndex, globalScene.gameMode.modeId);
+
+    if (
+      !globalScene.twoPlayerMode
+      || !globalScene.currentBattle.isClassicFinalBoss
+      || !pokemon.isEnemy()
+      || !pokemon.isBoss()
+      || isUnownTeaserBoss
+      || !this.canClassicFinalBossMoveUseBonusTargets(move)
+    ) {
+      return;
+    }
+
+    const extraActionCount = Math.max(0, globalScene.getPlayerFieldOwners().length - 1);
+    if (!extraActionCount) {
+      return;
+    }
+
+    const playerTargets = globalScene.getPlayerField(true).map(playerPokemon => playerPokemon.getBattlerIndex());
+    const primaryTarget = (turnCommand.targets ?? turnCommand.move?.targets ?? []).find(target =>
+      isPlayerBattlerIndex(target),
+    );
+    const primaryTargetIndex = primaryTarget === undefined ? -1 : playerTargets.indexOf(primaryTarget);
+    const rotatedTargets =
+      primaryTargetIndex > -1
+        ? playerTargets.slice(primaryTargetIndex + 1).concat(playerTargets.slice(0, primaryTargetIndex))
+        : playerTargets;
+
+    rotatedTargets.slice(0, extraActionCount).forEach(target => {
+      globalScene.phaseManager.pushNew(
+        "MovePhase",
+        pokemon,
+        [target],
+        new PokemonMove(move.moveId),
+        MoveUseMode.IGNORE_PP,
+      );
+    });
+  }
+
+  private canClassicFinalBossMoveUseBonusTargets(move: PokemonMove): boolean {
+    switch (move.getMove().moveTarget) {
+      case MoveTarget.NEAR_ENEMY:
+      case MoveTarget.RANDOM_NEAR_ENEMY:
+      case MoveTarget.NEAR_OTHER:
+      case MoveTarget.OTHER:
+        return true;
+      default:
+        return false;
+    }
   }
 
   private getFieldPositionSnapshot(field: Pokemon[]): FieldPositionSnapshot {
@@ -358,19 +416,13 @@ export class TurnStartPhase extends FieldPhase {
     }
 
     for (const [battlerIndex, finalPosition] of finalPositions) {
-      if (
-        finalPosition === targetPosition
-        && this.areBattlerIndexesOnSameSide(battlerIndex, target)
-      ) {
+      if (finalPosition === targetPosition && this.areBattlerIndexesOnSameSide(battlerIndex, target)) {
         return battlerIndex;
       }
     }
   }
 
   private areBattlerIndexesOnSameSide(a: BattlerIndex, b: BattlerIndex): boolean {
-    return (
-      (isPlayerBattlerIndex(a) && isPlayerBattlerIndex(b))
-      || (isEnemyBattlerIndex(a) && isEnemyBattlerIndex(b))
-    );
+    return (isPlayerBattlerIndex(a) && isPlayerBattlerIndex(b)) || (isEnemyBattlerIndex(a) && isEnemyBattlerIndex(b));
   }
 }

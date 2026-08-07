@@ -4,7 +4,7 @@ import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { FRIENDSHIP_LOSS_FROM_FAINT } from "#balance/starters";
 import { allMoves } from "#data/data-lists";
-import { getClassicFinalBossDialogue } from "#data/dialogue";
+import { getClassicFinalBossDialogue, getUnownRealFinalBossDialogue } from "#data/dialogue";
 import { SpeciesFormChangeActiveTrigger } from "#data/form-change-triggers";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import { BattleType } from "#enums/battle-type";
@@ -12,17 +12,24 @@ import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagLapseType } from "#enums/battler-tag-lapse-type";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { HitResult } from "#enums/hit-result";
+import { MoveId } from "#enums/move-id";
+import { SpeciesId } from "#enums/species-id";
 import { StatusEffect } from "#enums/status-effect";
 import { SwitchType } from "#enums/switch-type";
-import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
+import { DEFAULT_CRYSTAL_COLOR, type EnemyPokemon, type PlayerPokemon, type Pokemon } from "#field/pokemon";
 import { PokemonInstantReviveModifier, ShinyBadgeModifier } from "#modifiers/modifier";
 import { PokemonMove } from "#moves/pokemon-move";
 import { handleMysteryEncounterBattleFailed } from "#mystery-encounters/encounter-phase-utils";
 import { PokemonPhase } from "#phases/pokemon-phase";
-import { isClassicFinalBossPhaseTwo } from "#utils/classic-final-boss-utils";
+import {
+  getNextUnownFinalBossHelperSpeciesId,
+  getUnownFinalBossHelperSlot,
+  isClassicFinalBossPhaseTwo,
+  isUnownRealFinalBossWave,
+} from "#utils/classic-final-boss-utils";
+import { getPokemonSpecies } from "#utils/pokemon-utils";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import i18next from "i18next";
-import { SpeciesId } from "#enums/species-id";
 
 export class FaintPhase extends PokemonPhase {
   public readonly phaseName = "FaintPhase";
@@ -185,13 +192,16 @@ export class FaintPhase extends PokemonPhase {
 
     const eonFluteGuestOwner = pokemon.isPlayer() ? globalScene.getEonFluteGuestOwner(pokemon) : undefined;
     if (eonFluteGuestOwner !== undefined) {
-      const lostMessageKey = globalScene.isLegendaryHelperGuest(pokemon) ? "battle:glassBallLost" : "battle:eonFluteLost";
+      const lostMessageKey = globalScene.isLegendaryHelperGuest(pokemon)
+        ? "battle:glassBallLost"
+        : "battle:eonFluteLost";
       globalScene.consumeEonFlute(eonFluteGuestOwner);
       globalScene.phaseManager.queueMessage(i18next.t(lostMessageKey), null, true);
     }
 
     if (this.player) {
-      const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
+      const playerIndex =
+        globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
       /** The total number of Pokemon in the player's party that can legally fight */
       const legalPlayerPokemon = globalScene.getPokemonAllowedInBattle(playerIndex);
       /** The total number of legal player Pokemon that aren't currently on the field */
@@ -273,10 +283,58 @@ export class FaintPhase extends PokemonPhase {
           if (eonFluteGuestOwner !== undefined) {
             globalScene.clearEonFluteGuest(eonFluteGuestOwner, true);
           }
-          this.end();
+          void this.queueUnownFinalBossHelperReplacement(pokemon).then(() => this.end());
         },
       });
     });
+  }
+
+  private async queueUnownFinalBossHelperReplacement(pokemon: Pokemon): Promise<void> {
+    if (pokemon.isPlayer() || !isUnownRealFinalBossWave(globalScene.currentBattle.waveIndex, globalScene.gameMode.modeId)) {
+      return;
+    }
+
+    const state = globalScene.currentBattle.unownFinalBossState;
+    if (!state || state.bossPokemonId === pokemon.id) {
+      return;
+    }
+
+    const helperSlot = getUnownFinalBossHelperSlot(state, this.fieldIndex);
+    if (!helperSlot || helperSlot.pokemonId !== pokemon.id) {
+      return;
+    }
+
+    const nextSpeciesId = getNextUnownFinalBossHelperSpeciesId(helperSlot);
+    if (nextSpeciesId === undefined) {
+      return;
+    }
+
+    const nextPokemon = globalScene.addEnemyPokemon(
+      getPokemonSpecies(nextSpeciesId),
+      globalScene.currentBattle.getLevelForWave(),
+      (pokemon as EnemyPokemon).trainerSlot,
+      false,
+    );
+    nextPokemon.ivs.fill(31);
+    nextPokemon.setCrystalized(true, DEFAULT_CRYSTAL_COLOR);
+
+    if (state.bossPokemonId !== undefined) {
+      nextPokemon.addTag(BattlerTagType.CURSED, 0, MoveId.CURSE, state.bossPokemonId);
+    }
+
+    const nextPokemonPartyIndex = globalScene.currentBattle.enemyParty.length;
+    globalScene.currentBattle.enemyParty.push(nextPokemon);
+    helperSlot.pokemonId = nextPokemon.id;
+
+    await nextPokemon.loadAssets();
+    globalScene.phaseManager.pushNew(
+      "SwitchSummonPhase",
+      SwitchType.SWITCH,
+      this.fieldIndex,
+      nextPokemonPartyIndex,
+      false,
+      false,
+    );
   }
 
   private handleFinalBossFaint(): void {
@@ -287,16 +345,55 @@ export class FaintPhase extends PokemonPhase {
       return;
     }
 
-  const mewGauntletState = globalScene.currentBattle.mewGauntletState;
-  if (mewGauntletState?.pokemonId === enemy.id && mewGauntletState.phase >= 7) {
-    ui.showDialogue(
-      getClassicFinalBossDialogue(enemy.species.speciesId).secondStageWin,
-      enemy.species.name,
-      null,
-      () => this.doFaint(),
+    const isUnownRealFinalBoss = isUnownRealFinalBossWave(
+      globalScene.currentBattle.waveIndex,
+      globalScene.gameMode.modeId,
     );
-    return;
-  }
+    const unownFinalBossState = globalScene.currentBattle.unownFinalBossState;
+    if (isUnownRealFinalBoss && unownFinalBossState?.bossPokemonId !== enemy.id) {
+      this.doFaint();
+      return;
+    }
+
+    const unownTeaserState = globalScene.currentBattle.unownTeaserState;
+    if (
+      unownTeaserState?.pokemonId === enemy.id
+      && unownTeaserState.glyphIndex >= unownTeaserState.formKeys.length - 1
+    ) {
+      ui.showDialogue(
+        getClassicFinalBossDialogue(enemy.species.speciesId).secondStageWin,
+        enemy.species.name,
+        null,
+        () => this.doFaint(),
+      );
+      return;
+    }
+
+    const mewGauntletState = globalScene.currentBattle.mewGauntletState;
+    if (mewGauntletState?.pokemonId === enemy.id && mewGauntletState.phase >= 7) {
+      ui.showDialogue(
+        getClassicFinalBossDialogue(enemy.species.speciesId).secondStageWin,
+        enemy.species.name,
+        null,
+        () => this.doFaint(),
+      );
+      return;
+    }
+
+    if (
+      enemy.hasSpecies(SpeciesId.UNOWN)
+      && globalScene.currentBattle.isClassicFinalBoss
+      && isUnownRealFinalBoss
+      && unownFinalBossState?.bossPokemonId === enemy.id
+    ) {
+      ui.showDialogue(
+        getUnownRealFinalBossDialogue().secondStageWin,
+        enemy.species.name,
+        null,
+        () => this.doFaint(),
+      );
+      return;
+    }
 
     if (isClassicFinalBossPhaseTwo(enemy)) {
       ui.showDialogue(

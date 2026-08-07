@@ -5,5 +5,6 @@ export enum Unlockables {
   EVIOLITE,
   GAMMA_RAY_BURST,
   OLD_SEA_MAP,
+  UNOWN_BOX,
   GRAND_LAUREL,
 }

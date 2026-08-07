@@ -283,6 +283,7 @@ export class EnemyBattleInfo extends BattleInfo {
       this.levelContainer.x += 2 * (boss ? -1 : 1);
       this.box.setTexture(this.getTextureName());
       this.statsBox.setTexture(`${this.getTextureName()}_stats`);
+      this.refreshCompactLayoutPosition();
     }
 
     this.bossSegments = boss ? pokemon.bossSegments : 0;

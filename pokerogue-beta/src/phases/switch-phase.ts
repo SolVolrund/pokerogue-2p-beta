@@ -65,8 +65,11 @@ export class SwitchPhase extends BattlePhase {
       return super.end();
     }
 
-    // Check if there is any space still in field
-    if (this.isModal && globalScene.getPlayerField(true).length > globalScene.currentBattle.getBattlerCount()) {
+    // Check if there is any space still in field.
+    // In multiplayer final boss fights the enemy side can be a true 1-slot battle
+    // while the player side still has 2-3 field slots.
+    const playerFieldSlotCount = globalScene.getBattleFieldSlotCount();
+    if (this.isModal && globalScene.getPlayerField(true).length > playerFieldSlotCount) {
       return super.end();
     }
 

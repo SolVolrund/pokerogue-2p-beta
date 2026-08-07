@@ -66,6 +66,7 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
     scaleX: number;
     scaleY: number;
   } | null;
+  private compactLayoutPosition: { x: number; y: number } | null;
 
   protected box: Phaser.GameObjects.Sprite;
   protected nameText: Phaser.GameObjects.Text;
@@ -228,6 +229,7 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
     this.lastMaxHp = -1;
     this.lastHpFrame = null;
     this.compactLayoutRestore = null;
+    this.compactLayoutPosition = null;
     this.baseLvContainerX = posParams.levelContainerX;
 
     // Initially invisible and shown via Pokemon.showInfo
@@ -448,9 +450,19 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
       };
     }
 
+    this.compactLayoutPosition = layout;
     this.setScale(0.5);
-    this.setPosition(layout.x, layout.y);
-    this.baseY = layout.y;
+    this.refreshCompactLayoutPosition();
+  }
+
+  protected refreshCompactLayoutPosition(): void {
+    if (!this.compactLayoutPosition) {
+      return;
+    }
+
+    const bossHpOffset = !this.player && this.boss ? -19 : 0;
+    this.setPosition(this.compactLayoutPosition.x + bossHpOffset, this.compactLayoutPosition.y);
+    this.baseY = this.compactLayoutPosition.y;
   }
 
   setPlayerCompactLayout(fieldIndex: number, fieldSlotCount: number): void {
@@ -486,9 +498,9 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
     }
 
     const compactLayouts = [
-      { x: 75, y: -156 },
+      { x: 75, y: -132 },
       { x: 145, y: -156 },
-      { x: 110, y: -134 },
+      { x: 110, y: -144 },
     ];
     const layout = compactLayouts[fieldIndex];
     if (!layout) {
@@ -502,10 +514,12 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
     if (this.compactLayoutRestore) {
       const restore = this.compactLayoutRestore;
       this.compactLayoutRestore = null;
+      this.compactLayoutPosition = null;
       this.setScale(restore.scaleX, restore.scaleY);
       this.setPosition(restore.x, restore.y);
       this.baseY = restore.baseY;
     } else if (this.scaleX !== 1 || this.scaleY !== 1) {
+      this.compactLayoutPosition = null;
       this.setScale(1);
     }
   }

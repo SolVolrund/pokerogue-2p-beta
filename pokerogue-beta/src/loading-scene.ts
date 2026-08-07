@@ -98,6 +98,7 @@ export class LoadingScene extends SceneBase {
       .loadImage("pokeblock_pink_plus", "items")
       .loadImage("pokeblock_rainbow", "items")
       .loadImage("pokeblock_rainbow_plus", "items")
+      .loadImage("roseli_berry", "items")
       .loadImage("favorite", "ui", "favorite.png")
       .loadImage("passive_bg", "ui", "passive_bg.png")
       .loadAtlas("shiny_icons", "ui")

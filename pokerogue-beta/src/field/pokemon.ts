@@ -1311,6 +1311,14 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     return this.customPokemonData.spriteScale;
   }
 
+  getFieldScaleReference(): number {
+    if (this.hasSpecies(SpeciesId.UNOWN, "schooling")) {
+      return Math.max(this.getSpriteScale(), 1.5);
+    }
+
+    return this.getSpriteScale();
+  }
+
   /** Resets the pokemon's field sprite properties, including position, alpha, and scale */
   public resetSprite(): void {
     // Resetting properties should not be shown on the field
@@ -1404,8 +1412,11 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     const playerIndex = this.isPlayer() ? globalScene.getPlayerIndexForPokemon(this) : undefined;
     const usePlayerSideLayout =
       this.isPlayer() && (playerIndex == null || !globalScene.isMysteryEncounterEnemySidePlayer(playerIndex));
+    const useThreeSlotLayout =
+      globalScene.currentBattle?.getBattlerCount() > 2
+      || (usePlayerSideLayout && globalScene.twoPlayerMode && globalScene.getPlayerFieldOwners().length > 2);
 
-    if (globalScene.currentBattle?.getBattlerCount() > 2) {
+    if (useThreeSlotLayout) {
       switch (this.fieldPosition) {
         case FieldPosition.CENTER:
           return usePlayerSideLayout ? [-20, -4] : [0, 0];
@@ -7099,6 +7110,15 @@ export class EnemyPokemon extends Pokemon {
               ];
         break;
       }
+      case this.species.speciesId === SpeciesId.UNOWN
+        && this.species.forms[formIndex === undefined ? this.formIndex : formIndex]?.formKey === "schooling":
+        this.moveset = [
+          new PokemonMove(MoveId.PROTECT),
+          new PokemonMove(MoveId.METRONOME),
+          new PokemonMove(MoveId.COSMIC_POWER),
+          new PokemonMove(MoveId.WISH),
+        ];
+        break;
       default:
         super.generateAndPopulateMoveset(useRivalSignatures);
         break;

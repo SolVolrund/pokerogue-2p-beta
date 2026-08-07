@@ -711,7 +711,8 @@ function initUltraModifierPool() {
     ),
     new WeightedModifierType(
       modifierTypes.UNOWN_BOX,
-      (party: Pokemon[]) => party.some(hasUnownBoxTarget) ? 10 : 0,
+      (party: Pokemon[]) =>
+        isRewardPlayerUnlockAvailable(Unlockables.UNOWN_BOX, party) && party.some(hasUnownBoxTarget) ? 10 : 0,
       10,
     ),
     new WeightedModifierType(modifierTypes.REVIVER_SEED, 4),

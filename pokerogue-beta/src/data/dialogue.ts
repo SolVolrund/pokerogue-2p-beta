@@ -1950,6 +1950,18 @@ export const mewFinalBossDialogue = {
   secondStageWin: "battleSpecDialogue:mewSecondStageWin",
 };
 
+export const unownteaserFinalBossDialogue = {
+  encounter: "battleSpecDialogue:unownteaserEncounter",
+  firstStageWin: "battleSpecDialogue:unownteaserFirstStageWin",
+  secondStageWin: "battleSpecDialogue:unownteaserSecondStageWin",
+};
+
+export const unownRealFinalBossDialogue = {
+  encounter: "battleSpecDialogue:unown220Encounter",
+  firstStageWin: "battleSpecDialogue:unown220FirstStageWin",
+  secondStageWin: "battleSpecDialogue:unown220SecondStageWin",
+};
+
 export function getClassicFinalBossDialogue(speciesId?: SpeciesId) {
   switch (speciesId) {
     case SpeciesId.NECROZMA:
@@ -1958,9 +1970,15 @@ export function getClassicFinalBossDialogue(speciesId?: SpeciesId) {
       return arceusFinalBossDialogue;
     case SpeciesId.MEW:
      return mewFinalBossDialogue;
+    case SpeciesId.UNOWN:
+     return unownteaserFinalBossDialogue;
     default:
       return classicFinalBossDialogue;
   }
+}
+
+export function getUnownRealFinalBossDialogue() {
+  return unownRealFinalBossDialogue;
 }
 
 export const miscDialogue = {

@@ -92,8 +92,12 @@ export class SpritePipeline extends FieldSpritePipeline {
         sprite.height - sprite.frame.height * (isEntityObj ? sprite.parentContainer.scale : sprite.scale),
       )
       .set1f("yShadowOffset", yShadowOffset ?? 0)
-      .set4fv("tone", tone)
-      .bindTexture(this.game.textures.get("tera").source[0].glTexture!, 1); // TODO: is this bang correct?
+      .set4fv("tone", tone);
+
+    const teraTexture = this.game.textures.get("tera").source[0]?.glTexture;
+    if (teraTexture) {
+      this.bindTexture(teraTexture, 1);
+    }
 
     if (globalScene.fusionPaletteSwaps) {
       const spriteColors = ((ignoreOverride && data["spriteColorsBase"]) || data["spriteColors"] || []) as number[][];

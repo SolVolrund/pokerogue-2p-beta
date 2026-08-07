@@ -3,6 +3,11 @@ import type { BiomeId } from "#enums/biome-id";
 import { getBiomeAssetKey, getBiomeHasProps } from "#field/arena";
 import { randSeedInt } from "#utils/common";
 
+const CRYSTAL_BIOME_FOREGROUND_STRENGTH = 0.75;
+const CRYSTAL_BIOME_PLAYER_MOTION = [0.61, 0.43, 1.05, 0.35];
+const CRYSTAL_BIOME_ENEMY_MOTION = [0.18, 0.29, 0.9, -0.55];
+const CRYSTAL_BIOME_PROPS_MOTION = [0.37, 0.11, -0.85, 1.25];
+
 // TODO: this needs documentation
 export class ArenaBase extends Phaser.GameObjects.Container {
   public player: boolean;
@@ -34,6 +39,9 @@ export class ArenaBase extends Phaser.GameObjects.Container {
     const hasProps = getBiomeHasProps(biome);
     const biomeKey = getBiomeAssetKey(biome);
     const baseKey = `${biomeKey}_${this.player ? "a" : "b"}`;
+
+    this.base.pipelineData["crystalBiomeStrength"] = CRYSTAL_BIOME_FOREGROUND_STRENGTH;
+    this.base.pipelineData["crystalBiomeMotion"] = this.player ? CRYSTAL_BIOME_PLAYER_MOTION : CRYSTAL_BIOME_ENEMY_MOTION;
 
     if (biome !== this.biome) {
       this.base.setTexture(baseKey);
@@ -67,6 +75,8 @@ export class ArenaBase extends Phaser.GameObjects.Container {
           this.propValue = propValue === undefined ? (hasProps ? randSeedInt(8) : 0) : propValue;
           this.props.forEach((prop, p) => {
             const propKey = `${biomeKey}_b${hasProps ? `_${p + 1}` : ""}`;
+            prop.pipelineData["crystalBiomeStrength"] = CRYSTAL_BIOME_FOREGROUND_STRENGTH;
+            prop.pipelineData["crystalBiomeMotion"] = CRYSTAL_BIOME_PROPS_MOTION;
             prop.setTexture(propKey);
 
             if (hasProps && prop.texture.frameTotal > 1) {

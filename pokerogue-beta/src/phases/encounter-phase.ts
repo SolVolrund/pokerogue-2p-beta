@@ -7,46 +7,65 @@ import { getPokemonNameWithAffix } from "#app/messages";
 import { activeOverrides } from "#app/overrides";
 import { handleTutorial, Tutorial } from "#app/tutorial";
 import { initEncounterAnims, loadEncounterAnimAssets } from "#data/battle-anims";
-import { getCharVariantFromDialogue, getClassicFinalBossDialogue } from "#data/dialogue";
+import { modifierTypes } from "#data/data-lists";
+import { getCharVariantFromDialogue, getClassicFinalBossDialogue, getUnownRealFinalBossDialogue } from "#data/dialogue";
 import { getNatureName } from "#data/nature";
 import { getTypeDamageMultiplier } from "#data/type";
 import { BattleType } from "#enums/battle-type";
-import { BattlerIndex } from "#enums/battler-index";
+import { BattlerTagType } from "#enums/battler-tag-type";
 import { BiomeId } from "#enums/biome-id";
 import { FieldPosition } from "#enums/field-position";
-import { MoveCategory } from "#enums/move-category";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
+import { MoveCategory } from "#enums/move-category";
+import { MoveId } from "#enums/move-id";
 import { MysteryEncounterMode } from "#enums/mystery-encounter-mode";
 import { PlayerGender } from "#enums/player-gender";
 import { getPlayerTrainerSpriteName } from "#enums/player-trainer-sprite";
-import { PokemonType } from "#enums/pokemon-type";
+import type { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { TrainerSlot } from "#enums/trainer-slot";
 import { UiMode } from "#enums/ui-mode";
 import { EncounterPhaseEvent } from "#events/battle-scene";
-import type { Pokemon } from "#field/pokemon";
+import { DEFAULT_CRYSTAL_COLOR, type Pokemon } from "#field/pokemon";
 import {
+  BaseStatModifier,
   BoostBugSpawnModifier,
   IvScannerModifier,
   overrideHeldItems,
   overrideModifiers,
   TurnHeldItemTransferModifier,
 } from "#modifiers/modifier";
-import { regenerateModifierPoolThresholds } from "#modifiers/modifier-type";
+import { ModifierTypeGenerator, regenerateModifierPoolThresholds } from "#modifiers/modifier-type";
 import { getEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
 import { doTrainerExclamation } from "#mystery-encounters/encounter-phase-utils";
 import { getGoldenBugNetSpecies } from "#mystery-encounters/encounter-pokemon-utils";
 import { BattlePhase } from "#phases/battle-phase";
 import { achvs } from "#system/achv";
+import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
+import {
+  CLASSIC_FINAL_BOSS_MULTIPLAYER_SCALING_STATS,
+  CLASSIC_FINAL_BOSS_VITAMIN_STACKS_PER_EXTRA_PLAYER,
+  createUnownFinalBossState,
+  getUnownTeaserFormKeys,
+  getNextUnownFinalBossHelperSpeciesId,
+  getUnownFinalBossFieldIndex,
+  getUnownFinalBossHelperSlot,
+  isUnownCrystalBossRushWave,
+  isUnownCrystalGauntletWave,
+  isUnownRealFinalBossWave,
+  UNOWN_REAL_FINAL_BOSS_SEGMENTS,
+  UNOWN_TEASER_CODES,
+} from "#utils/classic-final-boss-utils";
 import { randSeedInt, randSeedItem } from "#utils/common";
 import {
+  type ComputerPartnerCaptureDecision,
   getComputerPartnerCaptureDecisionsFromInterests,
   getComputerPartnerCaptureInterests,
-  type ComputerPartnerCaptureDecision,
 } from "#utils/computer-partner-capture-ai";
 import { getComputerPartnerProfile } from "#utils/computer-partner-profile";
 import { applyPersistentFieldBlessing } from "#utils/field-blessings";
-import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
+import { getModifierType } from "#utils/modifier-utils";
+import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
 interface ComputerPartnerCaptureCallout {
@@ -79,7 +98,7 @@ export class EncounterPhase extends BattlePhase {
       .map((form, formIndex) => ({ form, formIndex }))
       .filter(({ form }) => form.formKey !== "legend");
 
-    if (!playerParty.length || !candidates.length) {
+    if (playerParty.length === 0 || candidates.length === 0) {
       return enemyPokemon.species.forms.findIndex(form => form.formKey === "normal");
     }
 
@@ -105,6 +124,44 @@ export class EncounterPhase extends BattlePhase {
     return bestCandidates[randSeedInt(bestCandidates.length)].formIndex;
   }
 
+  private applyClassicFinalBossMultiplayerScaling(enemyPokemon: Pokemon): void {
+    const isUnownTeaserBoss =
+      enemyPokemon.hasSpecies(SpeciesId.UNOWN)
+      && !isUnownRealFinalBossWave(globalScene.currentBattle.waveIndex, globalScene.gameMode.modeId);
+
+    if (
+      !globalScene.twoPlayerMode
+      || !globalScene.currentBattle.isClassicFinalBoss
+      || !enemyPokemon.isBoss()
+      || isUnownTeaserBoss
+    ) {
+      return;
+    }
+
+    const extraPlayerCount = Math.max(0, globalScene.getPlayerFieldOwners().length - 1);
+    const stackCount = extraPlayerCount * CLASSIC_FINAL_BOSS_VITAMIN_STACKS_PER_EXTRA_PLAYER;
+    if (!stackCount) {
+      return;
+    }
+
+    const vitaminTypeGenerator = getModifierType(modifierTypes.BASE_STAT_BOOSTER);
+    if (!(vitaminTypeGenerator instanceof ModifierTypeGenerator)) {
+      return;
+    }
+
+    for (const stat of CLASSIC_FINAL_BOSS_MULTIPLAYER_SCALING_STATS) {
+      const vitaminType = vitaminTypeGenerator.generateType(globalScene.getEnemyParty(), [stat]);
+      const vitamin = vitaminType?.newModifier(enemyPokemon);
+      if (vitamin instanceof BaseStatModifier) {
+        vitamin.stackCount = stackCount;
+        void globalScene.addEnemyModifier(vitamin, true, true);
+      }
+    }
+
+    enemyPokemon.calculateStats();
+    enemyPokemon.hp = enemyPokemon.getMaxHp();
+  }
+
   private getLivingPlayerSidePokemon(): Pokemon[] {
     const playerIndexes: PlayerIndex[] = globalScene.twoPlayerMode
       ? globalScene.getActivePlayerIndexes()
@@ -116,9 +173,9 @@ export class EncounterPhase extends BattlePhase {
   }
 
   private getAchievementPlayerIndexes(): PlayerIndex[] {
-    return (globalScene.twoPlayerMode
-      ? globalScene.getActivePlayerIndexes()
-      : [globalScene.activePlayerIndex]).filter(playerIndex => !globalScene.isComputerPartnerPlayer(playerIndex));
+    return (globalScene.twoPlayerMode ? globalScene.getActivePlayerIndexes() : [globalScene.activePlayerIndex]).filter(
+      playerIndex => !globalScene.isComputerPartnerPlayer(playerIndex),
+    );
   }
 
   private canPokemonHitSingleTypeSuperEffectively(pokemon: Pokemon, targetType: PokemonType): boolean {
@@ -151,7 +208,11 @@ export class EncounterPhase extends BattlePhase {
     globalScene.eventTarget.dispatchEvent(new EncounterPhaseEvent());
 
     // Failsafe if players somehow skip floor 200 in classic mode
-    if (globalScene.gameMode.isClassic && globalScene.currentBattle.waveIndex > 200) {
+    if (
+      globalScene.gameMode.isClassic
+      && globalScene.currentBattle.waveIndex > 200
+      && !isUnownCrystalGauntletWave(globalScene.currentBattle.waveIndex, globalScene.gameMode.modeId)
+    ) {
       globalScene.phaseManager.unshiftNew("GameOverPhase");
     }
 
@@ -191,20 +252,35 @@ export class EncounterPhase extends BattlePhase {
     }
 
     let totalBst = 0;
+    const isUnownRealFinalBoss = isUnownRealFinalBossWave(battle.waveIndex, globalScene.gameMode.modeId);
+    const unownFinalBossFieldIndex = getUnownFinalBossFieldIndex(battle.getBattlerCount());
+    if (isUnownRealFinalBoss && !battle.unownFinalBossState) {
+      battle.unownFinalBossState = createUnownFinalBossState(battle.getBattlerCount());
+    }
 
     battle.enemyLevels?.every((level, e) => {
       if (battle.isBattleMysteryEncounter()) {
         // Skip enemy loading for MEs, those are loaded elsewhere
         return false;
       }
+      const unownFinalBossHelperSlot = getUnownFinalBossHelperSlot(battle.unownFinalBossState, e);
       if (!this.loaded) {
         if (battle.battleType === BattleType.TRAINER) {
           battle.enemyParty[e] = battle.trainer?.genPartyMember(e)!; // TODO:: is the bang correct here?
         } else {
-          let enemySpecies = globalScene.randomSpecies(battle.waveIndex, level, true);
+          const helperSpeciesId = unownFinalBossHelperSlot
+            ? getNextUnownFinalBossHelperSpeciesId(unownFinalBossHelperSlot)
+            : undefined;
+          let enemySpecies =
+            isUnownRealFinalBoss && e === unownFinalBossFieldIndex
+              ? getPokemonSpecies(SpeciesId.UNOWN)
+              : helperSpeciesId !== undefined
+                ? getPokemonSpecies(helperSpeciesId)
+                : globalScene.randomSpecies(battle.waveIndex, level, true);
           // If player has golden bug net, rolls 10% chance to replace non-boss wave wild species from the golden bug net bug pool
           if (
-            globalScene.findModifier(m => m instanceof BoostBugSpawnModifier)
+            !isUnownRealFinalBoss
+            && globalScene.findModifier(m => m instanceof BoostBugSpawnModifier)
             && !globalScene.gameMode.isBoss(battle.waveIndex)
             && globalScene.arena.biomeId !== BiomeId.END
             && randSeedInt(10) === 0
@@ -215,8 +291,11 @@ export class EncounterPhase extends BattlePhase {
             enemySpecies,
             level,
             TrainerSlot.NONE,
-            !!globalScene.getEncounterBossSegments(battle.waveIndex, level, enemySpecies),
+            !unownFinalBossHelperSlot && !!globalScene.getEncounterBossSegments(battle.waveIndex, level, enemySpecies),
           );
+          if (unownFinalBossHelperSlot) {
+            unownFinalBossHelperSlot.pokemonId = battle.enemyParty[e].id;
+          }
           if (globalScene.currentBattle.isClassicFinalBoss) {
             battle.enemyParty[e].ivs.fill(31);
           }
@@ -231,6 +310,13 @@ export class EncounterPhase extends BattlePhase {
         }
       }
       const enemyPokemon = globalScene.getEnemyParty()[e];
+      if (unownFinalBossHelperSlot) {
+        unownFinalBossHelperSlot.pokemonId ??= enemyPokemon.id;
+      }
+      if (isUnownCrystalBossRushWave(battle.waveIndex, globalScene.gameMode.modeId) || unownFinalBossHelperSlot) {
+        enemyPokemon.setCrystalized(true, DEFAULT_CRYSTAL_COLOR);
+      }
+
       if (e < battle.getBattlerCount()) {
         enemyPokemon.setX(-66 + enemyPokemon.getFieldPositionOffset()[0]);
         enemyPokemon.fieldSetup(true);
@@ -245,7 +331,7 @@ export class EncounterPhase extends BattlePhase {
         );
       }
 
-      if (enemyPokemon.species.speciesId === SpeciesId.ETERNATUS) {
+      if (enemyPokemon.species.speciesId === SpeciesId.ETERNATUS && !unownFinalBossHelperSlot) {
         if (battle.isClassicFinalBoss) {
           enemyPokemon.setBoss();
         } else if (!(battle.waveIndex % 1000)) {
@@ -253,7 +339,7 @@ export class EncounterPhase extends BattlePhase {
           enemyPokemon.updateScale();
         }
       }
-      if (enemyPokemon.species.speciesId === SpeciesId.NECROZMA && battle.isClassicFinalBoss) {
+      if (enemyPokemon.species.speciesId === SpeciesId.NECROZMA && battle.isClassicFinalBoss && !unownFinalBossHelperSlot) {
         const phaseOneFormKey = randSeedInt(2) ? "dawn-wings" : "dusk-mane";
         const phaseOneFormIndex = enemyPokemon.species.forms.findIndex(form => form.formKey === phaseOneFormKey);
         if (phaseOneFormIndex > -1) {
@@ -263,7 +349,7 @@ export class EncounterPhase extends BattlePhase {
         }
         enemyPokemon.setBoss();
       }
-      if (enemyPokemon.species.speciesId === SpeciesId.ARCEUS && battle.isClassicFinalBoss) {
+      if (enemyPokemon.species.speciesId === SpeciesId.ARCEUS && battle.isClassicFinalBoss && !unownFinalBossHelperSlot) {
         const phaseOneFormIndex = this.getClassicFinalBossArceusFormIndex(enemyPokemon);
         if (phaseOneFormIndex > -1) {
           enemyPokemon.formIndex = phaseOneFormIndex;
@@ -272,7 +358,7 @@ export class EncounterPhase extends BattlePhase {
         }
         enemyPokemon.setBoss();
       }
-      if (enemyPokemon.species.speciesId === SpeciesId.MEW && battle.isClassicFinalBoss){
+      if (enemyPokemon.species.speciesId === SpeciesId.MEW && battle.isClassicFinalBoss && !unownFinalBossHelperSlot) {
         battle.mewGauntletState = {
           pokemonId: enemyPokemon.id,
           phase: 1,
@@ -280,7 +366,43 @@ export class EncounterPhase extends BattlePhase {
         };
         enemyPokemon.setBoss();
       }
-
+      if (
+        enemyPokemon.species.speciesId === SpeciesId.UNOWN
+        && battle.isClassicFinalBoss
+        && isUnownRealFinalBossWave(battle.waveIndex, globalScene.gameMode.modeId)
+        && e === unownFinalBossFieldIndex
+      ) {
+        const schoolingFormIndex = enemyPokemon.species.forms.findIndex(form => form.formKey === "schooling");
+        if (schoolingFormIndex > -1) {
+          enemyPokemon.formIndex = schoolingFormIndex;
+          enemyPokemon.calculateStats();
+          enemyPokemon.customPokemonData.spriteScale = 0.75;
+          enemyPokemon.updateScale();
+          enemyPokemon.generateAndPopulateMoveset(false, schoolingFormIndex);
+        }
+        enemyPokemon.setBoss(true, UNOWN_REAL_FINAL_BOSS_SEGMENTS);
+        battle.unownFinalBossState!.bossPokemonId = enemyPokemon.id;
+      } else if (
+        enemyPokemon.species.speciesId === SpeciesId.UNOWN
+        && battle.isClassicFinalBoss
+        && !isUnownRealFinalBoss
+      ) {
+        const code = randSeedItem(UNOWN_TEASER_CODES);
+        const formKeys = getUnownTeaserFormKeys(code);
+        const firstGlyphFormIndex = enemyPokemon.species.forms.findIndex(form => form.formKey === formKeys[0]);
+        battle.unownTeaserState = {
+          pokemonId: enemyPokemon.id,
+          code,
+          formKeys,
+          glyphIndex: 0,
+        };
+        if (firstGlyphFormIndex > -1) {
+          enemyPokemon.formIndex = firstGlyphFormIndex;
+          enemyPokemon.updateScale();
+          enemyPokemon.generateAndPopulateMoveset(false, firstGlyphFormIndex);
+        }
+        enemyPokemon.setBoss(true, 1);
+      }
 
       totalBst += enemyPokemon.getSpeciesForm().baseTotal;
 
@@ -314,6 +436,15 @@ export class EncounterPhase extends BattlePhase {
       console.log("Moveset:", moveset);
       return true;
     });
+
+    if (isUnownRealFinalBoss && battle.unownFinalBossState?.bossPokemonId !== undefined) {
+      for (const helperSlot of battle.unownFinalBossState.helperSlots) {
+        const helperPokemon = globalScene.getPokemonById(helperSlot.pokemonId ?? -1);
+        if (helperPokemon?.isEnemy() && !helperPokemon.getTag(BattlerTagType.CURSED)) {
+          helperPokemon.addTag(BattlerTagType.CURSED, 0, MoveId.CURSE, battle.unownFinalBossState.bossPokemonId);
+        }
+      }
+    }
 
     for (const playerIndex of this.getAchievementPlayerIndexes()) {
       if (globalScene.getPlayerParty(playerIndex).filter(p => p.isShiny()).length === PLAYER_PARTY_MAX_SIZE) {
@@ -351,7 +482,12 @@ export class EncounterPhase extends BattlePhase {
       // In base single-player double battles, multiple bosses share one player's party resources,
       // so their health segments are scaled down. In multiplayer, each boss is effectively facing
       // its own full player party, so keep the solo boss segment count for each one.
-      if (!overridedBossSegments && !globalScene.twoPlayerMode && battle.enemyParty.filter(p => p.isBoss()).length > 1) {
+      if (
+        !overridedBossSegments
+        && !isUnownRealFinalBoss
+        && !globalScene.twoPlayerMode
+        && battle.enemyParty.filter(p => p.isBoss()).length > 1
+      ) {
         for (const enemyPokemon of battle.enemyParty) {
           // If the enemy pokemon is a boss and wasn't populated from data source, then update the number of segments
           if (enemyPokemon.isBoss() && !enemyPokemon.isPopulatedFromDataSource) {
@@ -388,7 +524,9 @@ export class EncounterPhase extends BattlePhase {
             globalScene.currentBattle.trainer?.tint(0, 0.5);
           }
           if (battle.double) {
-            enemyPokemon.setFieldPosition(e === 2 ? FieldPosition.CENTER : e ? FieldPosition.RIGHT : FieldPosition.LEFT);
+            enemyPokemon.setFieldPosition(
+              e === 2 ? FieldPosition.CENTER : e ? FieldPosition.RIGHT : FieldPosition.LEFT,
+            );
           }
         }
         return true;
@@ -405,6 +543,9 @@ export class EncounterPhase extends BattlePhase {
 
         for (const enemy of globalScene.getEnemyField()) {
           overrideHeldItems(enemy, false);
+          if (battle.isClassicFinalBoss && enemy.isBoss()) {
+            this.applyClassicFinalBossMultiplayerScaling(enemy);
+          }
         }
       }
 
@@ -483,15 +624,12 @@ export class EncounterPhase extends BattlePhase {
       });
     }
 
-    const enemyTransitionTargets = [
-      globalScene.arenaEnemy,
-      globalScene.currentBattle.trainer,
-      enemyField,
-    ].flat().filter(target => target !== null);
-    const playerTransitionTargets = [
-      globalScene.arenaPlayer,
-      playerTrainerSprites,
-    ].flat().filter(target => target !== null);
+    const enemyTransitionTargets = [globalScene.arenaEnemy, globalScene.currentBattle.trainer, enemyField]
+      .flat()
+      .filter(target => target !== null);
+    const playerTransitionTargets = [globalScene.arenaPlayer, playerTrainerSprites]
+      .flat()
+      .filter(target => target !== null);
 
     globalScene.tweens.add({
       targets: enemyTransitionTargets,
@@ -563,23 +701,21 @@ export class EncounterPhase extends BattlePhase {
 
   getComputerPartnerCaptureAnnouncement(): ComputerPartnerCaptureAnnouncement | undefined {
     if (!globalScene.twoPlayerComputerPartner || globalScene.currentBattle.battleType !== BattleType.WILD) {
-      return undefined;
+      return;
     }
 
     globalScene.currentBattle.computerPartnerCaptureInterests = [];
 
-    const capturableTargets = globalScene.getEnemyField().filter(pokemon =>
-      this.isCaptureReservationTarget(pokemon),
-    );
-    if (!capturableTargets.length) {
+    const capturableTargets = globalScene.getEnemyField().filter(pokemon => this.isCaptureReservationTarget(pokemon));
+    if (capturableTargets.length === 0) {
       globalScene.currentBattle.computerPartnerWildCaptureDisabled = true;
-      return undefined;
+      return;
     }
 
     const callouts: ComputerPartnerCaptureCallout[] = [];
-    for (const playerIndex of globalScene.getActivePlayerIndexes().filter(playerIndex =>
-      globalScene.isComputerPartnerPlayer(playerIndex),
-    )) {
+    for (const playerIndex of globalScene
+      .getActivePlayerIndexes()
+      .filter(playerIndex => globalScene.isComputerPartnerPlayer(playerIndex))) {
       const partnerPokemon = globalScene
         .getPlayerField(true)
         .find(pokemon => globalScene.getPlayerIndexForPokemon(pokemon) === playerIndex);
@@ -603,7 +739,7 @@ export class EncounterPhase extends BattlePhase {
         globalScene.getPlayerPokeballCounts(playerIndex),
       );
 
-      if (!captureDecisions.length) {
+      if (captureDecisions.length === 0) {
         continue;
       }
 
@@ -622,20 +758,14 @@ export class EncounterPhase extends BattlePhase {
     };
   }
 
-  showComputerPartnerCapturePrompt(
-    announcement: ComputerPartnerCaptureAnnouncement,
-    onComplete: () => void,
-  ): void {
+  showComputerPartnerCapturePrompt(announcement: ComputerPartnerCaptureAnnouncement, onComplete: () => void): void {
     const enemyField = globalScene.getEnemyField();
     const setCaptureClaims = (targetId?: number) => {
       const playerClaims = targetId === undefined ? [] : [{ playerIndex: 0 as PlayerIndex, targetId }];
       const partnerClaims = this.resolveComputerPartnerCaptureClaims(announcement.callouts, targetId);
       globalScene.currentBattle.computerPartnerWildCaptureDisabled =
         targetId === undefined && partnerClaims.length === 0;
-      globalScene.currentBattle.computerPartnerCaptureClaims = [
-        ...playerClaims,
-        ...partnerClaims,
-      ];
+      globalScene.currentBattle.computerPartnerCaptureClaims = [...playerClaims, ...partnerClaims];
       globalScene.currentBattle.computerPartnerReservedCaptureTargetId = targetId;
       globalScene.currentBattle.computerPartnerReservedCaptureTargetIds = targetId === undefined ? [] : [targetId];
       this.showComputerPartnerCaptureClaimMessage(partnerClaims, announcement.callouts, onComplete);
@@ -677,9 +807,15 @@ export class EncounterPhase extends BattlePhase {
     };
 
     globalScene.waitForPlayerInput(0);
-    globalScene.ui.showText(announcement.message, null, () => {
-      globalScene.ui.setMode(UiMode.OPTION_SELECT, config);
-    }, 0, true);
+    globalScene.ui.showText(
+      announcement.message,
+      null,
+      () => {
+        globalScene.ui.setMode(UiMode.OPTION_SELECT, config);
+      },
+      0,
+      true,
+    );
   }
 
   private getComputerPartnerCapturePromptMessage(): string {
@@ -694,9 +830,7 @@ export class EncounterPhase extends BattlePhase {
       return `${partnerNames.slice(0, -1).join(", ")} and ${partnerNames[partnerNames.length - 1]} follow your lead.`;
     }
 
-    const capturableTargets = globalScene.getEnemyField().filter(pokemon =>
-      this.isCaptureReservationTarget(pokemon),
-    );
+    const capturableTargets = globalScene.getEnemyField().filter(pokemon => this.isCaptureReservationTarget(pokemon));
     return capturableTargets.length === 1
       ? `Do you want to capture ${capturableTargets[0].getNameToRender()}?`
       : "Do you want to capture any of these Pokemon?";
@@ -704,6 +838,10 @@ export class EncounterPhase extends BattlePhase {
 
   private isCaptureReservationTarget(pokemon: Pokemon): boolean {
     if (!pokemon.isActive(true) || pokemon.isFainted()) {
+      return false;
+    }
+
+    if (isUnownCrystalGauntletWave(globalScene.currentBattle.waveIndex, globalScene.gameMode.modeId)) {
       return false;
     }
 
@@ -720,6 +858,7 @@ export class EncounterPhase extends BattlePhase {
     return (
       battle.battleType === BattleType.WILD
       && !battle.isClassicFinalBoss
+      && !isUnownCrystalGauntletWave(battle.waveIndex, globalScene.gameMode.modeId)
       && globalScene.arena.biomeId !== BiomeId.END
     );
   }
@@ -729,7 +868,7 @@ export class EncounterPhase extends BattlePhase {
     callouts: ComputerPartnerCaptureCallout[],
     onComplete: () => void,
   ): void {
-    if (!partnerClaims.length) {
+    if (partnerClaims.length === 0) {
       onComplete();
       return;
     }
@@ -740,12 +879,12 @@ export class EncounterPhase extends BattlePhase {
         const callout = callouts.find(entry => entry.playerIndex === claim.playerIndex);
         const target = enemyField.find(pokemon => pokemon.id === claim.targetId);
         if (!callout || !target) {
-          return undefined;
+          return;
         }
         return `${callout.partnerName} wants to catch ${target.getNameToRender()}.`;
       })
       .filter((message): message is string => !!message);
-    if (!messages.length) {
+    if (messages.length === 0) {
       onComplete();
       return;
     }
@@ -761,8 +900,8 @@ export class EncounterPhase extends BattlePhase {
       uniqueDecisions.set(decision.target.id, decision);
     }
 
-    return [...uniqueDecisions.values()].sort((a, b) =>
-      this.getCaptureTargetSortValue(a.targetIndex) - this.getCaptureTargetSortValue(b.targetIndex),
+    return [...uniqueDecisions.values()].sort(
+      (a, b) => this.getCaptureTargetSortValue(a.targetIndex) - this.getCaptureTargetSortValue(b.targetIndex),
     );
   }
 
@@ -805,7 +944,7 @@ export class EncounterPhase extends BattlePhase {
     const calloutsWithAvailableTargets = callouts.filter(callout =>
       callout.decisions.some(decision => decision.target.id !== excludedTargetId),
     );
-    if (!calloutsWithAvailableTargets.length) {
+    if (calloutsWithAvailableTargets.length === 0) {
       return [];
     }
 
@@ -820,9 +959,9 @@ export class EncounterPhase extends BattlePhase {
       startingCalloutIndex < 0
         ? calloutsWithAvailableTargets
         : [
-          ...calloutsWithAvailableTargets.slice(startingCalloutIndex),
-          ...calloutsWithAvailableTargets.slice(0, startingCalloutIndex),
-        ];
+            ...calloutsWithAvailableTargets.slice(startingCalloutIndex),
+            ...calloutsWithAvailableTargets.slice(0, startingCalloutIndex),
+          ];
     const claimedTargetIds = new Set<number>(excludedTargetId === undefined ? [] : [excludedTargetId]);
     const claims: Array<{ playerIndex: PlayerIndex; targetId: number }> = [];
 
@@ -1094,13 +1233,22 @@ export class EncounterPhase extends BattlePhase {
 
   protected displayFinalBossDialogue(): void {
     const { gameData, ui } = globalScene;
-    const enemy = globalScene.getEnemyPokemon();
+    const battle = globalScene.currentBattle;
+    const isUnownRealFinalBoss = isUnownRealFinalBossWave(battle.waveIndex, globalScene.gameMode.modeId);
+    const enemy =
+      isUnownRealFinalBoss && battle.unownFinalBossState?.bossPokemonId !== undefined
+        ? (globalScene.getPokemonById(battle.unownFinalBossState.bossPokemonId) ?? globalScene.getEnemyPokemon())
+        : globalScene.getEnemyPokemon();
 
     ui.showText(
       this.getEncounterMessage(),
       null,
       () => {
-        const localizationKey = getClassicFinalBossDialogue(enemy?.species.speciesId).encounter;
+        const localizationKey = (
+          isUnownRealFinalBoss && enemy?.species.speciesId === SpeciesId.UNOWN
+            ? getUnownRealFinalBossDialogue()
+            : getClassicFinalBossDialogue(enemy?.species.speciesId)
+        ).encounter;
         if (ui.shouldSkipDialogue(localizationKey)) {
           // Logging mirrors logging found in dialogue-ui-handler
           console.log(`Dialogue ${localizationKey} skipped`);

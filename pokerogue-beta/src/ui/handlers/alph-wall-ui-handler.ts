@@ -19,6 +19,8 @@ import {
   type AlphLegendaryHelperId,
 } from "#data/alph/legendary-helpers";
 import { allAbilities, allMoves, modifierTypes } from "#data/data-lists";
+import { SpeciesFormChange } from "#data/pokemon-forms";
+import { SpeciesFormChangeManualTrigger } from "#data/pokemon-forms/form-change-triggers";
 import { CustomPokemonData } from "#data/pokemon-data";
 import { AbilityId } from "#enums/ability-id";
 import { Button } from "#enums/buttons";
@@ -69,6 +71,7 @@ const ALPH_LEGENDARY_HELPER_SPELLS: Partial<Record<string, AlphLegendaryHelperId
   "MAMA!?": "mama",
   "UNCLE?": "uncle",
 };
+const ALPH_UNOWN_SCHOOLING_SPELLS = new Set(["DEUSEXARCA", "DEUS_EX_ARCA"]);
 const SELECTOR_LAYOUT: [AlphTileCharacter, number, number, number, number][] = [
   ["A", 69, 8, 71, 22],
   ["B", 81, 8, 83, 22],
@@ -502,6 +505,11 @@ export class AlphWallUiHandler extends UiHandler {
       return;
     }
 
+    if (ALPH_UNOWN_SCHOOLING_SPELLS.has(word)) {
+      this.applyUnownSchoolingSpell(unown);
+      return;
+    }
+
     const moveId = this.getMoveIdForSpell(word);
     if (moveId !== undefined) {
       this.learnMoveSpell(unown, moveId);
@@ -719,6 +727,52 @@ export class AlphWallUiHandler extends UiHandler {
       null,
       true,
     );
+  }
+
+  private applyUnownSchoolingSpell(unown: PlayerPokemon): void {
+    const schoolingForm = unown.species.forms.find(form => form.formKey === "schooling");
+    if (unown.species.speciesId !== SpeciesId.UNOWN || !schoolingForm) {
+      this.getUi().playError();
+      globalScene.ui.showText(
+        "The Unown Box did not recognize its holder.",
+        null,
+        () => this.showSelectionText(),
+        null,
+        true,
+      );
+      return;
+    }
+
+    if (unown.getFormKey() === "schooling") {
+      this.getUi().playError();
+      globalScene.ui.showText(
+        `${getPokemonNameWithAffix(unown)} is already gathered into its schooling form.`,
+        null,
+        () => this.showSelectionText(),
+        null,
+        true,
+      );
+      return;
+    }
+
+    const formChange = new SpeciesFormChange({
+      speciesId: SpeciesId.UNOWN,
+      preFormKey: unown.getFormKey(),
+      evoFormKey: "schooling",
+      trigger: new SpeciesFormChangeManualTrigger(),
+      quiet: true,
+    });
+
+    this.finishSuccessfulWallSpell();
+    unown.changeForm(formChange).then(() => {
+      globalScene.ui.showText(
+        `${getPokemonNameWithAffix(unown)} gathered into its schooling form!`,
+        null,
+        () => this.showSelectionText(),
+        null,
+        true,
+      );
+    });
   }
 
   private finishSuccessfulWallSpell(): void {

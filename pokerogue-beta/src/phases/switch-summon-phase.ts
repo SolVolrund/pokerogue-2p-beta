@@ -86,7 +86,7 @@ export class SwitchSummonPhase extends SummonPhase {
         this.end();
         return;
       }
-      if (this.slotIndex > -1) {
+      if (this.slotIndex > -1 && globalScene.currentBattle.trainer) {
         this.showEnemyTrainer(getTrainerSlotForFieldIndex(this.fieldIndex));
         globalScene.pbTrayEnemy.showPbTray(globalScene.getEnemyParty());
       }
@@ -100,7 +100,7 @@ export class SwitchSummonPhase extends SummonPhase {
         this.switchAndSummon();
         return;
       }
-      globalScene.time.delayedCall(750, () => this.switchAndSummon());
+      globalScene.time.delayedCall(globalScene.currentBattle.trainer ? 750 : 250, () => this.switchAndSummon());
       return;
     }
 
@@ -153,16 +153,16 @@ export class SwitchSummonPhase extends SummonPhase {
     const switchedInPokemon: Pokemon | undefined = party[this.slotIndex];
     this.lastPokemon = this.getPokemon();
     this.inheritedFieldPosition = this.lastPokemon.fieldPosition;
-    if (!switchedInPokemon || isMysteryEncounterSwitchProtectedPokemon(switchedInPokemon)) {
-      if (!this.player) {
-        if (globalScene.currentBattle.trainer) {
-          this.hideEnemyTrainer();
+      if (!switchedInPokemon || isMysteryEncounterSwitchProtectedPokemon(switchedInPokemon)) {
+        if (!this.player) {
+          if (globalScene.currentBattle.trainer) {
+            this.hideEnemyTrainer();
+            globalScene.pbTrayEnemy.hide();
+          }
         }
-        globalScene.pbTrayEnemy.hide();
+        this.end();
+        return;
       }
-      this.end();
-      return;
-    }
 
     // Defensive programming: Overcome the bug where the summon data has somehow not been reset
     // prior to switching in a new Pokemon.
@@ -247,9 +247,11 @@ export class SwitchSummonPhase extends SummonPhase {
     if (this.player) {
       showTextAndSummon();
     } else {
-      globalScene.time.delayedCall(1500, () => {
-        this.hideEnemyTrainer();
-        globalScene.pbTrayEnemy.hide();
+      globalScene.time.delayedCall(globalScene.currentBattle.trainer ? 1500 : 250, () => {
+        if (globalScene.currentBattle.trainer) {
+          this.hideEnemyTrainer();
+          globalScene.pbTrayEnemy.hide();
+        }
         showTextAndSummon();
       });
     }
@@ -327,6 +329,12 @@ export class SwitchSummonPhase extends SummonPhase {
       // "Go! XYZ!"
       return i18next.t("battle:playerGo", {
         pokemonName: getPokemonNameWithAffix(switchedInPokemon),
+      });
+    }
+
+    if (!globalScene.currentBattle.trainer) {
+      return i18next.t("battle:singleWildAppeared", {
+        pokemonName: switchedInPokemon.getNameToRender(),
       });
     }
 

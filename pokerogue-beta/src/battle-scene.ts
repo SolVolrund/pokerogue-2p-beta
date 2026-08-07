@@ -12,11 +12,11 @@ import { getGameMode } from "#app/game-mode";
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { initGlobalScene } from "#app/global-scene";
-import { getPokemonNameWithAffix } from "#app/messages";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { starterColors } from "#app/global-vars/starter-colors";
 import { InputsController } from "#app/inputs-controller";
 import { LoadingScene } from "#app/loading-scene";
+import { getPokemonNameWithAffix } from "#app/messages";
 import { activeOverrides } from "#app/overrides";
 import type { Phase } from "#app/phase";
 import { PhaseManager } from "#app/phase-manager";
@@ -43,16 +43,11 @@ import {
   createInitialAlphTileCounts,
   getAlphTileTextureKey,
 } from "#data/alph/alph-tiles";
-import {
-  ALPH_LEGENDARY_HELPER_CONFIGS,
-  type AlphLegendaryHelperId,
-} from "#data/alph/legendary-helpers";
+import { ALPH_LEGENDARY_HELPER_CONFIGS, type AlphLegendaryHelperId } from "#data/alph/legendary-helpers";
 import { initCommonAnims, initMoveAnim, loadCommonAnimAssets, loadMoveAnimAssets } from "#data/battle-anims";
 import { isContestHallScheduledEncounterDue } from "#data/contests/contest-hall-schedule";
 import { getDailyMysteryEncounter } from "#data/daily-seed/daily-run";
 import { allMoves, biomeDepths, modifierTypes } from "#data/data-lists";
-import { getDueDejaVuSchedule } from "#mystery-encounters/deja-vu-ghosts";
-import { getGtsMalfunctionTargetWave } from "#mystery-encounters/gts-malfunction-encounter";
 import { getClassicFinalBossDialogue } from "#data/dialogue";
 import { getLevelTotalExp } from "#data/exp";
 import type { SpeciesFormChangeTrigger } from "#data/form-change-triggers";
@@ -143,6 +138,8 @@ import {
   PokemonHeldItemModifierType,
 } from "#modifiers/modifier-type";
 import { PokemonMove } from "#moves/pokemon-move";
+import { getDueDejaVuSchedule } from "#mystery-encounters/deja-vu-ghosts";
+import { getGtsMalfunctionTargetWave } from "#mystery-encounters/gts-malfunction-encounter";
 import { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterSaveData } from "#mystery-encounters/mystery-encounter-save-data";
 import { allMysteryEncounters, mysteryEncountersByBiome } from "#mystery-encounters/mystery-encounters";
@@ -174,16 +171,22 @@ import { AbilityBar } from "#ui/ability-bar";
 import { ArenaFlyout } from "#ui/arena-flyout";
 import { CandyBar } from "#ui/candy-bar";
 import { CharSprite } from "#ui/char-sprite";
+import { MessageUiHandler } from "#ui/message-ui-handler";
 import { PartyExpBar } from "#ui/party-exp-bar";
 import { PokeballTray } from "#ui/pokeball-tray";
 import { PokemonInfoContainer } from "#ui/pokemon-info-container";
 import { addTextObject, getTextColor, RAINBOW_TINT } from "#ui/text";
 import { UI } from "#ui/ui";
 import { addUiThemeOverrides, updateWindowType } from "#ui/ui-theme";
-import { MessageUiHandler } from "#ui/message-ui-handler";
 import { playTween } from "#utils/anim-utils";
 import { getEnemyBattlerIndex, getFieldIndexFromBattlerIndex, getPlayerBattlerIndex } from "#utils/battler-index-utils";
-import { isClassicFinalBossPhaseTwo } from "#utils/classic-final-boss-utils";
+import {
+  isClassicFinalBossPhaseTwo,
+  isUnownCrystalBossRushWave,
+  isUnownCrystalGauntletWave,
+  isUnownRealFinalBossWave,
+  MOLLY_HALE_CRYSTAL_ENCOUNTER_CHANCE,
+} from "#utils/classic-final-boss-utils";
 import {
   BooleanHolder,
   fixedInt,
@@ -210,6 +213,7 @@ import { decodeNickname, getPokemonSpecies } from "#utils/pokemon-utils";
 import { capitalizeFirstLetterOnly } from "#utils/strings";
 import i18next from "i18next";
 import Phaser from "phaser";
+
 type PlayerCatchPokeballType = Exclude<PokeballType, PokeballType.LUXURY_BALL | PokeballType.GLASS_BALL>;
 export type PokeballCounts = Record<PlayerCatchPokeballType, number>;
 export type TwoPlayerIndex = 0 | 1;
@@ -732,6 +736,7 @@ export class BattleScene extends SceneBase {
   private twoPlayerTitleStartHandler: ((titleStart: TwoPlayerTitleStart) => void) | undefined;
   /** Session save data that pertains to Mystery Encounters */
   public mysteryEncounterSaveData: MysteryEncounterSaveData = new MysteryEncounterSaveData();
+  public unownCrystalMollyAppeared = false;
   /** If the previous wave was a MysteryEncounter, tracks the object with this variable. Mostly used for visual object cleanup */
   public lastMysteryEncounter?: MysteryEncounter | undefined;
   /** Combined Biome and Wave count text */
@@ -1931,9 +1936,8 @@ export class BattleScene extends SceneBase {
     }
 
     const handler = this.ui?.getHandler();
-    const messageInputContextKey = handler instanceof MessageUiHandler
-      ? handler.getTwoPlayerMessageInputContextKey()
-      : undefined;
+    const messageInputContextKey =
+      handler instanceof MessageUiHandler ? handler.getTwoPlayerMessageInputContextKey() : undefined;
     if ((uiMode === UiMode.MESSAGE || uiMode === UiMode.EVOLUTION_SCENE) && !messageInputContextKey) {
       return;
     }
@@ -2170,9 +2174,7 @@ export class BattleScene extends SceneBase {
     return alphTiles;
   }
 
-  public getPlayerAlphLegendaryHelpersUsed(
-    playerIndex: PlayerIndex = this.activePlayerIndex,
-  ): AlphLegendaryHelperId[] {
+  public getPlayerAlphLegendaryHelpersUsed(playerIndex: PlayerIndex = this.activePlayerIndex): AlphLegendaryHelperId[] {
     return this.getPlayerState(playerIndex).alphLegendaryHelpersUsed;
   }
 
@@ -2233,10 +2235,9 @@ export class BattleScene extends SceneBase {
   public getLegendaryHelperModifier(
     playerIndex: PlayerIndex = this.activePlayerIndex,
   ): LegendaryHelperModifier | undefined {
-    return this.findModifierForPlayer(
-      m => m instanceof LegendaryHelperModifier,
-      playerIndex,
-    ) as LegendaryHelperModifier | undefined;
+    return this.findModifierForPlayer(m => m instanceof LegendaryHelperModifier, playerIndex) as
+      | LegendaryHelperModifier
+      | undefined;
   }
 
   public hasLegendaryHelperModifier(playerIndex: PlayerIndex = this.activePlayerIndex): boolean {
@@ -2287,10 +2288,10 @@ export class BattleScene extends SceneBase {
 
     this.executeWithSeedOffset(
       () => {
-        const helperConfig = sourceId && sourceId !== EON_FLUTE_HELPER_SOURCE_ID
-          ? ALPH_LEGENDARY_HELPER_CONFIGS[sourceId]
-          : undefined;
-        const speciesId = helperConfig?.species
+        const helperConfig =
+          sourceId && sourceId !== EON_FLUTE_HELPER_SOURCE_ID ? ALPH_LEGENDARY_HELPER_CONFIGS[sourceId] : undefined;
+        const speciesId =
+          helperConfig?.species
           ?? (randSeedItem(EON_FLUTE_HELPER_SPECIES) as (typeof EON_FLUTE_HELPER_SPECIES)[number]);
         const species = getPokemonSpecies(speciesId);
         guest = this.addPlayerPokemon(
@@ -2442,7 +2443,7 @@ export class BattleScene extends SceneBase {
 
   private getEonFluteTypeBoosterLoadout(pokemon: PlayerPokemon): PokemonType[] {
     const owner = this.getEonFluteGuestOwner(pokemon);
-    const sourceId = owner !== undefined ? this.getPlayerState(owner).eonFluteGuestSource : undefined;
+    const sourceId = owner === undefined ? undefined : this.getPlayerState(owner).eonFluteGuestSource;
     if (sourceId && sourceId !== EON_FLUTE_HELPER_SOURCE_ID) {
       return [...ALPH_LEGENDARY_HELPER_CONFIGS[sourceId].typeBoosters];
     }
@@ -2556,7 +2557,8 @@ export class BattleScene extends SceneBase {
   }
 
   public consumeEonFlute(playerIndex: PlayerIndex = this.activePlayerIndex): boolean {
-    const sourceId = this.getPlayerState(playerIndex).eonFluteGuestSource ?? this.getLegendaryHelperSourceId(playerIndex);
+    const sourceId =
+      this.getPlayerState(playerIndex).eonFluteGuestSource ?? this.getLegendaryHelperSourceId(playerIndex);
     const modifier = this.findModifierForPlayer(
       m =>
         sourceId && sourceId !== EON_FLUTE_HELPER_SOURCE_ID
@@ -2663,7 +2665,7 @@ export class BattleScene extends SceneBase {
       return;
     }
 
-    if (!this.twoPlayerMode || !playerIndexes?.length) {
+    if (!this.twoPlayerMode || playerIndexes?.length === 0) {
       this.currentBattle.playerFieldOwners = undefined;
       return;
     }
@@ -3339,6 +3341,7 @@ export class BattleScene extends SceneBase {
     this.trainerGuest2.setVisible(false);
 
     this.mysteryEncounterSaveData = new MysteryEncounterSaveData();
+    this.unownCrystalMollyAppeared = false;
 
     this.updateGameInfo();
 
@@ -3396,6 +3399,10 @@ export class BattleScene extends SceneBase {
   }
 
   isNewBiome(currentBattle = this.currentBattle) {
+    if (isUnownCrystalBossRushWave(currentBattle.waveIndex, this.gameMode.modeId)) {
+      return true;
+    }
+
     const isWaveIndexMultipleOfTen = !(currentBattle.waveIndex % 10);
     const isEndlessOrDaily = this.gameMode.hasShortBiomes || this.gameMode.isDaily;
     const isEndlessFifthWave = this.gameMode.hasShortBiomes && currentBattle.waveIndex % 5 === 0;
@@ -3578,9 +3585,14 @@ export class BattleScene extends SceneBase {
    */
   private handleNonFixedBattle(resolved: NewBattleInitialProps): void {
     const { waveIndex } = resolved;
+    const shouldSpawnMollyHaleCrystalEncounter = this.shouldSpawnMollyHaleCrystalEncounter(waveIndex);
 
     resolved.battleType =
-      !this.gameMode.hasTrainers || activeOverrides.DISABLE_STANDARD_TRAINERS_OVERRIDE
+      shouldSpawnMollyHaleCrystalEncounter
+        ? BattleType.TRAINER
+        : isUnownCrystalGauntletWave(waveIndex, this.gameMode.modeId)
+        ? BattleType.WILD
+        : !this.gameMode.hasTrainers || activeOverrides.DISABLE_STANDARD_TRAINERS_OVERRIDE
         ? BattleType.WILD
         : (activeOverrides.BATTLE_TYPE_OVERRIDE
           ?? (this.gameMode.isWaveTrainer(waveIndex) ? BattleType.TRAINER : BattleType.WILD));
@@ -3614,9 +3626,24 @@ export class BattleScene extends SceneBase {
       return;
     }
 
-    const trainer = this.generateNewBattleTrainer(waveIndex);
+    const trainer = shouldSpawnMollyHaleCrystalEncounter
+      ? this.generateMollyHaleCrystalEncounterTrainer()
+      : this.generateNewBattleTrainer(waveIndex);
     this.field.add(trainer);
     resolved.trainer = trainer;
+  }
+
+  private shouldSpawnMollyHaleCrystalEncounter(waveIndex: number): boolean {
+    return (
+      isUnownCrystalBossRushWave(waveIndex, this.gameMode.modeId)
+      && !this.unownCrystalMollyAppeared
+      && randSeedInt(MOLLY_HALE_CRYSTAL_ENCOUNTER_CHANCE) === 0
+    );
+  }
+
+  private generateMollyHaleCrystalEncounterTrainer(): Trainer {
+    this.unownCrystalMollyAppeared = true;
+    return new Trainer(TrainerType.MOLLY_HALE, TrainerVariant.DEFAULT);
   }
 
   /**
@@ -3659,7 +3686,14 @@ export class BattleScene extends SceneBase {
    */
   private checkIsDouble({ double: forcedDouble, battleType, waveIndex, trainer }: NewBattleConstructedProps): boolean {
     if (this.twoPlayerMode) {
-      return battleType !== BattleType.MYSTERY_ENCOUNTER;
+      if (isUnownRealFinalBossWave(waveIndex, this.gameMode.modeId)) {
+        return battleType !== BattleType.MYSTERY_ENCOUNTER;
+      }
+
+      return (
+        battleType !== BattleType.MYSTERY_ENCOUNTER
+        && !(this.gameMode.isClassic && this.gameMode.isWaveFinal(waveIndex))
+      );
     }
 
     // TODO: enforce using the proper override depending on whether it's a trainer or a wild battle
@@ -3671,6 +3705,7 @@ export class BattleScene extends SceneBase {
     // Edge cases
     if (
       this.gameMode.isWaveFinal(waveIndex) // Endless bosses and classic mode finales are never double battles
+      || isUnownRealFinalBossWave(waveIndex, this.gameMode.modeId)
       || this.gameMode.isEndlessBoss(waveIndex)
       || battleType === BattleType.MYSTERY_ENCOUNTER // MEs are never double battles
     ) {
@@ -3786,9 +3821,7 @@ export class BattleScene extends SceneBase {
   }
 
   newArena(biome: BiomeId, playerFaints = 0, preserveZMoveRecharge = false): Arena {
-    const playerZMoveReadyWaveByPlayer = preserveZMoveRecharge
-      ? this.arena?.playerZMoveReadyWaveByPlayer
-      : undefined;
+    const playerZMoveReadyWaveByPlayer = preserveZMoveRecharge ? this.arena?.playerZMoveReadyWaveByPlayer : undefined;
 
     this.arena = new Arena(biome, playerFaints);
     this.arena.restorePlayerZMoveReadyWaves(playerZMoveReadyWaveByPlayer);
@@ -3811,24 +3844,33 @@ export class BattleScene extends SceneBase {
     const { promise, resolve } = Promise.withResolvers<void>();
     const btKey = getBiomeAssetKey(biome);
 
-    // Already in texture cache — nothing to load
-    if (this.textures.exists(`${btKey}_bg`)) {
-      resolve();
-      return promise;
-    }
-
     const isBaseAnimated = btKey === "end";
     const baseAKey = `${btKey}_a`;
     const baseBKey = `${btKey}_b`;
+    let queuedAssets = 0;
 
-    this.loadImage(`${btKey}_bg`, "arenas");
+    const loadMissingImage = (key: string): void => {
+      if (!this.textures.exists(key)) {
+        queuedAssets++;
+        this.loadImage(key, "arenas");
+      }
+    };
+
+    const loadMissingAtlas = (key: string): void => {
+      if (!this.textures.exists(key)) {
+        queuedAssets++;
+        this.loadAtlas(key, "arenas");
+      }
+    };
+
+    loadMissingImage(`${btKey}_bg`);
 
     if (isBaseAnimated) {
-      this.loadAtlas(baseAKey, "arenas") //
-        .loadAtlas(baseBKey, "arenas");
+      loadMissingAtlas(baseAKey);
+      loadMissingAtlas(baseBKey);
     } else {
-      this.loadImage(baseAKey, "arenas") //
-        .loadImage(baseBKey, "arenas");
+      loadMissingImage(baseAKey);
+      loadMissingImage(baseBKey);
     }
 
     if (getBiomeHasProps(biome)) {
@@ -3836,11 +3878,16 @@ export class BattleScene extends SceneBase {
         const isPropAnimated = p === 3 && ["power_plant", "end"].includes(btKey);
         const propKey = `${btKey}_b_${p}`;
         if (isPropAnimated) {
-          this.loadAtlas(propKey, "arenas");
+          loadMissingAtlas(propKey);
         } else {
-          this.loadImage(propKey, "arenas");
+          loadMissingImage(propKey);
         }
       }
+    }
+
+    if (queuedAssets === 0) {
+      resolve();
+      return promise;
     }
 
     this.load.once(Phaser.Loader.Events.COMPLETE, resolve);
@@ -3887,7 +3934,7 @@ export class BattleScene extends SceneBase {
           Math.pow(
             1
               / this.getField(true)
-                .map(p => p.getSpriteScale())
+                .map(p => p.getFieldScaleReference())
                 .reduce((highestScale: number, scale: number) => (highestScale = Math.max(scale, highestScale)), 0),
             0.7,
           ) * 40,
@@ -3897,7 +3944,14 @@ export class BattleScene extends SceneBase {
   }
 
   updateFieldDepthOrder(): void {
+    const unownFinalBossId = isUnownRealFinalBossWave(this.currentBattle.waveIndex, this.gameMode.modeId)
+      ? this.currentBattle.unownFinalBossState?.bossPokemonId
+      : undefined;
     const positionOrder = (pokemon: Pokemon): number => {
+      if (pokemon.id === unownFinalBossId) {
+        return -1;
+      }
+
       switch (pokemon.fieldPosition) {
         case FieldPosition.CENTER:
           return 2;
@@ -4180,7 +4234,12 @@ export class BattleScene extends SceneBase {
     }
 
     let isBoss: boolean | undefined;
-    if (forceBoss || (species && (species.subLegendary || species.legendary || species.mythical))) {
+    if (
+      forceBoss
+      || isUnownCrystalBossRushWave(waveIndex, this.gameMode.modeId)
+      || isUnownRealFinalBossWave(waveIndex, this.gameMode.modeId)
+      || (species && (species.subLegendary || species.legendary || species.mythical))
+    ) {
       isBoss = true;
     } else {
       this.executeWithSeedOffset(() => {
@@ -4918,11 +4977,7 @@ export class BattleScene extends SceneBase {
       ) as PokemonHeldItemModifier | undefined;
       const originalCanHoldMore =
         !existingOriginalItem || existingOriginalItem.getStackCount() < existingOriginalItem.getMaxStackCount();
-      const removed = this.removeModifier(
-        modifier,
-        currentHolder?.isEnemy() ?? playerIndex === undefined,
-        playerIndex,
-      );
+      const removed = this.removeModifier(modifier, currentHolder?.isEnemy() ?? playerIndex === undefined, playerIndex);
 
       if (!removed) {
         continue;
@@ -5742,12 +5797,23 @@ export class BattleScene extends SceneBase {
    * @param pokemon The (enemy) pokemon
    */
   initFinalBossPhaseTwo(pokemon: Pokemon): void {
-    if (
-      !this.currentBattle.isClassicFinalBoss
-      || !pokemon.isEnemy()
-      || !pokemon.isBoss()
-      || pokemon.bossSegmentIndex >= 1
-    ) {
+    if (!this.currentBattle.isClassicFinalBoss || !pokemon.isEnemy() || !pokemon.isBoss()) {
+      this.phaseManager.shiftPhase();
+      return;
+    }
+
+    if (isUnownRealFinalBossWave(this.currentBattle.waveIndex, this.gameMode.modeId)) {
+      this.phaseManager.shiftPhase();
+      return;
+    }
+
+    const unownTeaserState = this.currentBattle.unownTeaserState;
+    if (unownTeaserState?.pokemonId === pokemon.id) {
+      this.initUnownTeaserNextGlyph(pokemon);
+      return;
+    }
+
+    if (pokemon.bossSegmentIndex >= 1) {
       this.phaseManager.shiftPhase();
       return;
     }
@@ -5852,6 +5918,57 @@ export class BattleScene extends SceneBase {
       },
     );
   }
+
+  private initUnownTeaserNextGlyph(pokemon: Pokemon): void {
+    const unownTeaserState = this.currentBattle.unownTeaserState;
+    if (!unownTeaserState || unownTeaserState.pokemonId !== pokemon.id) {
+      this.phaseManager.shiftPhase();
+      return;
+    }
+
+    const nextFormKey = unownTeaserState.formKeys[unownTeaserState.glyphIndex + 1];
+    if (!nextFormKey) {
+      this.phaseManager.shiftPhase();
+      return;
+    }
+
+    unownTeaserState.glyphIndex++;
+    pokemon.getStatStages().fill(0);
+    pokemon.findAndRemoveTags(() => true);
+    pokemon.resetStatus(false, true, false, false);
+
+    void pokemon
+      .changeForm(
+        new SpeciesFormChange({
+          speciesId: SpeciesId.UNOWN,
+          preFormKey: pokemon.getFormKey(),
+          evoFormKey: nextFormKey,
+          trigger: new SpeciesFormChangeManualTrigger(),
+          quiet: true,
+        }),
+      )
+      .then(() => {
+        const enemyPokemon = pokemon as EnemyPokemon;
+        enemyPokemon.generateAndPopulateMoveset(false, enemyPokemon.formIndex);
+        enemyPokemon.bossSegments = 1;
+        enemyPokemon.bossSegmentIndex = 0;
+        enemyPokemon.initBattleInfo();
+        enemyPokemon.cry();
+
+        this.phaseManager.unshiftNew(
+          "PokemonHealPhase",
+          enemyPokemon.getBattlerIndex(),
+          enemyPokemon.getMaxHp(),
+          null,
+          false,
+          false,
+          false,
+          true,
+        );
+        this.phaseManager.shiftPhase();
+      });
+  }
+
   private initMewGauntletNextPhase(pokemon: Pokemon): void {
     const mewGauntletState = this.currentBattle.mewGauntletState;
     if (!mewGauntletState || mewGauntletState.pokemonId !== pokemon.id) {
@@ -6108,7 +6225,7 @@ export class BattleScene extends SceneBase {
       return MysteryEncounterType.POKE_POACHERS;
     }
     if (this.isScheduledContestHallMysteryEncounterWave(battleType, waveIndex)) {
-      return undefined;
+      return;
     }
     if (this.isScheduledGtsMalfunctionMysteryEncounterWave(battleType, waveIndex)) {
       return MysteryEncounterType.GTS_MALFUNCTION;
@@ -6119,7 +6236,7 @@ export class BattleScene extends SceneBase {
     if (this.isScheduledLostAtSeaMysteryEncounterWave(battleType, waveIndex)) {
       return MysteryEncounterType.LOST_AT_SEA;
     }
-    return undefined;
+    return;
   }
 
   private isSecretGardenPokePoachersAvailable(): boolean {

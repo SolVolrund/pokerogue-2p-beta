@@ -4,9 +4,11 @@ import { modifierTypes } from "#data/data-lists";
 import { BattleType } from "#enums/battle-type";
 import type { BattlerIndex } from "#enums/battler-index";
 import { ClassicFixedBossWaves } from "#enums/fixed-boss-waves";
+import { SpeciesId } from "#enums/species-id";
 import { handleMysteryEncounterVictory } from "#mystery-encounters/encounter-phase-utils";
 import { PokemonPhase } from "#phases/pokemon-phase";
 import type { ModifierTypeFunc } from "#types/modifier-types";
+import { isUnownRealFinalBossWave } from "#utils/classic-final-boss-utils";
 
 export class VictoryPhase extends PokemonPhase {
   public readonly phaseName = "VictoryPhase";
@@ -39,11 +41,19 @@ export class VictoryPhase extends PokemonPhase {
       return;
     }
 
+    const defeatedPokemon = this.getPokemon();
+    const defeatedUnownFinalBoss =
+      isUnownRealFinalBossWave(globalScene.currentBattle.waveIndex, globalScene.gameMode.modeId)
+      && defeatedPokemon.id === globalScene.currentBattle.unownFinalBossState?.bossPokemonId;
+
     // TODO: clean this up a bit - this shouldn't use `.find`; invert conditional and use early return
     if (
-      !globalScene
-        .getEnemyParty()
-        .find(p => (globalScene.currentBattle.battleType === BattleType.WILD ? p.isOnField() : !p?.isFainted()))
+      (
+        defeatedUnownFinalBoss
+        || !globalScene
+          .getEnemyParty()
+          .find(p => (globalScene.currentBattle.battleType === BattleType.WILD ? p.isOnField() : !p?.isFainted()))
+      )
       && !globalScene.phaseManager.hasPhaseOfType("TrainerVictoryPhase") // temporary hotfix
     ) {
       globalScene.phaseManager.pushNew("BattleEndPhase", true);
@@ -53,8 +63,13 @@ export class VictoryPhase extends PokemonPhase {
 
       const gameMode = globalScene.gameMode;
       const currentWaveIndex = globalScene.currentBattle.waveIndex;
+      const defeatedFinalBoss = globalScene.getEnemyParty().find(pokemon => pokemon.isBoss());
+      const isFinalWave =
+        gameMode.isWaveFinal(currentWaveIndex) || isUnownRealFinalBossWave(currentWaveIndex, gameMode.modeId);
+      const shouldContinueToUnownCrystalGauntlet =
+        gameMode.isWaveFinal(currentWaveIndex) && defeatedFinalBoss?.species.speciesId === SpeciesId.UNOWN;
 
-      if (gameMode.isEndless || !gameMode.isWaveFinal(currentWaveIndex)) {
+      if (gameMode.isEndless || !isFinalWave || shouldContinueToUnownCrystalGauntlet) {
         globalScene.phaseManager.pushNew("EggLapsePhase");
         if (gameMode.isClassic) {
           switch (currentWaveIndex) {
@@ -128,7 +143,6 @@ export class VictoryPhase extends PokemonPhase {
 
         globalScene.phaseManager.pushNew("NewBattlePhase");
       } else {
-        const defeatedFinalBoss = globalScene.getEnemyParty().find(pokemon => pokemon.isBoss());
         globalScene.currentBattle.classicFinalBossSpeciesId = defeatedFinalBoss?.species.speciesId;
         globalScene.currentBattle.battleType = BattleType.CLEAR;
         globalScene.score += gameMode.getClearScoreBonus();

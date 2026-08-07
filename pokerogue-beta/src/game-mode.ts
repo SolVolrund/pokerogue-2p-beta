@@ -21,6 +21,7 @@ import { SpeciesId } from "#enums/species-id";
 import { classicFixedBattles, type FixedBattleConfigs } from "#trainers/fixed-battle-configs";
 import type { CustomDailyRunConfig } from "#types/daily-run";
 import { applyChallenges } from "#utils/challenge-utils";
+import { isUnownRealFinalBossWave } from "#utils/classic-final-boss-utils";
 import { BooleanHolder, randSeedInt, randSeedItem } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
@@ -267,6 +268,10 @@ export class GameMode implements GameModeConfig {
   }
 
   getOverrideSpecies(waveIndex: number): PokemonSpecies | null {
+    if (isUnownRealFinalBossWave(waveIndex, this.modeId)) {
+      return getPokemonSpecies(SpeciesId.UNOWN);
+    }
+
     if (this.isDaily && this.isWaveFinal(waveIndex)) {
       const eventBoss = getDailyEventSeedBoss();
       if (eventBoss?.speciesId != null) {

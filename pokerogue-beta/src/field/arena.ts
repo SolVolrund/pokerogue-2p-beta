@@ -50,6 +50,7 @@ import type { RGBArray } from "#types/sprite-types";
 import type { AbstractConstructor, Mutable } from "#types/type-helpers";
 import type { TypedEventTarget } from "#types/typed-event-target";
 import { coerceArray } from "#utils/array";
+import { isUnownCrystalEndWave } from "#utils/classic-final-boss-utils";
 import { NumberHolder, randSeedInt, randSeedItem } from "#utils/common";
 import { enumValueToKey, getEnumValues } from "#utils/enums";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
@@ -665,8 +666,10 @@ export class Arena {
     }
 
     // Boss pool is 0-63, non Boss pool is 0-512
+    const useBossSpeciesPool = !isUnownCrystalEndWave(waveIndex, globalScene.gameMode.modeId);
     const isBossSpecies =
-      globalScene.getEncounterBossSegments(waveIndex, level) > 0
+      useBossSpeciesPool
+      && globalScene.getEncounterBossSegments(waveIndex, level) > 0
       && this.pokemonPool[BiomePoolTier.BOSS].length > 0
       && (this.biomeId !== BiomeId.END
         || globalScene.gameMode.isClassic

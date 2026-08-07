@@ -1,5 +1,5 @@
-import type { GameMode } from "#app/game-mode";
 import type { PlayerIndex } from "#app/battle-scene";
+import type { GameMode } from "#app/game-mode";
 import { globalScene } from "#app/global-scene";
 import { ArenaTagType } from "#enums/arena-tag-type";
 import { BattleType } from "#enums/battle-type";
@@ -12,7 +12,7 @@ import type { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import type { PokeballType } from "#enums/pokeball";
 import { SpeciesFormKey } from "#enums/species-form-key";
 import { SpeciesId } from "#enums/species-id";
-import { TrainerSlot } from "#enums/trainer-slot";
+import type { TrainerSlot } from "#enums/trainer-slot";
 import { TrainerType } from "#enums/trainer-type";
 import { TrainerVariant } from "#enums/trainer-variant";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
@@ -24,7 +24,11 @@ import { MusicPreference } from "#system/settings";
 import { trainerConfigs } from "#trainers/trainer-config";
 import type { NewBattleResolvedProps } from "#types/new-battle-props";
 import type { TurnMove } from "#types/turn-move";
-import type { ComputerPartnerCaptureInterest } from "#utils/computer-partner-capture-ai";
+import {
+  isUnownCrystalBossRushWave,
+  isUnownRealFinalBossWave,
+  type UnownFinalBossState,
+} from "#utils/classic-final-boss-utils";
 import {
   isBetween,
   NumberHolder,
@@ -34,6 +38,7 @@ import {
   randSeedItem,
   shiftCharCodes,
 } from "#utils/common";
+import type { ComputerPartnerCaptureInterest } from "#utils/computer-partner-capture-ai";
 import { getEnumValues } from "#utils/enums";
 import { randSeedUniqueItem } from "#utils/random";
 import i18next from "i18next";
@@ -109,7 +114,10 @@ export class Battle {
   public computerPartnerCaptureClaims: Array<{ playerIndex: PlayerIndex; targetId: number }> = [];
   public computerPartnerReservedCaptureTargetIds: number[] = [];
   public computerPartnerReservedCaptureTargetId: number | undefined;
-  public computerPartnerCaptureInterests: Array<{ playerIndex: PlayerIndex; interests: ComputerPartnerCaptureInterest[] }> = [];
+  public computerPartnerCaptureInterests: Array<{
+    playerIndex: PlayerIndex;
+    interests: ComputerPartnerCaptureInterest[];
+  }> = [];
   public computerPartnerWildCaptureDisabled = false;
   public computerPartnerRepositionConsent: Record<string, "always" | "never"> = {};
   public eonFluteSummonedPlayerIndexes: PlayerIndex[] = [];
@@ -119,6 +127,13 @@ export class Battle {
     phase: number;
     usedSpeciesIds: SpeciesId[];
   };
+  public unownTeaserState?: {
+    pokemonId: number;
+    code: string;
+    formKeys: string[];
+    glyphIndex: number;
+  };
+  public unownFinalBossState: UnownFinalBossState | undefined;
 
   public hasEnemyTrainerSlotUsedTera(trainerSlot: TrainerSlot): boolean {
     return this.enemyTeraUsedTrainerSlots.has(trainerSlot);
@@ -171,7 +186,10 @@ export class Battle {
   }
 
   public get isClassicFinalBoss(): boolean {
-    return this.gameMode.isClassic && this.gameMode.isWaveFinal(this.waveIndex);
+    return (
+      (this.gameMode.isClassic && this.gameMode.isWaveFinal(this.waveIndex))
+      || isUnownRealFinalBossWave(this.waveIndex, this.gameMode.modeId)
+    );
   }
 
   public getLevelForWave(): number {
@@ -179,7 +197,7 @@ export class Battle {
     const baseLevel = 1 + levelWaveIndex / 2 + Math.pow(levelWaveIndex / 25, 2);
     const bossMultiplier = 1.2;
 
-    if (this.gameMode.isBoss(this.waveIndex)) {
+    if (this.gameMode.isBoss(this.waveIndex) || isUnownCrystalBossRushWave(this.waveIndex, this.gameMode.modeId)) {
       const ret = Math.floor(baseLevel * bossMultiplier);
       if (this.isClassicFinalBoss || !(this.waveIndex % 250)) {
         return Math.ceil(ret / 25) * 25;
