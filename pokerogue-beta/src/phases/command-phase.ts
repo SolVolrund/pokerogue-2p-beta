@@ -987,7 +987,7 @@ export class CommandPhase extends FieldPhase {
     // If the Pokemon has applied Commander's effects to its ally, skip this command
     if (
       globalScene.currentBattle?.double
-      && this.getPokemon().getAlly()?.getTag(BattlerTagType.COMMANDED)?.getSourcePokemon() === this.getPokemon()
+      && this.getPokemon().isCommandingDondozo()
     ) {
       this.setTurnCommand({
         command: Command.FIGHT,

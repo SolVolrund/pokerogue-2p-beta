@@ -1035,7 +1035,7 @@ export abstract class Move implements Localizable {
   getTargetBenefitScore(user: Pokemon, target: Pokemon, move: Move): number {
     let score = 0;
 
-    if (target.getAlly()?.getTag(BattlerTagType.COMMANDED)?.getSourcePokemon() === target) {
+    if (target.isCommandingDondozo()) {
       return 20 * (target.isPlayer() === user.isPlayer() ? -1 : 1); // always -20 with how the AI handles this score
     }
 

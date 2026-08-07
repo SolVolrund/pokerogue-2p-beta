@@ -9,6 +9,7 @@ import { CommonAnim } from "#enums/move-anims-common";
 import { StatusEffect } from "#enums/status-effect";
 import type { Pokemon } from "#field/pokemon";
 import { PokemonPhase } from "#phases/pokemon-phase";
+import { tryEatBerries } from "#utils/berry-use-utils";
 
 export class ObtainStatusEffectPhase extends PokemonPhase {
   public readonly phaseName = "ObtainStatusEffectPhase";
@@ -73,6 +74,11 @@ export class ObtainStatusEffectPhase extends PokemonPhase {
             effect: this.statusEffect,
           });
         }
+        tryEatBerries(pokemon, {
+          trigger: "status",
+          source: this.sourcePokemon,
+          statusEffect: this.statusEffect,
+        });
       }
       this.end();
     });

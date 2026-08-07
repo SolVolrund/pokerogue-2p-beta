@@ -3,12 +3,15 @@ import { EvoCondKey } from "#balance/pokemon-evolutions";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { AbilityId } from "#enums/ability-id";
 import { allMoves } from "#data/data-lists";
+import { getDamageReductionBerryResistedType } from "#data/berry";
+import { getTypeDamageMultiplier } from "#data/type";
 import { BerryType } from "#enums/berry-type";
 import { LearnMoveType } from "#enums/learn-move-type";
 import { MoveFlags } from "#enums/move-flags";
 import { MoveId } from "#enums/move-id";
 import { ModifierTier } from "#enums/modifier-tier";
 import { PokeballType } from "#enums/pokeball";
+import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { Stat, type PermanentStat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
@@ -674,6 +677,12 @@ function getBulkScore(pokemon: PlayerPokemon, targetPokemonIndex: number): numbe
   return pokemon.getMaxHp() + pokemon.getStat(Stat.DEF) + pokemon.getStat(Stat.SPDEF) - targetPokemonIndex;
 }
 
+function getDefensiveTypeMultiplier(pokemon: PlayerPokemon, attackType: PokemonType): number {
+  return pokemon
+    .getTypes({ includeTeraType: false, returnOriginalTypesIfStellar: true })
+    .reduce((multiplier, defType) => multiplier * getTypeDamageMultiplier(attackType, defType), 1);
+}
+
 function getSlowestScore(pokemon: PlayerPokemon, targetPokemonIndex: number): number {
   return -pokemon.getStat(Stat.SPD) - targetPokemonIndex / 100;
 }
@@ -773,6 +782,23 @@ function getBerryPotTarget(type: PokemonModifierType, party: PlayerPokemon[]): R
 
 function getBerryTarget(type: BerryModifierType, party: PlayerPokemon[], profile?: ComputerPartnerProfile): RewardTarget | undefined {
   const berryType = type.getPregenArgs()[0] as BerryType | undefined;
+  const resistedType = berryType === undefined ? undefined : getDamageReductionBerryResistedType(berryType);
+  if (resistedType !== undefined) {
+    const weakTarget = chooseScoredPokemonTarget(type, party, (pokemon, targetPokemonIndex) => {
+      const typeMultiplier = getDefensiveTypeMultiplier(pokemon, resistedType);
+      if (typeMultiplier <= 1) {
+        return undefined;
+      }
+
+      const aceBonus = profile && isComputerPartnerAcePokemon(pokemon, profile) ? 100 : 0;
+      return typeMultiplier * 1000 + aceBonus - targetPokemonIndex;
+    });
+    const target =
+      weakTarget
+      ?? chooseAcePreferredTarget(type, party, profile, () => chooseRandomPokemonTarget(type, party));
+    return target?.targetPokemonIndex !== undefined ? toRewardTarget(target.targetPokemonIndex) : target;
+  }
+
   const stat = berryType === undefined ? undefined : STAT_BERRY_STATS[berryType];
   if (stat !== undefined) {
     return chooseScoredPokemonTarget(type, party, (pokemon, targetPokemonIndex) => pokemon.getStat(stat) - targetPokemonIndex);

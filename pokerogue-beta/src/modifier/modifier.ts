@@ -8,7 +8,7 @@ import { activeOverrides } from "#app/overrides";
 import { STARTING_WAVE } from "#balance/misc";
 import { FusionSpeciesFormEvolution } from "#balance/pokemon-evolutions";
 import { FRIENDSHIP_GAIN_FROM_RARE_CANDY } from "#balance/starters";
-import { getBerryEffectFunc, getBerryPredicate } from "#data/berry";
+import { canBerryTriggerInContext, getBerryEffectFunc, getBerryPredicate, type BerryUseContext } from "#data/berry";
 import { allMoves, modifierTypes } from "#data/data-lists";
 import type { AlphLegendaryHelperId } from "#data/alph/legendary-helpers";
 import { CONTEST_STAT_MAX, type PartialContestStats } from "#data/contests/contest-stats";
@@ -74,6 +74,7 @@ export type ModifierPredicate = (modifier: Modifier) => boolean;
 
 const iconOverflowIndex = 24;
 const GAMMA_RAY_BURST_ROLL_SIDES = 8;
+const KLUTZ_IGNORED_HELD_ITEM_IDS = new Set(["FLAME_ORB", "IRON_BALL", "LAGGING_TAIL", "STICKY_BARBS", "TOXIC_ORB"]);
 const GAMMA_RAY_BURST_VITAMIN_STATS = [
   Stat.HP,
   Stat.ATK,
@@ -89,6 +90,10 @@ const GRAND_LAUREL_STAT_TYPES: Partial<Record<PermanentStat, ContestType>> = {
   [Stat.SPATK]: ContestType.TOUGH,
   [Stat.SPDEF]: ContestType.SMART,
 };
+
+export function isHeldItemEffectIgnoredByKlutz(pokemon: Pokemon, itemId: string): boolean {
+  return KLUTZ_IGNORED_HELD_ITEM_IDS.has(itemId) && pokemon.hasAbility(AbilityId.KLUTZ);
+}
 
 export const modifierSortFunc = (a: Modifier, b: Modifier): number => {
   const itemNameMatch = a.type.name.localeCompare(b.type.name);
@@ -2141,6 +2146,10 @@ export class TurnStatusEffectModifier extends PokemonHeldItemModifier {
    * @returns `true` if the status effect was applied successfully
    */
   override apply(pokemon: Pokemon): boolean {
+    if (isHeldItemEffectIgnoredByKlutz(pokemon, this.type.id)) {
+      return false;
+    }
+
     return pokemon.trySetStatus(this.effect, pokemon, undefined, this.type.name);
   }
 
@@ -2174,7 +2183,7 @@ export class StickyBarbModifier extends PokemonHeldItemModifier {
     }
 
     if (!attacker || !move) {
-      return true;
+      return !isHeldItemEffectIgnoredByKlutz(pokemon, this.type.id);
     }
 
     return (
@@ -2192,7 +2201,7 @@ export class StickyBarbModifier extends PokemonHeldItemModifier {
   }
 
   private applyContactEffect(holder: Pokemon, attacker: Pokemon): boolean {
-    const damaged = this.applyDamage(attacker);
+    const damaged = isHeldItemEffectIgnoredByKlutz(holder, this.type.id) ? false : this.applyDamage(attacker);
     const transferred = globalScene.tryTransferHeldItemModifier(this, attacker, false);
 
     if (transferred) {
@@ -2247,7 +2256,11 @@ export class LaggingTailModifier extends PokemonHeldItemModifier {
     return new LaggingTailModifier(this.type, this.pokemonId, this.stackCount);
   }
 
-  apply(_pokemon: Pokemon, _move: Move, priority: ValueHolder<number>): boolean {
+  apply(pokemon: Pokemon, _move: Move, priority: ValueHolder<number>): boolean {
+    if (isHeldItemEffectIgnoredByKlutz(pokemon, this.type.id)) {
+      return false;
+    }
+
     priority.value -= this.stackCount;
     return true;
   }
@@ -2382,8 +2395,14 @@ export class BerryModifier extends PokemonHeldItemModifier {
    * @param pokemon The {@linkcode Pokemon} that holds the berry
    * @returns `true` if {@linkcode BerryModifier} should be applied
    */
-  override shouldApply(pokemon: Pokemon): boolean {
-    return !this.consumed && super.shouldApply(pokemon) && getBerryPredicate(this.berryType)(pokemon);
+  override shouldApply(pokemon: Pokemon, context?: BerryUseContext): boolean {
+    return (
+      !this.consumed
+      && canBerryTriggerInContext(this.berryType, context)
+      && super.shouldApply(pokemon, context)
+      && (context?.trigger !== "turn-end" || !pokemon.turnData.reactiveBerriesEaten.includes(this.berryType))
+      && getBerryPredicate(this.berryType)(pokemon)
+    );
   }
 
   /**
@@ -2391,7 +2410,7 @@ export class BerryModifier extends PokemonHeldItemModifier {
    * @param pokemon The {@linkcode Pokemon} that holds the berry
    * @returns always `true`
    */
-  override apply(pokemon: Pokemon): boolean {
+  override apply(pokemon: Pokemon, _context?: BerryUseContext): boolean {
     const preserve = new BooleanHolder(false);
     globalScene.applyModifiersForPokemon(PreserveBerryModifier, pokemon, pokemon, preserve);
     this.consumed = !preserve.value;

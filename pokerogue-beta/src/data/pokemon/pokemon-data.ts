@@ -388,4 +388,6 @@ export class PokemonTurnData {
    * @see {@linkcode PokemonSummonData.berriesEatenLast}
    */
   public berriesEaten: BerryType[] = [];
+  /** Berry types that already triggered reactively this turn and should not be repeated by BerryPhase. */
+  public reactiveBerriesEaten: BerryType[] = [];
 }

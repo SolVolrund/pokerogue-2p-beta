@@ -1,6 +1,7 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { SubstituteTag } from "#data/battler-tags";
+import { BattlerTagType } from "#enums/battler-tag-type";
 import { PokemonAnimType } from "#enums/pokemon-anim-type";
 import { SpeciesId } from "#enums/species-id";
 import type { Pokemon } from "#field/pokemon";
@@ -14,6 +15,7 @@ export class PokemonAnimPhase extends BattlePhase {
   protected pokemon: Pokemon;
   /** Any other field sprites affected by this animation */
   protected fieldAssets: Phaser.GameObjects.Sprite[];
+  protected commanderSourcePokemon: Pokemon | undefined;
 
   constructor(key: PokemonAnimType, pokemon: Pokemon, fieldAssets: Phaser.GameObjects.Sprite[] = []) {
     super();
@@ -21,6 +23,9 @@ export class PokemonAnimPhase extends BattlePhase {
     this.key = key;
     this.pokemon = pokemon;
     this.fieldAssets = fieldAssets;
+    if (key === PokemonAnimType.COMMANDER_REMOVE) {
+      this.commanderSourcePokemon = pokemon.getTag(BattlerTagType.COMMANDED)?.getSourcePokemon();
+    }
   }
 
   start(): void {
@@ -254,7 +259,7 @@ export class PokemonAnimPhase extends BattlePhase {
       this.end();
       return;
     }
-    const dondozo = this.pokemon.getAlly();
+    const dondozo = this.pokemon.getCommandedDondozo() ?? this.pokemon.getCommandableDondozo();
 
     if (dondozo?.species?.speciesId !== SpeciesId.DONDOZO) {
       this.end();
@@ -335,7 +340,7 @@ export class PokemonAnimPhase extends BattlePhase {
   private doCommanderRemoveAnim(): void {
     // Note: unlike the other Commander animation, this is played through the
     // Dondozo instead of the Tatsugiri.
-    const tatsugiri = this.pokemon.getAlly();
+    const tatsugiri = this.commanderSourcePokemon ?? this.pokemon.getCommandingTatsugiri();
     if (tatsugiri == null) {
       console.warn("Aborting COMMANDER_REMOVE anim: Tatsugiri is undefined");
       this.end();

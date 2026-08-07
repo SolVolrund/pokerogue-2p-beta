@@ -1,14 +1,7 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
-import { globalScene } from "#app/global-scene";
-import { getPokemonNameWithAffix } from "#app/messages";
-import type { BerryType } from "#enums/berry-type";
-import { CommonAnim } from "#enums/move-anims-common";
-import { BerryUsedEvent } from "#events/battle-scene";
 import type { Pokemon } from "#field/pokemon";
-import { BerryModifier } from "#modifiers/modifier";
 import { FieldPhase } from "#phases/field-phase";
-import { BooleanHolder } from "#utils/common";
-import i18next from "i18next";
+import { tryEatBerries } from "#utils/berry-use-utils";
 
 /**
  * The phase after attacks where the pokemon eat berries.
@@ -32,64 +25,6 @@ export class BerryPhase extends FieldPhase {
    * @param pokemon - The {@linkcode Pokemon} to check
    */
   eatBerries(pokemon: Pokemon): void {
-    const hasUsableBerry = !!globalScene.findModifierForPokemon(
-      m => m instanceof BerryModifier && m.shouldApply(pokemon),
-      pokemon,
-    );
-
-    if (!hasUsableBerry) {
-      return;
-    }
-
-    // TODO: If both opponents on field have unnerve, which one displays its message?
-    const cancelled = new BooleanHolder(false);
-    pokemon.getOpponents().forEach(opp => applyAbAttrs("PreventBerryUseAbAttr", { pokemon: opp, cancelled }));
-    if (cancelled.value) {
-      globalScene.phaseManager.queueMessage(
-        i18next.t("abilityTriggers:preventBerryUse", {
-          pokemonNameWithAffix: getPokemonNameWithAffix(pokemon),
-        }),
-      );
-      return;
-    }
-
-    globalScene.phaseManager.unshiftNew(
-      "CommonAnimPhase",
-      pokemon.getBattlerIndex(),
-      pokemon.getBattlerIndex(),
-      CommonAnim.USE_ITEM,
-    );
-
-    for (const berryModifier of globalScene.applyModifiersForPokemon(BerryModifier, pokemon, pokemon)) {
-      // No need to track berries being eaten; already done inside applyModifiers
-      if (berryModifier.consumed) {
-        berryModifier.consumed = false;
-        pokemon.loseHeldItem(berryModifier);
-        this.applySymbiosis(pokemon, berryModifier.berryType);
-      }
-      globalScene.eventTarget.dispatchEvent(new BerryUsedEvent(berryModifier));
-    }
-    globalScene.updateModifiers(
-      pokemon.isPlayer(),
-      undefined,
-      pokemon.isPlayer() ? globalScene.getPlayerIndexForPokemon(pokemon) : undefined,
-    );
-
-    // AbilityId.CHEEK_POUCH only works once per round of nom noms
-    applyAbAttrs("HealFromBerryUseAbAttr", { pokemon });
-  }
-
-  /**
-   * Give an allied Symbiosis Pokemon a chance to pass the same berry back to the eater.
-   * Only the first successful donor transfers a berry.
-   */
-  private applySymbiosis(consumer: Pokemon, berryType: BerryType): void {
-    const transferred = new BooleanHolder(false);
-    for (const ally of consumer.getAllies()) {
-      applyAbAttrs("PostAllyBerryUsedAbAttr", { pokemon: ally, consumer, berryType, transferred });
-      if (transferred.value) {
-        return;
-      }
-    }
+    tryEatBerries(pokemon, { trigger: "turn-end" });
   }
 }

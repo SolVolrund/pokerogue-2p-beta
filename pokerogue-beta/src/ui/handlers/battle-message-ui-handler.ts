@@ -230,6 +230,7 @@ export class BattleMessageUiHandler extends MessageUiHandler {
         this.levelUpStatsContainer.setVisible(false);
         resolve();
       };
+      globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("level-up-stats-ready");
     });
   }
 
@@ -248,6 +249,7 @@ export class BattleMessageUiHandler extends MessageUiHandler {
           this.levelUpStatsContainer.setVisible(false);
           resolve();
         };
+        globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("iv-stats-ready");
       }, pokemonId);
     });
   }

@@ -273,7 +273,9 @@ export class EvolutionPhase extends Phase {
     globalScene.time.delayedCall(1500, () => {
       this.pokemonEvoTintSprite.setScale(0.25).setVisible(true);
       this.evolutionHandler.canCancel = this.canCancel;
+      globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("evolution-cancel-ready");
       globalScene.animations.doCycle(1, 15, this.pokemonTintSprite, this.pokemonEvoTintSprite).then(() => {
+        this.evolutionHandler.canCancel = false;
         if (this.evolutionHandler.cancelled) {
           this.handleFailedEvolution(evolvedPokemon);
         } else {
@@ -472,7 +474,7 @@ export class EvolutionPhase extends Phase {
     globalScene.animations.doCircleInward(this.evolutionBaseBg, this.evolutionContainer);
 
     globalScene.time.delayedCall(900, () => {
-      this.evolutionHandler.canCancel = this.canCancel;
+      this.evolutionHandler.canCancel = false;
 
       this.pokemon.evolve(this.evolution, this.pokemon.species).then(() => this.postEvolve(evolvedPokemon));
     });

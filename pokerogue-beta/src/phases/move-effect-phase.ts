@@ -42,6 +42,7 @@ import { DamageAchv } from "#system/achv";
 import type { nil } from "#types/common";
 import type { DamageResult } from "#types/damage-result";
 import type { TurnMove } from "#types/turn-move";
+import { tryEatBerries } from "#utils/berry-use-utils";
 import { BooleanHolder, NumberHolder } from "#utils/common";
 import i18next from "i18next";
 
@@ -405,7 +406,7 @@ export class MoveEffectPhase extends PokemonPhase {
     if (
       !fieldTargeted
       && globalScene.currentBattle.double
-      && target.getAlly()?.getTag(BattlerTagType.COMMANDED)?.getSourcePokemon() === target
+      && target.isCommandingDondozo()
     ) {
       return [HitCheckResult.MISS, 0];
     }
@@ -629,6 +630,18 @@ export class MoveEffectPhase extends PokemonPhase {
     if (!this.move.hitsSubstitute(user, target)) {
       this.applyOnTargetEffects(user, target, firstTarget, result);
     }
+
+    const [hitResult, damage] = result;
+    if (damage > 0) {
+      tryEatBerries(target, {
+        trigger: "damage",
+        source: user,
+        move: this.move,
+        hitResult: hitResult as DamageResult,
+        damage,
+      });
+    }
+
     if (this.lastHit) {
       globalScene.triggerPokemonFormChange(user, SpeciesFormChangePostMoveTrigger);
 

@@ -42,6 +42,7 @@ import { COSPLAY_PIKACHU_FORM_MOVES, COSPLAY_PIKACHU_MOVE_IDS } from "#data/cosp
 import { getDailyEventSeedBoss, isDailyForcedWaveHiddenAbility } from "#data/daily-seed/daily-run";
 import { isDailyEventSeed, isDailyFinalBoss } from "#data/daily-seed/daily-seed-utils";
 import { allAbilities, allMoves } from "#data/data-lists";
+import { getDamageReductionBerryTypeForMoveType } from "#data/berry";
 import { getLevelTotalExp } from "#data/exp";
 import {
   SpeciesFormChangeActiveTrigger,
@@ -115,6 +116,7 @@ import { VolumeSetting } from "#enums/volume-setting";
 import { WeatherType } from "#enums/weather-type";
 import {
   BaseStatModifier,
+  BerryModifier,
   CritBoosterModifier,
   EnemyDamageBoosterModifier,
   EnemyDamageReducerModifier,
@@ -123,6 +125,7 @@ import {
   GrandLaurelModifier,
   HiddenAbilityRateBoosterModifier,
   IronBallModifier,
+  isHeldItemEffectIgnoredByKlutz,
   PokemonBaseStatFlatModifier,
   PokemonBaseStatTotalModifier,
   PokemonFormChangeItemModifier,
@@ -171,6 +174,7 @@ import { PlayerBattleInfo } from "#ui/player-battle-info";
 import { getAiMoveTargetData } from "#utils/ai-targeting";
 import { coerceArray } from "#utils/array";
 import { choosePlannerMove } from "#utils/battle-planner-ai";
+import { canUseBerry, consumeBerryModifier } from "#utils/berry-use-utils";
 import { getEnemyBattlerIndex, getPlayerBattlerIndex } from "#utils/battler-index-utils";
 import { applyChallenges } from "#utils/challenge-utils";
 import { isClassicFinalBossPhaseOne } from "#utils/classic-final-boss-utils";
@@ -2603,7 +2607,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   public isGrounded(): boolean {
     const isLevitating = new ValueHolder(false);
     applyAbAttrs("LevitatingAbAttr", { pokemon: this, isLevitating });
-    const hasIronBall = this.getHeldItems().some(item => item instanceof IronBallModifier);
+    const hasIronBall = this.getHeldItems().some(
+      item => item instanceof IronBallModifier && !isHeldItemEffectIgnoredByKlutz(this, item.type.id),
+    );
 
     return (
       !!this.getTag(GroundedTag)
@@ -3567,6 +3573,67 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   /**
+   * Returns the active allied Dondozo this Pokemon is commanding with Commander.
+   */
+  getCommandedDondozo(): Pokemon | undefined {
+    return this.getAllies().find(
+      ally =>
+        ally.species.speciesId === SpeciesId.DONDOZO
+        && ally.getTag(BattlerTagType.COMMANDED)?.getSourcePokemon() === this,
+    );
+  }
+
+  /**
+   * Returns the active Tatsugiri currently commanding this Pokemon, if this Pokemon is a commanded Dondozo.
+   */
+  getCommandingTatsugiri(): Pokemon | undefined {
+    const source = this.getTag(BattlerTagType.COMMANDED)?.getSourcePokemon();
+    return source?.isActive(true) && this.isAlly(source) ? source : undefined;
+  }
+
+  isCommandingDondozo(): boolean {
+    return !!this.getCommandedDondozo();
+  }
+
+  private hasSameCommanderOwner(candidate: Pokemon): boolean {
+    if (this.isPlayer() && candidate.isPlayer()) {
+      const thisPlayerIndex = globalScene.getPlayerIndexForPokemon(this);
+      return thisPlayerIndex !== undefined && thisPlayerIndex === globalScene.getPlayerIndexForPokemon(candidate);
+    }
+
+    if (this.isEnemy() && candidate.isEnemy()) {
+      return this.trainerSlot === candidate.trainerSlot;
+    }
+
+    return false;
+  }
+
+  /**
+   * Finds the best allied Dondozo for Commander.
+   * Same owner wins first; otherwise the nearest field slot wins, then field order.
+   */
+  getCommandableDondozo(): Pokemon | undefined {
+    return this.getAllies()
+      .filter(
+        ally =>
+          ally.species.speciesId === SpeciesId.DONDOZO
+          && ally.isActive(true)
+          && !ally.isFainted()
+          && !ally.getTag(BattlerTagType.COMMANDED),
+      )
+      .sort((a, b) => {
+        const sameOwnerDiff = Number(this.hasSameCommanderOwner(b)) - Number(this.hasSameCommanderOwner(a));
+        if (sameOwnerDiff) {
+          return sameOwnerDiff;
+        }
+
+        const thisFieldIndex = this.getFieldIndex();
+        const distanceDiff = Math.abs(a.getFieldIndex() - thisFieldIndex) - Math.abs(b.getFieldIndex() - thisFieldIndex);
+        return distanceDiff || a.getFieldIndex() - b.getFieldIndex();
+      })[0];
+  }
+
+  /**
    * Returns active allied Pokemon in non-speed order.
    *
    * @param onField - whether to also check if the Pokemon is currently on the field (defaults to true)
@@ -3873,6 +3940,36 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     return matchesSourceType ? 0.5 : 0.2;
   }
 
+  private applyDamageReductionBerry(source: Pokemon, move: Move, damage: NumberHolder, simulated: boolean): void {
+    if (damage.value <= 0) {
+      return;
+    }
+
+    const berryType = getDamageReductionBerryTypeForMoveType(source.getMoveType(move, simulated, this));
+    if (berryType == null) {
+      return;
+    }
+
+    const berryModifier = globalScene.findModifierForPokemon(
+      m => m instanceof BerryModifier && m.berryType === berryType && !m.consumed,
+      this,
+    ) as BerryModifier | undefined;
+    if (berryModifier == null) {
+      return;
+    }
+
+    if (simulated) {
+      if (canUseBerry(this, false)) {
+        damage.value = toDmgValue(damage.value / 2);
+      }
+      return;
+    }
+
+    if (consumeBerryModifier(this, berryModifier, { trigger: "damage", source, move })) {
+      damage.value = toDmgValue(damage.value / 2);
+    }
+  }
+
   /**
    * Calculates the damage of an attack made by another Pokemon against this Pokemon
    * @param __namedParameters.source - Needed for proper typedoc rendering
@@ -4097,6 +4194,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
     // This attribute may modify damage arbitrarily, so be careful about changing its order of application.
     applyMoveAttrs("ModifiedDamageAttr", source, this, move, damage);
+
+    this.applyDamageReductionBerry(source, move, damage, simulated);
 
     if (this.isFullHp() && !ignoreAbility) {
       applyAbAttrs("PreDefendFullHpEndureAbAttr", abAttrParams);
@@ -5456,7 +5555,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     if (
       this.hasAbilityWithAttr("CommanderAbAttr")
       && globalScene.currentBattle.double
-      && this.getAllies().some(ally => ally.species.speciesId === SpeciesId.DONDOZO)
+      && this.isCommandingDondozo()
     ) {
       this.setVisible(false);
     }

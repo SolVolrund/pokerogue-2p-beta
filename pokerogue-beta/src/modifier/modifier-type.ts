@@ -966,7 +966,10 @@ function getRandomBerryModifierType(): BerryModifierType {
   } else if (rand < 6) {
     randBerryType = BerryType.LEPPA;
   } else {
-    randBerryType = berryTypes[randSeedInt(berryTypes.length - 3) + 2];
+    const uncommonBerryTypes = berryTypes.filter(
+      berryType => ![BerryType.SITRUS, BerryType.LUM, BerryType.LEPPA].includes(berryType),
+    );
+    randBerryType = uncommonBerryTypes[randSeedInt(uncommonBerryTypes.length)];
   }
   return new BerryModifierType(randBerryType);
 }

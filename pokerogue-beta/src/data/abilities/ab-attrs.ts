@@ -2915,7 +2915,7 @@ export class CommanderAbAttr extends AbAttr {
     // If the ally Dondozo is fainted or was previously "commanded" by
     // another Pokemon, this effect cannot apply.
     // TODO: Should this work with X + Dondozo fusions?
-    const ally = pokemon.getAllies().find(p => p.species.speciesId === SpeciesId.DONDOZO);
+    const ally = pokemon.getCommandableDondozo();
     this.ally = ally;
     return (
       globalScene.currentBattle?.double

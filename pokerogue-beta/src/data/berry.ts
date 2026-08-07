@@ -5,8 +5,12 @@ import { getStatusEffectHealText } from "#data/status-effect";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BerryType } from "#enums/berry-type";
 import { HitResult } from "#enums/hit-result";
+import { PokemonType } from "#enums/pokemon-type";
 import { type BattleStat, Stat } from "#enums/stat";
+import type { StatusEffect } from "#enums/status-effect";
 import type { Pokemon } from "#field/pokemon";
+import type { Move } from "#moves/move";
+import type { DamageResult } from "#types/damage-result";
 import { NumberHolder, randSeedInt, toDmgValue } from "#utils/common";
 import i18next from "i18next";
 
@@ -19,6 +23,101 @@ export function getBerryEffectDescription(berryType: BerryType): string {
 }
 
 export type BerryPredicate = (pokemon: Pokemon) => boolean;
+
+export type BerryUseTrigger = "turn-end" | "damage" | "status";
+
+export interface BerryUseContext {
+  readonly trigger: BerryUseTrigger;
+  readonly source?: Pokemon | undefined;
+  readonly move?: Move | undefined;
+  readonly hitResult?: DamageResult | undefined;
+  readonly damage?: number | undefined;
+  readonly statusEffect?: StatusEffect | undefined;
+}
+
+const DAMAGE_TRIGGER_BERRIES = new Set([
+  BerryType.SITRUS,
+  BerryType.ENIGMA,
+  BerryType.LIECHI,
+  BerryType.GANLON,
+  BerryType.PETAYA,
+  BerryType.APICOT,
+  BerryType.SALAC,
+  BerryType.LANSAT,
+  BerryType.STARF,
+]);
+
+const STATUS_TRIGGER_BERRIES = new Set([BerryType.LUM]);
+
+const DAMAGE_REDUCTION_BERRY_TYPES = new Set([
+  BerryType.OCCA,
+  BerryType.PASSHO,
+  BerryType.WACAN,
+  BerryType.RINDO,
+  BerryType.YACHE,
+  BerryType.CHOPLE,
+  BerryType.KEBIA,
+  BerryType.SHUCA,
+  BerryType.COBA,
+  BerryType.PAYAPA,
+  BerryType.TANGA,
+  BerryType.CHARTI,
+  BerryType.KASIB,
+  BerryType.HABAN,
+  BerryType.COLBUR,
+  BerryType.BABIRI,
+  BerryType.CHILAN,
+  BerryType.ROSELI,
+]);
+
+const DAMAGE_REDUCTION_BERRY_MOVE_TYPES = new Map<BerryType, PokemonType>([
+  [BerryType.OCCA, PokemonType.FIRE],
+  [BerryType.PASSHO, PokemonType.WATER],
+  [BerryType.WACAN, PokemonType.ELECTRIC],
+  [BerryType.RINDO, PokemonType.GRASS],
+  [BerryType.YACHE, PokemonType.ICE],
+  [BerryType.CHOPLE, PokemonType.FIGHTING],
+  [BerryType.KEBIA, PokemonType.POISON],
+  [BerryType.SHUCA, PokemonType.GROUND],
+  [BerryType.COBA, PokemonType.FLYING],
+  [BerryType.PAYAPA, PokemonType.PSYCHIC],
+  [BerryType.TANGA, PokemonType.BUG],
+  [BerryType.CHARTI, PokemonType.ROCK],
+  [BerryType.KASIB, PokemonType.GHOST],
+  [BerryType.HABAN, PokemonType.DRAGON],
+  [BerryType.COLBUR, PokemonType.DARK],
+  [BerryType.BABIRI, PokemonType.STEEL],
+  [BerryType.CHILAN, PokemonType.NORMAL],
+  [BerryType.ROSELI, PokemonType.FAIRY],
+]);
+
+export function isDamageReductionBerryType(berryType: BerryType): boolean {
+  return DAMAGE_REDUCTION_BERRY_TYPES.has(berryType);
+}
+
+export function getDamageReductionBerryTypeForMoveType(moveType: PokemonType): BerryType | undefined {
+  for (const [berryType, resistedType] of DAMAGE_REDUCTION_BERRY_MOVE_TYPES) {
+    if (resistedType === moveType) {
+      return berryType;
+    }
+  }
+  return undefined;
+}
+
+export function getDamageReductionBerryResistedType(berryType: BerryType): PokemonType | undefined {
+  return DAMAGE_REDUCTION_BERRY_MOVE_TYPES.get(berryType);
+}
+
+export function canBerryTriggerInContext(berryType: BerryType, context?: BerryUseContext): boolean {
+  switch (context?.trigger ?? "turn-end") {
+    case "damage":
+      return DAMAGE_TRIGGER_BERRIES.has(berryType);
+    case "status":
+      return STATUS_TRIGGER_BERRIES.has(berryType);
+    case "turn-end":
+      return !isDamageReductionBerryType(berryType);
+  }
+}
 
 export function getBerryPredicate(berryType: BerryType): BerryPredicate {
   switch (berryType) {
@@ -61,6 +160,25 @@ export function getBerryPredicate(berryType: BerryType): BerryPredicate {
         applyAbAttrs("ReduceBerryUseThresholdAbAttr", { pokemon, hpRatioReq });
         return !!pokemon.getMoveset().find(m => !m.getPpRatio());
       };
+    case BerryType.OCCA:
+    case BerryType.PASSHO:
+    case BerryType.WACAN:
+    case BerryType.RINDO:
+    case BerryType.YACHE:
+    case BerryType.CHOPLE:
+    case BerryType.KEBIA:
+    case BerryType.SHUCA:
+    case BerryType.COBA:
+    case BerryType.PAYAPA:
+    case BerryType.TANGA:
+    case BerryType.CHARTI:
+    case BerryType.KASIB:
+    case BerryType.HABAN:
+    case BerryType.COLBUR:
+    case BerryType.BABIRI:
+    case BerryType.CHILAN:
+    case BerryType.ROSELI:
+      return () => false;
   }
 }
 
@@ -170,6 +288,25 @@ export function getBerryEffectFunc(berryType: BerryType, berryPhase = false): Be
             );
           }
         }
+        break;
+      case BerryType.OCCA:
+      case BerryType.PASSHO:
+      case BerryType.WACAN:
+      case BerryType.RINDO:
+      case BerryType.YACHE:
+      case BerryType.CHOPLE:
+      case BerryType.KEBIA:
+      case BerryType.SHUCA:
+      case BerryType.COBA:
+      case BerryType.PAYAPA:
+      case BerryType.TANGA:
+      case BerryType.CHARTI:
+      case BerryType.KASIB:
+      case BerryType.HABAN:
+      case BerryType.COLBUR:
+      case BerryType.BABIRI:
+      case BerryType.CHILAN:
+      case BerryType.ROSELI:
         break;
       default:
         console.error("Incorrect BerryType %d passed to GetBerryEffectFunc", berryType);

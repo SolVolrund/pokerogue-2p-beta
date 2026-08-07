@@ -743,9 +743,7 @@ export function initAbilities() {
       .condition(getWeatherCondition(WeatherType.SUNNY, WeatherType.HARSH_SUN))
       .ignorable()
       .build(),
-    new AbBuilder(AbilityId.KLUTZ, 4, 1) //
-      .unimplemented()
-      .build(),
+    new AbBuilder(AbilityId.KLUTZ, 4, 1).build(),
     new AbBuilder(AbilityId.MOLD_BREAKER, 4) //
       .attr(PostSummonMessageAbAttr, (pokemon: Pokemon) =>
         i18next.t("abilityTriggers:postSummonMoldBreaker", { pokemonNameWithAffix: getPokemonNameWithAffix(pokemon) }),

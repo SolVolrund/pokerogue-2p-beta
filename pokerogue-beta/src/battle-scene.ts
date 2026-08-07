@@ -361,6 +361,7 @@ export interface TwoPlayerDebugStateCheckpoint {
 
 const STRICT_TWO_PLAYER_INPUT_CONTEXT_UI_MODES = new Set<UiMode>([
   UiMode.MESSAGE,
+  UiMode.EVOLUTION_SCENE,
   UiMode.COMMAND,
   UiMode.FIGHT,
   UiMode.BALL,
@@ -1930,10 +1931,10 @@ export class BattleScene extends SceneBase {
     }
 
     const handler = this.ui?.getHandler();
-    const messageInputContextKey = uiMode === UiMode.MESSAGE && handler instanceof MessageUiHandler
+    const messageInputContextKey = handler instanceof MessageUiHandler
       ? handler.getTwoPlayerMessageInputContextKey()
       : undefined;
-    if (uiMode === UiMode.MESSAGE && !messageInputContextKey) {
+    if ((uiMode === UiMode.MESSAGE || uiMode === UiMode.EVOLUTION_SCENE) && !messageInputContextKey) {
       return;
     }
 

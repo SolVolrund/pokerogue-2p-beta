@@ -497,6 +497,7 @@ function initUltraModifierPool() {
           const isHoldingOrb = p.getHeldItems().some(i => i.type.id === "FLAME_ORB" || i.type.id === "TOXIC_ORB");
 
           if (!isHoldingOrb) {
+            const hasKlutz = p.hasAbility(AbilityId.KLUTZ, false, true);
             const moveset = p
               .getMoveset(true)
               .filter(m => m != null)
@@ -524,9 +525,9 @@ function initUltraModifierPool() {
               );
               const hasOppositeAbility = [AbilityId.FLARE_BOOST].some(a => p.hasAbility(a, false, true));
 
-              return hasSpecificAbility || (hasGeneralAbility && !hasOppositeAbility) || hasStatusMoves;
+              return hasKlutz || hasSpecificAbility || (hasGeneralAbility && !hasOppositeAbility) || hasStatusMoves;
             }
-            return hasItemMoves;
+            return hasKlutz || hasItemMoves;
           }
 
           return false;
@@ -543,6 +544,7 @@ function initUltraModifierPool() {
           const isHoldingOrb = p.getHeldItems().some(i => i.type.id === "FLAME_ORB" || i.type.id === "TOXIC_ORB");
 
           if (!isHoldingOrb) {
+            const hasKlutz = p.hasAbility(AbilityId.KLUTZ, false, true);
             const moveset = p
               .getMoveset(true)
               .filter(m => m != null)
@@ -570,9 +572,9 @@ function initUltraModifierPool() {
                 p.hasAbility(a, false, true),
               );
 
-              return hasSpecificAbility || (hasGeneralAbility && !hasOppositeAbility) || hasStatusMoves;
+              return hasKlutz || hasSpecificAbility || (hasGeneralAbility && !hasOppositeAbility) || hasStatusMoves;
             }
-            return hasItemMoves;
+            return hasKlutz || hasItemMoves;
           }
 
           return false;

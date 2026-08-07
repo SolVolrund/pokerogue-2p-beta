@@ -73,6 +73,24 @@ export class EvolutionSceneUiHandler extends MessageUiHandler {
     return false;
   }
 
+  override getTwoPlayerMessageInputContextKey(): Record<string, unknown> | undefined {
+    const messageContext = super.getTwoPlayerMessageInputContextKey();
+    if (messageContext) {
+      return {
+        kind: "message",
+        ...messageContext,
+      };
+    }
+
+    if (this.canCancel && !this.cancelled) {
+      return {
+        kind: "evolution-cancel",
+      };
+    }
+
+    return undefined;
+  }
+
   setCursor(_cursor: number): boolean {
     return false;
   }

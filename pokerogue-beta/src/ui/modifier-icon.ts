@@ -15,6 +15,7 @@ const STANDALONE_ITEM_ICONS = new Set([
   "pokeblock_pink_plus",
   "pokeblock_rainbow",
   "pokeblock_rainbow_plus",
+  "roseli_berry",
 ]);
 
 export function addModifierIconSprite(x: number, y: number, iconImage: string): Phaser.GameObjects.Sprite {

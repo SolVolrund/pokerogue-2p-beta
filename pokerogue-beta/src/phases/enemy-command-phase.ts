@@ -2,7 +2,6 @@ import { globalScene } from "#app/global-scene";
 import { AbilityId } from "#enums/ability-id";
 import { AiType } from "#enums/ai-type";
 import { BattleType } from "#enums/battle-type";
-import { BattlerTagType } from "#enums/battler-tag-type";
 import { Command } from "#enums/command";
 import { FieldPosition } from "#enums/field-position";
 import { MoveId } from "#enums/move-id";
@@ -50,7 +49,7 @@ export class EnemyCommandPhase extends FieldPhase {
     if (
       battle.double
       && enemyPokemon.hasAbility(AbilityId.COMMANDER)
-      && enemyPokemon.getAlly()?.getTag(BattlerTagType.COMMANDED)
+      && enemyPokemon.isCommandingDondozo()
     ) {
       this.skipTurn = true;
     }
