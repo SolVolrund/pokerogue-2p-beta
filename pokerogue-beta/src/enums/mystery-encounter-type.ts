@@ -39,4 +39,5 @@ export enum MysteryEncounterType {
   POKE_POACHERS,
   DEJA_VU,
   MINING,
+  CHEFS_ON_VACATION,
 }

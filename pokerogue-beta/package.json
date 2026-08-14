@@ -15,6 +15,10 @@
     "build:beta": "vite build --mode beta",
     "build:dev": "vite build --mode development",
     "build:app": "vite build --mode app",
+    "build:android": "pnpm build:app && cap sync android",
+    "open:android": "cap open android",
+    "run:android": "cap run android",
+    "sync:android": "cap sync android",
     "build:desktop:win": "node scripts/build-desktop-windows.mjs",
     "preview": "vite preview",
     "test": "vitest run",
@@ -52,6 +56,8 @@
     "species-data:export": "vite-node scripts/species-data-exporter/main.ts"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
     "@material/material-color-utilities": "^0.4.0",
     "ajv": "^8.20.0",
     "core-js": "^3.49.0",
@@ -66,6 +72,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.14",
+    "@capacitor/cli": "^8.5.0",
     "@commander-js/extra-typings": "^15.0.0",
     "@inquirer/prompts": "^8.5.2",
     "@ls-lint/ls-lint": "2.3.1",

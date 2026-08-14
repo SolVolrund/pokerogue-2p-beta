@@ -1086,6 +1086,7 @@ export class TitlePhase extends Phase {
       playerCount,
       computerPartnerPlayerIndexes,
     );
+    globalScene.resetTwoPlayerProfileExchangeForRun();
     const runSeed = activeOverrides.SEED_OVERRIDE || getTwoPlayerRunSeedOverride() || randomString(24);
     globalScene.setSeed(runSeed);
     globalScene.resetSeed();
@@ -1195,6 +1196,7 @@ export class TitlePhase extends Phase {
         playerCount,
         computerPartnerPlayerIndexes,
       );
+      globalScene.resetTwoPlayerProfileExchangeForRun();
       this.applyTitleStartComputerPartners(titleStart);
       this.announceTwoPlayerProfileForStartup();
       this.waitForTwoPlayerProfilesBeforeRun(() => this.setModeAndEnd(gameMode));

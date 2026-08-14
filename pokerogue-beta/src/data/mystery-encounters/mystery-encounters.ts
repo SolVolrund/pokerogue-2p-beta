@@ -5,6 +5,7 @@ import { AbsoluteAvariceEncounter } from "#mystery-encounters/absolute-avarice-e
 import { AnOfferYouCantRefuseEncounter } from "#mystery-encounters/an-offer-you-cant-refuse-encounter";
 import { BerriesAboundEncounter } from "#mystery-encounters/berries-abound-encounter";
 import { BugTypeSuperfanEncounter } from "#mystery-encounters/bug-type-superfan-encounter";
+import { ChefsOnVacationEncounter } from "#mystery-encounters/chefs-on-vacation-encounter";
 import { ClowningAroundEncounter } from "#mystery-encounters/clowning-around-encounter";
 import { ContestHallEncounter } from "#mystery-encounters/contest-hall-encounter";
 import { DancingLessonsEncounter } from "#mystery-encounters/dancing-lessons-encounter";
@@ -166,6 +167,7 @@ const humanTransitableBiomeEncounters: MysteryEncounterType[] = [
   MysteryEncounterType.THE_WINSTRATE_CHALLENGE,
   MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
   MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE,
+  MysteryEncounterType.CHEFS_ON_VACATION,
 ];
 
 const civilizationBiomeEncounters: MysteryEncounterType[] = [
@@ -284,6 +286,7 @@ export function initMysteryEncounters() {
   allMysteryEncounters[MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE] = ItIsDangerousToGoAloneEncounter;
   allMysteryEncounters[MysteryEncounterType.LEGENDARY_CONFLICT] = LegendaryConflictEncounter;
   allMysteryEncounters[MysteryEncounterType.POKE_POACHERS] = PokePoachersEncounter;
+  allMysteryEncounters[MysteryEncounterType.CHEFS_ON_VACATION] = ChefsOnVacationEncounter;
   allMysteryEncounters[MysteryEncounterType.FARAWAY_ISLAND_TREASURE] = FarawayIslandTreasureEncounter;
   allMysteryEncounters[MysteryEncounterType.CONTEST_HALL] = ContestHallEncounter;
   allMysteryEncounters[MysteryEncounterType.DEJA_VU] = DejaVuEncounter;

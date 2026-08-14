@@ -152,6 +152,16 @@ const systemShortKeys = {
 };
 
 export class GameData {
+  private static getFallbackNatureAttr(speciesKey: string): number {
+    let hash = 2166136261;
+    for (let i = 0; i < speciesKey.length; i++) {
+      hash ^= speciesKey.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+
+    return 1 << ((hash >>> 0) % 25 + 1);
+  }
+
   public trainerId: number;
   public secretId: number;
 
@@ -3080,7 +3090,7 @@ export class GameData {
         entry.hatchedCount = 0;
       }
       if (!Object.hasOwn(entry, "natureAttr") || (entry.caughtAttr && !entry.natureAttr)) {
-        entry.natureAttr = this.defaultDexData?.[k].natureAttr || 1 << randInt(25, 1);
+        entry.natureAttr = this.defaultDexData?.[k].natureAttr || GameData.getFallbackNatureAttr(k);
       }
       if (!Object.hasOwn(entry, "ribbons")) {
         entry.ribbons = new RibbonData(0);

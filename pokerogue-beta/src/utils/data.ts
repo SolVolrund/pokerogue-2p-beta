@@ -91,6 +91,23 @@ export function loadStarterPreferences(): StarterPreferences {
   );
 }
 
+export function parseStarterPreferences(data: string | undefined | null): StarterPreferences {
+  if (!data) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(data);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function getStarterPreferencesDataString(prefs: StarterPreferences): string {
+  return JSON.stringify(prefs, (_, value) => (isBareObject(value) ? undefined : value));
+}
+
 export function saveStarterPreferences(prefs: StarterPreferences): void {
   // Fastest way to check if an object has any properties (does no allocation)
   if (isBareObject(prefs)) {
@@ -98,7 +115,7 @@ export function saveStarterPreferences(prefs: StarterPreferences): void {
     return;
   }
   // no reason to store `{}` (for starters not customized)
-  const pStr: string = JSON.stringify(prefs, (_, value) => (isBareObject(value) ? undefined : value));
+  const pStr: string = getStarterPreferencesDataString(prefs);
   if (pStr !== StarterPrefers_private_latest) {
     console.log("%cSaving starter preferences", "color: blue");
     // something changed, store the update

@@ -22,7 +22,7 @@ import { randSeedIntRange, randSeedItem } from "#utils/common";
 export function getPokemonSpecies(species: SpeciesId | SpeciesId[]): PokemonSpecies {
   if (Array.isArray(species)) {
     // TODO: this RNG roll should not be handled by this function
-    species = species[Math.floor(Math.random() * species.length)];
+    species = randSeedItem(species);
   }
   return speciesDataRegistry.getSpecies(species);
 }

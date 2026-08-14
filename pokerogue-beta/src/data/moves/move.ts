@@ -1171,10 +1171,10 @@ export abstract class Move implements Localizable {
 
     if (!this.hasAttr("TypelessAttr")) {
       globalScene.arena.applyTags(WeakenMoveTypeTag, typeChangeHolder.value, power);
-      globalScene.applyModifiers(AttackTypeBoosterModifier, source.isPlayer(), source, typeChangeHolder.value, power);
-      globalScene.applyModifiers(
+      globalScene.applyModifiersForPokemon(AttackTypeBoosterModifier, source, source, typeChangeHolder.value, power);
+      globalScene.applyModifiersForPokemon(
         TypeGemModifier,
-        source.isPlayer(),
+        source,
         source,
         typeChangeHolder.value,
         power,

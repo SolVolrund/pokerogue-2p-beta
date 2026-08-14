@@ -75,7 +75,7 @@ import {
   truncateString,
 } from "#utils/common";
 import type { StarterPreferences } from "#utils/data";
-import { deepCopy, loadStarterPreferences, saveStarterPreferences } from "#utils/data";
+import { deepCopy } from "#utils/data";
 import { getDexNumber, getPokemonSpeciesForm, getPokerusStarters } from "#utils/pokemon-utils";
 import { toCamelCase, toTitleCase } from "#utils/strings";
 import i18next from "i18next";
@@ -1226,7 +1226,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       this.cursorObj.setTexture(getPlayerSelectCursorTexture(globalScene.activePlayerIndex));
       this.starterSelectContainer.setVisible(true);
 
-      this.starterPreferences = loadStarterPreferences();
+      this.starterPreferences = globalScene.getPlayerStarterPreferencesCopy(globalScene.activePlayerIndex);
       // Deep copy the JSON (avoid re-loading from disk)
       this.originalStarterPreferences = deepCopy(this.starterPreferences);
 
@@ -1874,14 +1874,13 @@ export class StarterSelectUiHandler extends MessageUiHandler {
           const teraType = this.teraCursor;
           const moveset = this.starterMoveset?.slice(0) as StarterMoveset;
           const starterCost = globalScene.gameData.getSpeciesStarterValue(randomSpecies.speciesId);
-          const speciesForm = getPokemonSpeciesForm(randomSpecies.speciesId, props.formIndex);
-          // Load assets and add to party
-          speciesForm.loadAssets(props.female, props.formIndex, props.shiny, props.variant, true).then(() => {
-            if (this.tryUpdateValue(starterCost, true)) {
-              this.addToParty(randomSpecies, dexAttr, abilityIndex, nature, moveset, teraType, true);
-              ui.playSelect();
-            }
-          });
+          if (this.tryUpdateValue(starterCost, true)) {
+            this.addToParty(randomSpecies, dexAttr, abilityIndex, nature, moveset, teraType, true);
+            ui.playSelect();
+            success = true;
+          } else {
+            error = true;
+          }
           break;
         }
         case Button.UP:
@@ -3605,6 +3604,19 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     return { currentFriendship, friendshipCap };
   }
 
+  getTwoPlayerInputContextState(): Record<string, unknown> {
+    return {
+      speciesId: this.lastSpecies?.speciesId ?? null,
+      dexAttrCursor: this.dexAttrCursor.toString(),
+      abilityCursor: this.abilityCursor,
+      natureCursor: this.natureCursor,
+      teraCursor: this.teraCursor,
+      filterMode: this.filterMode,
+      starterIconCursor: this.starterIconsCursorObj.visible ? this.starterIconsCursorIndex : null,
+      starterSpeciesIds: this.starterSpecies.map(species => species.speciesId),
+    };
+  }
+
   setSpecies(species: PokemonSpecies | null) {
     this.speciesStarterDexEntry = null;
     this.dexAttrCursor = 0n;
@@ -4335,7 +4347,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     this.updateInstructions();
 
     if (save) {
-      saveStarterPreferences(this.originalStarterPreferences);
+      globalScene.savePlayerStarterPreferences(this.originalStarterPreferences, globalScene.activePlayerIndex);
     }
   }
 
@@ -4795,7 +4807,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   clear(): void {
     super.clear();
 
-    saveStarterPreferences(this.originalStarterPreferences);
+    globalScene.savePlayerStarterPreferences(this.originalStarterPreferences, globalScene.activePlayerIndex);
 
     this.clearStarterPreferences();
     this.cursor = -1;

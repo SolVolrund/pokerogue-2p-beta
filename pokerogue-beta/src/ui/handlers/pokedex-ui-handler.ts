@@ -44,7 +44,6 @@ import { addWindow } from "#ui/ui-theme";
 import { argbFromRgba, rgbHexToRgba } from "#utils/color-utils";
 import { BooleanHolder, fixedInt, getLocalizedSpriteKey, padInt, randIntRange } from "#utils/common";
 import type { StarterPreferences } from "#utils/data";
-import { loadStarterPreferences } from "#utils/data";
 import { enumValueToKey } from "#utils/enums";
 import { getDexNumber, getPokemonSpeciesForm, getPokerusStarters } from "#utils/pokemon-utils";
 import { toCamelCase } from "#utils/strings";
@@ -681,10 +680,6 @@ export class PokedexUiHandler extends MessageUiHandler {
   }
 
   show(args: any[]): boolean {
-    if (!this.starterPreferences) {
-      this.starterPreferences = loadStarterPreferences();
-    }
-
     this.pokerusSpecies = getPokerusStarters();
 
     // When calling with "refresh", we do not reset the cursor and filters
@@ -698,6 +693,11 @@ export class PokedexUiHandler extends MessageUiHandler {
       this.gameData = globalScene.gameData;
       this.blockOpenPage = false;
     }
+
+    const playerIndexForGameData = globalScene.twoPlayerMode
+      ? (globalScene.getTwoPlayerSystemSavePlayerIndex(this.gameData) ?? globalScene.activePlayerIndex)
+      : globalScene.activePlayerIndex;
+    this.starterPreferences = globalScene.getPlayerStarterPreferencesCopy(playerIndexForGameData);
 
     super.show(args);
 

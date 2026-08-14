@@ -26,7 +26,7 @@ export class SelectStarterPhase extends Phase {
     super.start();
 
     audioManager.playBgm("menu");
-    this.selectStartersForPlayer(0);
+    this.waitForTwoPlayerProfilesBeforeAction(() => this.selectStartersForPlayer(0));
   }
 
   private selectStartersForPlayer(playerIndex: PlayerIndex): void {

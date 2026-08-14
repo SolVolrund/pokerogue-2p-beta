@@ -33,7 +33,7 @@ import { PokemonIconAnimHelper, PokemonIconAnimMode } from "#ui/pokemon-icon-ani
 import { addBBCodeTextObject, addTextObject, getTextColor } from "#ui/text";
 import { addWindow } from "#ui/ui-theme";
 import { applyChallenges } from "#utils/challenge-utils";
-import { BooleanHolder, getLocalizedSpriteKey, randInt } from "#utils/common";
+import { BooleanHolder, getLocalizedSpriteKey } from "#utils/common";
 import { toCamelCase, toTitleCase } from "#utils/strings";
 import i18next from "i18next";
 import type BBCodeText from "phaser3-rex-plugins/plugins/bbcodetext";
@@ -1884,8 +1884,9 @@ export class PartyUiHandler extends MessageUiHandler {
   }
 
   doRelease(slotIndex: number): void {
+    const pokemon = this.getParty()[slotIndex];
     this.showText(
-      this.getReleaseMessage(getPokemonNameWithAffix(this.getParty()[slotIndex], false)),
+      this.getReleaseMessage(getPokemonNameWithAffix(pokemon, false), this.getReleaseMessageRoll(pokemon, slotIndex)),
       null,
       () => {
         this.clearPartySlots();
@@ -1908,8 +1909,11 @@ export class PartyUiHandler extends MessageUiHandler {
     );
   }
 
-  getReleaseMessage(pokemonName: string): string {
-    const rand = randInt(128);
+  getReleaseMessageRoll(pokemon: Pokemon, slotIndex: number): number {
+    return (pokemon.id % 128 + slotIndex * 31 + this.getPlayerIndex() * 17) % 128;
+  }
+
+  getReleaseMessage(pokemonName: string, rand: number): string {
     if (rand < 20) {
       return i18next.t("partyUiHandler:goodbye", { pokemonName });
     }

@@ -51,6 +51,7 @@ export interface TwoPlayerTitleStart {
 export interface TwoPlayerProfileSnapshot {
   playerIndex: PlayerIndex;
   systemSave: string;
+  starterPreferences?: string;
 }
 
 export interface TwoPlayerSettingsSnapshot {
@@ -289,7 +290,11 @@ function isValidProfileSnapshot(profileSnapshot: unknown): profileSnapshot is Tw
     && typeof profileSnapshot === "object"
     && isValidPlayerIndex((profileSnapshot as Partial<TwoPlayerProfileSnapshot>).playerIndex)
     && typeof (profileSnapshot as Partial<TwoPlayerProfileSnapshot>).systemSave === "string"
-    && (profileSnapshot as Partial<TwoPlayerProfileSnapshot>).systemSave!.length > 0;
+    && (profileSnapshot as Partial<TwoPlayerProfileSnapshot>).systemSave!.length > 0
+    && (
+      (profileSnapshot as Partial<TwoPlayerProfileSnapshot>).starterPreferences === undefined
+      || typeof (profileSnapshot as Partial<TwoPlayerProfileSnapshot>).starterPreferences === "string"
+    );
 }
 
 function isValidSettingsSnapshot(settingsSnapshot: unknown): settingsSnapshot is TwoPlayerSettingsSnapshot {

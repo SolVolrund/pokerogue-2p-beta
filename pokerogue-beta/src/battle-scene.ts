@@ -205,7 +205,15 @@ import {
   type ComputerPartnerRolePreferences,
   getComputerPartnerProfile,
 } from "#utils/computer-partner-profile";
-import { deepMergeSpriteData } from "#utils/data";
+import type { StarterPreferences } from "#utils/data";
+import {
+  deepCopy,
+  deepMergeSpriteData,
+  getStarterPreferencesDataString,
+  loadStarterPreferences,
+  parseStarterPreferences,
+  saveStarterPreferences,
+} from "#utils/data";
 import { getEnumValues } from "#utils/enums";
 import { cachedFetch } from "#utils/fetch-utils";
 import { getModifierPoolForType, getModifierType } from "#utils/modifier-utils";
@@ -233,6 +241,11 @@ const TWO_PLAYER_SESSION_SYSTEM_SAVE_KEYS = [
   "pokerogue_2p_session_system_save_0",
   "pokerogue_2p_session_system_save_1",
   "pokerogue_3p_session_system_save_2",
+] as const;
+const TWO_PLAYER_SESSION_STARTER_PREF_KEYS = [
+  "pokerogue_2p_session_starter_prefs_0",
+  "pokerogue_2p_session_starter_prefs_1",
+  "pokerogue_3p_session_starter_prefs_2",
 ] as const;
 const TWO_PLAYER_PROFILE_HANDSHAKE_BUILD = "profile-handshake-2026-06-17c";
 const TWO_PLAYER_SYNC_SETTING_TYPES = new Set<SettingType>([SettingType.GENERAL, SettingType.DISPLAY]);
@@ -301,6 +314,7 @@ const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
   MysteryEncounterType.SHINY_BADGE,
   MysteryEncounterType.LEGENDARY_CONFLICT,
   MysteryEncounterType.POKE_POACHERS,
+  MysteryEncounterType.CHEFS_ON_VACATION,
   MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE,
   MysteryEncounterType.FARAWAY_ISLAND_TREASURE,
   MysteryEncounterType.CONTEST_HALL,
@@ -340,6 +354,7 @@ const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] 
   MysteryEncounterType.SHINY_BADGE,
   MysteryEncounterType.LEGENDARY_CONFLICT,
   MysteryEncounterType.POKE_POACHERS,
+  MysteryEncounterType.CHEFS_ON_VACATION,
   MysteryEncounterType.FARAWAY_ISLAND_TREASURE,
   MysteryEncounterType.CONTEST_HALL,
   MysteryEncounterType.DEJA_VU,
@@ -1378,6 +1393,7 @@ export class BattleScene extends SceneBase {
     return {
       playerIndex: localSeat,
       systemSave: this.getLocalPlayerSystemSave().getSystemSaveDataString(),
+      starterPreferences: getStarterPreferencesDataString(loadStarterPreferences()),
     };
   }
 
@@ -1491,6 +1507,10 @@ export class BattleScene extends SceneBase {
     systemSaves[profileSnapshot.playerIndex] = gameData;
     this.twoPlayerProfileSlotsReady[profileSnapshot.playerIndex] = true;
     this.saveSessionSystemSaveLocal(profileSnapshot.playerIndex, gameData);
+    this.saveSessionStarterPreferencesLocal(
+      profileSnapshot.playerIndex,
+      parseStarterPreferences(profileSnapshot.starterPreferences),
+    );
 
     if (this.activePlayerIndex === profileSnapshot.playerIndex) {
       this.syncActiveSystemSaveForActivePlayer();
@@ -1500,7 +1520,7 @@ export class BattleScene extends SceneBase {
     return true;
   }
 
-  private refreshTwoPlayerProfileSlotsReady(): void {
+  private refreshTwoPlayerProfileSlotsReady(preserveReadySlots = true): void {
     if (!this.twoPlayerMode) {
       this.twoPlayerProfileSlotsReady = [true, true, true];
       this.resolveTwoPlayerProfileReadyWaiters();
@@ -1524,7 +1544,7 @@ export class BattleScene extends SceneBase {
         return true;
       }
 
-      if (this.twoPlayerProfileSlotsReady[playerIndex]) {
+      if (preserveReadySlots && this.twoPlayerProfileSlotsReady[playerIndex]) {
         return true;
       }
 
@@ -1535,6 +1555,14 @@ export class BattleScene extends SceneBase {
       return playerIndex === localSeat && this.localPlayerSystemSaveLoaded;
     });
     this.resolveTwoPlayerProfileReadyWaiters();
+  }
+
+  public resetTwoPlayerProfileExchangeForRun(): void {
+    if (!this.twoPlayerMode) {
+      return;
+    }
+
+    this.refreshTwoPlayerProfileSlotsReady(false);
   }
 
   public isTwoPlayerProfileExchangeComplete(): boolean {
@@ -1625,6 +1653,38 @@ export class BattleScene extends SceneBase {
     localStorage.setItem(TWO_PLAYER_SESSION_SYSTEM_SAVE_KEYS[playerIndex], gameData.getSystemSaveDataString());
   }
 
+  private loadSessionStarterPreferences(playerIndex: PlayerIndex): StarterPreferences {
+    return parseStarterPreferences(localStorage.getItem(TWO_PLAYER_SESSION_STARTER_PREF_KEYS[playerIndex]));
+  }
+
+  private saveSessionStarterPreferencesLocal(playerIndex: PlayerIndex, preferences: StarterPreferences): void {
+    localStorage.setItem(TWO_PLAYER_SESSION_STARTER_PREF_KEYS[playerIndex], getStarterPreferencesDataString(preferences));
+  }
+
+  public getPlayerStarterPreferences(playerIndex: PlayerIndex = this.activePlayerIndex): StarterPreferences {
+    if (!this.twoPlayerMode || this.isLocalSystemSaveOwner(playerIndex)) {
+      return loadStarterPreferences();
+    }
+
+    return this.loadSessionStarterPreferences(playerIndex);
+  }
+
+  public getPlayerStarterPreferencesCopy(playerIndex: PlayerIndex = this.activePlayerIndex): StarterPreferences {
+    return deepCopy(this.getPlayerStarterPreferences(playerIndex));
+  }
+
+  public savePlayerStarterPreferences(
+    preferences: StarterPreferences,
+    playerIndex: PlayerIndex = this.activePlayerIndex,
+  ): void {
+    if (!this.twoPlayerMode || this.isLocalSystemSaveOwner(playerIndex)) {
+      saveStarterPreferences(preferences);
+      return;
+    }
+
+    this.saveSessionStarterPreferencesLocal(playerIndex, preferences);
+  }
+
   public tryCacheRemoteTwoPlayerSystemSave(gameData: GameData): boolean {
     if (!this.twoPlayerMode || !this.systemSaves) {
       return false;
@@ -1643,7 +1703,7 @@ export class BattleScene extends SceneBase {
     return true;
   }
 
-  private getTwoPlayerSystemSavePlayerIndex(gameData: GameData): PlayerIndex | undefined {
+  public getTwoPlayerSystemSavePlayerIndex(gameData: GameData): PlayerIndex | undefined {
     if (!this.systemSaves) {
       return;
     }
@@ -1942,6 +2002,8 @@ export class BattleScene extends SceneBase {
       return;
     }
 
+    const handlerInputContextState = (handler as { getTwoPlayerInputContextState?: () => Record<string, unknown> })
+      ?.getTwoPlayerInputContextState?.() ?? null;
     const phaseWithFieldIndex = currentPhase as (Phase & { getFieldIndex?: () => number }) | undefined;
     const promptKey = {
       waveIndex: this.currentBattle?.waveIndex ?? null,
@@ -1961,6 +2023,7 @@ export class BattleScene extends SceneBase {
     const contextKey = {
       ...promptKey,
       cursor: handler?.getCursor?.() ?? null,
+      handlerState: handlerInputContextState,
     };
 
     return {
