@@ -1000,7 +1000,7 @@ export class SelectModifierPhase extends BattlePhase {
     }
   }
 
-  // Opens the party menu specifically for fusions
+  // Opens the fusion summary menu specifically for DNA Splicers.
   private openFusionMenu(
     modifierType: PokemonModifierType,
     cost: number,
@@ -1009,12 +1009,12 @@ export class SelectModifierPhase extends BattlePhase {
     const party = globalScene.getPlayerParty(this.playerIndex);
     globalScene.ui
       .setModeWithoutClear(
-        UiMode.PARTY,
-        PartyUiMode.SPLICE,
-        this.getFieldSlotForPlayer(this.playerIndex),
-        (fromSlotIndex: number, spliceSlotIndex: number) => {
+        UiMode.FUSION_SUMMARY,
+        party,
+        (fromSlotIndex?: number, spliceSlotIndex?: number) => {
           if (
             spliceSlotIndex !== undefined
+            && fromSlotIndex !== undefined
             && fromSlotIndex < 6
             && spliceSlotIndex < 6
             && fromSlotIndex !== spliceSlotIndex

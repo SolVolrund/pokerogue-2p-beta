@@ -24,6 +24,7 @@ import { EggListUiHandler } from "#ui/egg-list-ui-handler";
 import { EggSummaryUiHandler } from "#ui/egg-summary-ui-handler";
 import { EvolutionSceneUiHandler } from "#ui/evolution-scene-ui-handler";
 import { FightUiHandler } from "#ui/fight-ui-handler";
+import { FusionSummaryUiHandler } from "#ui/fusion-summary-ui-handler";
 import { GameStatsUiHandler } from "#ui/game-stats-ui-handler";
 import { GamepadBindingUiHandler } from "#ui/gamepad-binding-ui-handler";
 import { KeyboardBindingUiHandler } from "#ui/keyboard-binding-ui-handler";
@@ -76,6 +77,7 @@ const transitionModes = [
   UiMode.SAVE_SLOT,
   UiMode.PARTY,
   UiMode.SUMMARY,
+  UiMode.FUSION_SUMMARY,
   UiMode.STARTER_SELECT,
   UiMode.EVOLUTION_SCENE,
   UiMode.EGG_HATCH_SCENE,
@@ -203,6 +205,7 @@ export class UI extends Phaser.GameObjects.Container {
       new ContestInputUiHandler(),
       new MiningInputUiHandler(),
       new AlphWallUiHandler(),
+      new FusionSummaryUiHandler(),
     ];
   }
 

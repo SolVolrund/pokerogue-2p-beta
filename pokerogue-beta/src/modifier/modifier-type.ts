@@ -3194,15 +3194,18 @@ function getModifierTypeOptionWithRetry(
 
 /**
  * Replaces the {@linkcode ModifierType} of the entries within {@linkcode options} with any
- * {@linkcode ModifierOverride} entries listed in {@linkcode activeOverrides.ITEM_REWARD_OVERRIDE}
+ * {@linkcode ModifierOverride} entries listed in the active reward override
  * up to the smallest amount of entries between {@linkcode options} and the override array.
  * @param options Array of naturally rolled {@linkcode ModifierTypeOption}s
  * @param party Array of the player's current party
  */
 export function overridePlayerModifierTypeOptions(options: ModifierTypeOption[], party: PlayerPokemon[]) {
-  const minLength = Math.min(options.length, activeOverrides.ITEM_REWARD_OVERRIDE.length);
+  const waveIndex = globalScene.currentBattle?.waveIndex ?? 0;
+  const itemRewardOverride =
+    activeOverrides.WAVE_ITEM_REWARD_OVERRIDE[waveIndex] ?? activeOverrides.ITEM_REWARD_OVERRIDE;
+  const minLength = Math.min(options.length, itemRewardOverride.length);
   for (let i = 0; i < minLength; i++) {
-    const override: ModifierOverride = activeOverrides.ITEM_REWARD_OVERRIDE[i];
+    const override: ModifierOverride = itemRewardOverride[i];
     const modifierFunc = modifierTypeInitObj[override.name];
     let modifierType: ModifierType | null = modifierFunc();
 

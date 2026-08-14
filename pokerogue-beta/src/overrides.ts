@@ -54,6 +54,9 @@ import type { IntClosedRange, TupleOf } from "type-fest";
 //const overrides = {} satisfies Partial<InstanceType<OverridesType>>;
 
 const overrides: Partial<InstanceType<OverridesType>> = {
+  WAVE_ITEM_REWARD_OVERRIDE: {
+    1: [{ name: "DNA_SPLICERS" }],
+  },
 //  STARTING_WAVE_OVERRIDE: 200,
 //  STARTING_BIOME_OVERRIDE: BiomeId.TOWN,
 //  BATTLE_TYPE_OVERRIDE: BattleType.TRAINER,
@@ -373,6 +376,12 @@ class DefaultOverrides {
    * Note that, for all items in the array, `count` is not used.
    */
   readonly ITEM_REWARD_OVERRIDE: ModifierOverride[] = [];
+  /**
+   * Override generated item rolls after a specific wave.
+   *
+   * Uses the same rules as {@linkcode ITEM_REWARD_OVERRIDE}. The key is the wave that was just cleared.
+   */
+  readonly WAVE_ITEM_REWARD_OVERRIDE: Partial<Record<number, ModifierOverride[]>> = {};
 
   /** If `true`, disable all non-scripted opponent trainer encounters. */
   // TODO: Merge into `BATTLE_TYPE_OVERRIDE`

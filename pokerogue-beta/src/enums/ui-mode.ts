@@ -54,4 +54,5 @@ export enum UiMode {
   CONTEST_INPUT,
   MINING_INPUT,
   ALPH_WALL,
+  FUSION_SUMMARY,
 }

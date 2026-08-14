@@ -1,8 +1,11 @@
+import { FORBIDDEN_TM_MOVES, LEVEL_BASED_DENYLIST } from "#balance/moves/forbidden-moves";
+import { LEVEL_BASED_DENYLIST_THRESHOLD } from "#balance/moves/moveset-generation";
+import { SUPERCEDED_MOVES } from "#balance/moves/superceded-moves";
 import { allMoves } from "#data/data-lists";
 import { getTypeDamageMultiplier } from "#data/type";
 import { LearnMoveType } from "#enums/learn-move-type";
 import { MoveCategory } from "#enums/move-category";
-import type { MoveId } from "#enums/move-id";
+import { MoveId } from "#enums/move-id";
 import { PokemonType } from "#enums/pokemon-type";
 import { Stat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
@@ -55,6 +58,15 @@ export function chooseComputerPartnerMoveLearningDecision(
   learnMoveType: LearnMoveType,
   context: ComputerPartnerMoveLearningContext = {},
 ): ComputerPartnerMoveLearningDecision {
+  if (shouldRejectForbiddenMove(pokemon, newMove.id, learnMoveType)) {
+    return { shouldLearn: false, replaceIndex: -1, improvementRatio: 0 };
+  }
+
+  const supersededDecision = chooseSupersededMoveLearningDecision(pokemon, currentMoveIds, newMove.id, context);
+  if (supersededDecision) {
+    return supersededDecision;
+  }
+
   if (currentMoveIds.length < 4) {
     return { shouldLearn: true, replaceIndex: currentMoveIds.length, improvementRatio: Number.POSITIVE_INFINITY };
   }
@@ -84,6 +96,61 @@ export function chooseComputerPartnerMoveLearningDecision(
     replaceIndex: shouldLearn ? bestReplaceIndex : -1,
     improvementRatio,
   };
+}
+
+function shouldRejectForbiddenMove(pokemon: Pokemon, moveId: MoveId, learnMoveType: LearnMoveType): boolean {
+  if (moveId === MoveId.FOCUS_PUNCH) {
+    return true;
+  }
+
+  if (learnMoveType === LearnMoveType.TM && FORBIDDEN_TM_MOVES.has(moveId)) {
+    return true;
+  }
+
+  return pokemon.level >= LEVEL_BASED_DENYLIST_THRESHOLD && LEVEL_BASED_DENYLIST.has(moveId);
+}
+
+function chooseSupersededMoveLearningDecision(
+  pokemon: Pokemon,
+  currentMoveIds: MoveId[],
+  newMoveId: MoveId,
+  context: ComputerPartnerMoveLearningContext,
+): ComputerPartnerMoveLearningDecision | undefined {
+  const supersededMoveIndexes = currentMoveIds
+    .map((moveId, index) => ({ moveId, index }))
+    .filter(({ moveId }) => doesMoveSupersede(newMoveId, moveId));
+
+  if (supersededMoveIndexes.length > 0) {
+    const oldScore = scoreMoveset(pokemon, currentMoveIds, context);
+    let bestReplaceIndex = supersededMoveIndexes[0].index;
+    let bestScore = Number.NEGATIVE_INFINITY;
+
+    for (const { index } of supersededMoveIndexes) {
+      const candidateMoveIds = currentMoveIds.slice();
+      candidateMoveIds[index] = newMoveId;
+      const candidateScore = scoreMoveset(pokemon, candidateMoveIds, context);
+      if (candidateScore > bestScore) {
+        bestScore = candidateScore;
+        bestReplaceIndex = index;
+      }
+    }
+
+    return {
+      shouldLearn: true,
+      replaceIndex: bestReplaceIndex,
+      improvementRatio: oldScore <= 0 ? Number.POSITIVE_INFINITY : bestScore / oldScore,
+    };
+  }
+
+  if (currentMoveIds.some(moveId => doesMoveSupersede(moveId, newMoveId))) {
+    return { shouldLearn: false, replaceIndex: -1, improvementRatio: 0 };
+  }
+
+  return undefined;
+}
+
+function doesMoveSupersede(replacementMoveId: MoveId, existingMoveId: MoveId): boolean {
+  return SUPERCEDED_MOVES[existingMoveId]?.includes(replacementMoveId) ?? false;
 }
 
 function getImprovementThreshold(learnMoveType: LearnMoveType): number {

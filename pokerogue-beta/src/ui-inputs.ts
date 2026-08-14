@@ -18,6 +18,7 @@ import {
   type TwoPlayerInputTransportStatus,
 } from "#app/two-player-input-transport";
 import type { MessageUiHandler } from "#ui/message-ui-handler";
+import { FusionSummaryUiHandler } from "#ui/fusion-summary-ui-handler";
 import { PokedexPageUiHandler } from "#ui/pokedex-page-ui-handler";
 import { PokedexUiHandler } from "#ui/pokedex-ui-handler";
 import { RunInfoUiHandler } from "#ui/run-info-ui-handler";
@@ -750,7 +751,8 @@ export class UiInputs {
     const status = this.getTwoPlayerSyncStatus();
     const transport = status.transport as TwoPlayerInputTransportStatus | undefined;
     const summary = status.summary as Record<string, unknown> | undefined;
-    const fingerprint = typeof status.checkpointFingerprint === "string" ? status.checkpointFingerprint.slice(0, 12) : "none";
+    const fingerprint =
+      typeof status.checkpointFingerprint === "string" ? status.checkpointFingerprint.slice(0, 12) : "none";
     const profileReady = globalScene.twoPlayerProfileSlotsReady
       .map((ready, index) => `P${index + 1}:${ready ? "ready" : "waiting"}`)
       .join("  ");
@@ -761,7 +763,9 @@ export class UiInputs {
       `Phase: ${String(status.phase)}   UI: ${summary?.uiMode ?? "unknown"}   Fingerprint: ${fingerprint}`,
       `Profiles: ${profileReady}`,
       `Transport: ${transport?.networkRole ?? "unknown"} ${transport?.mode ?? ""} ${transport?.enabled ? "open" : "closed"}`,
-      status.lastDesync ? `Last desync: ${(status.lastDesync as TwoPlayerInputDebugEvent).reason ?? "desync"}` : "Last desync: none recorded",
+      status.lastDesync
+        ? `Last desync: ${(status.lastDesync as TwoPlayerInputDebugEvent).reason ?? "desync"}`
+        : "Last desync: none recorded",
     ].join("\n");
   }
 
@@ -807,6 +811,10 @@ export class UiInputs {
       [Button.SPEED_UP]: () => this.buttonSpeedChange(),
       [Button.SLOW_DOWN]: () => this.buttonSpeedChange(false),
       [Button.DEV_CUSTOM]: () => {
+        if (globalScene.ui?.getHandler() instanceof FusionSummaryUiHandler) {
+          globalScene.ui.processInput(Button.DEV_CUSTOM);
+          return;
+        }
         if (isDev) {
           import("./dev-function").then(m => m.customDevFunction());
         }
@@ -934,6 +942,7 @@ export class UiInputs {
       SettingsEventsUiHandler,
       SettingsGamepadUiHandler,
       SettingsKeyboardUiHandler,
+      FusionSummaryUiHandler,
     ];
     const uiHandler = globalScene.ui?.getHandler();
     if (whitelist.some(handler => uiHandler instanceof handler)) {
