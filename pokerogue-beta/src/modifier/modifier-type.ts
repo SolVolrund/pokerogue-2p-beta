@@ -13,6 +13,7 @@ import { CONTEST_STAT_MAX, type PartialContestStats } from "#data/contests/conte
 import { getDailyEventSeedLuck } from "#data/daily-seed/daily-run";
 import { allMoves, modifierTypes } from "#data/data-lists";
 import type { AlphLegendaryHelperId } from "#data/alph/legendary-helpers";
+import type { FusionOptions } from "#data/fusion-options";
 import { SpeciesFormChangeItemTrigger } from "#data/form-change-triggers";
 import { getNatureName, getNatureStatMultiplier } from "#data/nature";
 import { getPokeballCatchMultiplier, getPokeballName } from "#data/pokeball";
@@ -1507,6 +1508,75 @@ export class EvolutionItemModifierType extends PokemonModifierType implements Ge
   }
 }
 
+function getFormChangeItemTriggersForPokemon(
+  pokemon: Pokemon,
+  speciesId: SpeciesId,
+  preFormKey: string | null,
+  checkConditions = false,
+  requireMissingItem = false,
+): SpeciesFormChangeItemTrigger[] {
+  if (preFormKey === null || !speciesDataRegistry.hasFormChanges(speciesId)) {
+    return [];
+  }
+
+  return speciesDataRegistry
+    .getFormChanges(speciesId)
+    .filter(fc => {
+      const itemTrigger = fc.findTrigger(SpeciesFormChangeItemTrigger) as SpeciesFormChangeItemTrigger | null;
+      if (!itemTrigger || fc.preFormKey !== preFormKey) {
+        return false;
+      }
+      if (
+        checkConditions
+        && fc.conditions.length > 0
+        && fc.conditions.filter(cond => cond instanceof SpeciesFormChangeCondition && cond.predicate(pokemon)).length
+          === 0
+      ) {
+        return false;
+      }
+      return (
+        !requireMissingItem
+        || !globalScene.findModifier(
+          m =>
+            m instanceof PokemonFormChangeItemModifier
+            && m.pokemonId === pokemon.id
+            && m.formChangeItem === itemTrigger.item,
+        )
+      );
+    })
+    .map(fc => fc.findTrigger(SpeciesFormChangeItemTrigger) as SpeciesFormChangeItemTrigger)
+    .filter(t => t?.active);
+}
+
+function getFormChangeItemTriggerEntriesForPokemon(
+  pokemon: Pokemon,
+  speciesId: SpeciesId,
+  preFormKey: string | null,
+): { trigger: SpeciesFormChangeItemTrigger; formKey: string }[] {
+  if (preFormKey === null || !speciesDataRegistry.hasFormChanges(speciesId)) {
+    return [];
+  }
+
+  return speciesDataRegistry.getFormChanges(speciesId).flatMap(fc => {
+    const trigger = fc.findTrigger(SpeciesFormChangeItemTrigger) as SpeciesFormChangeItemTrigger | null;
+    if (
+      !trigger?.active
+      || fc.preFormKey !== preFormKey
+      || (fc.conditions.length > 0
+        && fc.conditions.filter(cond => cond instanceof SpeciesFormChangeCondition && cond.predicate(pokemon)).length
+          === 0)
+      || globalScene.findModifier(
+        m =>
+          m instanceof PokemonFormChangeItemModifier && m.pokemonId === pokemon.id && m.formChangeItem === trigger.item,
+      )
+    ) {
+      return [];
+    }
+
+    return [{ trigger, formKey: fc.formKey }];
+  });
+}
+
 /**
  * Class that represents form changing items
  */
@@ -1526,18 +1596,13 @@ export class FormChangeItemModifierType extends PokemonModifierType implements G
         }
 
         // Make sure the Pokemon has alternate forms
-        if (
-          speciesDataRegistry.hasFormChanges(pokemon.species.speciesId) // Get all form changes for this species with an item trigger, including any compound triggers
-          && speciesDataRegistry
-            .getFormChanges(pokemon.species.speciesId)
-            .filter(
-              fc => fc.trigger.hasTriggerType(SpeciesFormChangeItemTrigger) && fc.preFormKey === pokemon.getFormKey(),
-            )
-            // Returns true if any form changes match this item
-            .flatMap(fc => fc.findTrigger(SpeciesFormChangeItemTrigger) as SpeciesFormChangeItemTrigger)
-            .flatMap(fc => fc.item)
-            .includes(this.formChangeItem)
-        ) {
+        const formChangeItemTriggers = [
+          ...getFormChangeItemTriggersForPokemon(pokemon, pokemon.species.speciesId, pokemon.getFormKey()),
+          ...(pokemon.isFusion() && pokemon.fusionSpecies
+            ? getFormChangeItemTriggersForPokemon(pokemon, pokemon.fusionSpecies.speciesId, pokemon.getFusionFormKey())
+            : []),
+        ];
+        if (formChangeItemTriggers.some(t => t.item === this.formChangeItem)) {
           return null;
         }
 
@@ -1566,7 +1631,13 @@ export class FusePokemonModifierType extends PokemonModifierType {
     super(
       localeKey,
       iconImage,
-      (_type, args) => new FusePokemonModifier(this, (args[0] as PlayerPokemon).id, (args[1] as PlayerPokemon).id),
+      (_type, args) =>
+        new FusePokemonModifier(
+          this,
+          (args[0] as PlayerPokemon).id,
+          (args[1] as PlayerPokemon).id,
+          args[2] as FusionOptions | undefined,
+        ),
       (pokemon: PlayerPokemon) => {
         const selectStatus = new BooleanHolder(pokemon.isFusion());
         applyChallenges(ChallengeType.POKEMON_FUSION, pokemon, selectStatus);
@@ -1928,85 +1999,79 @@ export class FormChangeItemModifierTypeGenerator extends ModifierTypeGenerator {
 
       const formChangeItemPool = [
         ...new Set(
-          party
-            .filter(p => speciesDataRegistry.hasFormChanges(p.species.speciesId))
-            .flatMap(p => {
-              const formChanges = speciesDataRegistry.getFormChanges(p.species.speciesId);
-              let formChangeItemTriggers = formChanges
-                .filter(
-                  fc =>
-                    ((fc.formKey.indexOf(SpeciesFormKey.MEGA) === -1
-                      && fc.formKey.indexOf(SpeciesFormKey.PRIMAL) === -1)
-                      || globalScene.getModifiers(MegaEvolutionAccessModifier).length > 0)
-                    && ((fc.formKey.indexOf(SpeciesFormKey.GIGANTAMAX) === -1
-                      && fc.formKey.indexOf(SpeciesFormKey.ETERNAMAX) === -1)
-                      || globalScene.getModifiers(GigantamaxAccessModifier).length > 0)
-                    && (fc.conditions.length === 0
-                      || fc.conditions.filter(cond => cond instanceof SpeciesFormChangeCondition && cond.predicate(p))
-                        .length > 0)
-                    && fc.preFormKey === p.getFormKey(),
+          party.flatMap(p => {
+            let formChangeItemTriggerEntries = getFormChangeItemTriggerEntriesForPokemon(
+              p,
+              p.species.speciesId,
+              p.getFormKey(),
+            )
+              .concat(
+                p.isFusion() && p.fusionSpecies
+                  ? getFormChangeItemTriggerEntriesForPokemon(p, p.fusionSpecies.speciesId, p.getFusionFormKey())
+                  : [],
+              )
+              .filter(
+                entry =>
+                  ((entry.formKey.indexOf(SpeciesFormKey.MEGA) === -1
+                    && entry.formKey.indexOf(SpeciesFormKey.PRIMAL) === -1)
+                    || globalScene.getModifiers(MegaEvolutionAccessModifier).length > 0)
+                  && ((entry.formKey.indexOf(SpeciesFormKey.GIGANTAMAX) === -1
+                    && entry.formKey.indexOf(SpeciesFormKey.ETERNAMAX) === -1)
+                    || globalScene.getModifiers(GigantamaxAccessModifier).length > 0),
+              );
+
+            if (p.hasSpecies(SpeciesId.NECROZMA)) {
+              // technically we could use a simplified version and check for formChanges.length > 3, but in case any code changes later, this might break...
+              let foundULTRA_Z = false;
+              let foundN_LUNA = false;
+              let foundN_SOLAR = false;
+              formChangeItemTriggerEntries.forEach((entry, _i) => {
+                console.log("Checking ", entry.trigger.item);
+                switch (entry.trigger.item) {
+                  case FormChangeItem.ULTRANECROZIUM_Z:
+                    foundULTRA_Z = true;
+                    break;
+                  case FormChangeItem.N_LUNARIZER:
+                    foundN_LUNA = true;
+                    break;
+                  case FormChangeItem.N_SOLARIZER:
+                    foundN_SOLAR = true;
+                    break;
+                }
+              });
+              if (foundULTRA_Z && foundN_LUNA && foundN_SOLAR) {
+                // all three items are present -> user hasn't acquired any of the N_*ARIZERs -> block ULTRANECROZIUM_Z acquisition.
+                formChangeItemTriggerEntries = formChangeItemTriggerEntries.filter(
+                  entry => entry.trigger.item !== FormChangeItem.ULTRANECROZIUM_Z,
+                );
+              } else {
+                console.log("DID NOT FIND ");
+              }
+            }
+            if (p.hasSpecies(SpeciesId.ARCEUS)) {
+              const hasLegendPlateRequirements = hasAllArceusLegendPlateRequirements(p);
+              formChangeItemTriggerEntries = formChangeItemTriggerEntries.filter(
+                entry => entry.trigger.item !== FormChangeItem.LEGEND_PLATE || hasLegendPlateRequirements,
+              );
+
+              if (
+                hasLegendPlateRequirements
+                && !formChangeItemTriggerEntries.some(entry => entry.trigger.item === FormChangeItem.LEGEND_PLATE)
+                && !globalScene.findModifier(
+                  m =>
+                    m instanceof PokemonFormChangeItemModifier
+                    && m.pokemonId === p.id
+                    && m.formChangeItem === FormChangeItem.LEGEND_PLATE,
                 )
-                .map(fc => fc.findTrigger(SpeciesFormChangeItemTrigger) as SpeciesFormChangeItemTrigger)
-                .filter(
-                  t =>
-                    t?.active
-                    && !globalScene.findModifier(
-                      m =>
-                        m instanceof PokemonFormChangeItemModifier
-                        && m.pokemonId === p.id
-                        && m.formChangeItem === t.item,
-                    ),
-                );
-
-              if (p.species.speciesId === SpeciesId.NECROZMA) {
-                // technically we could use a simplified version and check for formChanges.length > 3, but in case any code changes later, this might break...
-                let foundULTRA_Z = false;
-                let foundN_LUNA = false;
-                let foundN_SOLAR = false;
-                formChangeItemTriggers.forEach((fc, _i) => {
-                  console.log("Checking ", fc.item);
-                  switch (fc.item) {
-                    case FormChangeItem.ULTRANECROZIUM_Z:
-                      foundULTRA_Z = true;
-                      break;
-                    case FormChangeItem.N_LUNARIZER:
-                      foundN_LUNA = true;
-                      break;
-                    case FormChangeItem.N_SOLARIZER:
-                      foundN_SOLAR = true;
-                      break;
-                  }
+              ) {
+                formChangeItemTriggerEntries.push({
+                  trigger: new SpeciesFormChangeItemTrigger(FormChangeItem.LEGEND_PLATE),
+                  formKey: "legend",
                 });
-                if (foundULTRA_Z && foundN_LUNA && foundN_SOLAR) {
-                  // all three items are present -> user hasn't acquired any of the N_*ARIZERs -> block ULTRANECROZIUM_Z acquisition.
-                  formChangeItemTriggers = formChangeItemTriggers.filter(
-                    fc => fc.item !== FormChangeItem.ULTRANECROZIUM_Z,
-                  );
-                } else {
-                  console.log("DID NOT FIND ");
-                }
               }
-              if (p.hasSpecies(SpeciesId.ARCEUS)) {
-                const hasLegendPlateRequirements = hasAllArceusLegendPlateRequirements(p);
-                formChangeItemTriggers = formChangeItemTriggers.filter(
-                  fc => fc.item !== FormChangeItem.LEGEND_PLATE || hasLegendPlateRequirements,
-                );
-
-                if (
-                  hasLegendPlateRequirements
-                  && !formChangeItemTriggers.some(fc => fc.item === FormChangeItem.LEGEND_PLATE)
-                  && !globalScene.findModifier(
-                    m =>
-                      m instanceof PokemonFormChangeItemModifier
-                      && m.pokemonId === p.id
-                      && m.formChangeItem === FormChangeItem.LEGEND_PLATE,
-                  )
-                ) {
-                  formChangeItemTriggers.push(new SpeciesFormChangeItemTrigger(FormChangeItem.LEGEND_PLATE));
-                }
-              }
-              return formChangeItemTriggers;
-            }),
+            }
+            return formChangeItemTriggerEntries.map(entry => entry.trigger);
+          }),
         ),
       ]
         .flat()
@@ -2221,11 +2286,7 @@ const modifierTypeInitObj = Object.freeze({
       (type, _args) => new TerastallizeAccessModifier(type),
     ),
   Z_RING: () =>
-    new ModifierType(
-      "modifierType:ModifierType.Z_RING",
-      "z_ring",
-      (type, _args) => new ZMoveAccessModifier(type),
-    ),
+    new ModifierType("modifierType:ModifierType.Z_RING", "z_ring", (type, _args) => new ZMoveAccessModifier(type)),
   Z_CRYSTAL: () =>
     new ModifierTypeGenerator((party: readonly Pokemon[], pregenArgs?: any[]) => {
       const zCrystalValues = Object.values(ZCrystal) as ZCrystal[];
@@ -2286,7 +2347,12 @@ const modifierTypeInitObj = Object.freeze({
 
   MAP: () => new ModifierType("modifierType:ModifierType.MAP", "map", (type, _args) => new MapModifier(type)),
 
-  OLD_SEA_MAP: () => new ModifierType("modifierType:ModifierType.OLD_SEA_MAP", "old_sea_map", (type, _args) => new OldSeaMapModifier(type)),
+  OLD_SEA_MAP: () =>
+    new ModifierType(
+      "modifierType:ModifierType.OLD_SEA_MAP",
+      "old_sea_map",
+      (type, _args) => new OldSeaMapModifier(type),
+    ),
 
   EON_FLUTE: () => {
     const ret = new ModifierType(
@@ -3561,7 +3627,10 @@ export function initModifierTypes() {
   Object.assign(modifierTypes, modifierTypeInitObj);
 }
 
-const POKEBLOCK_MODIFIER_TYPES_BY_TIER: Record<ModifierTier.COMMON | ModifierTier.GREAT | ModifierTier.ULTRA | ModifierTier.ROGUE, ModifierTypeFunc[]> = {
+const POKEBLOCK_MODIFIER_TYPES_BY_TIER: Record<
+  ModifierTier.COMMON | ModifierTier.GREAT | ModifierTier.ULTRA | ModifierTier.ROGUE,
+  ModifierTypeFunc[]
+> = {
   [ModifierTier.COMMON]: [
     modifierTypeInitObj.POKEBLOCK_RED,
     modifierTypeInitObj.POKEBLOCK_BLUE,
@@ -3580,10 +3649,7 @@ const POKEBLOCK_MODIFIER_TYPES_BY_TIER: Record<ModifierTier.COMMON | ModifierTie
   [ModifierTier.ROGUE]: [modifierTypeInitObj.POKEBLOCK_RAINBOW_PLUS],
 };
 
-export function getPokeblockModifierTypeOption(
-  party: PlayerPokemon[],
-  allowLuckUpgrades = true,
-): ModifierTypeOption {
+export function getPokeblockModifierTypeOption(party: PlayerPokemon[], allowLuckUpgrades = true): ModifierTypeOption {
   const tierValue = randSeedInt(1024);
   let upgradeCount = 0;
 

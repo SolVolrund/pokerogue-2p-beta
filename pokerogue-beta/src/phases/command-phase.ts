@@ -289,6 +289,7 @@ export class CommandPhase extends FieldPhase {
     const blockedTargetIds = this.getComputerPartnerBlockedCaptureTargetIds(playerIndex);
     const claimedTargetIds = this.getComputerPartnerClaimedCaptureTargetIds(playerIndex);
     const captureDecisionOptions: ComputerPartnerCaptureDecisionOptions = {
+      partyLimit: globalScene.getPlayerPartyLimit(playerIndex),
       plannedDamageRatios: this.getQueuedCaptureDamageRatios(playerPokemon.getBattlerIndex()),
       ...(claimedTargetIds.length > 0
         ? {

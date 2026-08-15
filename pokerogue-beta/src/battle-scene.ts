@@ -6,6 +6,7 @@ import {
   AVERAGE_ENCOUNTERS_PER_RUN_TARGET,
   BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT,
   MYSTERY_ENCOUNTER_SPAWN_MAX_WEIGHT,
+  PLAYER_PARTY_MAX_SIZE,
 } from "#app/constants";
 import type { GameMode } from "#app/game-mode";
 import { getGameMode } from "#app/game-mode";
@@ -2208,6 +2209,18 @@ export class BattleScene extends SceneBase {
   // TODO: Add a `getPartyOnSide` function for getting the party of a pokemon
   public getPlayerParty(playerIndex: PlayerIndex = this.activePlayerIndex): PlayerPokemon[] {
     return this.getPlayerState(playerIndex).party;
+  }
+
+  public getPlayerPartyLimit(_playerIndex: PlayerIndex = this.activePlayerIndex): number {
+    if (!this.twoPlayerMode || this.twoPlayerPartySize === PLAYER_PARTY_MAX_SIZE) {
+      return PLAYER_PARTY_MAX_SIZE;
+    }
+
+    return this.multiplayerPlayerCount > 2 ? 2 : 3;
+  }
+
+  public isPlayerPartyFull(playerIndex: PlayerIndex = this.activePlayerIndex): boolean {
+    return this.getPlayerParty(playerIndex).length >= this.getPlayerPartyLimit(playerIndex);
   }
 
   public getPlayerMoney(playerIndex: PlayerIndex = this.activePlayerIndex): number {
@@ -5558,13 +5571,29 @@ export class BattleScene extends SceneBase {
     delayed = false,
     modal = false,
   ): boolean {
-    if (speciesDataRegistry.hasFormChanges(pokemon.species.speciesId)) {
+    if (
+      speciesDataRegistry.hasFormChanges(pokemon.species.speciesId)
+      || (pokemon.isFusion()
+        && pokemon.fusionSpecies
+        && speciesDataRegistry.hasFormChanges(pokemon.fusionSpecies.speciesId))
+    ) {
       // in case this is NECROZMA, determine which forms this
-      const matchingFormChangeOpts = speciesDataRegistry
-        .getFormChanges(pokemon.species.speciesId)
-        .filter(fc => fc.findTrigger(formChangeTriggerType) && fc.canChange(pokemon));
+      const matchingFormChangeOpts = [
+        ...(speciesDataRegistry.hasFormChanges(pokemon.species.speciesId)
+          ? speciesDataRegistry
+              .getFormChanges(pokemon.species.speciesId)
+              .filter(fc => fc.findTrigger(formChangeTriggerType) && fc.canChange(pokemon))
+          : []),
+        ...(pokemon.isFusion()
+        && pokemon.fusionSpecies
+        && speciesDataRegistry.hasFormChanges(pokemon.fusionSpecies.speciesId)
+          ? speciesDataRegistry
+              .getFormChanges(pokemon.fusionSpecies.speciesId)
+              .filter(fc => pokemon.canApplyFusionFormChange(fc, formChangeTriggerType))
+          : []),
+      ];
       let matchingFormChange: SpeciesFormChange | null;
-      if (pokemon.species.speciesId === SpeciesId.NECROZMA && matchingFormChangeOpts.length > 1) {
+      if (pokemon.hasSpecies(SpeciesId.NECROZMA) && matchingFormChangeOpts.length > 1) {
         const playerIndex = pokemon.isPlayer() ? this.getPlayerIndexForPokemon(pokemon) : undefined;
         // Ultra Necrozma is changing its form back, so we need to figure out into which form it devolves.
         const formChangeItemModifiers = (

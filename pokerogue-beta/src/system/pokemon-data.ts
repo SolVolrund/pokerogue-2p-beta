@@ -2,6 +2,7 @@ import { globalScene } from "#app/global-scene";
 import type { PlayerIndex } from "#app/battle-scene";
 import type { Gender } from "#data/gender";
 import { CustomPokemonData, PokemonBattleData, PokemonSummonData } from "#data/pokemon-data";
+import { FusionOptions } from "#data/fusion-options";
 import { Status } from "#data/status-effect";
 import { BattleType } from "#enums/battle-type";
 import type { BiomeId } from "#enums/biome-id";
@@ -62,6 +63,7 @@ export class PokemonData {
   public fusionGender: Gender;
   public fusionLuck: number;
   public fusionTeraType: PokemonType;
+  public fusionOptions: FusionOptions | null;
 
   public boss: boolean;
   public bossSegments: number;
@@ -144,6 +146,7 @@ export class PokemonData {
     this.fusionGender = source.fusionGender;
     this.fusionLuck = source.fusionLuck ?? (source.fusionShiny ? source.fusionVariant + 1 : 0);
     this.fusionTeraType = (source.fusionTeraType ?? 0) as PokemonType;
+    this.fusionOptions = source.fusionOptions ? new FusionOptions(source.fusionOptions) : null;
 
     this.boss = (source instanceof EnemyPokemon && !!source.bossSegments) || (!this.player && !!source.boss);
     this.bossSegments = source.bossSegments ?? 0;

@@ -10,7 +10,7 @@ import { getContestSpectacularMove } from "#data/contests/contest-spectacular-mo
 import { ContestType, contestTypeData } from "#data/contests/contest-type";
 import { getLevelRelExp, getLevelTotalExp } from "#data/exp";
 import { getGenderColor, getGenderSymbol } from "#data/gender";
-import { getNatureName, getNatureStatMultiplier } from "#data/nature";
+import { getNatureName } from "#data/nature";
 import { getPokeballAtlasKey } from "#data/pokeball";
 import { getTypeRgb } from "#data/type";
 import { Button } from "#enums/buttons";
@@ -1056,8 +1056,7 @@ export class SummaryUiHandler extends UiHandler {
         this.passiveContainer?.descriptionText?.setVisible(false);
 
         const closeFragment = getBBCodeFrag("", TextStyle.WINDOW_ALT);
-        const rawNature = toCamelCase(Nature[this.pokemon?.getNature()!]); // TODO: is this bang correct?
-        const nature = `${getBBCodeFrag(toTitleCase(getNatureName(this.pokemon?.getNature()!)), TextStyle.SUMMARY_RED)}${closeFragment}`; // TODO: is this bang correct?
+        const natureFragment = this.getNatureMemoFragment();
 
         const profileContainerMemoTitle = globalScene.add.image(
           7,
@@ -1076,7 +1075,7 @@ export class SummaryUiHandler extends UiHandler {
               wave: `${getBBCodeFrag(this.pokemon?.metWave ? this.pokemon.metWave.toString()! : i18next.t("pokemonSummary:unknownTrainer"), TextStyle.SUMMARY_RED)}${closeFragment}`,
             },
           ),
-          natureFragment: i18next.t(`pokemonSummary:natureFragment.${rawNature}`, { nature }),
+          natureFragment,
         });
 
         const memoText = addBBCodeTextObject(7, 113, String(memoString), TextStyle.WINDOW_ALT);
@@ -1124,17 +1123,13 @@ export class SummaryUiHandler extends UiHandler {
           const rowIndex = s % 3;
           const colIndex = Math.floor(s / 3);
 
-          const natureStatMultiplier = getNatureStatMultiplier(this.pokemon?.getNature()!, s); // TODO: is this bang correct?
+          const natureStatMultiplier = this.pokemon?.getNatureStatMultiplierForStat(stat) ?? 1;
 
           const statLabel = addTextObject(
             116 * colIndex + (colIndex === 1 ? 5 : 0),
             16 * rowIndex,
             statName,
-            natureStatMultiplier === 1
-              ? TextStyle.SUMMARY_STATS
-              : natureStatMultiplier > 1
-                ? TextStyle.SUMMARY_STATS_PINK
-                : TextStyle.SUMMARY_STATS_BLUE,
+            this.getNatureStatTextStyle(natureStatMultiplier),
           );
           const ivLabel = addTextObject(
             116 * colIndex + (colIndex === 1 ? 5 : 0),
@@ -1381,6 +1376,41 @@ export class SummaryUiHandler extends UiHandler {
       default:
         return null;
     }
+  }
+
+  private getNatureMemoFragment(): string {
+    if (!this.pokemon) {
+      return "";
+    }
+
+    const closeFragment = getBBCodeFrag("", TextStyle.WINDOW_ALT);
+    const natureNameFragment = (nature: Nature) =>
+      `${getBBCodeFrag(toTitleCase(getNatureName(nature)), TextStyle.SUMMARY_RED)}${closeFragment}`;
+
+    if (this.pokemon.isFusion() && this.pokemon.fusionOptions?.natureMode === "mixed") {
+      return `${natureNameFragment(this.pokemon.getNature())} and ${natureNameFragment(this.pokemon.getFusionNature())}`;
+    }
+
+    const rawNature = toCamelCase(Nature[this.pokemon.getNature()]);
+    return i18next.t(`pokemonSummary:natureFragment.${rawNature}`, {
+      nature: natureNameFragment(this.pokemon.getNature()),
+    });
+  }
+
+  private getNatureStatTextStyle(multiplier: number): TextStyle {
+    if (multiplier >= 1.2) {
+      return TextStyle.SUMMARY_STATS_ORANGE;
+    }
+    if (multiplier > 1) {
+      return TextStyle.SUMMARY_STATS_PINK;
+    }
+    if (multiplier <= 0.8) {
+      return TextStyle.SUMMARY_STATS_PURPLE;
+    }
+    if (multiplier < 1) {
+      return TextStyle.SUMMARY_STATS_BLUE;
+    }
+    return TextStyle.SUMMARY_STATS;
   }
 
   private getContestStatValue(contestType: ContestType): number {

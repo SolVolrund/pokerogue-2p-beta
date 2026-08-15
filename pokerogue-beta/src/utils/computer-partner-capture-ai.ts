@@ -37,6 +37,7 @@ export interface ComputerPartnerCaptureInterest {
 export interface ComputerPartnerCaptureDecisionOptions {
   allowedBossTargetIds?: number | readonly number[];
   forceThrowTargetIds?: number | readonly number[];
+  partyLimit?: number;
   plannedDamageRatios?: ReadonlyMap<number, number>;
   preferredTargetIds?: number | readonly number[];
 }
@@ -135,8 +136,8 @@ export function getComputerPartnerCaptureInterests(
       }
 
       const replacementScore =
-        getBestComputerPartnerReplacementSlot(profile, party, target)
-        ?? getForcedComputerPartnerCaptureSlotScore(profile, party, target, forceThrowTargetIdSet);
+        getBestComputerPartnerReplacementSlot(profile, party, target, options.partyLimit)
+        ?? getForcedComputerPartnerCaptureSlotScore(profile, party, target, forceThrowTargetIdSet, options.partyLimit);
       if (!replacementScore) {
         return undefined;
       }
@@ -257,10 +258,12 @@ function getForcedComputerPartnerCaptureSlotScore(
   party: PlayerPokemon[],
   target: EnemyPokemon,
   forceThrowTargetIdSet: Set<number>,
+  partyLimit = profile.roles.length,
 ): ComputerPartnerSlotScore | undefined {
+  const cappedPartyLimit = Math.min(Math.max(partyLimit, 0), profile.roles.length);
   if (
     !forceThrowTargetIdSet.has(target.id)
-    || party.length >= profile.roles.length
+    || party.length >= cappedPartyLimit
     || !isComputerPartnerCandidateAllowed(profile, target)
   ) {
     return undefined;

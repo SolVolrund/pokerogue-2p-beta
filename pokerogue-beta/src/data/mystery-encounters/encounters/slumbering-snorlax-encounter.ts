@@ -322,6 +322,7 @@ function registerSlumberingSnorlaxCaptureClaims(battlePlayers: PlayerIndex[]): v
         profile,
         globalScene.getPlayerParty(playerIndex),
         target,
+        globalScene.getPlayerPartyLimit(playerIndex),
       );
       return replacementScore ? { playerIndex, targetId: target.id, target } : undefined;
     })

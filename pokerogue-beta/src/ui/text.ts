@@ -155,7 +155,9 @@ export function getTextStyleOptions(
     case TextStyle.SUMMARY_STATS:
     case TextStyle.SUMMARY_STATS_BLUE:
     case TextStyle.SUMMARY_STATS_PINK:
-    case TextStyle.SUMMARY_STATS_GOLD: {
+    case TextStyle.SUMMARY_STATS_GOLD:
+    case TextStyle.SUMMARY_STATS_ORANGE:
+    case TextStyle.SUMMARY_STATS_PURPLE: {
       let fontSizeLabel = "96px";
       switch (lang) {
         case "pt-BR":
@@ -175,6 +177,8 @@ export function getTextStyleOptions(
     case TextStyle.SUMMARY_RED:
     case TextStyle.SUMMARY_PINK:
     case TextStyle.SUMMARY_GOLD:
+    case TextStyle.SUMMARY_ORANGE:
+    case TextStyle.SUMMARY_PURPLE:
     case TextStyle.SUMMARY_GRAY:
     case TextStyle.SUMMARY_GREEN:
     case TextStyle.WINDOW:
@@ -607,6 +611,12 @@ export function getTextColor(textStyle: TextStyle, shadow?: boolean): string {
     case TextStyle.SUMMARY_PINK:
     case TextStyle.SUMMARY_STATS_PINK:
       return shadow ? "#984038" : "#f89890";
+    case TextStyle.SUMMARY_ORANGE:
+    case TextStyle.SUMMARY_STATS_ORANGE:
+      return shadow ? "#c07800" : "#f8b050";
+    case TextStyle.SUMMARY_PURPLE:
+    case TextStyle.SUMMARY_STATS_PURPLE:
+      return shadow ? "#604080" : "#c888f8";
     case TextStyle.SUMMARY_GOLD:
     case TextStyle.SUMMARY_DEX_NUM_GOLD:
     case TextStyle.SUMMARY_STATS_GOLD:

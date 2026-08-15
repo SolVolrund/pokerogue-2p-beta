@@ -468,7 +468,7 @@ async function addGhostPokemonReward(playerIndex: PlayerIndex, entry: DejaVuGhos
     );
   };
 
-  if (globalScene.getPlayerParty(playerIndex).length >= PLAYER_PARTY_MAX_SIZE) {
+  if (globalScene.isPlayerPartyFull(playerIndex)) {
     await promptReleaseForGhostReward(playerIndex, getGhostPokemonLabel(entry), addToParty);
   } else {
     await addToParty();

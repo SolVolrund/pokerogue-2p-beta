@@ -1059,7 +1059,7 @@ export class MiningPhase extends Phase {
       await this.showMiningText(`${newPokemon.getNameToRender()} joined your team!`);
     };
 
-    if (globalScene.getPlayerParty(this.playerIndex).length >= PLAYER_PARTY_MAX_SIZE) {
+    if (globalScene.isPlayerPartyFull(this.playerIndex)) {
       const pokemonName = pokemon.getNameToRender();
       await this.promptReleaseForRewardPokemon(pokemonName, addToParty, async () => {
         pokemon.destroy();

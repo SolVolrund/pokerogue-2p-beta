@@ -745,13 +745,14 @@ export async function catchPokemon(
           end();
           return;
         }
-        if (globalScene.getPlayerParty(playerIndex).length === PLAYER_PARTY_MAX_SIZE) {
+        if (globalScene.isPlayerPartyFull(playerIndex)) {
           if (globalScene.isComputerPartnerPlayer(playerIndex)) {
             const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
             const replacementScore = getBestComputerPartnerReplacementSlot(
               profile,
               globalScene.getPlayerParty(playerIndex),
               pokemon,
+              globalScene.getPlayerPartyLimit(playerIndex),
             );
             const replacedPokemonIndex = replacementScore?.replacedPokemonIndex;
             const replacedPokemon = replacedPokemonIndex === undefined

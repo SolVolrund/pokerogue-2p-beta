@@ -37,7 +37,7 @@ import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encount
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { MoneyRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import { updateWindowType } from "#ui/ui-theme";
-import { BooleanHolder, NumberHolder, randSeedInt, randSeedItem } from "#utils/common";
+import { BooleanHolder, NumberHolder, randSeedInt } from "#utils/common";
 import {
   getBestComputerPartnerReplacementSlot,
   getComputerPartnerProfile,
@@ -520,7 +520,12 @@ function doesSafariTargetImproveComputerPartnerTeam(playerIndex: PlayerIndex, ta
     globalScene.getComputerPartnerKey(playerIndex),
     globalScene.getComputerPartnerRolePreferences(playerIndex),
   );
-  return !!getBestComputerPartnerReplacementSlot(profile, globalScene.getPlayerParty(playerIndex), target.pokemon);
+  return !!getBestComputerPartnerReplacementSlot(
+    profile,
+    globalScene.getPlayerParty(playerIndex),
+    target.pokemon,
+    globalScene.getPlayerPartyLimit(playerIndex),
+  );
 }
 
 function getSafariReservationOptionsForPlayer(playerIndex: PlayerIndex): { targetPlayerIndex: PlayerIndex; target: SafariTargetState }[] {
@@ -650,6 +655,7 @@ function chooseComputerPartnerSafariReservationTarget(playerIndex: PlayerIndex):
         profile,
         globalScene.getPlayerParty(playerIndex),
         option.target.pokemon,
+        globalScene.getPlayerPartyLimit(playerIndex),
       ),
     }))
     .filter(option => !!option.replacementScore)
@@ -657,7 +663,7 @@ function chooseComputerPartnerSafariReservationTarget(playerIndex: PlayerIndex):
       (b.replacementScore?.candidateTeamScore ?? 0) - (a.replacementScore?.candidateTeamScore ?? 0)
       || (b.replacementScore?.improvementRatio ?? 0) - (a.replacementScore?.improvementRatio ?? 0));
 
-  return (scoredOptions[0] ?? randSeedItem(options)).target.pokemon.id;
+  return scoredOptions[0]?.target.pokemon.id;
 }
 
 function chooseComputerPartnerSafariAction(playerIndex: PlayerIndex): SafariActionIndex {

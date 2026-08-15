@@ -15,6 +15,7 @@ import { CONTEST_STAT_MAX, type PartialContestStats } from "#data/contests/conte
 import { CONTEST_TYPES, ContestType } from "#data/contests/contest-type";
 import { isCosplayPikachuScarfItem } from "#data/cosplay-pikachu";
 import { getLevelTotalExp } from "#data/exp";
+import type { FusionOptions } from "#data/fusion-options";
 import { SpeciesFormChangeItemTrigger, SpeciesFormChangeManualTrigger } from "#data/form-change-triggers";
 import { MAX_PER_TYPE_POKEBALLS } from "#data/pokeball";
 import { SpeciesFormChange } from "#data/pokemon-forms";
@@ -3184,11 +3185,13 @@ export class EvolutionItemModifier extends ConsumablePokemonModifier {
 
 export class FusePokemonModifier extends ConsumablePokemonModifier {
   public fusePokemonId: number;
+  private fusionOptions: FusionOptions | undefined;
 
-  constructor(type: ModifierType, pokemonId: number, fusePokemonId: number) {
+  constructor(type: ModifierType, pokemonId: number, fusePokemonId: number, fusionOptions?: FusionOptions) {
     super(type, pokemonId);
 
     this.fusePokemonId = fusePokemonId;
+    this.fusionOptions = fusionOptions;
   }
 
   /**
@@ -3210,7 +3213,7 @@ export class FusePokemonModifier extends ConsumablePokemonModifier {
    * @returns always Promise<true>
    */
   override apply(playerPokemon: PlayerPokemon, playerPokemon2: PlayerPokemon): boolean {
-    playerPokemon.fuse(playerPokemon2);
+    playerPokemon.fuse(playerPokemon2, this.fusionOptions);
     return true;
   }
 }

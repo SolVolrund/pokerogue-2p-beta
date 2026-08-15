@@ -356,6 +356,7 @@ export class AttemptCapturePhase extends PokemonPhase {
             profile,
             globalScene.getPlayerParty(this.playerIndex),
             pokemon,
+            globalScene.getPlayerPartyLimit(this.playerIndex),
           );
           const replacedPokemonIndex = replacementScore?.replacedPokemonIndex;
           const replacedPokemon = replacedPokemonIndex === undefined
@@ -412,13 +413,14 @@ export class AttemptCapturePhase extends PokemonPhase {
             resolveComputerPartnerWildCapture();
             return;
           }
-          if (globalScene.getPlayerParty(this.playerIndex).length === PLAYER_PARTY_MAX_SIZE) {
+          if (globalScene.isPlayerPartyFull(this.playerIndex)) {
             if (globalScene.isComputerPartnerPlayer(this.playerIndex)) {
               const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(this.playerIndex));
               const replacementScore = getBestComputerPartnerReplacementSlot(
                 profile,
                 globalScene.getPlayerParty(this.playerIndex),
                 pokemon,
+                globalScene.getPlayerPartyLimit(this.playerIndex),
               );
               const replacedPokemonIndex = replacementScore?.replacedPokemonIndex;
               const replacedPokemon = replacedPokemonIndex === undefined

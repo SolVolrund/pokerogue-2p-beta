@@ -729,6 +729,7 @@ export class EncounterPhase extends BattlePhase {
         globalScene.getEnemyField(),
         undefined,
         globalScene.getComputerPartnerRolePreferences(playerIndex),
+        { partyLimit: globalScene.getPlayerPartyLimit(playerIndex) },
       );
       globalScene.currentBattle.computerPartnerCaptureInterests.push({ playerIndex, interests });
 
@@ -737,6 +738,8 @@ export class EncounterPhase extends BattlePhase {
         interests,
         globalScene.getEnemyField(),
         globalScene.getPlayerPokeballCounts(playerIndex),
+        undefined,
+        { partyLimit: globalScene.getPlayerPartyLimit(playerIndex) },
       );
 
       if (captureDecisions.length === 0) {

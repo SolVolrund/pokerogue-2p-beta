@@ -1,6 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import { getContestSpectacularEffect } from "#data/contests/contest-spectacular-effects";
 import { getContestSpectacularMove } from "#data/contests/contest-spectacular-moves";
+import { FusionOptions, type FusionComponent, type FusionNatureMode, type FusionTypeSlot } from "#data/fusion-options";
 import { getNatureName, getNatureStatMultiplier } from "#data/nature";
 import { getTypeRgb } from "#data/type";
 import { Button } from "#enums/buttons";
@@ -25,7 +26,11 @@ enum FusionSummaryPage {
   MOVES,
 }
 
-type FusionSummaryCallback = (bodySlotIndex?: number, donorSlotIndex?: number) => void;
+export type FusionSummaryCallback = (
+  bodySlotIndex?: number,
+  donorSlotIndex?: number,
+  fusionOptions?: FusionOptions,
+) => void;
 
 const PAGE_TITLES = ["SPRITE", "STATUS", "STATS", "MOVES"] as const;
 
@@ -136,6 +141,8 @@ export class FusionSummaryUiHandler extends UiHandler {
     if (button === Button.ACTION) {
       if (this.cursor === FusionSummaryPage.MOVES) {
         success = this.processMoveAction();
+      } else if (this.isSelectedFusionTypeless()) {
+        error = true;
       } else {
         this.showFinishConfirmation(true);
         success = true;
@@ -221,17 +228,13 @@ export class FusionSummaryUiHandler extends UiHandler {
         return this.setCursor(FusionSummaryPage.STATS);
       case Button.DEV_CUSTOM:
       case Button.CYCLE_GENDER:
-        this.p1TypeChoice++;
-        this.renderPage();
-        return true;
+        return this.cycleFusionTypeChoice("body");
       case Button.UP:
         this.teraChoice = (this.teraChoice + 1) % 2;
         this.renderPage();
         return true;
       case Button.CYCLE_ABILITY:
-        this.p2TypeChoice++;
-        this.renderPage();
-        return true;
+        return this.cycleFusionTypeChoice("donor");
       case Button.CYCLE_SHINY:
         this.abilityChoice = (this.abilityChoice + 1) % 2;
         this.renderPage();
@@ -521,13 +524,20 @@ export class FusionSummaryUiHandler extends UiHandler {
         yBase - 1 + row * 16,
         stat,
         this.getDisplayedStat(stat, primary, secondary, mode),
+        this.getDisplayedNatureStatMultiplier(stat, primary, secondary, mode),
       );
     });
   }
 
-  private addStatRow(labelX: number, valueX: number, y: number, stat: PermanentStat, value: number): void {
-    const labelStyle =
-      stat === Stat.DEF ? TextStyle.SUMMARY_BLUE : stat === Stat.SPATK ? TextStyle.SUMMARY_RED : TextStyle.SUMMARY;
+  private addStatRow(
+    labelX: number,
+    valueX: number,
+    y: number,
+    stat: PermanentStat,
+    value: number,
+    natureStatMultiplier: number,
+  ): void {
+    const labelStyle = this.getNatureStatTextStyle(natureStatMultiplier);
     const label = addTextObject(labelX, y, i18next.t(getStatKey(stat)), labelStyle, { fontSize: "66px" });
     label.setOrigin(0, 0);
     this.fitTextToWidth(label, 48);
@@ -717,7 +727,7 @@ export class FusionSummaryUiHandler extends UiHandler {
         return;
       }
 
-      const signStyle = sign === "+" ? TextStyle.SUMMARY_RED : TextStyle.SUMMARY_BLUE;
+      const signStyle = this.getNatureSignTextStyle(sign);
       const signText = addTextObject(signX, y, sign, signStyle, { fontSize: "44px" });
       signText.setOrigin(0.5, 0);
       this.pageContainer.add(signText);
@@ -962,11 +972,67 @@ export class FusionSummaryUiHandler extends UiHandler {
     return Math.ceil((2 * primary.getStat(stat) + secondary.getStat(stat)) / 3);
   }
 
+  private getDisplayedNatureStatMultiplier(
+    stat: PermanentStat,
+    primary: PlayerPokemon,
+    secondary: PlayerPokemon,
+    mode: "body" | "fusion",
+  ): number {
+    if (mode === "body") {
+      return primary.getNatureStatMultiplierForStat(stat);
+    }
+
+    const selectedNature = this.getChosenNature(primary, secondary);
+    if (selectedNature !== null) {
+      return getNatureStatMultiplier(selectedNature, stat);
+    }
+
+    const combinedDelta =
+      this.getNatureMultiplierDelta(getNatureStatMultiplier(primary.getNature(), stat))
+      + this.getNatureMultiplierDelta(getNatureStatMultiplier(secondary.getNature(), stat));
+    return 1 + combinedDelta * 0.1;
+  }
+
   private getTypeChoice(pokemon: PlayerPokemon, index: number): PokemonType {
     const types = pokemon
       .getTypes({ includeTeraType: false, bypassSummonData: true, ignoreThirdType: true })
       .filter(type => type !== PokemonType.UNKNOWN);
     return types[index] ?? PokemonType.UNKNOWN;
+  }
+
+  private cycleFusionTypeChoice(component: FusionComponent): boolean {
+    const nextBodyChoice = component === "body" ? this.getNextTypeChoice(this.p1TypeChoice) : this.p1TypeChoice;
+    const nextDonorChoice = component === "donor" ? this.getNextTypeChoice(this.p2TypeChoice) : this.p2TypeChoice;
+
+    if (this.isSelectedFusionTypeless(nextBodyChoice, nextDonorChoice)) {
+      this.getUi().playError();
+      return false;
+    }
+
+    this.p1TypeChoice = nextBodyChoice;
+    this.p2TypeChoice = nextDonorChoice;
+    this.renderPage();
+    return true;
+  }
+
+  private getNextTypeChoice(choice: number): number {
+    return (choice + 1) % 2;
+  }
+
+  private isSelectedFusionTypeless(
+    bodyChoice = this.p1TypeChoice,
+    donorChoice = this.p2TypeChoice,
+  ): boolean {
+    const body = this.bodyPokemon;
+    const donor = this.donorPokemon;
+    if (!body || !donor) {
+      return false;
+    }
+
+    return (
+      this.getTypeChoice(body, this.getTypeSlotChoice(bodyChoice)) === PokemonType.UNKNOWN
+      && this.getTypeChoice(donor, this.getTypeSlotChoice(donorChoice)) === PokemonType.UNKNOWN
+    );
   }
 
   private getChosenNatureLabel(body: PlayerPokemon, donor: PlayerPokemon): string {
@@ -1002,8 +1068,14 @@ export class FusionSummaryUiHandler extends UiHandler {
     const combinedDelta =
       this.getNatureMultiplierDelta(getNatureStatMultiplier(body.getNature(), stat))
       + this.getNatureMultiplierDelta(getNatureStatMultiplier(donor.getNature(), stat));
-    if (combinedDelta > 0) {
+    if (combinedDelta >= 2) {
+      return "++";
+    }
+    if (combinedDelta === 1) {
       return "+";
+    }
+    if (combinedDelta <= -2) {
+      return "--";
     }
     if (combinedDelta < 0) {
       return "-";
@@ -1029,6 +1101,35 @@ export class FusionSummaryUiHandler extends UiHandler {
       return -1;
     }
     return 0;
+  }
+
+  private getNatureStatTextStyle(multiplier: number): TextStyle {
+    if (multiplier >= 1.2) {
+      return TextStyle.SUMMARY_STATS_ORANGE;
+    }
+    if (multiplier > 1) {
+      return TextStyle.SUMMARY_STATS_PINK;
+    }
+    if (multiplier <= 0.8) {
+      return TextStyle.SUMMARY_STATS_PURPLE;
+    }
+    if (multiplier < 1) {
+      return TextStyle.SUMMARY_STATS_BLUE;
+    }
+    return TextStyle.SUMMARY_STATS;
+  }
+
+  private getNatureSignTextStyle(sign: string): TextStyle {
+    if (sign === "++") {
+      return TextStyle.SUMMARY_ORANGE;
+    }
+    if (sign === "+") {
+      return TextStyle.SUMMARY_RED;
+    }
+    if (sign === "--") {
+      return TextStyle.SUMMARY_PURPLE;
+    }
+    return TextStyle.SUMMARY_BLUE;
   }
 
   private getFusionPreviewName(): string {
@@ -1086,14 +1187,51 @@ export class FusionSummaryUiHandler extends UiHandler {
   }
 
   private finish(acceptFusion: boolean): void {
+    if (acceptFusion && this.bodySlotIndex !== this.donorSlotIndex && this.isSelectedFusionTypeless()) {
+      this.getUi().playError();
+      return;
+    }
+
     const callback = this.selectCallback;
     this.selectCallback = null;
 
     if (acceptFusion && this.bodySlotIndex !== this.donorSlotIndex) {
-      callback?.(this.bodySlotIndex, this.donorSlotIndex);
+      callback?.(this.bodySlotIndex, this.donorSlotIndex, this.buildFusionOptions());
     } else {
       callback?.();
     }
+  }
+
+  private buildFusionOptions(): FusionOptions {
+    return new FusionOptions({
+      spriteBody: "body",
+      palette: "donor",
+      statPrimary: this.getComponentForSlot(this.statBodySlotIndex),
+      bodyTypeSlot: this.getTypeSlotChoice(this.p1TypeChoice),
+      donorTypeSlot: this.getTypeSlotChoice(this.p2TypeChoice),
+      teraSource: this.getChoiceComponent(this.teraChoice),
+      abilitySource: this.getChoiceComponent(this.abilityChoice),
+      natureMode: this.getNatureModeChoice(),
+      passiveSource: this.getChoiceComponent(this.passiveChoice),
+      moves: this.fusionMoveSlots.map(move => move?.id ?? null),
+    });
+  }
+
+  private getComponentForSlot(slotIndex: number): FusionComponent {
+    return slotIndex === this.donorSlotIndex ? "donor" : "body";
+  }
+
+  private getChoiceComponent(choice: number): FusionComponent {
+    return choice % 2 === 1 ? "donor" : "body";
+  }
+
+  private getNatureModeChoice(): FusionNatureMode {
+    const choices: FusionNatureMode[] = ["body", "donor", "mixed"];
+    return choices[this.natureChoice % choices.length];
+  }
+
+  private getTypeSlotChoice(choice: number): FusionTypeSlot {
+    return choice % 2 === 1 ? 1 : 0;
   }
 
   private isEligibleSlot(slotIndex: number): boolean {

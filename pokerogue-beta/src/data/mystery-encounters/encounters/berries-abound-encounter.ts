@@ -351,6 +351,7 @@ function registerBerriesAboundCaptureClaims(battlePlayers: PlayerIndex[]): void 
         profile,
         globalScene.getPlayerParty(playerIndex),
         boss,
+        globalScene.getPlayerPartyLimit(playerIndex),
       );
       return replacementScore ? { playerIndex, targetId: boss.id, target: boss } : undefined;
     })

@@ -234,23 +234,26 @@ export class TitlePhase extends Phase {
       {
         label: "Host 2P",
         handler: () => {
-          this.hostMultiplayerLobby(2);
+          this.showMultiplayerLobbyTeamSizeSelect(2);
           return true;
         },
+        keepOpen: true,
       },
       {
         label: "Host 3P",
         handler: () => {
-          this.hostMultiplayerLobby(3);
+          this.showMultiplayerLobbyTeamSizeSelect(3);
           return true;
         },
+        keepOpen: true,
       },
       {
         label: "Host 2P+1C",
         handler: () => {
-          this.hostMultiplayerLobby(3, [2]);
+          this.showMultiplayerLobbyTeamSizeSelect(3, [2]);
           return true;
         },
+        keepOpen: true,
       },
       {
         label: "Join as 2P",
@@ -325,6 +328,48 @@ export class TitlePhase extends Phase {
     ];
 
     this.showOptionSelectWithText("Save Data", options);
+  }
+
+  private getLimitedTeamSizeLabel(playerCount: 2 | 3): string {
+    return playerCount === 3
+      ? i18next.t("menu:twoPlayerTwoTwoTwoMode")
+      : i18next.t("menu:twoPlayerThreeThreeMode");
+  }
+
+  private showMultiplayerLobbyTeamSizeSelect(
+    playerCount: MultiplayerLobbyPlayerCount,
+    computerPartnerPlayerIndexes: PlayerIndex[] = [],
+  ): void {
+    const startLobby = (partySize: 3 | 6) => {
+      this.hostMultiplayerLobby(playerCount, partySize, computerPartnerPlayerIndexes);
+    };
+
+    const options: OptionSelectItem[] = [
+      {
+        label: i18next.t("menu:twoPlayerFullMode"),
+        handler: () => {
+          startLobby(6);
+          return true;
+        },
+      },
+      {
+        label: this.getLimitedTeamSizeLabel(playerCount),
+        handler: () => {
+          startLobby(3);
+          return true;
+        },
+      },
+      {
+        label: i18next.t("menu:cancel"),
+        handler: () => {
+          this.showMultiplayerSelect();
+          return true;
+        },
+        keepOpen: true,
+      },
+    ];
+
+    this.showOptionSelectWithText(i18next.t("menu:selectTeamSize"), options);
   }
 
   private async showRunExportSlotSelect(): Promise<void> {
@@ -403,6 +448,7 @@ export class TitlePhase extends Phase {
 
   private hostMultiplayerLobby(
     playerCount: MultiplayerLobbyPlayerCount,
+    partySize: 3 | 6 = 6,
     computerPartnerPlayerIndexes: PlayerIndex[] = [],
   ): void {
     if (this.isLocalJoinHost(window.location.hostname)) {
@@ -411,6 +457,7 @@ export class TitlePhase extends Phase {
           (lanAddress: string) => {
             this.showCreatedMultiplayerLobby(
               playerCount,
+              partySize,
               this.normalizeLobbyLanAddress(lanAddress),
               computerPartnerPlayerIndexes,
             );
@@ -423,11 +470,12 @@ export class TitlePhase extends Phase {
       return;
     }
 
-    this.showCreatedMultiplayerLobby(playerCount, undefined, computerPartnerPlayerIndexes);
+    this.showCreatedMultiplayerLobby(playerCount, partySize, undefined, computerPartnerPlayerIndexes);
   }
 
   private showCreatedMultiplayerLobby(
     playerCount: MultiplayerLobbyPlayerCount,
+    partySize: 3 | 6 = 6,
     lanAddress?: string,
     computerPartnerPlayerIndexes: PlayerIndex[] = [],
   ): void {
@@ -437,6 +485,7 @@ export class TitlePhase extends Phase {
       "host",
       lanAddress,
       playerCount,
+      partySize,
       undefined,
       computerPartnerPlayerIndexes,
     );
@@ -445,12 +494,21 @@ export class TitlePhase extends Phase {
       "guest",
       lanAddress,
       playerCount,
+      partySize,
       1,
       computerPartnerPlayerIndexes,
     );
     const player3Url =
       playerCount === 3 && !computerPartnerPlayerIndexes.includes(2)
-        ? this.getMultiplayerLobbyUrl(lobbyCode, "guest", lanAddress, playerCount, 2, computerPartnerPlayerIndexes)
+        ? this.getMultiplayerLobbyUrl(
+            lobbyCode,
+            "guest",
+            lanAddress,
+            playerCount,
+            partySize,
+            2,
+            computerPartnerPlayerIndexes,
+          )
         : undefined;
     const hostAddress = this.getDisplayHostAddress(lanAddress);
 
@@ -458,6 +516,10 @@ export class TitlePhase extends Phase {
       fields: [
         { label: "Lobby ID", value: lobbyCode },
         { label: "Web Address", value: hostAddress },
+        {
+          label: "Team Size",
+          value: partySize === 6 ? i18next.t("menu:twoPlayerFullMode") : this.getLimitedTeamSizeLabel(playerCount),
+        },
         { label: "Player 2 Link", value: player2Url },
         ...(player3Url ? [{ label: "Player 3 Link", value: player3Url }] : []),
         ...(computerPartnerPlayerIndexes.includes(2) ? [{ label: "Player 3", value: "CPU Partner" }] : []),
@@ -552,6 +614,7 @@ export class TitlePhase extends Phase {
         this.normalizeLobbyCode(sessionId),
         "guest",
         undefined,
+        undefined,
         guestSeat,
       ).toString();
     }
@@ -566,7 +629,7 @@ export class TitlePhase extends Phase {
       return "";
     }
 
-    return this.getMultiplayerLobbyUrl(lobbyCode, "guest", normalizedHostAddress, undefined, guestSeat);
+    return this.getMultiplayerLobbyUrl(lobbyCode, "guest", normalizedHostAddress, undefined, undefined, guestSeat);
   }
 
   private parseLobbyUrl(input: string): URL | undefined {
@@ -607,6 +670,7 @@ export class TitlePhase extends Phase {
     role: "host" | "guest",
     lanAddress?: string,
     playerCount?: MultiplayerLobbyPlayerCount,
+    partySize?: 3 | 6,
     guestSeat?: MultiplayerGuestSeat,
     computerPartnerPlayerIndexes: PlayerIndex[] = [],
   ): string {
@@ -617,6 +681,7 @@ export class TitlePhase extends Phase {
       lobbyCode,
       role,
       playerCount,
+      partySize,
       guestSeat,
       computerPartnerPlayerIndexes,
     ).toString();
@@ -627,6 +692,7 @@ export class TitlePhase extends Phase {
     lobbyCode: string,
     role: "host" | "guest",
     requestedPlayerCount?: MultiplayerLobbyPlayerCount,
+    requestedPartySize?: 3 | 6,
     requestedGuestSeat?: MultiplayerGuestSeat,
     requestedComputerPartnerPlayerIndexes: PlayerIndex[] = [],
   ): URL {
@@ -643,12 +709,14 @@ export class TitlePhase extends Phase {
         : 1);
     const playerCount =
       requestedPlayerCount ?? (url.searchParams.get("twoPlayerPlayerCount") === "3" || guestSeat === 2 ? 3 : 2);
+    const partySize = requestedPartySize ?? (url.searchParams.get("twoPlayerPartySize") === "3" ? 3 : 6);
 
     url.searchParams.set("twoPlayer", "1");
     url.searchParams.set("twoPlayerInputTransport", "websocket");
     url.searchParams.set("twoPlayerNetworkRole", role);
     url.searchParams.set("twoPlayerLocalPlayer", role === "host" ? "1" : `${guestSeat + 1}`);
     url.searchParams.set("twoPlayerPlayerCount", `${playerCount}`);
+    url.searchParams.set("twoPlayerPartySize", `${partySize}`);
     if (requestedComputerPartnerPlayerIndexes.length > 0) {
       url.searchParams.set("twoPlayerComputerPartner", "1");
       url.searchParams.set(
@@ -755,7 +823,7 @@ export class TitlePhase extends Phase {
       {
         label: i18next.t("menu:twoPlayer"),
         handler: () => {
-          this.showTwoPlayerModeSelect(gameMode);
+          this.showTwoPlayerModeSelect(gameMode, 2);
           return true;
         },
         keepOpen: true,
@@ -769,10 +837,11 @@ export class TitlePhase extends Phase {
               this.showPlayerCountSelect(gameMode),
             );
           } else {
-            this.startMultiplayerRun(gameMode, 3, 6);
+            this.showTwoPlayerModeSelect(gameMode, 3);
           }
           return true;
         },
+        keepOpen: true,
       },
       {
         label: "2P+1C",
@@ -878,7 +947,7 @@ export class TitlePhase extends Phase {
           if (selectedComputerPartnerPlayerIndexes.length > 1) {
             this.setComputerPartner(currentPartnerPlayerIndex, key);
           }
-          this.startMultiplayerRun(gameMode, playerCount, 6, selectedComputerPartnerPlayerIndexes);
+          this.showTwoPlayerModeSelect(gameMode, playerCount, selectedComputerPartnerPlayerIndexes);
           return true;
         },
       };
@@ -973,7 +1042,7 @@ export class TitlePhase extends Phase {
       if (selectedComputerPartnerPlayerIndexes.length > 1) {
         this.setComputerPartner(currentPartnerPlayerIndex, key, nextRolePreferences);
       }
-      this.startMultiplayerRun(gameMode, playerCount, 6, selectedComputerPartnerPlayerIndexes);
+      this.showTwoPlayerModeSelect(gameMode, playerCount, selectedComputerPartnerPlayerIndexes);
     };
 
     const options: OptionSelectItem[] = [
@@ -1033,7 +1102,11 @@ export class TitlePhase extends Phase {
     globalScene.setComputerPartnerRolePreferences(playerIndex, key === "alex" ? rolePreferences : undefined);
   }
 
-  private showTwoPlayerModeSelect(gameMode: GameModes): void {
+  private showTwoPlayerModeSelect(
+    gameMode: GameModes,
+    playerCount: 2 | 3,
+    computerPartnerPlayerIndexes: PlayerIndex[] = [],
+  ): void {
     const startTwoPlayer = (partySize: 3 | 6) => {
       if (gameMode === GameModes.DAILY) {
         globalScene.ui.setMode(UiMode.MESSAGE);
@@ -1041,7 +1114,7 @@ export class TitlePhase extends Phase {
           this.showPlayerCountSelect(gameMode),
         );
       } else {
-        this.startMultiplayerRun(gameMode, 2, partySize);
+        this.startMultiplayerRun(gameMode, playerCount, partySize, computerPartnerPlayerIndexes);
       }
     };
 
@@ -1054,7 +1127,7 @@ export class TitlePhase extends Phase {
         },
       },
       {
-        label: i18next.t("menu:twoPlayerHalfMode"),
+        label: this.getLimitedTeamSizeLabel(playerCount),
         handler: () => {
           startTwoPlayer(3);
           return true;
@@ -1070,7 +1143,7 @@ export class TitlePhase extends Phase {
       },
     ];
 
-    this.showOptionSelectWithText(i18next.t("menu:selectTwoPlayerMode"), options);
+    this.showOptionSelectWithText(i18next.t("menu:selectTeamSize"), options);
   }
 
   private startMultiplayerRun(

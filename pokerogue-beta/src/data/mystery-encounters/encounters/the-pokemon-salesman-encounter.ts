@@ -155,7 +155,12 @@ function chooseComputerPartnerPokemonSalesmanOption(playerIndex: PlayerIndex): P
   }
 
   const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
-  return getBestComputerPartnerReplacementSlot(profile, globalScene.getPlayerParty(playerIndex), offer.pokemon)
+  return getBestComputerPartnerReplacementSlot(
+    profile,
+    globalScene.getPlayerParty(playerIndex),
+    offer.pokemon,
+    globalScene.getPlayerPartyLimit(playerIndex),
+  )
     ? 1
     : 2;
 }

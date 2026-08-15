@@ -208,7 +208,10 @@ export class SpeciesEvolutionCondition {
 }
 
 export function validateShedinjaEvo(): boolean {
-  return globalScene.getPlayerParty().length < 6 && globalScene.pokeballCounts[PokeballType.POKEBALL] > 0;
+  return (
+    globalScene.getPlayerParty().length < globalScene.getPlayerPartyLimit()
+    && globalScene.pokeballCounts[PokeballType.POKEBALL] > 0
+  );
 }
 
 interface SpeciesFormEvolutionConstructor {

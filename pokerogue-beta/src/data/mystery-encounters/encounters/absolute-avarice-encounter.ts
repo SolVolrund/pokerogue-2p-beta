@@ -1,4 +1,3 @@
-import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
@@ -263,6 +262,7 @@ function doesGreedentImproveComputerPartnerTeam(playerIndex: PlayerIndex): boole
     profile,
     globalScene.getPlayerParty(playerIndex),
     getPokemonSpecies(SpeciesId.GREEDENT),
+    globalScene.getPlayerPartyLimit(playerIndex),
   );
 }
 
@@ -402,7 +402,7 @@ async function giveGreedentToPlayer(playerIndex: PlayerIndex): Promise<void> {
   };
 
   const party = globalScene.getPlayerParty(playerIndex);
-  if (party.length < PLAYER_PARTY_MAX_SIZE) {
+  if (!globalScene.isPlayerPartyFull(playerIndex)) {
     await addGreedentToParty();
     return;
   }
@@ -412,7 +412,12 @@ async function giveGreedentToPlayer(playerIndex: PlayerIndex): Promise<void> {
       globalScene.getComputerPartnerKey(playerIndex),
       globalScene.getComputerPartnerRolePreferences(playerIndex),
     );
-    const replacementScore = getBestComputerPartnerReplacementSlot(profile, party, greedent);
+    const replacementScore = getBestComputerPartnerReplacementSlot(
+      profile,
+      party,
+      greedent,
+      globalScene.getPlayerPartyLimit(playerIndex),
+    );
     const replacedPokemonIndex = replacementScore?.replacedPokemonIndex;
     const replacedPokemon = replacedPokemonIndex === undefined ? undefined : party[replacedPokemonIndex];
 

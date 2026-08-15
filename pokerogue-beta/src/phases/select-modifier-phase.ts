@@ -12,6 +12,7 @@ import {
   getAlphTileDisplayCharacter,
   getAlphTileItemIconKey,
 } from "#data/alph/alph-tiles";
+import type { FusionOptions } from "#data/fusion-options";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import type { ModifierTier } from "#enums/modifier-tier";
 import { LearnMoveType } from "#enums/learn-move-type";
@@ -1011,7 +1012,7 @@ export class SelectModifierPhase extends BattlePhase {
       .setModeWithoutClear(
         UiMode.FUSION_SUMMARY,
         party,
-        (fromSlotIndex?: number, spliceSlotIndex?: number) => {
+        (fromSlotIndex?: number, spliceSlotIndex?: number, fusionOptions?: FusionOptions) => {
           if (
             spliceSlotIndex !== undefined
             && fromSlotIndex !== undefined
@@ -1020,7 +1021,7 @@ export class SelectModifierPhase extends BattlePhase {
             && fromSlotIndex !== spliceSlotIndex
           ) {
             globalScene.ui.setMode(UiMode.MODIFIER_SELECT, this.isPlayer()).then(() => {
-              const modifier = modifierType.newModifier(party[fromSlotIndex], party[spliceSlotIndex])!; //TODO: is the bang correct?
+              const modifier = modifierType.newModifier(party[fromSlotIndex], party[spliceSlotIndex], fusionOptions)!; //TODO: is the bang correct?
               this.applyModifier(modifier, cost, true);
             });
           } else {

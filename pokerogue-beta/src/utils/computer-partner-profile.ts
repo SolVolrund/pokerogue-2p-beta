@@ -1,5 +1,6 @@
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { globalScene } from "#app/global-scene";
+import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { speciesEggMoves } from "#balance/moves/egg-moves";
 import { EvoCondKey, EvolutionItem, type SpeciesFormEvolution } from "#balance/pokemon-evolutions";
 import {
@@ -999,14 +1000,16 @@ export function getComputerPartnerReplacementScores(
   profile: ComputerPartnerProfile,
   party: PlayerPokemon[],
   candidate: ComputerPartnerScoringPokemon,
+  partyLimit = PLAYER_PARTY_MAX_SIZE,
 ): ComputerPartnerSlotScore[] {
   if (!isComputerPartnerCandidateAllowed(profile, candidate)) {
     return [];
   }
 
+  const cappedPartyLimit = Math.min(Math.max(partyLimit, 0), profile.roles.length);
   const currentTeamScore = scoreComputerPartnerTeam(profile, party);
   const replacementOptions =
-    party.length < profile.roles.length
+    party.length < cappedPartyLimit
       ? [{ slotIndex: party.length, replacedPokemon: undefined, replacedPokemonIndex: undefined }]
       : party
           .map((replacedPokemon, replacedPokemonIndex) => ({
@@ -1057,8 +1060,9 @@ export function getBestComputerPartnerReplacementSlot(
   profile: ComputerPartnerProfile,
   party: PlayerPokemon[],
   candidate: ComputerPartnerScoringPokemon,
+  partyLimit = PLAYER_PARTY_MAX_SIZE,
 ): ComputerPartnerSlotScore | undefined {
-  return getComputerPartnerReplacementScores(profile, party, candidate)
+  return getComputerPartnerReplacementScores(profile, party, candidate, partyLimit)
     .filter(score => score.canReplace)
     .sort((a, b) => b.candidateTeamScore - a.candidateTeamScore || b.improvementRatio - a.improvementRatio)[0];
 }

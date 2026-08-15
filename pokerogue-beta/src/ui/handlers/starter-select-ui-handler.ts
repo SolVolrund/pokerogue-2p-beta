@@ -1,5 +1,4 @@
 import type { Ability } from "#abilities/ability";
-import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
@@ -1823,7 +1822,8 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     } else if (this.randomCursorObj.visible) {
       switch (button) {
         case Button.ACTION: {
-          if (this.starterSpecies.length >= 6) {
+          const partyLimit = globalScene.getPlayerPartyLimit();
+          if (this.starterSpecies.length >= partyLimit) {
             error = true;
             break;
           }
@@ -1948,9 +1948,10 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       if (button === Button.ACTION) {
         if (!this.speciesStarterDexEntry?.caughtAttr) {
           error = true;
-        } else if (this.starterSpecies.length <= 6) {
-          // checks to see if the party has 6 or fewer pokemon
+        } else if (this.starterSpecies.length <= globalScene.getPlayerPartyLimit()) {
+          // Checks whether the starter party still fits the selected team-size mode.
           const ui = this.getUi();
+          const partyLimit = globalScene.getPlayerPartyLimit();
           let options: any[] = []; // TODO: add proper type
 
           const [isDupe, removeIndex]: [boolean, number] = this.isInParty(this.lastSpecies);
@@ -1977,7 +1978,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
             !isDupe
             && isValidForChallenge
             && currentPartyValue + newCost <= this.getValueLimit()
-            && this.starterSpecies.length < PLAYER_PARTY_MAX_SIZE
+            && this.starterSpecies.length < partyLimit
           ) {
             options = [
               {
