@@ -1049,6 +1049,39 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     return this.fusionSpecies.forms[this.fusionFormIndex].formKey;
   }
 
+  public getAbilitySourceComponent(passive = false): FusionComponent {
+    if (!this.isFusion()) {
+      return "body";
+    }
+    if (
+      !passive
+      && (this.summonData.ability
+        || (activeOverrides.ABILITY_OVERRIDE && this.isPlayer())
+        || (activeOverrides.ENEMY_ABILITY_OVERRIDE && this.isEnemy()))
+    ) {
+      return "body";
+    }
+    if (
+      passive
+      && ((activeOverrides.PASSIVE_ABILITY_OVERRIDE && this.isPlayer())
+        || (activeOverrides.ENEMY_PASSIVE_ABILITY_OVERRIDE && this.isEnemy()))
+    ) {
+      return "body";
+    }
+    if (this.fusionOptions) {
+      return passive ? this.fusionOptions.passiveSource : this.fusionOptions.abilitySource;
+    }
+    return passive ? "body" : "donor";
+  }
+
+  public getFormIndexForComponent(component: FusionComponent): number {
+    return component === "donor" && this.isFusion() ? this.fusionFormIndex : this.formIndex;
+  }
+
+  public getFormKeyForComponent(component: FusionComponent): string {
+    return component === "donor" && this.isFusion() ? (this.getFusionFormKey() ?? "") : this.getFormKey();
+  }
+
   public isFusionFormChange(formChange: SpeciesFormChange): boolean {
     return this.isFusion() && this.fusionSpecies?.speciesId === formChange.speciesId;
   }
@@ -1083,6 +1116,27 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       }
     }
     return formChange.trigger.canChange(this);
+  }
+
+  public hasApplicableFormChange(formChangeTriggerType: Constructor<SpeciesFormChangeTrigger>): boolean {
+    const bodyCanChange =
+      speciesDataRegistry.hasFormChanges(this.species.speciesId)
+      && speciesDataRegistry
+        .getFormChanges(this.species.speciesId)
+        .some(fc => fc.findTrigger(formChangeTriggerType) && fc.canChange(this));
+
+    if (bodyCanChange) {
+      return true;
+    }
+
+    return !!(
+      this.isFusion()
+      && this.fusionSpecies
+      && speciesDataRegistry.hasFormChanges(this.fusionSpecies.speciesId)
+      && speciesDataRegistry
+        .getFormChanges(this.fusionSpecies.speciesId)
+        .some(fc => this.canApplyFusionFormChange(fc, formChangeTriggerType))
+    );
   }
 
   protected getFormChangeIndex(formChange: SpeciesFormChange): number {
@@ -3317,14 +3371,19 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     }
   }
 
-  protected syncSpecialFormMove(previousFormKey?: string): void {
+  protected syncSpecialFormMove(previousFormKey?: string, component: FusionComponent = "body"): void {
     this.pendingFormMoveLearn = null;
-    const formMoveConfig = getFormMoveSyncConfig(this.species.speciesId);
+    const species = component === "donor" ? this.fusionSpecies : this.species;
+    if (!species) {
+      return;
+    }
+    const formMoveConfig = getFormMoveSyncConfig(species.speciesId);
     if (formMoveConfig == null) {
       return;
     }
 
-    const formMove = formMoveConfig.formMoves[this.getFormKey()];
+    const currentFormKey = component === "donor" ? (this.getFusionFormKey() ?? "") : this.getFormKey();
+    const formMove = formMoveConfig.formMoves[currentFormKey];
     if (formMove == null || this.getMoveset(true).some(move => move?.moveId === formMove)) {
       return;
     }
@@ -5093,9 +5152,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       this.gender = Gender.FEMALE;
     }
     this.generateName();
-    if (!isFusionFormChange) {
-      this.syncSpecialFormMove(previousFormKey);
-    }
+    this.syncSpecialFormMove(previousFormKey, isFusionFormChange ? "donor" : "body");
 
     const abilityCount = isFusionFormChange
       ? this.getFusionSpeciesForm().getAbilityCount()
@@ -6921,9 +6978,7 @@ export class PlayerPokemon extends Pokemon {
         this.gender = Gender.FEMALE;
       }
       this.generateName();
-      if (!isFusionFormChange) {
-        this.syncSpecialFormMove(previousFormKey);
-      }
+      this.syncSpecialFormMove(previousFormKey, isFusionFormChange ? "donor" : "body");
       const abilityCount = isFusionFormChange
         ? this.getFusionSpeciesForm().getAbilityCount()
         : this.getSpeciesForm().getAbilityCount();

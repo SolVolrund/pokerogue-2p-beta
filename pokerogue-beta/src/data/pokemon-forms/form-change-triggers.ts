@@ -316,7 +316,9 @@ export function getSpeciesFormChangeMessage(pokemon: Pokemon, formChange: Specie
   const isMega = formKey.indexOf(SpeciesFormKey.MEGA) > -1;
   const isGmax = formKey.indexOf(SpeciesFormKey.GIGANTAMAX) > -1;
   const isEmax = formKey.indexOf(SpeciesFormKey.ETERNAMAX) > -1;
-  const isRevert = !isMega && formChange.formKey === pokemon.species.forms[0].formKey;
+  const changedSpecies = pokemon.isFusionFormChange(formChange) ? pokemon.fusionSpecies : pokemon.species;
+  const baseFormKey = changedSpecies?.forms?.[0]?.formKey;
+  const isRevert = !isMega && baseFormKey != null && formChange.formKey === baseFormKey;
   if (isMega) {
     return i18next.t("battlePokemonForm:megaChange", {
       preName,

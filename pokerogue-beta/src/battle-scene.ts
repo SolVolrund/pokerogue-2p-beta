@@ -51,6 +51,7 @@ import { getDailyMysteryEncounter } from "#data/daily-seed/daily-run";
 import { allMoves, biomeDepths, modifierTypes } from "#data/data-lists";
 import { getClassicFinalBossDialogue } from "#data/dialogue";
 import { getLevelTotalExp } from "#data/exp";
+import type { FusionComponent } from "#data/fusion-options";
 import type { SpeciesFormChangeTrigger } from "#data/form-change-triggers";
 import { SpeciesFormChangeManualTrigger, SpeciesFormChangeTimeOfDayTrigger } from "#data/form-change-triggers";
 import { Gender } from "#data/gender";
@@ -5570,6 +5571,7 @@ export class BattleScene extends SceneBase {
     formChangeTriggerType: Constructor<SpeciesFormChangeTrigger>,
     delayed = false,
     modal = false,
+    component?: FusionComponent,
   ): boolean {
     if (
       speciesDataRegistry.hasFormChanges(pokemon.species.speciesId)
@@ -5578,13 +5580,16 @@ export class BattleScene extends SceneBase {
         && speciesDataRegistry.hasFormChanges(pokemon.fusionSpecies.speciesId))
     ) {
       // in case this is NECROZMA, determine which forms this
+      const includeBodyFormChanges = component !== "donor";
+      const includeFusionFormChanges = component !== "body";
       const matchingFormChangeOpts = [
-        ...(speciesDataRegistry.hasFormChanges(pokemon.species.speciesId)
+        ...(includeBodyFormChanges && speciesDataRegistry.hasFormChanges(pokemon.species.speciesId)
           ? speciesDataRegistry
               .getFormChanges(pokemon.species.speciesId)
               .filter(fc => fc.findTrigger(formChangeTriggerType) && fc.canChange(pokemon))
           : []),
-        ...(pokemon.isFusion()
+        ...(includeFusionFormChanges
+        && pokemon.isFusion()
         && pokemon.fusionSpecies
         && speciesDataRegistry.hasFormChanges(pokemon.fusionSpecies.speciesId)
           ? speciesDataRegistry

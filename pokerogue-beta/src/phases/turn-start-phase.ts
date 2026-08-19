@@ -1,6 +1,7 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import type { TurnCommand } from "#app/battle";
 import { globalScene } from "#app/global-scene";
+import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { allMoves } from "#data/data-lists";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import type { BattlerIndex } from "#enums/battler-index";
@@ -212,12 +213,16 @@ export class TurnStartPhase extends FieldPhase {
     const isUnownTeaserBoss =
       pokemon.hasSpecies(SpeciesId.UNOWN)
       && !isUnownRealFinalBossWave(globalScene.currentBattle.waveIndex, globalScene.gameMode.modeId);
+    const isLimitedPartyMode =
+      globalScene.twoPlayerMode
+      && globalScene.twoPlayerPartySize < PLAYER_PARTY_MAX_SIZE;
 
     if (
       !globalScene.twoPlayerMode
       || !globalScene.currentBattle.isClassicFinalBoss
       || !pokemon.isEnemy()
       || !pokemon.isBoss()
+      || isLimitedPartyMode
       || isUnownTeaserBoss
       || !this.canClassicFinalBossMoveUseBonusTargets(move)
     ) {

@@ -7,7 +7,7 @@ import { getPokemonNameWithAffix } from "#app/messages";
 import { activeOverrides } from "#app/overrides";
 import { EvolutionItem } from "#balance/pokemon-evolutions";
 import { tmPoolTiers } from "#balance/tm-pool-tiers";
-import { getBerryEffectDescription, getBerryName } from "#data/berry";
+import { getBerryEffectDescription, getBerryName, getDamageReductionBerryTypeForMoveType } from "#data/berry";
 import { CONTEST_TYPES, ContestType, contestTypeData } from "#data/contests/contest-type";
 import { CONTEST_STAT_MAX, type PartialContestStats } from "#data/contests/contest-stats";
 import { getDailyEventSeedLuck } from "#data/daily-seed/daily-run";
@@ -490,7 +490,7 @@ export class PokemonHeldItemModifierType extends PokemonModifierType {
   }
 }
 
-export class ZCrystalModifierType extends PokemonHeldItemModifierType {
+export class ZCrystalModifierType extends PokemonHeldItemModifierType implements GeneratedPersistentModifierType {
   public readonly zCrystal: ZCrystal;
 
   constructor(localeKey: string, zCrystal: ZCrystal) {
@@ -520,6 +520,10 @@ export class ZCrystalModifierType extends PokemonHeldItemModifierType {
 
       return getValidZCrystalsForPokemon(pokemon).includes(zCrystal) ? null : PartyUiHandler.NoEffectMessage;
     };
+  }
+
+  getPregenArgs(): any[] {
+    return [this.zCrystal];
   }
 }
 
@@ -956,25 +960,6 @@ export class BerryModifierType extends PokemonHeldItemModifierType implements Ge
   }
 }
 
-function getRandomBerryModifierType(): BerryModifierType {
-  const berryTypes = getEnumValues(BerryType);
-  let randBerryType: BerryType;
-  const rand = randSeedInt(12);
-  if (rand < 2) {
-    randBerryType = BerryType.SITRUS;
-  } else if (rand < 4) {
-    randBerryType = BerryType.LUM;
-  } else if (rand < 6) {
-    randBerryType = BerryType.LEPPA;
-  } else {
-    const uncommonBerryTypes = berryTypes.filter(
-      berryType => ![BerryType.SITRUS, BerryType.LUM, BerryType.LEPPA].includes(berryType),
-    );
-    randBerryType = uncommonBerryTypes[randSeedInt(uncommonBerryTypes.length)];
-  }
-  return new BerryModifierType(randBerryType);
-}
-
 function getMirrorHerbModifierType(): PokemonHeldItemModifierType {
   const ret = new PokemonHeldItemModifierType(
     "modifierType:ModifierType.MIRROR_HERB",
@@ -984,6 +969,89 @@ function getMirrorHerbModifierType(): PokemonHeldItemModifierType {
   );
   ret.id = "MIRROR_HERB";
   return ret;
+}
+
+const RESTORATIVE_BERRY_TYPES = [BerryType.LUM, BerryType.LEPPA, BerryType.SITRUS] as const;
+const STAT_BERRY_TYPES = [
+  BerryType.LIECHI,
+  BerryType.GANLON,
+  BerryType.SALAC,
+  BerryType.PETAYA,
+  BerryType.APICOT,
+  BerryType.LANSAT,
+  BerryType.STARF,
+] as const;
+const REACTIVE_BERRY_TYPES = [
+  BerryType.ENIGMA,
+  BerryType.ROWAP,
+  BerryType.KEE,
+  BerryType.MARANGA,
+  BerryType.JABOCA,
+  BerryType.CUSTAP,
+] as const;
+const REGULAR_MOVE_TYPES = Array.from(
+  { length: PokemonType.FAIRY - PokemonType.NORMAL + 1 },
+  (_, offset) => (PokemonType.NORMAL + offset) as PokemonType,
+);
+const ALL_DAMAGE_REDUCTION_BERRY_TYPES = REGULAR_MOVE_TYPES.map(type =>
+  getDamageReductionBerryTypeForMoveType(type),
+).filter((berryType): berryType is BerryType => berryType != null);
+
+function getUsefulDamageReductionBerryTypes(pokemon?: Pokemon): BerryType[] {
+  if (!pokemon) {
+    return ALL_DAMAGE_REDUCTION_BERRY_TYPES;
+  }
+
+  return REGULAR_MOVE_TYPES.map(type => {
+    if (pokemon.getAttackTypeEffectiveness(type) <= 1) {
+      return undefined;
+    }
+    return getDamageReductionBerryTypeForMoveType(type);
+  }).filter((berryType): berryType is BerryType => berryType != null);
+}
+
+function getRandomDamageReductionBerryType(pokemon?: Pokemon): BerryModifierType {
+  const usefulBerryTypes = getUsefulDamageReductionBerryTypes(pokemon);
+  const berryTypes =
+    usefulBerryTypes.length > 0 && randSeedInt(10) < 7 ? usefulBerryTypes : ALL_DAMAGE_REDUCTION_BERRY_TYPES;
+  return new BerryModifierType(randSeedItem(berryTypes));
+}
+
+function getRandomReactiveHeldItemType(): PokemonHeldItemModifierType {
+  const roll = randSeedInt(REACTIVE_BERRY_TYPES.length + 1);
+  if (roll === 0) {
+    return getMirrorHerbModifierType();
+  }
+  return new BerryModifierType(REACTIVE_BERRY_TYPES[roll - 1]);
+}
+
+interface BerryGroup {
+  readonly weight: number;
+  readonly generate: () => PokemonHeldItemModifierType;
+  readonly enabled: boolean;
+}
+
+function getRandomGroupedBerryHeldItemType(pokemon?: Pokemon): PokemonHeldItemModifierType {
+  const groups: BerryGroup[] = [
+    { weight: 35, generate: () => new BerryModifierType(randSeedItem(RESTORATIVE_BERRY_TYPES)), enabled: true },
+    { weight: 20, generate: () => new BerryModifierType(randSeedItem(STAT_BERRY_TYPES)), enabled: true },
+    {
+      weight: 30,
+      generate: () => getRandomDamageReductionBerryType(pokemon),
+      enabled: ALL_DAMAGE_REDUCTION_BERRY_TYPES.length > 0,
+    },
+    { weight: 15, generate: getRandomReactiveHeldItemType, enabled: true },
+  ].filter(group => group.enabled);
+
+  let roll = randSeedInt(groups.reduce((total, group) => total + group.weight, 0));
+  for (const group of groups) {
+    if (roll < group.weight) {
+      return group.generate();
+    }
+    roll -= group.weight;
+  }
+
+  return groups[groups.length - 1].generate();
 }
 
 enum AttackTypeBoosterItem {
@@ -2576,10 +2644,8 @@ const modifierTypeInitObj = Object.freeze({
       if (pregenArgs && pregenArgs.length === 1 && pregenArgs[0] in BerryType) {
         return new BerryModifierType(pregenArgs[0] as BerryType);
       }
-      if (!randSeedInt(3)) {
-        return getMirrorHerbModifierType();
-      }
-      return getRandomBerryModifierType();
+      const enemyPokemon = _party.find(pokemon => pokemon.isEnemy());
+      return getRandomGroupedBerryHeldItemType(enemyPokemon);
     }),
 
   TM_COMMON: () => new TmModifierTypeGenerator(ModifierTier.COMMON),

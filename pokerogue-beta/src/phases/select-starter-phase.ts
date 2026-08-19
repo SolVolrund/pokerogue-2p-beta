@@ -149,6 +149,7 @@ export class SelectStarterPhase extends Phase {
    */
   initPlayerStarters(starters: Starter[], playerIndex: PlayerIndex): Promise<void> {
     this.setStarterSelectionOwner(playerIndex);
+    globalScene.setPlayerMoney(globalScene.gameMode.getStartingMoney(), playerIndex);
     const party = globalScene.getPlayerParty(playerIndex);
     party.splice(0, party.length);
     const loadPokemonAssets: Promise<void>[] = [];
@@ -245,7 +246,11 @@ export class SelectStarterPhase extends Phase {
     const partnerKey = globalScene.getComputerPartnerKey(playerIndex);
     const profile = getComputerPartnerProfile(partnerKey);
     const hostGameData = globalScene.getPlayerGameData(0);
-    const starters = createComputerPartnerStarter(profile, hostGameData.getComputerPartnerProgress(partnerKey));
+    const starters = createComputerPartnerStarter(
+      profile,
+      hostGameData.getComputerPartnerProgress(partnerKey),
+      globalScene.getPlayerPartyLimit(playerIndex),
+    );
     globalScene.savePlayerSystemSaveLocal(0);
     return this.initPlayerStarters(starters, playerIndex);
   }

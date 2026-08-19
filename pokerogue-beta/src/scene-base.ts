@@ -27,9 +27,9 @@ export class SceneBase extends Phaser.Scene {
     });
   }
 
-  public loadImage(key: string, folder: string, filename = `${key}.png`): this {
+  public loadImage(key: string, folder: string, filename = `${key}.png`, options?: { legacy?: boolean }): this {
     this.load.image(key, getCachedUrl(`images/${folder}/${filename}`));
-    if (folder.startsWith("ui")) {
+    if (options?.legacy !== false && folder.startsWith("ui")) {
       folder = folder.replace("ui", "ui/legacy");
       this.load.image(`${key}_legacy`, getCachedUrl(`images/${folder}/${filename}`));
     }

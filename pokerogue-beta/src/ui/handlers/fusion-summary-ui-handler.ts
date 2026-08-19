@@ -33,10 +33,24 @@ export type FusionSummaryCallback = (
 ) => void;
 
 const PAGE_TITLES = ["SPRITE", "STATUS", "STATS", "MOVES"] as const;
+const PAGE_TRANSITION_DURATION = 1500;
+const STATS_LEFT_TRANSITION_DELAY_RATIO = 0.50;
+type FusionSummaryTransitionRole =
+  | "body"
+  | "footer"
+  | "stats-flyout"
+  | "stats-left"
+  | "stats-right"
+  | "moves-left"
+  | "moves-center"
+  | "moves-right";
 
 export class FusionSummaryUiHandler extends UiHandler {
   private fusionContainer: Phaser.GameObjects.Container;
   private pageContainer: Phaser.GameObjects.Container;
+  private pageTransitionContainer: Phaser.GameObjects.Container;
+  private renderTargetContainer: Phaser.GameObjects.Container;
+  private renderLayerContainers: Partial<Record<FusionSummaryTransitionRole, Phaser.GameObjects.Container>> = {};
   private headerText: Phaser.GameObjects.Text;
   private pageTitleText: Phaser.GameObjects.Text;
 
@@ -64,6 +78,8 @@ export class FusionSummaryUiHandler extends UiHandler {
   private pendingMoveSourceRow: number | null = null;
   private fusionMoveSlots: (Move | null)[] = [null, null, null, null];
   private renderRevision = 0;
+  private renderingPage = FusionSummaryPage.SPRITE;
+  private transitioning = false;
 
   constructor() {
     super(UiMode.FUSION_SUMMARY);
@@ -83,6 +99,11 @@ export class FusionSummaryUiHandler extends UiHandler {
 
     this.pageContainer = globalScene.add.container(0, 0);
     this.fusionContainer.add(this.pageContainer);
+    this.renderTargetContainer = this.pageContainer;
+
+    this.pageTransitionContainer = globalScene.add.container(0, 0);
+    this.pageTransitionContainer.setVisible(false);
+    this.fusionContainer.add(this.pageTransitionContainer);
 
     this.headerText = addTextObject(4, 3, "Fusion Summary", TextStyle.SUMMARY_HEADER, { fontSize: "54px" });
     this.headerText.setOrigin(0, 0);
@@ -135,6 +156,10 @@ export class FusionSummaryUiHandler extends UiHandler {
   }
 
   processInput(button: Button): boolean {
+    if (this.transitioning) {
+      return false;
+    }
+
     let success = false;
     let error = false;
 
@@ -185,9 +210,15 @@ export class FusionSummaryUiHandler extends UiHandler {
   override setCursor(cursor: number, force = false): boolean {
     const changed = force || this.cursor !== cursor;
     if (changed) {
+      const previousCursor = this.cursor as FusionSummaryPage;
       this.cursor = cursor;
       this.clearPendingMove();
-      this.renderPage();
+      if (force || !this.pageContainer.visible) {
+        this.renderPage(this.pageContainer, cursor);
+        this.pageContainer.setVisible(true);
+      } else {
+        this.transitionToPage(previousCursor, cursor);
+      }
     }
     return changed;
   }
@@ -196,6 +227,11 @@ export class FusionSummaryUiHandler extends UiHandler {
     super.clear();
     this.fusionContainer?.setVisible(false);
     this.pageContainer?.removeAll(true);
+    this.pageTransitionContainer?.removeAll(true);
+    this.pageTransitionContainer?.setVisible(false);
+    this.pageContainer?.setPosition(0, 0);
+    this.pageTransitionContainer?.setPosition(0, 0);
+    this.transitioning = false;
     this.clearPendingMove();
   }
 
@@ -342,16 +378,22 @@ export class FusionSummaryUiHandler extends UiHandler {
     return true;
   }
 
-  private renderPage(): void {
-    if (!this.pageContainer) {
+  private renderPage(pageContainer = this.pageContainer, page = this.cursor as FusionSummaryPage): void {
+    if (!pageContainer) {
       return;
     }
 
     this.renderRevision++;
-    this.pageContainer.removeAll(true);
-    this.pageTitleText.setText(`<<${PAGE_TITLES[this.cursor]}>>`);
+    this.renderTargetContainer = pageContainer;
+    this.renderLayerContainers = {};
+    this.renderingPage = page;
+    pageContainer.removeAll(true);
+    if (page === FusionSummaryPage.STATS) {
+      this.createStatsTransitionLayers(pageContainer);
+    }
+    this.pageTitleText.setText(`<<${PAGE_TITLES[page]}>>`);
 
-    switch (this.cursor) {
+    switch (page) {
       case FusionSummaryPage.SPRITE:
         this.renderSpritePage();
         break;
@@ -367,6 +409,198 @@ export class FusionSummaryUiHandler extends UiHandler {
     }
 
     this.addFooterPrompts();
+    this.orderPageTransitionObjects(pageContainer, page);
+    this.renderLayerContainers = {};
+    this.renderTargetContainer = this.pageContainer;
+  }
+
+  private createStatsTransitionLayers(container: Phaser.GameObjects.Container): void {
+    (["stats-flyout", "stats-left", "body", "stats-right", "footer"] as const).forEach(role => {
+      const layer = globalScene.add.container(0, 0);
+      layer.setData("fusionSummaryTransitionRole", role);
+      container.add(layer);
+      this.renderLayerContainers[role] = layer;
+    });
+  }
+
+  private transitionToPage(previousPage: FusionSummaryPage, nextPage: FusionSummaryPage): void {
+    const navigationOffset = this.getPageTransitionOffset(previousPage, nextPage);
+    const incomingPageContainer = this.pageTransitionContainer;
+    const outgoingPageContainer = this.pageContainer;
+
+    this.transitioning = true;
+    this.renderPage(incomingPageContainer, nextPage);
+    const transitionDuration = PAGE_TRANSITION_DURATION + Math.max(
+      this.getMaxObjectTransitionDelay(previousPage),
+      this.getMaxObjectTransitionDelay(nextPage),
+    );
+    incomingPageContainer.setPosition(0, 0);
+    this.preparePageObjectsForTransition(incomingPageContainer, nextPage, navigationOffset);
+    incomingPageContainer.setVisible(true);
+
+    this.animatePageObjectsOut(outgoingPageContainer, previousPage, navigationOffset);
+
+    globalScene.tweens.add({
+      targets: incomingPageContainer,
+      x: 0,
+      y: 0,
+      duration: transitionDuration,
+      ease: "Cubic.easeOut",
+      onComplete: () => {
+        outgoingPageContainer.removeAll(true);
+        outgoingPageContainer.setPosition(0, 0);
+        outgoingPageContainer.setVisible(false);
+        this.pageContainer = incomingPageContainer;
+        this.pageTransitionContainer = outgoingPageContainer;
+        this.pageTransitionContainer.setPosition(0, 0);
+        this.pageTransitionContainer.setVisible(false);
+        this.renderTargetContainer = this.pageContainer;
+        this.transitioning = false;
+      },
+    });
+  }
+
+  private preparePageObjectsForTransition(
+    container: Phaser.GameObjects.Container,
+    page: FusionSummaryPage,
+    navigationOffset: { x: number; y: number },
+  ): void {
+    container.each((object: Phaser.GameObjects.GameObject) => {
+      const transform = object as Phaser.GameObjects.GameObject & { x: number; y: number };
+      const role = this.getObjectTransitionRole(object);
+      const offset = this.getObjectTransitionOffset(page, role, navigationOffset, true);
+      transform.x += offset.x;
+      transform.y += offset.y;
+      globalScene.tweens.add({
+        targets: object,
+        x: transform.x - offset.x,
+        y: transform.y - offset.y,
+        delay: this.getObjectTransitionDelay(page, role, true),
+        duration: PAGE_TRANSITION_DURATION,
+        ease: "Cubic.easeOut",
+      });
+    });
+  }
+
+  private animatePageObjectsOut(
+    container: Phaser.GameObjects.Container,
+    page: FusionSummaryPage,
+    navigationOffset: { x: number; y: number },
+  ): void {
+    container.each((object: Phaser.GameObjects.GameObject) => {
+      const transform = object as Phaser.GameObjects.GameObject & { x: number; y: number };
+      const role = this.getObjectTransitionRole(object);
+      const offset = this.getObjectTransitionOffset(page, role, navigationOffset, false);
+      globalScene.tweens.add({
+        targets: object,
+        x: transform.x + offset.x,
+        y: transform.y + offset.y,
+        delay: this.getObjectTransitionDelay(page, role, false),
+        duration: PAGE_TRANSITION_DURATION,
+        ease: "Cubic.easeOut",
+      });
+    });
+  }
+
+  private orderPageTransitionObjects(container: Phaser.GameObjects.Container, page: FusionSummaryPage): void {
+    if (page !== FusionSummaryPage.STATS) {
+      return;
+    }
+
+    const children = container.getAll();
+    container.removeAll(false);
+    children
+      .sort((a, b) => this.getStatsTransitionLayer(a) - this.getStatsTransitionLayer(b))
+      .forEach(child => container.add(child));
+  }
+
+  private getStatsTransitionLayer(object: Phaser.GameObjects.GameObject): number {
+    switch (this.getObjectTransitionRole(object)) {
+      case "stats-flyout":
+        return 0;
+      case "stats-left":
+        return 1;
+      case "body":
+        return 2;
+      case "stats-right":
+        return 3;
+      case "footer":
+        return 4;
+      default:
+        return 3;
+    }
+  }
+
+  private getObjectTransitionRole(object: Phaser.GameObjects.GameObject): FusionSummaryTransitionRole {
+    return object.getData("fusionSummaryTransitionRole") ?? "body";
+  }
+
+  private getObjectTransitionOffset(
+    page: FusionSummaryPage,
+    role: FusionSummaryTransitionRole,
+    navigationOffset: { x: number; y: number },
+    entering: boolean,
+  ): { x: number; y: number } {
+    if (role === "footer") {
+      return { x: 320, y: 0 };
+    }
+
+    if (page === FusionSummaryPage.SPRITE || page === FusionSummaryPage.STATUS) {
+      return { x: 0, y: 180 };
+    }
+
+    if (page === FusionSummaryPage.STATS) {
+      return { x: 320, y: 0 };
+    }
+
+    if (page === FusionSummaryPage.MOVES) {
+      switch (role) {
+        case "moves-left":
+          return { x: -320, y: 0 };
+        case "moves-right":
+          return { x: 320, y: 0 };
+        case "moves-center":
+          return { x: 0, y: 180 };
+        default:
+          return { x: 0, y: 180 };
+      }
+    }
+
+    return entering ? navigationOffset : { x: -navigationOffset.x, y: -navigationOffset.y };
+  }
+
+  private getObjectTransitionDelay(page: FusionSummaryPage, role: FusionSummaryTransitionRole, entering: boolean): number {
+    if (page === FusionSummaryPage.STATS) {
+      const staggerDelay = Math.round(PAGE_TRANSITION_DURATION * STATS_LEFT_TRANSITION_DELAY_RATIO);
+      if (entering && (role === "stats-flyout" || role === "stats-left")) {
+        return staggerDelay;
+      }
+      if (!entering && (role === "body" || role === "stats-right" || role === "footer")) {
+        return staggerDelay;
+      }
+    }
+
+    return 0;
+  }
+
+  private getMaxObjectTransitionDelay(page: FusionSummaryPage): number {
+    return page === FusionSummaryPage.STATS ? Math.round(PAGE_TRANSITION_DURATION * STATS_LEFT_TRANSITION_DELAY_RATIO) : 0;
+  }
+
+  private getPageTransitionOffset(previousPage: FusionSummaryPage, nextPage: FusionSummaryPage): { x: number; y: number } {
+    if (nextPage === FusionSummaryPage.STATUS) {
+      return { x: 0, y: 180 };
+    }
+
+    if (nextPage === FusionSummaryPage.MOVES) {
+      return { x: 0, y: 180 };
+    }
+
+    if (nextPage === FusionSummaryPage.STATS) {
+      return { x: previousPage < nextPage ? 320 : -320, y: 0 };
+    }
+
+    return { x: -320, y: 0 };
   }
 
   private renderSpritePage(): void {
@@ -375,6 +609,8 @@ export class FusionSummaryUiHandler extends UiHandler {
     if (!body || !donor) {
       return;
     }
+
+    this.addPageImage("fusion_summary_sprite_menu");
 
     this.addPokemonFrontSprite(body, 52, 83, 0.62);
     this.addPokemonFrontSprite(body, 160, 83, 0.62, donor);
@@ -406,7 +642,8 @@ export class FusionSummaryUiHandler extends UiHandler {
 
     this.addPokemonIcon(body, 51, 58, 1.1);
     this.addPokemonIcon(donor, 269, 58, 1.1);
-    this.addPokemonIcon(body, 160, 58, 1.1);
+    //this.addPokemonIcon(body, 160, 58, 1.1);
+    this.addFusionPokemonIcon(body, donor, 160, 70, 1.1);
 
     this.addBoundedCenteredText(5, 92, 96, "Q: Change Body Type", TextStyle.SUMMARY_GREEN, "36px");
     this.addBoundedCenteredText(112, 101, 96, "W: Change Tera Type", TextStyle.SUMMARY_GREEN, "36px");
@@ -466,9 +703,9 @@ export class FusionSummaryUiHandler extends UiHandler {
     this.addPageImage("fusion_summary_stats_mid_flyout");
     this.addPageImage("fusion_summary_stats_bottom_flyout");
 
-    this.addPokemonIcon(body, 82, 44, 1.15);
-    this.addPokemonIcon(donor, 82, 100, 1.15);
-    this.addFusionPokemonIcon(body, donor, 82, 156, 1.15);
+    this.addPokemonIcon(body, 82, 44, 1.15, "stats-left");
+    this.addPokemonIcon(donor, 82, 100, 1.15, "stats-left");
+    this.addFusionPokemonIcon(body, donor, 82, 156, 1.15, "stats-left");
 
     this.addCenteredText(84, 10, body.getNameToRender({ useIllusion: false }), TextStyle.SUMMARY, "58px");
     this.addCenteredText(84, 66, donor.getNameToRender({ useIllusion: false }), TextStyle.SUMMARY, "58px");
@@ -541,12 +778,12 @@ export class FusionSummaryUiHandler extends UiHandler {
     const label = addTextObject(labelX, y, i18next.t(getStatKey(stat)), labelStyle, { fontSize: "66px" });
     label.setOrigin(0, 0);
     this.fitTextToWidth(label, 48);
-    this.pageContainer.add(label);
+    this.addToRenderTarget(label);
 
     const valueText = addTextObject(valueX + 33, y, value.toString(), TextStyle.WINDOW_ALT, { fontSize: "66px" });
     valueText.setOrigin(1, 0);
     this.fitTextToWidth(valueText, 33);
-    this.pageContainer.add(valueText);
+    this.addToRenderTarget(valueText);
   }
 
   private addMoveColumn(
@@ -571,11 +808,11 @@ export class FusionSummaryUiHandler extends UiHandler {
         const moveText = addTextObject(x + 38, y - 2, move.name, TextStyle.SUMMARY, { fontSize: "62px" });
         moveText.setOrigin(0, 0);
         this.fitTextToWidth(moveText, 52);
-        this.pageContainer.add(moveText);
+        this.addToRenderTarget(moveText);
       } else {
         const moveText = addTextObject(x + 38, y - 2, "-", TextStyle.SUMMARY_GRAY, { fontSize: "62px" });
         moveText.setOrigin(0, 0);
-        this.pageContainer.add(moveText);
+        this.addToRenderTarget(moveText);
       }
     }
   }
@@ -620,13 +857,13 @@ export class FusionSummaryUiHandler extends UiHandler {
     if (move) {
       const categoryIcon = globalScene.add.sprite(159, 171, "categories", MoveCategory[move.category].toLowerCase());
       categoryIcon.setOrigin(0.5, 0.5);
-      this.pageContainer.add(categoryIcon);
+      this.addToRenderTarget(categoryIcon);
     }
 
     if (contestMove) {
       const contestTypeIcon = globalScene.add.sprite(194, 171, "contest_attributes_tags", contestMove.contestType);
       contestTypeIcon.setOrigin(0.5, 0.5);
-      this.pageContainer.add(contestTypeIcon);
+      this.addToRenderTarget(contestTypeIcon);
     } else {
       this.addBoundedCenteredText(177, 164, 34, "???", TextStyle.SUMMARY, "42px");
     }
@@ -636,27 +873,27 @@ export class FusionSummaryUiHandler extends UiHandler {
     const valueText = addTextObject(rightX, y, value, TextStyle.WINDOW_ALT, { fontSize: "44px" });
     valueText.setOrigin(1, 0);
     this.fitTextToWidth(valueText, 28);
-    this.pageContainer.add(valueText);
+    this.addToRenderTarget(valueText);
   }
 
   private addMoveDetailLabel(x: number, y: number, label: string): void {
     const labelText = addTextObject(x, y, label, TextStyle.SUMMARY, { fontSize: "44px" });
     labelText.setOrigin(0, 0);
     this.fitTextToWidth(labelText, 34);
-    this.pageContainer.add(labelText);
+    this.addToRenderTarget(labelText);
   }
 
   private addPageImage(key: string): void {
     const image = globalScene.add.image(0, 0, key);
     image.setOrigin(0, 0);
-    this.pageContainer.add(image);
+    this.addToRenderTarget(image, this.getPageImageTransitionRole(key));
   }
 
   private addSelectionRect(x: number, y: number, width: number, height: number, color = 0x7bd8ff): void {
     const rect = globalScene.add.rectangle(x, y, width, height);
     rect.setOrigin(0, 0);
     rect.setStrokeStyle(1, color);
-    this.pageContainer.add(rect);
+    this.addToRenderTarget(rect);
   }
 
   private addTypeIcon(x: number, y: number, type: PokemonType, alpha = 1): void {
@@ -664,7 +901,55 @@ export class FusionSummaryUiHandler extends UiHandler {
     const icon = globalScene.add.sprite(x, y, getLocalizedSpriteKey("types"), frame);
     icon.setOrigin(0, 0);
     icon.setAlpha(alpha);
-    this.pageContainer.add(icon);
+    this.addToRenderTarget(icon);
+  }
+
+  private addToRenderTarget<T extends Phaser.GameObjects.GameObject>(
+    object: T,
+    role = this.getDefaultTransitionRole(object),
+  ): T {
+    object.setData("fusionSummaryTransitionRole", role);
+    (this.renderLayerContainers[role] ?? this.renderTargetContainer).add(object);
+    return object;
+  }
+
+  private getDefaultTransitionRole(object: Phaser.GameObjects.GameObject): FusionSummaryTransitionRole {
+    const { x } = object as Phaser.GameObjects.GameObject & { x?: number };
+
+    if (this.renderingPage === FusionSummaryPage.STATS) {
+      return (x ?? 0) < 100 ? "stats-left" : "stats-right";
+    }
+
+    if (this.renderingPage !== FusionSummaryPage.MOVES) {
+      return "body";
+    }
+
+    if ((x ?? 0) < 108) {
+      return "moves-left";
+    }
+    if ((x ?? 0) >= 216) {
+      return "moves-right";
+    }
+    return "moves-center";
+  }
+
+  private getPageImageTransitionRole(key: string): FusionSummaryTransitionRole {
+    switch (key) {
+      case "fusion_summary_stats":
+        return "body";
+      case "fusion_summary_stats_top_flyout":
+      case "fusion_summary_stats_mid_flyout":
+      case "fusion_summary_stats_bottom_flyout":
+        return "stats-flyout";
+      case "fusion_summary_moves_left":
+        return "moves-left";
+      case "fusion_summary_moves_center":
+        return "moves-center";
+      case "fusion_summary_moves_right":
+        return "moves-right";
+      default:
+        return "body";
+    }
   }
 
   private addTypeChoiceSlots(slots: { x: number; y: number; type: PokemonType | null }[], choice: number): void {
@@ -692,7 +977,7 @@ export class FusionSummaryUiHandler extends UiHandler {
     const label = addTextObject(x + width / 2, y, `< ${text} >`, TextStyle.WINDOW_ALT, { fontSize: "64px" });
     label.setOrigin(0.5, 0);
     this.fitTextToWidth(label, width - 4);
-    this.pageContainer.add(label);
+    this.addToRenderTarget(label);
   }
 
   private addStatusSelectionInfo(
@@ -720,7 +1005,7 @@ export class FusionSummaryUiHandler extends UiHandler {
       });
       label.setOrigin(0.5, 0);
       this.fitTextToWidth(label, 22);
-      this.pageContainer.add(label);
+      this.addToRenderTarget(label);
 
       const sign = this.getNatureStatSign(stat, body, donor);
       if (!sign) {
@@ -730,7 +1015,7 @@ export class FusionSummaryUiHandler extends UiHandler {
       const signStyle = this.getNatureSignTextStyle(sign);
       const signText = addTextObject(signX, y, sign, signStyle, { fontSize: "44px" });
       signText.setOrigin(0.5, 0);
-      this.pageContainer.add(signText);
+      this.addToRenderTarget(signText);
     });
   }
 
@@ -742,17 +1027,30 @@ export class FusionSummaryUiHandler extends UiHandler {
     textObject.setScale(scale);
   }
 
-  private addPokemonIcon(pokemon: PlayerPokemon, x: number, y: number, scale = 1): void {
+  private addPokemonIcon(
+    pokemon: PlayerPokemon,
+    x: number,
+    y: number,
+    scale = 1,
+    role?: FusionSummaryTransitionRole,
+  ): void {
     const icon = globalScene.addPokemonIcon(pokemon, x, y, 0.5, 0.5, true, false);
     icon.setScale(scale);
-    this.pageContainer.add(icon);
+    this.addToRenderTarget(icon, role);
   }
 
-  private addFusionPokemonIcon(body: PlayerPokemon, donor: PlayerPokemon, x: number, y: number, scale = 1): void {
+  private addFusionPokemonIcon(
+    body: PlayerPokemon,
+    donor: PlayerPokemon,
+    x: number,
+    y: number,
+    scale = 1,
+    role?: FusionSummaryTransitionRole,
+  ): void {
     const previewPokemon = this.createFusionPreviewPokemon(body, donor);
     const icon = globalScene.addPokemonIcon(previewPokemon, x, y, 0.5, 0.5, true, false);
     icon.setScale(scale);
-    this.pageContainer.add(icon);
+    this.addToRenderTarget(icon, role);
     previewPokemon.destroy();
   }
 
@@ -779,7 +1077,7 @@ export class FusionSummaryUiHandler extends UiHandler {
       .setPipelineData("spriteColors", [])
       .setPipelineData("fusionSpriteColors", []);
 
-    this.pageContainer.add(sprite);
+    this.addToRenderTarget(sprite);
     if (fusionPaletteSource) {
       void this.applyFusionPalettePreview(sprite, pokemon, fusionPaletteSource, this.renderRevision);
     }
@@ -883,7 +1181,7 @@ export class FusionSummaryUiHandler extends UiHandler {
   ): Phaser.GameObjects.Text {
     const textObject = addTextObject(x, y, text, style, fontSize ? { fontSize } : undefined);
     textObject.setOrigin(0.5, 0);
-    this.pageContainer.add(textObject);
+    this.addToRenderTarget(textObject);
     return textObject;
   }
 
@@ -903,7 +1201,7 @@ export class FusionSummaryUiHandler extends UiHandler {
   private addControlText(x: number, y: number, text: string): void {
     const textObject = addTextObject(x, y, text, TextStyle.SUMMARY_GREEN, { fontSize: "48px" });
     textObject.setOrigin(0, 0);
-    this.pageContainer.add(textObject);
+    this.addToRenderTarget(textObject);
   }
 
   private addWrappedText(
@@ -925,14 +1223,14 @@ export class FusionSummaryUiHandler extends UiHandler {
     }
     const textObject = addTextObject(x, y, text, style, textStyle);
     textObject.setOrigin(0, 0);
-    this.pageContainer.add(textObject);
+    this.addToRenderTarget(textObject);
   }
 
   private addFooterPrompts(): void {
     const promptText = this.cursor === FusionSummaryPage.MOVES ? "Z Select/Place   X Back" : "Z Fuse   X Back";
     const prompt = addTextObject(244, 2, promptText, TextStyle.SUMMARY, { fontSize: "64px" });
     prompt.setOrigin(0, 0);
-    this.pageContainer.add(prompt);
+    this.addToRenderTarget(prompt, "footer");
   }
 
   private getColumnMoves(column: number): (Move | null)[] {

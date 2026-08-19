@@ -5,6 +5,7 @@ import { getStatusEffectHealText } from "#data/status-effect";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BerryType } from "#enums/berry-type";
 import { HitResult } from "#enums/hit-result";
+import { MoveCategory } from "#enums/move-category";
 import { PokemonType } from "#enums/pokemon-type";
 import { type BattleStat, Stat } from "#enums/stat";
 import type { StatusEffect } from "#enums/status-effect";
@@ -22,7 +23,7 @@ export function getBerryEffectDescription(berryType: BerryType): string {
   return i18next.t(`berry:${BerryType[berryType].toLowerCase()}.effect`);
 }
 
-export type BerryPredicate = (pokemon: Pokemon) => boolean;
+export type BerryPredicate = (pokemon: Pokemon, context?: BerryUseContext) => boolean;
 
 export type BerryUseTrigger = "turn-end" | "damage" | "status";
 
@@ -45,6 +46,10 @@ const DAMAGE_TRIGGER_BERRIES = new Set([
   BerryType.SALAC,
   BerryType.LANSAT,
   BerryType.STARF,
+  BerryType.ROWAP,
+  BerryType.KEE,
+  BerryType.MARANGA,
+  BerryType.JABOCA,
 ]);
 
 const STATUS_TRIGGER_BERRIES = new Set([BerryType.LUM]);
@@ -119,6 +124,22 @@ export function canBerryTriggerInContext(berryType: BerryType, context?: BerryUs
   }
 }
 
+function isDamageFromCategory(pokemon: Pokemon, context: BerryUseContext | undefined, category: MoveCategory): boolean {
+  return (
+    context?.trigger === "damage"
+    && context.source != null
+    && context.move != null
+    && (context.damage ?? 0) > 0
+    && context.source.getMoveCategory(pokemon, context.move) === category
+  );
+}
+
+function hasCustapThreshold(pokemon: Pokemon): boolean {
+  const hpRatioReq = new NumberHolder(0.25);
+  applyAbAttrs("ReduceBerryUseThresholdAbAttr", { pokemon, hpRatioReq });
+  return pokemon.getHpRatio() < hpRatioReq.value && !pokemon.getTag(BattlerTagType.CUSTAP_BERRY);
+}
+
 export function getBerryPredicate(berryType: BerryType): BerryPredicate {
   switch (berryType) {
     case BerryType.SITRUS:
@@ -146,13 +167,13 @@ export function getBerryPredicate(berryType: BerryType): BerryPredicate {
       return (pokemon: Pokemon) => {
         const hpRatioReq = new NumberHolder(0.25);
         applyAbAttrs("ReduceBerryUseThresholdAbAttr", { pokemon, hpRatioReq });
-        return pokemon.getHpRatio() < 0.25 && !pokemon.getTag(BattlerTagType.CRIT_BOOST);
+        return pokemon.getHpRatio() < hpRatioReq.value && !pokemon.getTag(BattlerTagType.CRIT_BOOST);
       };
     case BerryType.STARF:
       return (pokemon: Pokemon) => {
         const hpRatioReq = new NumberHolder(0.25);
         applyAbAttrs("ReduceBerryUseThresholdAbAttr", { pokemon, hpRatioReq });
-        return pokemon.getHpRatio() < 0.25;
+        return pokemon.getHpRatio() < hpRatioReq.value;
       };
     case BerryType.LEPPA:
       return (pokemon: Pokemon) => {
@@ -160,6 +181,20 @@ export function getBerryPredicate(berryType: BerryType): BerryPredicate {
         applyAbAttrs("ReduceBerryUseThresholdAbAttr", { pokemon, hpRatioReq });
         return !!pokemon.getMoveset().find(m => !m.getPpRatio());
       };
+    case BerryType.ROWAP:
+      return (pokemon: Pokemon, context?: BerryUseContext) =>
+        isDamageFromCategory(pokemon, context, MoveCategory.SPECIAL);
+    case BerryType.KEE:
+      return (pokemon: Pokemon, context?: BerryUseContext) =>
+        isDamageFromCategory(pokemon, context, MoveCategory.PHYSICAL) && pokemon.getStatStage(Stat.DEF) < 6;
+    case BerryType.MARANGA:
+      return (pokemon: Pokemon, context?: BerryUseContext) =>
+        isDamageFromCategory(pokemon, context, MoveCategory.SPECIAL) && pokemon.getStatStage(Stat.SPDEF) < 6;
+    case BerryType.JABOCA:
+      return (pokemon: Pokemon, context?: BerryUseContext) =>
+        isDamageFromCategory(pokemon, context, MoveCategory.PHYSICAL);
+    case BerryType.CUSTAP:
+      return hasCustapThreshold;
     case BerryType.OCCA:
     case BerryType.PASSHO:
     case BerryType.WACAN:
@@ -182,10 +217,47 @@ export function getBerryPredicate(berryType: BerryType): BerryPredicate {
   }
 }
 
-export type BerryEffectFunc = (consumer: Pokemon) => void;
+export type BerryEffectFunc = (consumer: Pokemon, context?: BerryUseContext) => void;
+
+function queueBerryStatChange(consumer: Pokemon, stat: BattleStat, stages: number, berryPhase: boolean): void {
+  const statStages = new NumberHolder(stages);
+  applyAbAttrs("DoubleBerryEffectAbAttr", { pokemon: consumer, effectValue: statStages });
+  if (berryPhase) {
+    const queuedChange = consumer.queuedBerryStatChanges.find(c => c.stat === stat);
+    if (queuedChange == null) {
+      consumer.queuedBerryStatChanges.push({ stat, stages: statStages.value });
+    } else {
+      queuedChange.stages += statStages.value;
+    }
+  } else {
+    globalScene.phaseManager.unshiftNew("StatStageChangePhase", {
+      battlerIndex: consumer.getBattlerIndex(),
+      changes: [{ stat, stages: statStages.value }],
+      sourcePokemon: consumer,
+    });
+  }
+}
+
+function damageBerrySource(consumer: Pokemon, berryType: BerryType, context?: BerryUseContext): void {
+  const source = context?.source;
+  if (!source || !source.isActive(true) || source.isFainted() || source.hasAbilityWithAttr("BlockNonDirectDamageAbAttr")) {
+    return;
+  }
+
+  const damage = toDmgValue(source.getMaxHp() / 8);
+  globalScene.phaseManager.queueMessage(
+    i18next.t("battle:damageBerry", {
+      pokemonNameWithAffix: getPokemonNameWithAffix(source),
+      holderNameWithAffix: getPokemonNameWithAffix(consumer),
+      berryName: getBerryName(berryType),
+    }),
+  );
+  source.damageAndUpdate(damage, { result: HitResult.INDIRECT });
+  source.turnData.damageTaken += damage;
+}
 
 export function getBerryEffectFunc(berryType: BerryType, berryPhase = false): BerryEffectFunc {
-  return (consumer: Pokemon) => {
+  return (consumer: Pokemon, context?: BerryUseContext) => {
     // Apply an effect pertaining to what berry we're using
     switch (berryType) {
       case BerryType.SITRUS:
@@ -224,22 +296,7 @@ export function getBerryEffectFunc(berryType: BerryType, berryPhase = false): Be
         {
           // Offset BerryType such that LIECHI --> Stat.ATK = 1, GANLON --> Stat.DEF = 2, etc etc.
           const stat: BattleStat = berryType - BerryType.ENIGMA;
-          const statStages = new NumberHolder(1);
-          applyAbAttrs("DoubleBerryEffectAbAttr", { pokemon: consumer, effectValue: statStages });
-          if (berryPhase) {
-            const queuedChange = consumer.queuedBerryStatChanges.find(c => c.stat === stat);
-            if (queuedChange == null) {
-              consumer.queuedBerryStatChanges.push({ stat, stages: statStages.value });
-            } else {
-              queuedChange.stages += statStages.value;
-            }
-          } else {
-            globalScene.phaseManager.unshiftNew("StatStageChangePhase", {
-              battlerIndex: consumer.getBattlerIndex(),
-              changes: [{ stat, stages: statStages.value }],
-              sourcePokemon: consumer,
-            });
-          }
+          queueBerryStatChange(consumer, stat, 1, berryPhase);
         }
         break;
 
@@ -252,22 +309,7 @@ export function getBerryEffectFunc(berryType: BerryType, berryPhase = false): Be
       case BerryType.STARF:
         {
           const randStat = randSeedInt(Stat.SPD, Stat.ATK);
-          const stages = new NumberHolder(2);
-          applyAbAttrs("DoubleBerryEffectAbAttr", { pokemon: consumer, effectValue: stages });
-          if (berryPhase) {
-            const queuedChange = consumer.queuedBerryStatChanges.find(c => c.stat === randStat);
-            if (queuedChange == null) {
-              consumer.queuedBerryStatChanges.push({ stat: randStat, stages: stages.value });
-            } else {
-              queuedChange.stages += stages.value;
-            }
-          } else {
-            globalScene.phaseManager.unshiftNew("StatStageChangePhase", {
-              battlerIndex: consumer.getBattlerIndex(),
-              changes: [{ stat: randStat, stages: stages.value }],
-              sourcePokemon: consumer,
-            });
-          }
+          queueBerryStatChange(consumer, randStat, 2, berryPhase);
         }
         break;
 
@@ -287,6 +329,26 @@ export function getBerryEffectFunc(berryType: BerryType, berryPhase = false): Be
               }),
             );
           }
+        }
+        break;
+      case BerryType.ROWAP:
+      case BerryType.JABOCA:
+        damageBerrySource(consumer, berryType, context);
+        break;
+      case BerryType.KEE:
+        queueBerryStatChange(consumer, Stat.DEF, 1, berryPhase);
+        break;
+      case BerryType.MARANGA:
+        queueBerryStatChange(consumer, Stat.SPDEF, 1, berryPhase);
+        break;
+      case BerryType.CUSTAP:
+        if (consumer.addTag(BattlerTagType.CUSTAP_BERRY)) {
+          globalScene.phaseManager.queueMessage(
+            i18next.t("battle:custapBerry", {
+              pokemonNameWithAffix: getPokemonNameWithAffix(consumer),
+              berryName: getBerryName(berryType),
+            }),
+          );
         }
         break;
       case BerryType.OCCA:

@@ -61,8 +61,8 @@ const overrides: Partial<InstanceType<OverridesType>> = {
 //  STARTING_BIOME_OVERRIDE: BiomeId.TOWN,
 //  BATTLE_TYPE_OVERRIDE: BattleType.TRAINER,
 //  RANDOM_TRAINER_OVERRIDE: {trainerType: TrainerType.MOLLY_HALE},
-//  ENEMY_SPECIES_OVERRIDE: SpeciesId.MEW,
-//  ENEMY_LEVEL_OVERRIDE: 4,
+//  ENEMY_SPECIES_OVERRIDE: SpeciesId.CASTFORM,
+//  ENEMY_LEVEL_OVERRIDE: 1,
 //  ENEMY_HELD_ITEMS_OVERRIDE: [
 //    { name: "BERRY", type: BerryType.OCCA },
 //    { name: "BERRY", type: BerryType.PASSHO },

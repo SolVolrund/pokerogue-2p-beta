@@ -2402,7 +2402,7 @@ export class BerryModifier extends PokemonHeldItemModifier {
       && canBerryTriggerInContext(this.berryType, context)
       && super.shouldApply(pokemon, context)
       && (context?.trigger !== "turn-end" || !pokemon.turnData.reactiveBerriesEaten.includes(this.berryType))
-      && getBerryPredicate(this.berryType)(pokemon)
+      && getBerryPredicate(this.berryType)(pokemon, context)
     );
   }
 
@@ -2411,13 +2411,13 @@ export class BerryModifier extends PokemonHeldItemModifier {
    * @param pokemon The {@linkcode Pokemon} that holds the berry
    * @returns always `true`
    */
-  override apply(pokemon: Pokemon, _context?: BerryUseContext): boolean {
+  override apply(pokemon: Pokemon, context?: BerryUseContext): boolean {
     const preserve = new BooleanHolder(false);
     globalScene.applyModifiersForPokemon(PreserveBerryModifier, pokemon, pokemon, preserve);
     this.consumed = !preserve.value;
 
     // munch the berry and trigger unburden-like effects
-    getBerryEffectFunc(this.berryType)(pokemon);
+    getBerryEffectFunc(this.berryType)(pokemon, context);
     applyAbAttrs("PostItemLostAbAttr", { pokemon });
 
     // Update berry eaten trackers for Belch, Harvest, Cud Chew, etc.

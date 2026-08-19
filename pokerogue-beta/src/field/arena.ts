@@ -20,7 +20,6 @@ import {
   getWeatherStartMessage,
   Weather,
 } from "#data/weather";
-import { AbilityId } from "#enums/ability-id";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import type { ArenaTagType } from "#enums/arena-tag-type";
 import type { BattlerIndex } from "#enums/battler-index";
@@ -420,10 +419,7 @@ export class Arena {
       if (p === source) {
         continue;
       }
-      const isCastformWithForecast = p.hasAbility(AbilityId.FORECAST) && p.species.speciesId === SpeciesId.CASTFORM;
-      const isCherrimWithFlowerGift = p.hasAbility(AbilityId.FLOWER_GIFT) && p.species.speciesId === SpeciesId.CHERRIM;
-
-      if (isCastformWithForecast || isCherrimWithFlowerGift) {
+      if (p.hasApplicableFormChange(SpeciesFormChangeWeatherTrigger)) {
         globalScene.triggerPokemonFormChange(p, SpeciesFormChangeWeatherTrigger);
       }
     }
@@ -432,12 +428,7 @@ export class Arena {
   /** Function to trigger all weather based form changes back into their normal forms */
   public triggerWeatherBasedFormChangesToNormal(): void {
     for (const p of inSpeedOrder(ArenaTagSide.BOTH)) {
-      const isCastformWithForecast =
-        p.hasAbility(AbilityId.FORECAST, false, true) && p.species.speciesId === SpeciesId.CASTFORM;
-      const isCherrimWithFlowerGift =
-        p.hasAbility(AbilityId.FLOWER_GIFT, false, true) && p.species.speciesId === SpeciesId.CHERRIM;
-
-      if (isCastformWithForecast || isCherrimWithFlowerGift) {
+      if (p.hasApplicableFormChange(SpeciesFormChangeRevertWeatherFormTrigger)) {
         globalScene.triggerPokemonFormChange(p, SpeciesFormChangeRevertWeatherFormTrigger);
       }
     }

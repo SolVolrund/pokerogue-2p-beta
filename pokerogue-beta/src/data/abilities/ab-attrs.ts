@@ -1,12 +1,16 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { globalScene } from "#app/global-scene";
-import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
 import type { EntryHazardTag, SuppressAbilitiesTag } from "#data/arena-tag";
 import { type BattlerTag, CritBoostTag } from "#data/battler-tags";
 import { getBerryEffectFunc, getBerryName } from "#data/berry";
 import { allAbilities, allMoves } from "#data/data-lists";
-import { SpeciesFormChangeAbilityTrigger, SpeciesFormChangeWeatherTrigger } from "#data/form-change-triggers";
+import {
+  SpeciesFormChangeAbilityTrigger,
+  SpeciesFormChangeRevertWeatherFormTrigger,
+  SpeciesFormChangeWeatherTrigger,
+} from "#data/form-change-triggers";
+import type { FusionComponent } from "#data/fusion-options";
 import { getPokeballName } from "#data/pokeball";
 import type { PokemonSpecies } from "#data/pokemon-species";
 import { getStatusEffectDescriptor, getStatusEffectHealText } from "#data/status-effect";
@@ -240,22 +244,35 @@ export class PostBattleInitAbAttr extends AbAttr {
   private declare readonly _: never;
 }
 
-export class PostBattleInitFormChangeAbAttr extends PostBattleInitAbAttr {
-  private readonly formFunc: (p: Pokemon) => number;
+type AbilityFormChangeFunc = (p: Pokemon, component: FusionComponent) => number;
 
-  constructor(formFunc: (p: Pokemon) => number) {
+function getAbilityFormChangeComponent(pokemon: Pokemon, passive?: boolean): FusionComponent {
+  return pokemon.getAbilitySourceComponent(passive);
+}
+
+export class PostBattleInitFormChangeAbAttr extends PostBattleInitAbAttr {
+  private readonly formFunc: AbilityFormChangeFunc;
+
+  constructor(formFunc: AbilityFormChangeFunc) {
     super(false);
 
     this.formFunc = formFunc;
   }
 
-  override canApply({ pokemon, simulated }: AbAttrBaseParams): boolean {
-    const formIndex = this.formFunc(pokemon);
-    return formIndex !== pokemon.formIndex && !simulated;
+  override canApply({ pokemon, simulated, passive }: AbAttrBaseParams): boolean {
+    const component = getAbilityFormChangeComponent(pokemon, passive);
+    const formIndex = this.formFunc(pokemon, component);
+    return formIndex !== pokemon.getFormIndexForComponent(component) && !simulated;
   }
 
-  override apply({ pokemon }: AbAttrBaseParams): void {
-    globalScene.triggerPokemonFormChange(pokemon, SpeciesFormChangeAbilityTrigger, false);
+  override apply({ pokemon, passive }: AbAttrBaseParams): void {
+    globalScene.triggerPokemonFormChange(
+      pokemon,
+      SpeciesFormChangeAbilityTrigger,
+      false,
+      false,
+      getAbilityFormChangeComponent(pokemon, passive),
+    );
   }
 }
 
@@ -2648,21 +2665,28 @@ export class PostSummonHealStatusAbAttr extends PostSummonRemoveEffectAbAttr {
 }
 
 export class PostSummonFormChangeAbAttr extends PostSummonAbAttr {
-  private readonly formFunc: (p: Pokemon) => number;
+  private readonly formFunc: AbilityFormChangeFunc;
 
-  constructor(formFunc: (p: Pokemon) => number) {
+  constructor(formFunc: AbilityFormChangeFunc) {
     super(true);
 
     this.formFunc = formFunc;
   }
 
-  override canApply({ pokemon }: AbAttrBaseParams): boolean {
-    return this.formFunc(pokemon) !== pokemon.formIndex;
+  override canApply({ pokemon, passive }: AbAttrBaseParams): boolean {
+    const component = getAbilityFormChangeComponent(pokemon, passive);
+    return this.formFunc(pokemon, component) !== pokemon.getFormIndexForComponent(component);
   }
 
-  override apply({ pokemon, simulated }: AbAttrBaseParams): void {
+  override apply({ pokemon, simulated, passive }: AbAttrBaseParams): void {
     if (!simulated) {
-      globalScene.triggerPokemonFormChange(pokemon, SpeciesFormChangeAbilityTrigger, false);
+      globalScene.triggerPokemonFormChange(
+        pokemon,
+        SpeciesFormChangeAbilityTrigger,
+        false,
+        false,
+        getAbilityFormChangeComponent(pokemon, passive),
+      );
     }
   }
 }
@@ -2879,9 +2903,7 @@ export class PostSummonFormChangeByWeatherAbAttr extends PostSummonAbAttr {
    * Determine if the pokemon has a forme change that is triggered by the weather
    */
   override canApply({ pokemon }: AbAttrBaseParams): boolean {
-    return speciesDataRegistry
-      .getFormChanges(pokemon.species.speciesId)
-      .some(fc => fc.findTrigger(SpeciesFormChangeWeatherTrigger) && fc.canChange(pokemon));
+    return pokemon.hasApplicableFormChange(SpeciesFormChangeWeatherTrigger);
   }
 
   /**
@@ -2992,21 +3014,28 @@ export class PreSwitchOutHealAbAttr extends PreSwitchOutAbAttr {
 
 /** Attribute for form changes that occur on switching out */
 export class PreSwitchOutFormChangeAbAttr extends PreSwitchOutAbAttr {
-  private readonly formFunc: (p: Pokemon) => number;
+  private readonly formFunc: AbilityFormChangeFunc;
 
-  constructor(formFunc: (p: Pokemon) => number) {
+  constructor(formFunc: AbilityFormChangeFunc) {
     super();
 
     this.formFunc = formFunc;
   }
 
-  override canApply({ pokemon }: AbAttrBaseParams): boolean {
-    return this.formFunc(pokemon) !== pokemon.formIndex;
+  override canApply({ pokemon, passive }: AbAttrBaseParams): boolean {
+    const component = getAbilityFormChangeComponent(pokemon, passive);
+    return this.formFunc(pokemon, component) !== pokemon.getFormIndexForComponent(component);
   }
 
-  override apply({ simulated, pokemon }: AbAttrBaseParams): void {
+  override apply({ simulated, pokemon, passive }: AbAttrBaseParams): void {
     if (!simulated) {
-      globalScene.triggerPokemonFormChange(pokemon, SpeciesFormChangeAbilityTrigger, false);
+      globalScene.triggerPokemonFormChange(
+        pokemon,
+        SpeciesFormChangeAbilityTrigger,
+        false,
+        false,
+        getAbilityFormChangeComponent(pokemon, passive),
+      );
     }
   }
 }
@@ -3860,23 +3889,19 @@ export abstract class PostWeatherChangeAbAttr extends AbAttr {
  * @sealed
  */
 export class PostWeatherChangeFormChangeAbAttr extends PostWeatherChangeAbAttr {
-  private readonly ability: AbilityId;
   private readonly formRevertingWeathers: readonly WeatherType[];
 
-  constructor(ability: AbilityId, formRevertingWeathers: readonly WeatherType[]) {
+  constructor(_ability: AbilityId, formRevertingWeathers: readonly WeatherType[]) {
     super(false);
 
-    this.ability = ability;
     this.formRevertingWeathers = formRevertingWeathers;
   }
 
   override canApply({ pokemon }: AbAttrBaseParams): boolean {
-    const isCastformWithForecast =
-      pokemon.species.speciesId === SpeciesId.CASTFORM && this.ability === AbilityId.FORECAST;
-    const isCherrimWithFlowerGift =
-      pokemon.species.speciesId === SpeciesId.CHERRIM && this.ability === AbilityId.FLOWER_GIFT;
-
-    return isCastformWithForecast || isCherrimWithFlowerGift;
+    return (
+      pokemon.hasApplicableFormChange(SpeciesFormChangeWeatherTrigger)
+      || pokemon.hasApplicableFormChange(SpeciesFormChangeRevertWeatherFormTrigger)
+    );
   }
 
   /**
@@ -4389,21 +4414,28 @@ export class PostTurnHealAbAttr extends PostTurnAbAttr {
 
 /** @sealed */
 export class PostTurnFormChangeAbAttr extends PostTurnAbAttr {
-  private readonly formFunc: (p: Pokemon) => number;
+  private readonly formFunc: AbilityFormChangeFunc;
 
-  constructor(formFunc: (p: Pokemon) => number) {
+  constructor(formFunc: AbilityFormChangeFunc) {
     super(true);
 
     this.formFunc = formFunc;
   }
 
-  override canApply({ pokemon }: AbAttrBaseParams): boolean {
-    return this.formFunc(pokemon) !== pokemon.formIndex;
+  override canApply({ pokemon, passive }: AbAttrBaseParams): boolean {
+    const component = getAbilityFormChangeComponent(pokemon, passive);
+    return this.formFunc(pokemon, component) !== pokemon.getFormIndexForComponent(component);
   }
 
-  override apply({ simulated, pokemon }: AbAttrBaseParams): void {
+  override apply({ simulated, pokemon, passive }: AbAttrBaseParams): void {
     if (!simulated) {
-      globalScene.triggerPokemonFormChange(pokemon, SpeciesFormChangeAbilityTrigger, false);
+      globalScene.triggerPokemonFormChange(
+        pokemon,
+        SpeciesFormChangeAbilityTrigger,
+        false,
+        false,
+        getAbilityFormChangeComponent(pokemon, passive),
+      );
     }
   }
 }
@@ -6251,8 +6283,8 @@ function getPokemonWithWeatherBasedForms() {
     .getField(true)
     .filter(
       p =>
-        (p.hasAbility(AbilityId.FORECAST) && p.species.speciesId === SpeciesId.CASTFORM)
-        || (p.hasAbility(AbilityId.FLOWER_GIFT) && p.species.speciesId === SpeciesId.CHERRIM),
+        p.hasApplicableFormChange(SpeciesFormChangeWeatherTrigger)
+        || p.hasApplicableFormChange(SpeciesFormChangeRevertWeatherFormTrigger),
     );
 }
 

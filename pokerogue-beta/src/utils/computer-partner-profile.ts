@@ -377,6 +377,7 @@ export function getComputerPartnerProfileWithRolePreferences(
 export function createComputerPartnerStarter(
   profile: ComputerPartnerProfile,
   progress?: ComputerPartnerProgressData,
+  partyLimit = PLAYER_PARTY_MAX_SIZE,
 ): ComputerPartnerStarter[] {
   const progressBeforeSpending = getComputerPartnerStarterProgressSnapshot(profile, progress);
   if (progress) {
@@ -389,6 +390,7 @@ export function createComputerPartnerStarter(
     progress,
     progressBeforeSpending,
     progressAfterSpending,
+    partyLimit,
   );
 
   if (startingStarters.length === 0) {
@@ -411,6 +413,7 @@ function getComputerPartnerStartingStarters(
   progress?: ComputerPartnerProgressData,
   progressBeforeSpending?: Map<SpeciesId, ComputerPartnerStarterProgressDebugState>,
   progressAfterSpending?: Map<SpeciesId, ComputerPartnerStarterProgressDebugState>,
+  partyLimit = PLAYER_PARTY_MAX_SIZE,
 ): ComputerPartnerStarterConfig[] {
   const startingStarters = profile.startingStarters;
   if (startingStarters && startingStarters.length > 0) {
@@ -420,6 +423,7 @@ function getComputerPartnerStartingStarters(
       progress,
       progressBeforeSpending,
       progressAfterSpending,
+      partyLimit,
     );
   }
 
@@ -445,6 +449,7 @@ function buildComputerPartnerStarterTeam(
   progress?: ComputerPartnerProgressData,
   progressBeforeSpending?: Map<SpeciesId, ComputerPartnerStarterProgressDebugState>,
   progressAfterSpending?: Map<SpeciesId, ComputerPartnerStarterProgressDebugState>,
+  partyLimit = PLAYER_PARTY_MAX_SIZE,
 ): ComputerPartnerStarterConfig[] {
   const [ace, ...candidates] = starters;
 
@@ -453,6 +458,7 @@ function buildComputerPartnerStarterTeam(
   }
 
   const selectedStarters = [ace];
+  const cappedPartyLimit = Math.max(1, Math.min(partyLimit, PLAYER_PARTY_MAX_SIZE));
   const debugRows: ComputerPartnerStarterSelectionDebugRow[] = [];
   const acePoints = getComputerPartnerStarterPoints(ace, progress);
   let remainingPoints = COMPUTER_PARTNER_STARTER_POINT_LIMIT - acePoints;
@@ -472,6 +478,23 @@ function buildComputerPartnerStarterTeam(
 
   const shuffledCandidates = randSeedShuffle([...candidates]);
   for (const [index, starter] of shuffledCandidates.entries()) {
+    if (selectedStarters.length >= cappedPartyLimit) {
+      debugRows.push(
+        getComputerPartnerStarterSelectionDebugRow(
+          starter,
+          index + 1,
+          false,
+          remainingPoints,
+          remainingPoints,
+          progress,
+          progressBeforeSpending,
+          progressAfterSpending,
+          `party limit ${cappedPartyLimit} reached`,
+        ),
+      );
+      continue;
+    }
+
     const points = getComputerPartnerStarterPoints(starter, progress);
     const remainingBefore = remainingPoints;
     if (points > remainingPoints) {

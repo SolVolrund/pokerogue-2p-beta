@@ -28,4 +28,9 @@ export enum BerryType {
   BABIRI,
   CHILAN,
   ROSELI,
+  ROWAP,
+  KEE,
+  MARANGA,
+  JABOCA,
+  CUSTAP,
 }

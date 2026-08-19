@@ -1214,7 +1214,7 @@ export abstract class Move implements Localizable {
   }
 
   public getPriorityModifier(user: Pokemon, simulated = true): MovePriorityInBracket {
-    if (user.getTag(BattlerTagType.BYPASS_SPEED)) {
+    if (user.getTag(BattlerTagType.BYPASS_SPEED) || user.getTag(BattlerTagType.CUSTAP_BERRY)) {
       return MovePriorityInBracket.FIRST;
     }
     const modifierHolder = new NumberHolder(MovePriorityInBracket.NORMAL);

@@ -513,7 +513,6 @@ export function initAbilities() {
     new AbBuilder(AbilityId.FORECAST, 3, -2) //
       .uncopiable()
       .unreplaceable()
-      .attr(NoFusionAbilityAbAttr)
       .attr(PostSummonFormChangeByWeatherAbAttr)
       .attr(PostWeatherChangeFormChangeAbAttr, AbilityId.FORECAST, [
         WeatherType.NONE,
@@ -868,7 +867,6 @@ export function initAbilities() {
         Stat.SPDEF,
         1.5,
       )
-      .attr(NoFusionAbilityAbAttr)
       .attr(PostSummonFormChangeByWeatherAbAttr)
       .attr(PostWeatherChangeFormChangeAbAttr, AbilityId.FLOWER_GIFT, [
         WeatherType.NONE,
@@ -1108,7 +1106,6 @@ export function initAbilities() {
       .attr(PostBattleInitFormChangeAbAttr, () => 0)
       .attr(PostSummonFormChangeAbAttr, p => (p.getHpRatio() <= 0.5 ? 1 : 0))
       .attr(PostTurnFormChangeAbAttr, p => (p.getHpRatio() <= 0.5 ? 1 : 0))
-      .attr(NoFusionAbilityAbAttr)
       .uncopiable()
       .unreplaceable()
       .unsuppressable()
@@ -1432,7 +1429,6 @@ export function initAbilities() {
       .attr(PostBattleInitFormChangeAbAttr, () => 0)
       .attr(PostSummonFormChangeAbAttr, p => (p.level < 20 || p.getHpRatio() <= 0.25 ? 0 : 1))
       .attr(PostTurnFormChangeAbAttr, p => (p.level < 20 || p.getHpRatio() <= 0.25 ? 0 : 1))
-      .attr(NoFusionAbilityAbAttr)
       .uncopiable()
       .unreplaceable()
       .unsuppressable()
@@ -1796,10 +1792,9 @@ export function initAbilities() {
       .ignorable()
       .build(),
     new AbBuilder(AbilityId.HUNGER_SWITCH, 8) //
-      .attr(PostTurnFormChangeAbAttr, p => (p.getFormKey() ? 0 : 1))
-      .attr(PostTurnFormChangeAbAttr, p => (p.getFormKey() ? 1 : 0))
+      .attr(PostTurnFormChangeAbAttr, (p, component) => (p.getFormKeyForComponent(component) ? 0 : 1))
+      .attr(PostTurnFormChangeAbAttr, (p, component) => (p.getFormKeyForComponent(component) ? 1 : 0))
       .attr(NoTransformAbilityAbAttr)
-      .attr(NoFusionAbilityAbAttr)
       .condition(pokemon => !pokemon.isTerastallized)
       .uncopiable()
       .unreplaceable()

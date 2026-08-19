@@ -3635,6 +3635,23 @@ export class BypassSpeedTag extends BattlerTag {
 }
 
 /**
+ * Tag to allow a Pokemon that ate a Custap Berry to move first in its priority bracket on its next move.
+ */
+export class CustapBerryTag extends BattlerTag {
+  public override readonly tagType = BattlerTagType.CUSTAP_BERRY;
+
+  constructor() {
+    super(BattlerTagType.CUSTAP_BERRY, BattlerTagLapseType.AFTER_MOVE, 1);
+  }
+
+  override canAdd(pokemon: Pokemon): boolean {
+    const bypass = new BooleanHolder(true);
+    applyAbAttrs("PreventBypassSpeedChanceAbAttr", { pokemon, bypass });
+    return bypass.value;
+  }
+}
+
+/**
  * Tag used to heal the user of Psycho Shift of its status effect if Psycho Shift succeeds in transferring its status effect to the target Pokemon
  */
 export class PsychoShiftTag extends BattlerTag {
@@ -3958,6 +3975,8 @@ export function getBattlerTag(
       return new SupremeOverlordTag();
     case BattlerTagType.BYPASS_SPEED:
       return new BypassSpeedTag();
+    case BattlerTagType.CUSTAP_BERRY:
+      return new CustapBerryTag();
     case BattlerTagType.RAGE:
       return new RageTag();
   }
@@ -4093,6 +4112,7 @@ export type BattlerTagTypeMap = {
   [BattlerTagType.MAGIC_COAT]: MagicCoatTag;
   [BattlerTagType.SUPREME_OVERLORD]: SupremeOverlordTag;
   [BattlerTagType.BYPASS_SPEED]: BypassSpeedTag;
+  [BattlerTagType.CUSTAP_BERRY]: CustapBerryTag;
   [BattlerTagType.RAGE]: RageTag;
 };
 

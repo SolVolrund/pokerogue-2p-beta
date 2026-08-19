@@ -26,6 +26,9 @@ export class ModifierData {
     this.args = sourceModifier ? sourceModifier.getArgs() : source.args || [];
     this.stackCount = source.stackCount;
     this.className = sourceModifier ? sourceModifier.constructor.name : source.className;
+    if (this.className === "ZCrystalModifier" && this.typeId === "Z_CRYSTAL" && this.args?.[1] !== undefined) {
+      this.typePregenArgs = [this.args[1]];
+    }
   }
 
   toModifier(_constructor: any): PersistentModifier | null {
@@ -38,10 +41,15 @@ export class ModifierData {
       let type: ModifierType | null = typeFunc();
       type.id = this.typeId;
 
+      const typePregenArgs =
+        this.className === "ZCrystalModifier" && this.typeId === "Z_CRYSTAL" && this.args?.[1] !== undefined
+          ? [this.args[1]]
+          : this.typePregenArgs;
+
       if (type instanceof ModifierTypeGenerator) {
         type = (type as ModifierTypeGenerator).generateType(
           this.player ? globalScene.getPlayerParty() : globalScene.getEnemyField(),
-          this.typePregenArgs,
+          typePregenArgs,
         );
       }
 
