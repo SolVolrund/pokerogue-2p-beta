@@ -39,6 +39,8 @@ import i18next from "i18next";
 const NO_SAVE_SLOT = -1;
 const TWO_PLAYER_LOBBY_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const TWO_PLAYER_WS_PORT = "8787";
+const COMPUTER_PARTNER_MENU_ROWS = 6;
+const COMPUTER_PARTNER_MENU_MIN_SLOT_COUNT = 30;
 type MultiplayerLobbyPlayerCount = 2 | 3;
 type MultiplayerGuestSeat = 1 | 2;
 
@@ -203,8 +205,11 @@ export class TitlePhase extends Phase {
     this.end();
   }
 
-  private showOptionSelect(options: OptionSelectItem[]): void {
-    const config: OptionSelectConfig = { options };
+  private showOptionSelect(
+    options: OptionSelectItem[],
+    configOverrides: Omit<OptionSelectConfig, "options"> = {},
+  ): void {
+    const config: OptionSelectConfig = { ...configOverrides, options };
     const showOptions = () => {
       if (globalScene.ui.getMode() === UiMode.OPTION_SELECT) {
         globalScene.ui.handlers[UiMode.OPTION_SELECT].show([config]);
@@ -225,8 +230,12 @@ export class TitlePhase extends Phase {
     globalScene.waitForPlayerInput(0);
   }
 
-  private showOptionSelectWithText(text: string, options: OptionSelectItem[]): void {
-    globalScene.ui.showText(text, null, () => this.showOptionSelect(options));
+  private showOptionSelectWithText(
+    text: string,
+    options: OptionSelectItem[],
+    configOverrides: Omit<OptionSelectConfig, "options"> = {},
+  ): void {
+    globalScene.ui.showText(text, null, () => this.showOptionSelect(options, configOverrides));
   }
 
   private showMultiplayerSelect(): void {
@@ -911,15 +920,21 @@ export class TitlePhase extends Phase {
       firstPartnerKey && selectedComputerPartnerPlayerIndexes.length > 1
         ? selectedComputerPartnerPlayerIndexes[1]
         : firstPartnerPlayerIndex;
-    const selectablePartnerKeys = COMPUTER_PARTNER_KEYS.filter(
-      key => key !== firstPartnerKey && globalScene.gameData.isComputerPartnerUnlocked(key),
+    const partnerSlotCount = Math.max(
+      COMPUTER_PARTNER_MENU_MIN_SLOT_COUNT,
+      Math.ceil(COMPUTER_PARTNER_KEYS.length / COMPUTER_PARTNER_MENU_ROWS) * COMPUTER_PARTNER_MENU_ROWS,
     );
     const playerLabel = `Player ${currentPartnerPlayerIndex + 1}`;
-    const options: OptionSelectItem[] = selectablePartnerKeys.map(key => {
+    const options: OptionSelectItem[] = COMPUTER_PARTNER_KEYS.map(key => {
       const profile = getComputerPartnerProfile(key);
+      const enabled = key !== firstPartnerKey && globalScene.gameData.isComputerPartnerUnlocked(key);
       return {
         label: profile.name,
         handler: () => {
+          if (!enabled) {
+            return false;
+          }
+
           if (key === "alex") {
             this.showAlexPreferenceSelect(
               gameMode,
@@ -950,8 +965,18 @@ export class TitlePhase extends Phase {
           this.showTwoPlayerModeSelect(gameMode, playerCount, selectedComputerPartnerPlayerIndexes);
           return true;
         },
+        ...(enabled ? {} : { disabled: true, style: TextStyle.SETTINGS_LOCKED }),
       };
     });
+
+    while (options.length < partnerSlotCount) {
+      options.push({
+        label: "-",
+        handler: () => false,
+        disabled: true,
+        style: TextStyle.SETTINGS_LOCKED,
+      });
+    }
 
     options.push({
       label: i18next.t("menu:cancel"),
@@ -972,7 +997,18 @@ export class TitlePhase extends Phase {
       keepOpen: true,
     });
 
-    this.showOptionSelectWithText(`${i18next.t("menu:selectComputerPartner")} (${playerLabel})`, options);
+    this.showOptionSelectWithText(
+      `${i18next.t("menu:selectComputerPartner")} (${playerLabel})`,
+      options,
+      {
+        gridLayout: {
+          rows: COMPUTER_PARTNER_MENU_ROWS,
+          columns: Math.ceil(partnerSlotCount / COMPUTER_PARTNER_MENU_ROWS),
+          slotCount: partnerSlotCount,
+          centerLastOption: true,
+        },
+      },
+    );
   }
 
   private getComputerPartnerSelectionIndexes(

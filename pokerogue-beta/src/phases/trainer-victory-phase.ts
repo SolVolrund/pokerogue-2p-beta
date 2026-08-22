@@ -19,6 +19,7 @@ const COMPUTER_PARTNER_UNLOCKS_BY_TRAINER_TYPE: Partial<Record<TrainerType, Comp
   [TrainerType.DAWN_ZORUA]: "dawn_zorua",
   [TrainerType.BIANCA_LATIAS]: "bianca_latias",
   [TrainerType.DUPLICA_DITTO]: "duplica_ditto",
+  [TrainerType.MOLLY_HALE]: "molly_hale",
 };
 
 export class TrainerVictoryPhase extends BattlePhase {

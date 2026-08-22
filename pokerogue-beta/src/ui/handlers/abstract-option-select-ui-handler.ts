@@ -17,6 +17,7 @@ export interface OptionSelectConfig {
   delay?: number;
   noCancel?: boolean;
   supportHover?: boolean;
+  gridLayout?: OptionSelectGridLayout;
 }
 
 export interface OptionSelectItem {
@@ -30,6 +31,15 @@ export interface OptionSelectItem {
   style?: TextStyle;
   item?: string;
   itemArgs?: any[];
+}
+
+export interface OptionSelectGridLayout {
+  rows: number;
+  columns?: number;
+  slotCount?: number;
+  minColumnWidth?: number;
+  columnGap?: number;
+  centerLastOption?: boolean;
 }
 
 const scrollUpLabel = "↑";

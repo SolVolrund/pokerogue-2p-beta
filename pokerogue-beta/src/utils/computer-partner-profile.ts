@@ -46,7 +46,8 @@ export type ComputerPartnerKey =
   | "marley"
   | "dawn_zorua"
   | "bianca_latias"
-  | "duplica_ditto";
+  | "duplica_ditto"
+  | "molly_hale";
 
 export type ComputerPartnerRole =
   | "ace"
@@ -84,10 +85,14 @@ export interface ComputerPartnerStarterConfig {
   nature?: Nature;
   moveset?: Starter["moveset"];
   evolveAtJoin?: boolean;
+  crystalized?: boolean;
+  crystalColor?: [number, number, number];
 }
 
 export type ComputerPartnerStarter = Starter & {
   evolveAtJoin?: boolean;
+  crystalized?: boolean;
+  crystalColor?: [number, number, number];
 };
 
 export interface ComputerPartnerSlotScore {
@@ -324,7 +329,7 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
   },
   duplica_ditto: {
     key: "duplica_ditto",
-    name: "Duplica",
+    name: "Duplica?",
     starterSpeciesId: SpeciesId.DITTO,
     starterNature: Nature.HARDY,
     trainerSprite: PlayerTrainerSprite.DUPLICA_DITTO,
@@ -340,6 +345,25 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
       { speciesId: SpeciesId.DITTO },
       { speciesId: SpeciesId.DITTO },
       { speciesId: SpeciesId.DITTO },
+    ],
+  },
+  molly_hale: {
+    key: "molly_hale",
+    name: "Molly",
+    starterSpeciesId: SpeciesId.ENTEI,
+    starterNature: Nature.JOLLY,
+    trainerSprite: PlayerTrainerSprite.MOLLY_HALE,
+    trainerGender: PlayerGender.FEMALE,
+    roles: ["ace", "speed", "speed", "physical", "special", "bulk"],
+    personalityTypes: [PokemonType.FIRE],
+    requiresUnlock: false,
+    startingStarters: [
+      { speciesId: SpeciesId.ENTEI, points: 6, crystalized: true },
+      { speciesId: SpeciesId.MAREEP, points: 2, crystalized: true },
+      { speciesId: SpeciesId.TEDDIURSA, points: 4, crystalized: true },
+      { speciesId: SpeciesId.PHANPY, points: 3, crystalized: true },
+      { speciesId: SpeciesId.HORSEA, points: 3, crystalized: true },
+      { speciesId: SpeciesId.MANTYKE, points: 2, crystalized: true },
     ],
   },
 };
@@ -678,6 +702,12 @@ function createComputerPartnerStarterData(
   };
   if (starter.evolveAtJoin) {
     ret.evolveAtJoin = true;
+  }
+  if (starter.crystalized) {
+    ret.crystalized = true;
+    if (starter.crystalColor) {
+      ret.crystalColor = starter.crystalColor;
+    }
   }
   return ret;
 }

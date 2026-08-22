@@ -13,6 +13,7 @@ import type { Starter } from "#types/save-data";
 import { SaveSlotUiMode } from "#ui/handlers/save-slot-select-ui-handler";
 import { applyChallenges } from "#utils/challenge-utils";
 import {
+  type ComputerPartnerStarter,
   createComputerPartnerStarter,
   getComputerPartnerProfile,
   isComputerPartnerStarterAce,
@@ -192,6 +193,10 @@ export class SelectStarterPhase extends Phase {
       }
       if (starter.passive) {
         starterPokemon.passive = true;
+      }
+      const computerPartnerStarter = starter as ComputerPartnerStarter;
+      if (computerPartnerStarter.crystalized) {
+        starterPokemon.setCrystalized(true, computerPartnerStarter.crystalColor);
       }
       starterPokemon.luck = globalScene.gameData.getDexAttrLuck(
         globalScene.gameData.dexData[species.speciesId].caughtAttr,

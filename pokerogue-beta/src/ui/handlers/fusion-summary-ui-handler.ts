@@ -235,6 +235,38 @@ export class FusionSummaryUiHandler extends UiHandler {
     this.clearPendingMove();
   }
 
+  getTwoPlayerInputContextState(): Record<string, unknown> {
+    return this.getTwoPlayerFusionInputState();
+  }
+
+  getTwoPlayerInputContextPromptState(): Record<string, unknown> {
+    return this.getTwoPlayerFusionInputState();
+  }
+
+  private getTwoPlayerFusionInputState(): Record<string, unknown> {
+    return {
+      page: this.cursor,
+      transitioning: this.transitioning,
+      eligibleSlotIndexes: this.eligibleSlotIndexes,
+      bodySlotIndex: this.bodySlotIndex,
+      donorSlotIndex: this.donorSlotIndex,
+      statBodySlotIndex: this.statBodySlotIndex,
+      statDonorSlotIndex: this.statDonorSlotIndex,
+      p1TypeChoice: this.p1TypeChoice,
+      p2TypeChoice: this.p2TypeChoice,
+      teraChoice: this.teraChoice,
+      abilityChoice: this.abilityChoice,
+      natureChoice: this.natureChoice,
+      passiveChoice: this.passiveChoice,
+      moveColumn: this.moveColumn,
+      moveRow: this.moveRow,
+      pendingMoveId: this.pendingMove?.id ?? null,
+      pendingMoveSourceColumn: this.pendingMoveSourceColumn,
+      pendingMoveSourceRow: this.pendingMoveSourceRow,
+      fusionMoveIds: this.fusionMoveSlots.map(move => move?.id ?? null),
+    };
+  }
+
   private processSpriteInput(button: Button): boolean {
     switch (button) {
       case Button.DEV_CUSTOM:

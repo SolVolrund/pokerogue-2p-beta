@@ -573,6 +573,21 @@ export class UiInputs {
       case "KeyX":
         this.forceLocalTwoPlayerInput(this.selectedSyncRepairPlayer, Button.CANCEL);
         return;
+      case "KeyQ":
+        this.forceLocalTwoPlayerInput(this.selectedSyncRepairPlayer, Button.DEV_CUSTOM);
+        return;
+      case "KeyE":
+        this.forceLocalTwoPlayerInput(this.selectedSyncRepairPlayer, Button.CYCLE_ABILITY);
+        return;
+      case "KeyF":
+        this.forceLocalTwoPlayerInput(this.selectedSyncRepairPlayer, Button.CYCLE_NATURE);
+        return;
+      case "KeyV":
+        this.forceLocalTwoPlayerInput(this.selectedSyncRepairPlayer, Button.CYCLE_TERA);
+        return;
+      case "KeyC":
+        this.forceLocalTwoPlayerInput(this.selectedSyncRepairPlayer, Button.CYCLE_FORM);
+        return;
       case "KeyR":
         this.updateSyncRepairOverlay();
         return;
@@ -658,6 +673,18 @@ export class UiInputs {
       }),
     );
     panel.append(controls);
+
+    const cycleControls = document.createElement("div");
+    cycleControls.style.cssText =
+      "display: grid; grid-template-columns: repeat(5, minmax(64px, 1fr)); gap: 8px; margin-bottom: 12px;";
+    cycleControls.append(this.createSyncRepairInputButton("Q/DEV", Button.DEV_CUSTOM));
+    cycleControls.append(this.createSyncRepairInputButton("E/ABILITY", Button.CYCLE_ABILITY));
+    cycleControls.append(this.createSyncRepairInputButton("C/FORM", Button.CYCLE_FORM));
+    cycleControls.append(this.createSyncRepairInputButton("F/NATURE", Button.CYCLE_NATURE));
+    cycleControls.append(this.createSyncRepairInputButton("V/TERA", Button.CYCLE_TERA));
+    cycleControls.append(this.createSyncRepairInputButton("SHINY", Button.CYCLE_SHINY));
+    cycleControls.append(this.createSyncRepairInputButton("GENDER", Button.CYCLE_GENDER));
+    panel.append(cycleControls);
 
     const statusTitle = document.createElement("div");
     statusTitle.textContent = "Sync Status";

@@ -399,6 +399,7 @@ const STRICT_TWO_PLAYER_INPUT_CONTEXT_UI_MODES = new Set<UiMode>([
   UiMode.CONTEST_INPUT,
   UiMode.MINING_INPUT,
   UiMode.ALPH_WALL,
+  UiMode.FUSION_SUMMARY,
 ]);
 
 interface TwoPlayerRewardDebugState {
@@ -2006,6 +2007,9 @@ export class BattleScene extends SceneBase {
 
     const handlerInputContextState = (handler as { getTwoPlayerInputContextState?: () => Record<string, unknown> })
       ?.getTwoPlayerInputContextState?.() ?? null;
+    const handlerInputContextPromptState =
+      (handler as { getTwoPlayerInputContextPromptState?: () => Record<string, unknown> })
+        ?.getTwoPlayerInputContextPromptState?.() ?? null;
     const phaseWithFieldIndex = currentPhase as (Phase & { getFieldIndex?: () => number }) | undefined;
     const promptKey = {
       waveIndex: this.currentBattle?.waveIndex ?? null,
@@ -2021,6 +2025,7 @@ export class BattleScene extends SceneBase {
       playerFieldPokemonIds: this.getPlayerField().map(pokemon => pokemon?.id ?? null),
       enemyFieldPokemonIds: this.getEnemyField().map(pokemon => pokemon?.id ?? null),
       message: messageInputContextKey ?? null,
+      handlerPromptState: handlerInputContextPromptState,
     };
     const contextKey = {
       ...promptKey,

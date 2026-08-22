@@ -116,6 +116,9 @@ function createPartnerPokemon(starter: ComputerPartnerStarter, isAce: boolean): 
   if (starter.passive) {
     pokemon.passive = true;
   }
+  if (starter.crystalized) {
+    pokemon.setCrystalized(true, starter.crystalColor);
+  }
   if (starter.nickname) {
     pokemon.nickname = starter.nickname;
   }
