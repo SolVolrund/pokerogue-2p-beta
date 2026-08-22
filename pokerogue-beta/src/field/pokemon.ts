@@ -289,6 +289,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   public ivs: number[];
   public nature: Nature;
   public moveset: PokemonMove[];
+  public passiveIndex: number;
   /**
    * This Pokemon's current {@link https://m.bulbapedia.bulbagarden.net/wiki/Status_condition#Non-volatile_status | non-volatile status condition},
    * or `null` if none exist.
@@ -409,6 +410,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     dataSource?: Pokemon | PokemonData,
     encounterModifierPlayerIndex?: PlayerIndex,
     constructorHasTrainer?: boolean,
+    passiveIndex?: number,
   ) {
     super(globalScene, x, y);
 
@@ -419,6 +421,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     this.level = level;
 
     this.abilityIndex = abilityIndex ?? this.generateAbilityIndex();
+    this.passiveIndex = dataSource?.passiveIndex ?? passiveIndex ?? 0;
 
     if (formIndex !== undefined) {
       this.formIndex = formIndex;
@@ -2571,7 +2574,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       }
     }
 
-    return allAbilities[this.species.getPassiveAbility(this.formIndex)];
+    return allAbilities[this.species.getPassiveAbility(this.formIndex, this.passiveIndex)];
   }
 
   private getComponentPassiveAbility(component: FusionComponent): Ability {
@@ -2579,13 +2582,13 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       if (this.fusionCustomPokemonData?.passive != null && this.fusionCustomPokemonData.passive !== -1) {
         return allAbilities[this.fusionCustomPokemonData.passive];
       }
-      return allAbilities[this.fusionSpecies!.getPassiveAbility(this.fusionFormIndex)];
+      return allAbilities[this.fusionSpecies!.getPassiveAbility(this.fusionFormIndex, this.fusionOptions?.donorPassiveIndex?? 0)];
     }
 
     if (this.customPokemonData.passive != null && this.customPokemonData.passive !== -1) {
       return allAbilities[this.customPokemonData.passive];
     }
-    return allAbilities[this.species.getPassiveAbility(this.formIndex)];
+    return allAbilities[this.species.getPassiveAbility(this.formIndex, this.passiveIndex)];
   }
 
   /**
@@ -7024,6 +7027,7 @@ export class PlayerPokemon extends Pokemon {
     if (this.fusionOptions) {
       this.fusionOptions.donorNature = pokemon.getNature();
       this.fusionOptions.donorPassive = pokemon.passive;
+      this.fusionOptions.donorPassiveIndex = pokemon.passiveIndex;
     }
     this.fusionSpecies = pokemon.species;
     this.fusionFormIndex = pokemon.formIndex;

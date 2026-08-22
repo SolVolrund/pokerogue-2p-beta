@@ -19,7 +19,7 @@ import { EggTier } from "#enums/egg-type";
 import type { MoveId } from "#enums/move-id";
 import { SpeciesFormKey } from "#enums/species-form-key";
 import type { SpeciesId } from "#enums/species-id";
-import type { LevelMoves, PokemonSpeciesData, SpeciesDataMap } from "#types/pokemon-species";
+import type { LevelMoves, PokemonSpeciesData, PokemonSpeciesPassiveOptions, SpeciesDataMap } from "#types/pokemon-species";
 
 /**
  * The SpeciesDataRegistry is a singleton class responsible for managing and querying species-related information.
@@ -213,20 +213,52 @@ export class SpeciesDataRegistry {
   }
 
   /**
-   * Get the passive ability for a given species and form.
-   * @param speciesId - The {@linkcode SpeciesId} of the species to get the passive for
-   * @param form - The `formIndex` or `formKey` of the form to get the passive for.
-   * @returns the passive ability of the species and form
+   * Resolve the passive configuration for a given species and form.
+   * @param speciesId - The {@linkcode SpeciesId} of the species to get passive options for
+   * @param form - The `formIndex` or `formKey` of the form to get passive options for
+   * @returns The passive ability option(s) for the species and form
    */
-  public getPassive(speciesId: SpeciesId, form: string | number): AbilityId {
+  private resolvePassiveOptions(speciesId: SpeciesId, form: string | number): PokemonSpeciesPassiveOptions {
     const speciesData = this.getSpeciesData(speciesId);
-    // TODO: Should probably also use formkeys for passives to keep it consistent
-    let formIndex = this.getFormIndex(speciesId, form);
     const passives = speciesData.passives;
-    if (typeof passives === "object" && !(formIndex in passives)) {
-      formIndex = 0;
+    if (Array.isArray(passives) || typeof passives !== "object") {
+      return passives;
     }
-    return typeof passives === "object" ? passives[formIndex] : passives;
+    const formIndex = this.getFormIndex(speciesId, form);
+    return passives[formIndex] ?? passives[0];
+  }
+
+  /**
+   * Get all passive ability options for a given species and form.
+   * @param speciesId - The {@linkcode SpeciesId} of the species to get passive options for
+   * @param form - The `formIndex` or `formKey` of the form to get passive options for
+   * @returns All passive ability options for the species and form
+   */
+  public getPassiveOptions(speciesId: SpeciesId, form: string | number): AbilityId[] {
+    const passiveOptions = this.resolvePassiveOptions(speciesId, form);
+    return Array.isArray(passiveOptions) ? [...passiveOptions] : [passiveOptions];
+  }
+
+  /**
+   * Get the number of passive ability options for a given species and form.
+   * @param speciesId - The {@linkcode SpeciesId} of the species to get passive options for
+   * @param form - The `formIndex` or `formKey` of the form to get passive options for
+   * @returns The number of passive ability options for the species and form
+   */
+  public getPassiveCount(speciesId: SpeciesId, form: string | number): number {
+    return this.getPassiveOptions(speciesId, form).length;
+  }
+
+  /**
+   * Get the selected passive ability for a given species, form, and passive option index.
+   * @param speciesId - The {@linkcode SpeciesId} of the species to get the passive for
+   * @param form - The `formIndex` or `formKey` of the form to get the passive for
+   * @param passiveIndex - The passive option index to select; defaults to the first passive
+   * @returns The selected passive ability for the species and form
+   */
+  public getPassive(speciesId: SpeciesId, form: string | number, passiveIndex = 0): AbilityId {
+    const passiveOptions = this.getPassiveOptions(speciesId, form);
+    return passiveOptions[passiveIndex] ?? passiveOptions[0];
   }
 
   /**

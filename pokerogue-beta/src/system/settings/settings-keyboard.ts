@@ -35,6 +35,8 @@ export enum SettingKeyboard {
   ALT_BUTTON_CYCLE_NATURE = "ALT_BUTTON_CYCLE_NATURE",
   BUTTON_CYCLE_TERA = "BUTTON_CYCLE_TERA",
   ALT_BUTTON_CYCLE_TERA = "ALT_BUTTON_CYCLE_TERA",
+  BUTTON_CYCLE_PASSIVE = "BUTTON_CYCLE_PASSIVE",
+  ALT_BUTTON_CYCLE_PASSIVE = "ALT_BUTTON_CYCLE_PASSIVE",
   BUTTON_SPEED_UP = "BUTTON_SPEED_UP",
   ALT_BUTTON_SPEED_UP = "ALT_BUTTON_SPEED_UP",
   BUTTON_SLOW_DOWN = "BUTTON_SLOW_DOWN",
@@ -77,6 +79,8 @@ export const settingKeyboardOptions = {
   [SettingKeyboard.ALT_BUTTON_CYCLE_NATURE]: [`KEY ${Button.CYCLE_NATURE.toString()}`, pressAction],
   [SettingKeyboard.BUTTON_CYCLE_TERA]: [`KEY ${Button.CYCLE_TERA.toString()}`, pressAction],
   [SettingKeyboard.ALT_BUTTON_CYCLE_TERA]: [`KEY ${Button.CYCLE_TERA.toString()}`, pressAction],
+  [SettingKeyboard.BUTTON_CYCLE_PASSIVE]: [`KEY ${Button.CYCLE_PASSIVE.toString()}`, pressAction],
+  [SettingKeyboard.ALT_BUTTON_CYCLE_PASSIVE]: [`KEY ${Button.CYCLE_PASSIVE.toString()}`, pressAction],
   [SettingKeyboard.BUTTON_SPEED_UP]: [`KEY ${Button.SPEED_UP.toString()}`, pressAction],
   [SettingKeyboard.ALT_BUTTON_SPEED_UP]: [`KEY ${Button.SPEED_UP.toString()}`, pressAction],
   [SettingKeyboard.BUTTON_SLOW_DOWN]: [`KEY ${Button.SLOW_DOWN.toString()}`, pressAction],
@@ -117,6 +121,8 @@ export const settingKeyboardDefaults = {
   [SettingKeyboard.ALT_BUTTON_CYCLE_NATURE]: 0,
   [SettingKeyboard.BUTTON_CYCLE_TERA]: 0,
   [SettingKeyboard.ALT_BUTTON_CYCLE_TERA]: 0,
+  [SettingKeyboard.BUTTON_CYCLE_PASSIVE]: 0,
+  [SettingKeyboard.ALT_BUTTON_CYCLE_PASSIVE]: 0,
   [SettingKeyboard.BUTTON_SPEED_UP]: 0,
   [SettingKeyboard.ALT_BUTTON_SPEED_UP]: 0,
   [SettingKeyboard.BUTTON_SLOW_DOWN]: 0,
@@ -152,6 +158,7 @@ export function setSettingKeyboard(setting: SettingKeyboard, value: number): boo
     case SettingKeyboard.BUTTON_CYCLE_ABILITY:
     case SettingKeyboard.BUTTON_CYCLE_NATURE:
     case SettingKeyboard.BUTTON_CYCLE_TERA:
+    case SettingKeyboard.BUTTON_CYCLE_PASSIVE:
     case SettingKeyboard.BUTTON_SPEED_UP:
     case SettingKeyboard.BUTTON_SLOW_DOWN:
     case SettingKeyboard.ALT_BUTTON_UP:
@@ -168,6 +175,7 @@ export function setSettingKeyboard(setting: SettingKeyboard, value: number): boo
     case SettingKeyboard.ALT_BUTTON_CYCLE_ABILITY:
     case SettingKeyboard.ALT_BUTTON_CYCLE_NATURE:
     case SettingKeyboard.ALT_BUTTON_CYCLE_TERA:
+    case SettingKeyboard.ALT_BUTTON_CYCLE_PASSIVE:
     case SettingKeyboard.ALT_BUTTON_SPEED_UP:
     case SettingKeyboard.ALT_BUTTON_SLOW_DOWN:
     case SettingKeyboard.ALT_BUTTON_SUBMIT:

@@ -24,6 +24,7 @@ export class PokemonData {
   public nickname: string;
   public formIndex: number;
   public abilityIndex: number;
+  public passiveIndex: number;
   public passive: boolean;
   public shiny: boolean;
   public variant: Variant;
@@ -160,6 +161,7 @@ export class PokemonData {
 
     this.customPokemonData = new CustomPokemonData(source.customPokemonData);
     this.fusionCustomPokemonData = new CustomPokemonData(source.fusionCustomPokemonData);
+    this.passiveIndex = source.passiveIndex ?? 0;
   }
 
   toPokemon(battleType?: BattleType, partyMemberIndex = 0, double = false): Pokemon {

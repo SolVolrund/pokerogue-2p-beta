@@ -585,6 +585,9 @@ export class UiInputs {
       case "KeyV":
         this.forceLocalTwoPlayerInput(this.selectedSyncRepairPlayer, Button.CYCLE_TERA);
         return;
+      case "KeyP":
+        this.forceLocalTwoPlayerInput(this.selectedSyncRepairPlayer, Button.CYCLE_PASSIVE);
+        return;
       case "KeyC":
         this.forceLocalTwoPlayerInput(this.selectedSyncRepairPlayer, Button.CYCLE_FORM);
         return;
@@ -682,6 +685,7 @@ export class UiInputs {
     cycleControls.append(this.createSyncRepairInputButton("C/FORM", Button.CYCLE_FORM));
     cycleControls.append(this.createSyncRepairInputButton("F/NATURE", Button.CYCLE_NATURE));
     cycleControls.append(this.createSyncRepairInputButton("V/TERA", Button.CYCLE_TERA));
+    cycleControls.append(this.createSyncRepairInputButton("P/PASSIVE", Button.CYCLE_PASSIVE));
     cycleControls.append(this.createSyncRepairInputButton("SHINY", Button.CYCLE_SHINY));
     cycleControls.append(this.createSyncRepairInputButton("GENDER", Button.CYCLE_GENDER));
     panel.append(cycleControls);
@@ -835,6 +839,7 @@ export class UiInputs {
       [Button.CYCLE_ABILITY]: () => this.buttonCycleOption(Button.CYCLE_ABILITY),
       [Button.CYCLE_NATURE]: () => this.buttonCycleOption(Button.CYCLE_NATURE),
       [Button.CYCLE_TERA]: () => this.buttonCycleOption(Button.CYCLE_TERA),
+      [Button.CYCLE_PASSIVE]: () => this.buttonCycleOption(Button.CYCLE_PASSIVE),
       [Button.SPEED_UP]: () => this.buttonSpeedChange(),
       [Button.SLOW_DOWN]: () => this.buttonSpeedChange(false),
       [Button.DEV_CUSTOM]: () => {
@@ -867,6 +872,7 @@ export class UiInputs {
       [Button.CYCLE_ABILITY]: () => {},
       [Button.CYCLE_NATURE]: () => {},
       [Button.CYCLE_TERA]: () => this.buttonInfo(false),
+      [Button.CYCLE_PASSIVE]: () => {},
       [Button.SPEED_UP]: () => {},
       [Button.SLOW_DOWN]: () => {},
       [Button.DEV_CUSTOM]: () => {},

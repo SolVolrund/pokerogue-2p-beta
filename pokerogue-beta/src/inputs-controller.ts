@@ -268,7 +268,7 @@ export class InputsController {
         this.setChosenGamepad(gamepadID);
       }
       const config = deepCopy(this.getConfig(gamepadID)) as InterfaceConfig;
-      config.custom = this.configs[gamepadID]?.custom || { ...config.default };
+      config.custom = this.mergeDefaultBindings(config, this.configs[gamepadID]?.custom) as typeof config.custom;
       this.configs[gamepadID] = config;
       globalScene.gameData?.saveMappingConfigs(gamepadID, this.configs[gamepadID]);
     }
@@ -283,11 +283,32 @@ export class InputsController {
   setupKeyboard(): void {
     for (const layout of ["default"]) {
       const config = deepCopy(this.getConfigKeyboard(layout)) as InterfaceConfig;
-      config.custom = this.configs[layout]?.custom || { ...config.default };
+      config.custom = this.mergeDefaultBindings(config, this.configs[layout]?.custom) as typeof config.custom;
       this.configs[layout] = config;
       globalScene.gameData?.saveMappingConfigs(this.selectedDevice[Device.KEYBOARD], this.configs[layout]);
     }
     this.initChosenLayoutKeyboard(this.selectedDevice[Device.KEYBOARD]);
+  }
+
+  private mergeDefaultBindings(
+    config: InterfaceConfig,
+    existingCustom: InterfaceConfig["custom"] | undefined,
+  ): Record<string, MappingSettingName | -1> {
+    const custom = {
+      ...config.default,
+      ...(existingCustom ?? {}),
+    } as Record<string, MappingSettingName | -1>;
+
+    for (const [key, defaultSetting] of Object.entries(config.default)) {
+      if (defaultSetting === -1 || Object.values(custom).includes(defaultSetting)) {
+        continue;
+      }
+      if (custom[key] == null || custom[key] === -1) {
+        custom[key] = defaultSetting;
+      }
+    }
+
+    return custom;
   }
 
   /**

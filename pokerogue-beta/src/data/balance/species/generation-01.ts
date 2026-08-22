@@ -64,7 +64,7 @@ export function initGenerationOne(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.IVYSAUR, level: 16 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.GRASSY_SURGE,
+    passives: [AbilityId.GRASSY_SURGE, AbilityId.SOLAR_POWER],
     levelMoves: [
       [1, MoveId.TACKLE],
       [1, MoveId.GROWL],
@@ -13621,7 +13621,7 @@ export function initGenerationOne(): SpeciesDataMapConfig {
     ],
     eggTier: EggTier.COMMON,
     passives: {
-      0: AbilityId.PICKUP,
+      0: [AbilityId.PICKUP, AbilityId.NORMALIZE],
       1: AbilityId.PICKUP,
       2: AbilityId.FLUFFY,
     },

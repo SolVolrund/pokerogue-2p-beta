@@ -53,6 +53,7 @@ export const PAD_GENERIC: PadConfig<GenericPadButtons> = {
     [SettingGamepad.BUTTON_CANCEL]: Button.CANCEL,
     [SettingGamepad.BUTTON_CYCLE_NATURE]: Button.CYCLE_NATURE,
     [SettingGamepad.BUTTON_CYCLE_TERA]: Button.CYCLE_TERA,
+    [SettingGamepad.BUTTON_CYCLE_PASSIVE]: Button.CYCLE_PASSIVE,
     [SettingGamepad.BUTTON_MENU]: Button.MENU,
     [SettingGamepad.BUTTON_STATS]: Button.STATS,
     [SettingGamepad.BUTTON_CYCLE_FORM]: Button.CYCLE_FORM,

@@ -221,8 +221,8 @@ export abstract class PokemonSpeciesForm {
    * @param formIndex The form index to use, defaults to form for this species instance
    * @returns The id of the ability
    */
-  getPassiveAbility(formIndex = this.formIndex): AbilityId {
-    return speciesDataRegistry.getPassive(this.speciesId, formIndex);
+  getPassiveAbility(formIndex = this.formIndex, passiveIndex = 0): AbilityId {
+    return speciesDataRegistry.getPassive(this.speciesId, formIndex, passiveIndex);
   }
 
   /**

@@ -194,6 +194,7 @@ export class SelectStarterPhase extends Phase {
       if (starter.passive) {
         starterPokemon.passive = true;
       }
+      starterPokemon.passiveIndex = starter.passiveIndex ?? 0;
       const computerPartnerStarter = starter as ComputerPartnerStarter;
       if (computerPartnerStarter.crystalized) {
         starterPokemon.setCrystalized(true, computerPartnerStarter.crystalColor);

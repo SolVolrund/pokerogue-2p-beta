@@ -23,6 +23,7 @@ export enum SettingGamepad {
   BUTTON_CYCLE_ABILITY = "BUTTON_CYCLE_ABILITY",
   BUTTON_CYCLE_NATURE = "BUTTON_CYCLE_NATURE",
   BUTTON_CYCLE_TERA = "BUTTON_CYCLE_TERA",
+  BUTTON_CYCLE_PASSIVE = "BUTTON_CYCLE_PASSIVE",
   BUTTON_SPEED_UP = "BUTTON_SPEED_UP",
   BUTTON_SLOW_DOWN = "BUTTON_SLOW_DOWN",
   BUTTON_SUBMIT = "BUTTON_SUBMIT",
@@ -50,6 +51,7 @@ export const settingGamepadOptions = {
   [SettingGamepad.BUTTON_CYCLE_ABILITY]: [`KEY ${Button.CYCLE_ABILITY.toString()}`, pressAction],
   [SettingGamepad.BUTTON_CYCLE_NATURE]: [`KEY ${Button.CYCLE_NATURE.toString()}`, pressAction],
   [SettingGamepad.BUTTON_CYCLE_TERA]: [`KEY ${Button.CYCLE_TERA.toString()}`, pressAction],
+  [SettingGamepad.BUTTON_CYCLE_PASSIVE]: [`KEY ${Button.CYCLE_PASSIVE.toString()}`, pressAction],
   [SettingGamepad.BUTTON_SPEED_UP]: [`KEY ${Button.SPEED_UP.toString()}`, pressAction],
   [SettingGamepad.BUTTON_SLOW_DOWN]: [`KEY ${Button.SLOW_DOWN.toString()}`, pressAction],
   [SettingGamepad.BUTTON_SUBMIT]: [`KEY ${Button.SUBMIT.toString()}`, pressAction],
@@ -72,6 +74,7 @@ export const settingGamepadDefaults = {
   [SettingGamepad.BUTTON_CYCLE_ABILITY]: 0,
   [SettingGamepad.BUTTON_CYCLE_NATURE]: 0,
   [SettingGamepad.BUTTON_CYCLE_TERA]: 0,
+  [SettingGamepad.BUTTON_CYCLE_PASSIVE]: 0,
   [SettingGamepad.BUTTON_SPEED_UP]: 0,
   [SettingGamepad.BUTTON_SLOW_DOWN]: 0,
   [SettingGamepad.BUTTON_SUBMIT]: 0,
@@ -101,6 +104,7 @@ export function setSettingGamepad(setting: SettingGamepad, value: number): boole
     case SettingGamepad.BUTTON_CYCLE_ABILITY:
     case SettingGamepad.BUTTON_CYCLE_NATURE:
     case SettingGamepad.BUTTON_CYCLE_TERA:
+    case SettingGamepad.BUTTON_CYCLE_PASSIVE:
     case SettingGamepad.BUTTON_SPEED_UP:
     case SettingGamepad.BUTTON_SLOW_DOWN:
     case SettingGamepad.BUTTON_SUBMIT:

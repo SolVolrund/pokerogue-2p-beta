@@ -18,6 +18,7 @@ export class FusionOptions {
   public donorPassive: boolean;
   public donorNature: Nature | null;
   public moves: (MoveId | null)[];
+  public donorPassiveIndex: number;
 
   constructor(data?: Partial<FusionOptions>) {
     this.spriteBody = getFusionComponent(data?.spriteBody, "body");
@@ -34,6 +35,7 @@ export class FusionOptions {
     this.moves = Array.isArray(data?.moves)
       ? data.moves.map(moveId => (typeof moveId === "number" ? moveId : null)).slice(0, 4)
       : [];
+    this.donorPassiveIndex = data?.donorPassiveIndex ?? 0;
   }
 }
 

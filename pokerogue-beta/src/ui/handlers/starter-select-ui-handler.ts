@@ -311,6 +311,7 @@ interface SpeciesDetails {
   female?: boolean | undefined;
   variant?: Variant | undefined;
   abilityIndex?: number | undefined;
+  passiveIndex?: number | undefined;
   natureIndex?: number | undefined;
   forSeen?: boolean | undefined; // default = false
   teraType?: PokemonType | undefined;
@@ -376,6 +377,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   private genderIconElement: Phaser.GameObjects.Sprite;
   private natureIconElement: Phaser.GameObjects.Sprite;
   private teraIconElement: Phaser.GameObjects.Sprite;
+  private passiveIconElement: Phaser.GameObjects.Sprite;
   private goFilterIconElement: Phaser.GameObjects.Sprite;
   private shinyLabel: Phaser.GameObjects.Text;
   private formLabel: Phaser.GameObjects.Text;
@@ -383,6 +385,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   private abilityLabel: Phaser.GameObjects.Text;
   private natureLabel: Phaser.GameObjects.Text;
   private teraLabel: Phaser.GameObjects.Text;
+  private passiveLabel: Phaser.GameObjects.Text;
   private goFilterLabel: Phaser.GameObjects.Text;
   /** Group holding the UI elements appearing in the instructionsContainer */
   /* TODO: Uncomment this once our testing infra supports mocks of `Phaser.GameObject.Group`
@@ -402,6 +405,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   private filterMode: boolean;
   private dexAttrCursor = 0n;
   private abilityCursor = -1;
+  private passiveCursor = -1;
   private natureCursor = -1;
   private teraCursor: PokemonType = PokemonType.UNKNOWN;
   private filterBarCursor = 0;
@@ -422,6 +426,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   private canCycleForm: boolean;
   private canCycleGender: boolean;
   private canCycleAbility: boolean;
+  private canCyclePassive: boolean;
   private canCycleNature: boolean;
   private canCycleTera: boolean;
 
@@ -1079,6 +1084,20 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       },
     ).setName("text-tera-label");
 
+    this.passiveIconElement = new Phaser.GameObjects.Sprite(globalScene, iRowX, iRowY, "keyboard", "P.png")
+      .setName("sprite-passive-icon-element")
+      .setScale(0.675)
+      .setOrigin(0);
+    this.passiveLabel = addTextObject(
+      iRowTextX,
+      iRowY,
+      `: ${i18next.t("starterSelectUiHandler:passive").replace(/:$/, "")}`,
+      TextStyle.INSTRUCTIONS_TEXT,
+      {
+        fontSize: instructionTextSize,
+      },
+    ).setName("text-passive-label");
+
     this.goFilterIconElement = new Phaser.GameObjects.Sprite(
       globalScene,
       this.filterInstructionRowX,
@@ -1112,6 +1131,8 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       this.natureLabel,
       this.teraIconElement,
       this.teraLabel,
+      this.passiveIconElement,
+      this.passiveLabel,
       this.goFilterIconElement,
       this.goFilterLabel,
     ]);
@@ -1870,12 +1891,13 @@ export class StarterSelectUiHandler extends MessageUiHandler {
           const dexAttr = this.getCurrentDexProps(randomSpecies.speciesId);
           const props = globalScene.gameData.getSpeciesDexAttrProps(randomSpecies, dexAttr);
           const abilityIndex = this.abilityCursor;
+          const passiveIndex = this.passiveCursor;
           const nature = this.natureCursor as unknown as Nature;
           const teraType = this.teraCursor;
           const moveset = this.starterMoveset?.slice(0) as StarterMoveset;
           const starterCost = globalScene.gameData.getSpeciesStarterValue(randomSpecies.speciesId);
           if (this.tryUpdateValue(starterCost, true)) {
-            this.addToParty(randomSpecies, dexAttr, abilityIndex, nature, moveset, teraType, true);
+            this.addToParty(randomSpecies, dexAttr, abilityIndex, passiveIndex, nature, moveset, teraType, true);
             ui.playSelect();
             success = true;
           } else {
@@ -1997,6 +2019,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
                       this.lastSpecies,
                       this.dexAttrCursor,
                       this.abilityCursor,
+                      this.passiveCursor,
                       this.natureCursor as unknown as Nature,
                       this.starterMoveset?.slice(0) as StarterMoveset,
                       this.teraCursor,
@@ -2662,6 +2685,31 @@ export class StarterSelectUiHandler extends MessageUiHandler {
               success = true;
             }
             break;
+          case Button.CYCLE_PASSIVE:
+            if (this.canCyclePassive) {
+              const passiveCount = speciesDataRegistry.getPassiveCount(
+                this.lastSpecies.speciesId,
+                starterAttributes.form ?? props.formIndex,
+              );
+              const newPassiveIndex = (this.passiveCursor + 1) % passiveCount;
+              starterAttributes.passiveIndex = newPassiveIndex;
+              originalStarterAttributes.passiveIndex = newPassiveIndex;
+
+              const { visible: tooltipVisible } = globalScene.ui.getTooltip();
+
+              if (tooltipVisible && this.activeTooltip === "PASSIVE") {
+                const newPassive = allAbilities[
+                  this.lastSpecies.getPassiveAbility(starterAttributes.form ?? props.formIndex, newPassiveIndex)
+                ];
+                globalScene.ui.editTooltip(`${newPassive.name}`, `${newPassive.description}`);
+              }
+
+              this.setSpeciesDetails(this.lastSpecies, {
+                passiveIndex: newPassiveIndex,
+              });
+              success = true;
+            }
+            break;
           case Button.CYCLE_TERA:
             if (this.canCycleTera) {
               const speciesForm = getPokemonSpeciesForm(this.lastSpecies.speciesId, starterAttributes.form ?? 0);
@@ -2851,6 +2899,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     species: PokemonSpecies,
     dexAttr: bigint,
     abilityIndex: number,
+    passiveIndex: number,
     nature: Nature,
     moveset: StarterMoveset,
     teraType: PokemonType,
@@ -2881,6 +2930,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       formIndex: props.formIndex,
       female: props.female,
       abilityIndex,
+      passiveIndex,
       passive: !(starterDataEntry.passiveAttr ^ (PassiveAttr.ENABLED | PassiveAttr.UNLOCKED)),
       nature,
       moveset,
@@ -2996,6 +3046,9 @@ export class StarterSelectUiHandler extends MessageUiHandler {
         case SettingKeyboard.BUTTON_CYCLE_TERA:
           iconPath = "V.png";
           break;
+        case SettingKeyboard.BUTTON_CYCLE_PASSIVE:
+          iconPath = "P.png";
+          break;
         case SettingKeyboard.BUTTON_STATS:
           iconPath = "C.png";
           break;
@@ -3005,9 +3058,11 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     } else {
       iconPath = globalScene.inputController?.getIconForLatestInputRecorded(iconSetting);
     }
-    // The bang for iconPath is correct as long the cases in the above switch statement handle all `SettingKeyboard` values enabled in touch mode
+    if (!iconPath) {
+      return;
+    }
     iconElement
-      .setTexture(gamepadType, iconPath!)
+      .setTexture(gamepadType, iconPath)
       .setPosition(this.instructionRowX, this.instructionRowY)
       .setVisible(true);
     controlLabel
@@ -3095,6 +3150,16 @@ export class StarterSelectUiHandler extends MessageUiHandler {
           this.abilityLabel,
         );
       }
+      if (this.canCyclePassive) {
+        this.passiveLabel.setText(`: ${i18next.t("starterSelectUiHandler:passive").replace(/:$/, "")}`);
+        this.updateButtonIcon(
+          SettingKeyboard.BUTTON_CYCLE_PASSIVE,
+          gamepadType,
+          this.passiveIconElement,
+          this.passiveLabel,
+        );
+      }
+      this.teraLabel.setText(i18next.t("starterSelectUiHandler:cycleTera"));
       if (this.canCycleNature) {
         this.updateButtonIcon(
           SettingKeyboard.BUTTON_CYCLE_NATURE,
@@ -3610,6 +3675,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       speciesId: this.lastSpecies?.speciesId ?? null,
       dexAttrCursor: this.dexAttrCursor.toString(),
       abilityCursor: this.abilityCursor,
+      passiveCursor: this.passiveCursor,
       natureCursor: this.natureCursor,
       teraCursor: this.teraCursor,
       filterMode: this.filterMode,
@@ -3622,6 +3688,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     this.speciesStarterDexEntry = null;
     this.dexAttrCursor = 0n;
     this.abilityCursor = 0;
+    this.passiveCursor = 0;
     this.natureCursor = 0;
     this.teraCursor = PokemonType.UNKNOWN;
 
@@ -3652,6 +3719,9 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     if (starterAttributes?.ability && !Number.isNaN(starterAttributes.ability)) {
       // load default ability from stater save data, if set
       this.abilityCursor = starterAttributes.ability;
+    }
+    if (starterAttributes?.passiveIndex != null && !Number.isNaN(starterAttributes.passiveIndex)) {
+      this.passiveCursor = starterAttributes.passiveIndex;
     }
     if (starterAttributes?.tera) {
       // load default tera from starter save data, if set
@@ -3935,11 +4005,12 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   }
 
   setSpeciesDetails(species: PokemonSpecies, options: SpeciesDetails = {}, save = true): void {
-    let { shiny, formIndex, female, variant, abilityIndex, natureIndex, teraType } = options;
+    let { shiny, formIndex, female, variant, abilityIndex, passiveIndex, natureIndex, teraType } = options;
     const forSeen: boolean = options.forSeen ?? false;
     const oldProps = species ? globalScene.gameData.getSpeciesDexAttrProps(species, this.dexAttrCursor) : null;
     const oldAbilityIndex =
       this.abilityCursor > -1 ? this.abilityCursor : globalScene.gameData.getStarterSpeciesDefaultAbilityIndex(species);
+    const oldPassiveIndex = this.passiveCursor > -1 ? this.passiveCursor : 0;
     let oldNatureIndex = -1;
     if (species) {
       const { dexEntry } = this.getSpeciesData(species.speciesId);
@@ -3949,6 +4020,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     const oldTeraType = this.teraCursor > -1 ? this.teraCursor : species ? species.type1 : PokemonType.UNKNOWN;
     this.dexAttrCursor = 0n;
     this.abilityCursor = -1;
+    this.passiveCursor = -1;
     this.natureCursor = -1;
     this.teraCursor = PokemonType.UNKNOWN;
     // We will only update the sprite if there is a change to form, shiny/variant
@@ -3994,6 +4066,12 @@ export class StarterSelectUiHandler extends MessageUiHandler {
           : DexAttr.VARIANT_3;
       this.dexAttrCursor |= globalScene.gameData.getFormAttr(formIndex);
       this.abilityCursor = abilityIndex === undefined ? (abilityIndex = oldAbilityIndex) : abilityIndex;
+      const passiveCount = speciesDataRegistry.getPassiveCount(species.speciesId, formIndex);
+      passiveIndex = passiveIndex === undefined ? oldPassiveIndex : passiveIndex;
+      if (passiveIndex >= passiveCount) {
+        passiveIndex = 0;
+      }
+      this.passiveCursor = passiveIndex;
       this.natureCursor = natureIndex === undefined ? (natureIndex = oldNatureIndex) : natureIndex;
       this.teraCursor = teraType == null ? (teraType = oldTeraType) : teraType;
       const [isInParty, partyIndex]: [boolean, number] = this.isInParty(species); // we use this to firstly check if the pokemon is in the party, and if so, to get the party index in order to update the icon image
@@ -4069,6 +4147,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
           starter.female = props.female;
           starter.formIndex = props.formIndex;
           starter.abilityIndex = this.abilityCursor;
+          starter.passiveIndex = this.passiveCursor;
           starter.nature = this.natureCursor;
           starter.teraType = this.teraCursor;
         }
@@ -4134,6 +4213,9 @@ export class StarterSelectUiHandler extends MessageUiHandler {
         }
 
         this.canCycleAbility = [hasAbility1, hasAbility2, hasHiddenAbility].filter(a => a).length > 1;
+        this.canCyclePassive =
+          !!(starterDataEntry.passiveAttr & PassiveAttr.UNLOCKED)
+          && speciesDataRegistry.getPassiveCount(species.speciesId, formIndex ?? 0) > 1;
 
         this.canCycleForm =
           species.forms
@@ -4176,7 +4258,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
           .setShadowColor(getTextColor(isHidden ? TextStyle.SUMMARY_GOLD : TextStyle.SUMMARY_ALT, true));
 
         const passiveAttr = starterDataEntry.passiveAttr;
-        const passiveAbility = allAbilities[this.lastSpecies.getPassiveAbility(formIndex)];
+        const passiveAbility = allAbilities[this.lastSpecies.getPassiveAbility(formIndex, this.passiveCursor)];
 
         if (this.pokemonAbilityText.visible) {
           if (this.activeTooltip === "ABILITY") {
@@ -4801,6 +4883,8 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     this.natureLabel.setVisible(false);
     this.teraIconElement.setVisible(false);
     this.teraLabel.setVisible(false);
+    this.passiveIconElement.setVisible(false);
+    this.passiveLabel.setVisible(false);
     this.goFilterIconElement.setVisible(false);
     this.goFilterLabel.setVisible(false);
   }

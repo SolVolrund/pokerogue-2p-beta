@@ -166,6 +166,7 @@ export interface StarterMoveData {
 export interface StarterAttributes {
   nature?: number | undefined;
   ability?: number | undefined;
+  passiveIndex?: number | undefined;
   variant?: number | undefined;
   form?: number | undefined;
   female?: boolean | undefined;
@@ -189,6 +190,7 @@ export interface Starter {
   formIndex: number;
   female?: boolean | undefined;
   abilityIndex: number;
+  passiveIndex?: number | undefined;
   passive: boolean;
   nature: Nature;
   moveset?: StarterMoveset | undefined;
