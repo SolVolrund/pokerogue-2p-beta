@@ -57,12 +57,14 @@ const overrides: Partial<InstanceType<OverridesType>> = {
   WAVE_ITEM_REWARD_OVERRIDE: {
     1: [{ name: "DNA_SPLICERS" }],
   },
-//  STARTING_WAVE_OVERRIDE: 200,
+//  STARTING_WAVE_OVERRIDE: 21,
 //  STARTING_BIOME_OVERRIDE: BiomeId.TOWN,
 //  BATTLE_TYPE_OVERRIDE: BattleType.TRAINER,
 //  RANDOM_TRAINER_OVERRIDE: {trainerType: TrainerType.MOLLY_HALE},
 //  ENEMY_SPECIES_OVERRIDE: SpeciesId.CASTFORM,
-//  ENEMY_LEVEL_OVERRIDE: 1,
+  ENEMY_LEVEL_OVERRIDE: 1,
+//  MYSTERY_ENCOUNTER_RATE_OVERRIDE: 256,
+//  MYSTERY_ENCOUNTER_OVERRIDE: MysteryEncounterType.CONTEST_HALL,
 //  ENEMY_HELD_ITEMS_OVERRIDE: [
 //    { name: "BERRY", type: BerryType.OCCA },
 //    { name: "BERRY", type: BerryType.PASSHO },

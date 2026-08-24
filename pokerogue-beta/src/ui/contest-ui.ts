@@ -75,6 +75,13 @@ type ContestLiveFeedState = {
   latestStep: number;
   messages: string[];
 };
+type ContestMoveSelectorRow = {
+  markerText: ContestLayoutText;
+  nameText: ContestLayoutText;
+  tween: Phaser.Tweens.Tween | null;
+  layoutObject: ContestLayoutObject;
+  rowIndex: number;
+};
 
 const CONTEST_TEXTURE_PREFIX = "contest_layout";
 const MAX_APPEAL_HEARTS = 8;
@@ -103,6 +110,11 @@ const CONTEST_AUDIENCE_FRAME_DURATION = 64;
 const CONTEST_CHAT_STREAM_MAX_MESSAGES = 30;
 const CONTEST_AD_REEL_MAX_MESSAGES = 3;
 const CONTEST_FEED_EXTRA_MESSAGE_CHANCE = 4;
+const CONTEST_MOVE_SELECTOR_ROW_COUNT = 4;
+const CONTEST_MOVE_SELECTOR_MARKER_WIDTH = 8;
+const CONTEST_MOVE_SELECTOR_SCROLL_DELAY = 900;
+const CONTEST_MOVE_SELECTOR_SCROLL_HOLD = 900;
+const CONTEST_MOVE_SELECTOR_SCROLL_PIXELS_PER_SECOND = 18;
 const MOVE_ANIM_USER_FOCUS_X = 106;
 const MOVE_ANIM_USER_FOCUS_Y = 116;
 const MOVE_ANIM_TARGET_FOCUS_X = 234;
@@ -186,6 +198,7 @@ export class ContestUi {
   private readonly container: Phaser.GameObjects.Container;
   private readonly sprites: ContestLayoutSprite[] = [];
   private readonly textFields: ContestLayoutText[] = [];
+  private readonly moveSelectorRows: ContestMoveSelectorRow[] = [];
   private curtainSprite: ContestLayoutSprite | undefined;
   private curtainBaseY = 0;
   private curtainVisible = false;
@@ -231,6 +244,7 @@ export class ContestUi {
       textField.setText(text);
       textField.setVisible(text.length > 0 && textField.layoutObject.phaseAppearance.includes(phaseName));
     }
+    this.updateMoveSelectorRows(phaseName, contestState);
 
     this.startAudienceAnimation();
   }
@@ -465,6 +479,7 @@ export class ContestUi {
 
   destroy(): void {
     this.audienceAnimationTimer?.remove(false);
+    this.clearMoveSelectorTweens();
     this.destroyPerformerSprite();
     this.destroyIntroSprites();
     this.container.destroy(true);
@@ -490,6 +505,11 @@ export class ContestUi {
   }
 
   private addTextField(object: ContestLayoutObject): void {
+    if (object.role === "move_selector") {
+      this.addMoveSelectorRows(object);
+      return;
+    }
+
     const text = addTextObject(object.x, object.y, "", TextStyle.MESSAGE, {
       fixedWidth: object.width * 6,
       fixedHeight: object.height * 6,
@@ -500,6 +520,106 @@ export class ContestUi {
     text.setOrigin(0);
     this.container.add(text);
     this.textFields.push(text);
+  }
+
+  private addMoveSelectorRows(object: ContestLayoutObject): void {
+    const rowHeight = object.height / CONTEST_MOVE_SELECTOR_ROW_COUNT;
+    const nameX = object.x + CONTEST_MOVE_SELECTOR_MARKER_WIDTH;
+
+    for (let rowIndex = 0; rowIndex < CONTEST_MOVE_SELECTOR_ROW_COUNT; rowIndex++) {
+      const rowY = object.y + rowIndex * rowHeight;
+      const markerText = addTextObject(object.x, rowY, "", TextStyle.MESSAGE, {
+        fontSize: "72px",
+        fixedHeight: rowHeight * 6,
+      }) as ContestLayoutText;
+      markerText.layoutObject = object;
+      markerText.setOrigin(0);
+      markerText.setVisible(false);
+
+      const nameText = addTextObject(nameX, rowY, "", TextStyle.MESSAGE, {
+        fontSize: "72px",
+        fixedHeight: rowHeight * 6,
+      }) as ContestLayoutText;
+      nameText.layoutObject = object;
+      nameText.setOrigin(0);
+      nameText.setVisible(false);
+
+      this.container.add([markerText, nameText]);
+      this.moveSelectorRows.push({
+        markerText,
+        nameText,
+        tween: null,
+        layoutObject: object,
+        rowIndex,
+      });
+    }
+  }
+
+  private updateMoveSelectorRows(phaseName: string, contestState: ContestState): void {
+    const visible = phaseName === "ContestCommandPhase" && isPlayerCommandPhase(contestState);
+    if (!visible) {
+      this.setMoveSelectorRowsVisible(false);
+      return;
+    }
+
+    const moves = getContestPlayerMoves(contestState);
+    const selectedIndex = clampMoveSelection(this.commandSelectionIndex, moves.length);
+
+    for (const row of this.moveSelectorRows) {
+      const moveId = moves[row.rowIndex];
+      const rowVisible = moveId != null;
+      row.markerText.setVisible(rowVisible);
+      row.nameText.setVisible(rowVisible);
+      row.markerText.setText(row.rowIndex === selectedIndex ? ">" : "");
+      row.nameText.setText(moveId != null ? allMoves[moveId]?.name ?? moveId.toString() : "");
+      this.updateMoveSelectorRowScroll(row, rowVisible && row.rowIndex === selectedIndex);
+      this.container.bringToTop(row.markerText);
+      this.container.bringToTop(row.nameText);
+    }
+  }
+
+  private setMoveSelectorRowsVisible(visible: boolean): void {
+    for (const row of this.moveSelectorRows) {
+      row.markerText.setVisible(visible);
+      row.nameText.setVisible(visible);
+      row.markerText.setText("");
+      row.nameText.setText("");
+      this.clearMoveSelectorRowTween(row);
+    }
+  }
+
+  private updateMoveSelectorRowScroll(row: ContestMoveSelectorRow, selected: boolean): void {
+    this.clearMoveSelectorRowTween(row);
+    const baseX = row.layoutObject.x + CONTEST_MOVE_SELECTOR_MARKER_WIDTH;
+    const maxWidth = row.layoutObject.width - CONTEST_MOVE_SELECTOR_MARKER_WIDTH;
+    row.nameText.setX(baseX);
+    row.nameText.setCrop(0, 0, maxWidth * 6, row.layoutObject.height * 6 / CONTEST_MOVE_SELECTOR_ROW_COUNT);
+
+    const overflow = row.nameText.displayWidth - maxWidth;
+    if (!selected || overflow <= 0) {
+      return;
+    }
+
+    row.tween = globalScene.tweens.add({
+      targets: row.nameText,
+      delay: CONTEST_MOVE_SELECTOR_SCROLL_DELAY,
+      duration: Math.max(600, (overflow / CONTEST_MOVE_SELECTOR_SCROLL_PIXELS_PER_SECOND) * 1000),
+      hold: CONTEST_MOVE_SELECTOR_SCROLL_HOLD,
+      loop: -1,
+      x: baseX - overflow,
+    });
+  }
+
+  private clearMoveSelectorTweens(): void {
+    for (const row of this.moveSelectorRows) {
+      this.clearMoveSelectorRowTween(row);
+    }
+  }
+
+  private clearMoveSelectorRowTween(row: ContestMoveSelectorRow): void {
+    globalScene.tweens.killTweensOf(row.nameText);
+    row.tween?.remove();
+    row.tween = null;
   }
 
   private shouldShowSprite(object: ContestLayoutObject, phaseName: string, contestState: ContestState): boolean {
