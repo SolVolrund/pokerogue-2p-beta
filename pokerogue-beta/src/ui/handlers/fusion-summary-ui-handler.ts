@@ -200,6 +200,7 @@ export class FusionSummaryUiHandler extends UiHandler {
 
     if (success) {
       this.getUi().playSelect();
+      this.broadcastTwoPlayerFusionCheckpoint("fusion-summary-input");
     } else if (error) {
       this.getUi().playError();
     }
@@ -246,7 +247,6 @@ export class FusionSummaryUiHandler extends UiHandler {
   private getTwoPlayerFusionInputState(): Record<string, unknown> {
     return {
       page: this.cursor,
-      transitioning: this.transitioning,
       eligibleSlotIndexes: this.eligibleSlotIndexes,
       bodySlotIndex: this.bodySlotIndex,
       donorSlotIndex: this.donorSlotIndex,
@@ -265,6 +265,14 @@ export class FusionSummaryUiHandler extends UiHandler {
       pendingMoveSourceRow: this.pendingMoveSourceRow,
       fusionMoveIds: this.fusionMoveSlots.map(move => move?.id ?? null),
     };
+  }
+
+  private broadcastTwoPlayerFusionCheckpoint(reason: string): void {
+    if (!globalScene.twoPlayerMode) {
+      return;
+    }
+
+    setTimeout(() => globalScene.uiInputs?.broadcastTwoPlayerCheckpoint(reason), 0);
   }
 
   private processSpriteInput(button: Button): boolean {
@@ -488,6 +496,7 @@ export class FusionSummaryUiHandler extends UiHandler {
         this.pageTransitionContainer.setVisible(false);
         this.renderTargetContainer = this.pageContainer;
         this.transitioning = false;
+        this.broadcastTwoPlayerFusionCheckpoint("fusion-summary-transition-complete");
       },
     });
   }

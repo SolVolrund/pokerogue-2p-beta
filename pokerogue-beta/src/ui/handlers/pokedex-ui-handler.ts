@@ -19,7 +19,7 @@ import { Button } from "#enums/buttons";
 import { DexAttr } from "#enums/dex-attr";
 import { DropDownColumn } from "#enums/drop-down-column";
 import type { Nature } from "#enums/nature";
-import { Passive as PassiveAttr } from "#enums/passive";
+import { hasAnyPassiveLocked, hasAnyPassiveUnlocked } from "#enums/passive";
 import { PokemonType } from "#enums/pokemon-type";
 import type { SpeciesId } from "#enums/species-id";
 import { TextStyle } from "#enums/text-style";
@@ -905,7 +905,10 @@ export class PokedexUiHandler extends MessageUiHandler {
     return (
       starterData.candyCount
         >= getPassiveCandyCount(speciesDataRegistry.getStarterCost(this.getStarterSpeciesId(speciesId)))
-      && !(starterData.passiveAttr & PassiveAttr.UNLOCKED)
+      && hasAnyPassiveLocked(
+        starterData.passiveAttr,
+        speciesDataRegistry.getPassiveCount(this.getStarterSpeciesId(speciesId), 0),
+      )
     );
   }
 
@@ -1598,8 +1601,9 @@ export class PokedexUiHandler extends MessageUiHandler {
       });
 
       // Passive Filter
-      const isPassiveUnlocked = starterData.passiveAttr > 0;
-      const isPassiveUnlockable = this.isPassiveAvailable(species.speciesId) && !isPassiveUnlocked;
+      const passiveCount = speciesDataRegistry.getPassiveCount(this.getStarterSpeciesId(species.speciesId), 0);
+      const isPassiveUnlocked = hasAnyPassiveUnlocked(starterData.passiveAttr, passiveCount);
+      const isPassiveUnlockable = this.isPassiveAvailable(species.speciesId);
       const fitsPassive = this.filterBar.getVals(DropDownColumn.UNLOCKS).some(unlocks => {
         if (unlocks.val === "PASSIVE" && unlocks.state === DropDownState.ON) {
           return isPassiveUnlocked;

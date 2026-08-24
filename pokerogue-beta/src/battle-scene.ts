@@ -106,7 +106,7 @@ import type { Pokemon } from "#field/pokemon";
 import { DEFAULT_CRYSTAL_COLOR, EnemyPokemon, PlayerPokemon } from "#field/pokemon";
 import { PokemonSpriteSparkleHandler } from "#field/pokemon-sprite-sparkle-handler";
 import { Trainer } from "#field/trainer";
-import type { Modifier, ModifierPredicate } from "#modifiers/modifier";
+import type { EnemyPersistentModifier, Modifier, ModifierPredicate } from "#modifiers/modifier";
 import {
   ConsumableModifier,
   ConsumablePokemonModifier,
@@ -515,6 +515,10 @@ function isTwoPlayerComputerPartnerEnabled(): boolean {
   );
 }
 
+function isTwoPlayerVsModeEnabled(): boolean {
+  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("twoPlayerVsMode") === "1";
+}
+
 function getTwoPlayerComputerPartnerPlayerIndexes(
   playerCount: MultiplayerPlayerCount,
   computerPartner = isTwoPlayerComputerPartnerEnabled(),
@@ -723,6 +727,7 @@ export class BattleScene extends SceneBase {
   public twoPlayerMode: boolean = isTwoPlayerPrototypeEnabled();
   public twoPlayerPartySize: 3 | 6 = getTwoPlayerPartySize();
   public twoPlayerComputerPartner: boolean = isTwoPlayerComputerPartnerEnabled();
+  public twoPlayerVsMode: boolean = isTwoPlayerVsModeEnabled();
   public computerPartnerKey: ComputerPartnerKey = "alex";
   public computerPartnerKeys: ComputerPartnerKey[] = ["alex", "alex", "alex"];
   public computerPartnerRolePreferences: Partial<Record<PlayerIndex, ComputerPartnerRolePreferences>> = {};
@@ -774,6 +779,11 @@ export class BattleScene extends SceneBase {
 
   public modifiers: PersistentModifier[];
   private enemyModifiers: PersistentModifier[];
+  private vsEnemyModifiersByPlayer: Record<PlayerIndex, PersistentModifier[]> = {
+    0: [],
+    1: [],
+    2: [],
+  };
   public uiContainer: Phaser.GameObjects.Container;
   public ui: UI;
 
@@ -1266,6 +1276,7 @@ export class BattleScene extends SceneBase {
     computerPartner = false,
     playerCount: MultiplayerPlayerCount = enabled ? 2 : 1,
     computerPartnerPlayerIndexes?: PlayerIndex[],
+    vsMode = false,
   ): void {
     if (!this.twoPlayerMode) {
       this.localPlayerSystemSave = this.gameData;
@@ -1281,6 +1292,7 @@ export class BattleScene extends SceneBase {
     const previousPlayerCount = this.multiplayerPlayerCount;
 
     this.twoPlayerMode = enabled;
+    this.twoPlayerVsMode = enabled && vsMode;
     this.multiplayerPlayerCount = enabled ? playerCount : 1;
     this.threePlayerLocalMode = enabled && playerCount === 3 && this.twoPlayerLocalInputSeat === "both";
     if (previousPlayerCount !== this.multiplayerPlayerCount) {
@@ -1313,6 +1325,7 @@ export class BattleScene extends SceneBase {
         this.uiInputs?.broadcastTwoPlayerSettingsSnapshot();
       }
     } else {
+      this.twoPlayerVsMode = false;
       this.gameData = localSystemSave;
       this.localPlayerSystemSave = this.gameData;
       this.systemSaves = undefined;
@@ -2838,6 +2851,34 @@ export class BattleScene extends SceneBase {
     return this.getPokemonAllowedInBattle(playerIndex).length > 0;
   }
 
+  public getVsModeSurvivingPlayerIndexes(): PlayerIndex[] {
+    if (!this.twoPlayerVsMode) {
+      return this.getActivePlayerIndexes();
+    }
+
+    return this.getActivePlayerIndexes().filter(playerIndex => this.hasPlayerUsablePokemonOrEonFlute(playerIndex));
+  }
+
+  public getVsModeWinnerPlayerIndex(): PlayerIndex | undefined {
+    if (!this.twoPlayerVsMode) {
+      return undefined;
+    }
+
+    const survivingPlayerIndexes = this.getVsModeSurvivingPlayerIndexes();
+    return survivingPlayerIndexes.length === 1 ? survivingPlayerIndexes[0] : undefined;
+  }
+
+  public queueVsModeVictoryIfDecided(): boolean {
+    const winnerPlayerIndex = this.getVsModeWinnerPlayerIndex();
+    if (winnerPlayerIndex === undefined) {
+      return false;
+    }
+
+    this.phaseManager.clearPhaseQueue(true);
+    this.phaseManager.pushNew("VsModeVictoryPhase", winnerPlayerIndex);
+    return true;
+  }
+
   public areAllActivePlayersOutOfUsablePokemon(): boolean {
     return this.getActivePlayerIndexes().every(playerIndex => !this.hasPlayerUsablePokemonOrEonFlute(playerIndex));
   }
@@ -2958,8 +2999,13 @@ export class BattleScene extends SceneBase {
     return isEnemy ? this.enemyModifierBar : this.modifierBar;
   }
 
+  private getPlayerModifierBarModifiers(playerIndex: PlayerIndex): PersistentModifier[] {
+    const modifiers = this.getPlayerModifiers(playerIndex);
+    return this.twoPlayerVsMode ? modifiers.concat(this.vsEnemyModifiersByPlayer[playerIndex]) : modifiers;
+  }
+
   refreshPlayerModifierBar(hideHeldItems = false, playerIndex: PlayerIndex = this.activePlayerIndex): void {
-    this.modifierBar.updateModifiers(this.getPlayerModifiers(playerIndex), hideHeldItems);
+    this.modifierBar.updateModifiers(this.getPlayerModifierBarModifiers(playerIndex), hideHeldItems);
   }
 
   // store info toggles to be accessible by the ui
@@ -4896,6 +4942,37 @@ export class BattleScene extends SceneBase {
     });
   }
 
+  addVsEnemyModifier(
+    playerIndex: PlayerIndex,
+    modifier: EnemyPersistentModifier,
+    ignoreUpdate?: boolean,
+    instant?: boolean,
+  ): Promise<void> {
+    return new Promise(resolve => {
+      const modifiers = this.vsEnemyModifiersByPlayer[playerIndex];
+      if (modifier.add(modifiers, false) && !ignoreUpdate) {
+        this.updatePartyForModifiers(this.getEnemyParty(), instant).then(() => resolve());
+        return;
+      }
+      resolve();
+    });
+  }
+
+  clearVsEnemyModifiers(playerIndex?: PlayerIndex): void {
+    if (playerIndex === undefined) {
+      this.vsEnemyModifiersByPlayer[0] = [];
+      this.vsEnemyModifiersByPlayer[1] = [];
+      this.vsEnemyModifiersByPlayer[2] = [];
+      return;
+    }
+
+    this.vsEnemyModifiersByPlayer[playerIndex] = [];
+  }
+
+  getVsEnemyModifiersForPlayer(playerIndex: PlayerIndex): PersistentModifier[] {
+    return this.vsEnemyModifiersByPlayer[playerIndex];
+  }
+
   /**
    * Try to transfer a held item to another pokemon.
    * If the recepient already has the maximum amount allowed for this item, the transfer is cancelled.
@@ -5310,7 +5387,11 @@ export class BattleScene extends SceneBase {
 
     this.updatePartyForModifiers(player ? this.getPlayerParty(playerIndex) : this.getEnemyParty(), instant);
     if (!player || !this.twoPlayerMode || playerIndex === this.activePlayerIndex) {
-      (player ? this.modifierBar : this.enemyModifierBar).updateModifiers(modifiers);
+      if (player) {
+        this.modifierBar.updateModifiers(this.getPlayerModifierBarModifiers(playerIndex));
+      } else {
+        this.enemyModifierBar.updateModifiers(modifiers);
+      }
     }
     if (!player) {
       this.updateUIPositions();
@@ -5499,6 +5580,84 @@ export class BattleScene extends SceneBase {
     return this.applyModifiers(modifierType, pokemon.isPlayer(), ...args);
   }
 
+  private getVsEnemyModifierLaneForPokemon(pokemon: Pokemon): PlayerIndex | undefined {
+    if (pokemon.isPlayer()) {
+      return undefined;
+    }
+
+    const fieldIndex = pokemon.getFieldIndex();
+    // Vs mode is two-player lane based: enemy field slot 0 pressures P1, slot 1 pressures P2.
+    return fieldIndex === 0 || fieldIndex === 1 ? (fieldIndex as PlayerIndex) : undefined;
+  }
+
+  private getEnemyModifierListForLane(playerIndex?: PlayerIndex): PersistentModifier[] {
+    if (playerIndex === undefined) {
+      return this.enemyModifiers;
+    }
+
+    return this.enemyModifiers.concat(this.vsEnemyModifiersByPlayer[playerIndex]);
+  }
+
+  applyEnemyModifiersForPokemon<T extends PersistentModifier>(
+    modifierType: Constructor<T>,
+    pokemon: Pokemon,
+    ...args: Parameters<T["apply"]>
+  ): T[] {
+    return this.applyEnemyModifiersForLane(
+      modifierType,
+      this.getVsEnemyModifierLaneForPokemon(pokemon),
+      ...args,
+    );
+  }
+
+  applyEnemyModifiersForLane<T extends PersistentModifier>(
+    modifierType: Constructor<T>,
+    playerIndex: PlayerIndex | undefined,
+    ...args: Parameters<T["apply"]>
+  ): T[] {
+    const modifiers = this.getEnemyModifierListForLane(playerIndex).filter(
+      (m): m is T => m instanceof modifierType && m.shouldApply(...args),
+    );
+    return this.applyModifiersInternal(modifiers, false, args);
+  }
+
+  applyShuffledEnemyModifiersForPokemon<T extends PersistentModifier>(
+    modifierType: Constructor<T>,
+    pokemon: Pokemon,
+    ...args: Parameters<T["apply"]>
+  ): T[] {
+    return this.applyShuffledEnemyModifiersForLane(
+      modifierType,
+      this.getVsEnemyModifierLaneForPokemon(pokemon),
+      ...args,
+    );
+  }
+
+  applyShuffledEnemyModifiersForLane<T extends PersistentModifier>(
+    modifierType: Constructor<T>,
+    playerIndex: PlayerIndex | undefined,
+    ...args: Parameters<T["apply"]>
+  ): T[] {
+    let modifiers = this.getEnemyModifierListForLane(playerIndex).filter(
+      (m): m is T => m instanceof modifierType && m.shouldApply(...args),
+    );
+    this.executeWithSeedOffset(
+      () => {
+        const shuffleModifiers = (mods: T[]): T[] => {
+          if (mods.length === 0) {
+            return mods;
+          }
+          const rand = randSeedInt(mods.length);
+          return [mods[rand], ...shuffleModifiers(mods.filter((_, i) => i !== rand))];
+        };
+        modifiers = shuffleModifiers(modifiers);
+      },
+      this.currentBattle.turn << 4,
+      this.waveSeed,
+    );
+    return this.applyModifiersInternal(modifiers, false, args);
+  }
+
   /** Helper function to apply all passed modifiers */
   applyModifiersInternal<T extends PersistentModifier>(
     modifiers: T[],
@@ -5534,6 +5693,36 @@ export class BattleScene extends SceneBase {
     for (const modifier of modifiers) {
       if (modifier.apply(...args)) {
         console.log("Applied", modifier.type.name, player ? "" : "(enemy)");
+        return modifier;
+      }
+    }
+
+    return null;
+  }
+
+  applyEnemyModifierForPokemon<T extends PersistentModifier>(
+    modifierType: Constructor<T>,
+    pokemon: Pokemon,
+    ...args: Parameters<T["apply"]>
+  ): T | null {
+    return this.applyEnemyModifierForLane(
+      modifierType,
+      this.getVsEnemyModifierLaneForPokemon(pokemon),
+      ...args,
+    );
+  }
+
+  applyEnemyModifierForLane<T extends PersistentModifier>(
+    modifierType: Constructor<T>,
+    playerIndex: PlayerIndex | undefined,
+    ...args: Parameters<T["apply"]>
+  ): T | null {
+    const modifiers = this.getEnemyModifierListForLane(playerIndex).filter(
+      (m): m is T => m instanceof modifierType && m.shouldApply(...args),
+    );
+    for (const modifier of modifiers) {
+      if (modifier.apply(...args)) {
+        console.log("Applied", modifier.type.name, "(enemy)");
         return modifier;
       }
     }

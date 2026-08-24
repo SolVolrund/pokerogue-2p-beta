@@ -7405,7 +7405,11 @@ export class AddArenaTagAttr extends MoveEffectAttr {
   getCondition(): MoveConditionFunc | null {
     return this.failOnOverlap
       ? (_user, target, _move) =>
-          !globalScene.arena.getTagOnSide(this.tagType, target.isPlayer() ? ArenaTagSide.PLAYER : ArenaTagSide.ENEMY)
+          !globalScene.arena.getTagOnSide(
+            this.tagType,
+            target.isPlayer() ? ArenaTagSide.PLAYER : ArenaTagSide.ENEMY,
+            getVsLaneForArenaTags([this.tagType], _user, target, target.isPlayer() ? ArenaTagSide.PLAYER : ArenaTagSide.ENEMY),
+          )
       : null;
   }
 }
@@ -7435,7 +7439,8 @@ export class RemoveArenaTagsAttr extends MoveEffectAttr {
       return false;
     }
 
-    globalScene.arena.removeTagsOnSide(this.tagTypes, this.getTagSideFunc(user, target));
+    const side = this.getTagSideFunc(user, target);
+    globalScene.arena.removeTagsOnSide(this.tagTypes, side, false, getVsLaneForArenaTags(this.tagTypes, user, target, side));
 
     return true;
   }
@@ -7445,7 +7450,11 @@ export class AddArenaTrapTagAttr extends AddArenaTagAttr {
   getCondition(): MoveConditionFunc {
     return (user, _target, _move) => {
       const side = this.selfSideTarget === user.isPlayer() ? ArenaTagSide.PLAYER : ArenaTagSide.ENEMY;
-      const tag = globalScene.arena.getTagOnSide(this.tagType, side) as EntryHazardTag;
+      const tag = globalScene.arena.getTagOnSide(
+        this.tagType,
+        side,
+        getVsLaneForArenaTags([this.tagType], user, _target, side),
+      ) as EntryHazardTag;
       if (!tag) {
         return true;
       }
@@ -7468,12 +7477,13 @@ export class AddArenaTrapTagHitAttr extends AddArenaTagAttr {
   apply(user: Pokemon, target: Pokemon, move: Move, _args: any[]): boolean {
     const moveChance = this.getMoveChance(user, target, move, this.selfTarget, true);
     const side = (this.selfSideTarget ? user : target).isPlayer() ? ArenaTagSide.PLAYER : ArenaTagSide.ENEMY;
-    const tag = globalScene.arena.getTagOnSide(this.tagType, side) as EntryHazardTag;
+    const vsLane = getVsLaneForArenaTags([this.tagType], user, target, side);
+    const tag = globalScene.arena.getTagOnSide(this.tagType, side, vsLane) as EntryHazardTag;
     if (
       (moveChance < 0 || moveChance === 100 || user.randBattleSeedInt(100) < moveChance)
       && user.getLastXMoves(1)[0]?.result === MoveResult.SUCCESS
     ) {
-      globalScene.arena.addTag(this.tagType, 0, move.id, user.id, side);
+      globalScene.arena.addTag(this.tagType, 0, move.id, user.id, side, false, vsLane);
       if (!tag) {
         return true;
       }
@@ -7499,6 +7509,30 @@ export class RemoveArenaTrapAttr extends RemoveArenaTagsAttr {
 }
 
 const screenTags = [ArenaTagType.REFLECT, ArenaTagType.LIGHT_SCREEN, ArenaTagType.AURORA_VEIL] as const;
+
+const vsLaneScopedArenaTags = [...arenaTrapTags, ...screenTags] as const;
+
+function getVsLaneForArenaTags(
+  tagTypes: readonly ArenaTagType[],
+  user: Pokemon,
+  target: Pokemon,
+  side: ArenaTagSide,
+): number | undefined {
+  if (
+    !globalScene.twoPlayerVsMode
+    || !tagTypes.some(tagType => (vsLaneScopedArenaTags as readonly ArenaTagType[]).includes(tagType))
+  ) {
+    return undefined;
+  }
+
+  const userSide = user.isPlayer() ? ArenaTagSide.PLAYER : ArenaTagSide.ENEMY;
+  const targetSide = target.isPlayer() ? ArenaTagSide.PLAYER : ArenaTagSide.ENEMY;
+  if (side === targetSide && side !== userSide) {
+    return target.getFieldIndex();
+  }
+
+  return user.getFieldIndex();
+}
 
 export class RemoveScreensAttr extends RemoveArenaTagsAttr {
   constructor(getTagSideFunc: GetRemoveArenaTagSideFunc) {
@@ -7531,10 +7565,10 @@ export class SwapArenaTagsAttr extends MoveEffectAttr {
     const tagEnemyTemp = globalScene.arena.findTagsOnSide(t => this.validTags.includes(t.tagType), ArenaTagSide.ENEMY);
 
     for (const playerTag of tagPlayerTemp) {
-      globalScene.arena.removeTagOnSide(playerTag.tagType, ArenaTagSide.PLAYER, true);
+      globalScene.arena.removeTagOnSide(playerTag.tagType, ArenaTagSide.PLAYER, true, playerTag.vsLane);
     }
     for (const enemyTag of tagEnemyTemp) {
-      globalScene.arena.removeTagOnSide(enemyTag.tagType, ArenaTagSide.ENEMY, true);
+      globalScene.arena.removeTagOnSide(enemyTag.tagType, ArenaTagSide.ENEMY, true, enemyTag.vsLane);
     }
     for (const playerTag of tagPlayerTemp) {
       const layers = (playerTag as EntryHazardTag)?.layers ?? 1;
@@ -7546,6 +7580,7 @@ export class SwapArenaTagsAttr extends MoveEffectAttr {
           playerTag.sourceId!,
           ArenaTagSide.ENEMY,
           true,
+          playerTag.vsLane,
         ); // TODO: is the bang correct?
       }
     }
@@ -7559,6 +7594,7 @@ export class SwapArenaTagsAttr extends MoveEffectAttr {
           enemyTag.sourceId!,
           ArenaTagSide.PLAYER,
           true,
+          enemyTag.vsLane,
         ); // TODO: is the bang correct?
       }
     }

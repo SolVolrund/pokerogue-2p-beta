@@ -139,6 +139,7 @@ import {
   UnownBoxModifier,
   ZCrystalModifier,
   ZMoveAccessModifier,
+  BoosterEnergyModifier,
 } from "#modifiers/modifier";
 import type { PokemonMove } from "#moves/pokemon-move";
 import { getVoucherTypeIcon, getVoucherTypeName, VoucherType } from "#system/voucher";
@@ -1473,6 +1474,34 @@ export class LoadedDiceModifierType extends PokemonHeldItemModifierType {
   }
 }
 
+export class BoosterEnergyModifierType extends PokemonHeldItemModifierType {
+  constructor(localeKey: string, iconImage: string) {
+    super(
+      localeKey,
+      iconImage,
+      (type, args) => new BoosterEnergyModifier(type as BoosterEnergyModifierType, (args[0] as Pokemon).id),
+    );
+
+    const heldItemSelectFilter = this.selectFilter;
+    this.selectFilter = (pokemon: PlayerPokemon) => {
+      const heldItemResult = heldItemSelectFilter?.(pokemon);
+      if (heldItemResult != null) {
+        return heldItemResult;
+      }
+
+      return [AbilityId.PROTOSYNTHESIS, AbilityId.QUARK_DRIVE].some(ability =>
+        pokemon.hasAbility(ability, false, true),
+      )
+        ? null
+        : PartyUiHandler.NoEffectMessage;
+    };
+  }
+
+  getDescription(): string {
+    return i18next.t("modifierType:ModifierType.BOOSTER_ENERGY.description");
+  }
+}
+
 export class UnownBoxModifierType extends PokemonHeldItemModifierType {
   constructor(localeKey: string, iconImage: string) {
     super(localeKey, iconImage, (type, args) => new UnownBoxModifier(type, (args[0] as Pokemon).id));
@@ -2766,6 +2795,8 @@ const modifierTypeInitObj = Object.freeze({
 
   LOADED_DICE: () => new LoadedDiceModifierType("modifierType:ModifierType.LOADED_DICE", "loaded_dice"),
 
+  BOOSTER_ENERGY: () => new BoosterEnergyModifierType("modifierType:ModifierType.BOOSTER_ENERGY", "booster_energy"),
+
   UNOWN_BOX: () => new UnownBoxModifierType("modifierType:ModifierType.UNOWN_BOX", "unown_box"),
 
   MULTI_LENS: () => new PokemonMultiHitModifierType("modifierType:ModifierType.MULTI_LENS", "zoom_lens"),
@@ -2947,7 +2978,7 @@ const modifierTypeInitObj = Object.freeze({
     new ModifierType(
       "modifierType:ModifierType.ENEMY_HEAL",
       "wl_potion",
-      (type, _args) => new EnemyTurnHealModifier(type, 2, 10),
+      (type, _args) => new EnemyTurnHealModifier(type, 2),
     ),
   ENEMY_ATTACK_POISON_CHANCE: () =>
     new EnemyAttackStatusEffectChanceModifierType(
@@ -2955,7 +2986,6 @@ const modifierTypeInitObj = Object.freeze({
       "wl_antidote",
       5,
       StatusEffect.POISON,
-      10,
     ),
   ENEMY_ATTACK_PARALYZE_CHANCE: () =>
     new EnemyAttackStatusEffectChanceModifierType(
@@ -2963,7 +2993,6 @@ const modifierTypeInitObj = Object.freeze({
       "wl_paralyze_heal",
       2.5,
       StatusEffect.PARALYSIS,
-      10,
     ),
   ENEMY_ATTACK_BURN_CHANCE: () =>
     new EnemyAttackStatusEffectChanceModifierType(
@@ -2971,13 +3000,12 @@ const modifierTypeInitObj = Object.freeze({
       "wl_burn_heal",
       5,
       StatusEffect.BURN,
-      10,
     ),
   ENEMY_STATUS_EFFECT_HEAL_CHANCE: () =>
     new ModifierType(
       "modifierType:ModifierType.ENEMY_STATUS_EFFECT_HEAL_CHANCE",
       "wl_full_heal",
-      (type, _args) => new EnemyStatusEffectHealChanceModifier(type, 2.5, 10),
+      (type, _args) => new EnemyStatusEffectHealChanceModifier(type, 2.5),
     ),
   ENEMY_ENDURE_CHANCE: () =>
     new EnemyEndureChanceModifierType("modifierType:ModifierType.ENEMY_ENDURE_CHANCE", "wl_reset_urge", 2),

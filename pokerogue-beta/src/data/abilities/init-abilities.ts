@@ -186,6 +186,7 @@ import {
   UserFieldStatusEffectImmunityAbAttr,
   WeightMultiplierAbAttr,
   WonderSkinAbAttr,
+  getBoosterEnergyCondition,
 } from "#abilities/ab-attrs";
 import { AbBuilder, type Ability } from "#abilities/ability";
 import { globalScene } from "#app/global-scene";
@@ -1948,7 +1949,9 @@ export function initAbilities() {
       .build(),
     new AbBuilder(AbilityId.PROTOSYNTHESIS, 9, -2) //
       .conditionalAttr(
-        getWeatherCondition(WeatherType.SUNNY, WeatherType.HARSH_SUN),
+        pokemon =>
+          getWeatherCondition(WeatherType.SUNNY, WeatherType.HARSH_SUN)(pokemon)
+            || getBoosterEnergyCondition()(pokemon),
         PostSummonAddBattlerTagAbAttr,
         BattlerTagType.PROTOSYNTHESIS,
         0,
@@ -1966,7 +1969,7 @@ export function initAbilities() {
       .build(),
     new AbBuilder(AbilityId.QUARK_DRIVE, 9, -2) //
       .conditionalAttr(
-        getTerrainCondition(TerrainType.ELECTRIC),
+        pokemon => getTerrainCondition(TerrainType.ELECTRIC)(pokemon) || getBoosterEnergyCondition()(pokemon),
         PostSummonAddBattlerTagAbAttr,
         BattlerTagType.QUARK_DRIVE,
         0,

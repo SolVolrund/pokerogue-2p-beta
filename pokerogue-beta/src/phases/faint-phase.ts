@@ -209,6 +209,8 @@ export class FaintPhase extends PokemonPhase {
       if (legalPlayerPokemon.length === 0) {
         if (globalScene.hasEonFluteProtection(playerIndex)) {
           globalScene.phaseManager.pushNew("EonFluteSummonPhase", playerIndex);
+        } else if (globalScene.queueVsModeVictoryIfDecided()) {
+          // Let the faint animation and field cleanup below finish before the Vs win phase runs.
         } else if (globalScene.areAllActivePlayersOutOfUsablePokemon()) {
           /** If every active player is out of legal Pokemon, end the game. */
           globalScene.phaseManager.unshiftNew("GameOverPhase");

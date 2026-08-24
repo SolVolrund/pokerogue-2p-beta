@@ -63,8 +63,8 @@ export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: Move
   getOpponents(user).forEach(p => applyMoveAttrs("VariableTargetAttr", user, p, allMoves[move], variableTarget));
 
   const moveTarget: MoveTarget = variableTarget.value;
-  const opponents = getOpponents(user);
-  const allies = getAllies(user);
+  const opponents = filterVsLaneTargets(user, getOpponents(user));
+  const allies = filterVsLaneTargets(user, getAllies(user));
 
   let set: Pokemon[] = [];
   let multiple = false;
@@ -143,10 +143,27 @@ export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: Move
   return {
     targets: set
       .filter(p => p?.isActive(true))
+      .filter(p => isVsLaneTargetLegal(user, p))
       .map(p => p.getBattlerIndex())
       .filter(t => t !== undefined),
     multiple,
   };
+}
+
+function filterVsLaneTargets(user: Pokemon, targets: Pokemon[]): Pokemon[] {
+  return globalScene.twoPlayerVsMode ? targets.filter(target => isVsLaneTargetLegal(user, target)) : targets;
+}
+
+export function isVsLaneTargetLegal(user: Pokemon, target: Pokemon): boolean {
+  if (!globalScene.twoPlayerVsMode) {
+    return true;
+  }
+
+  if (user === target || isForcedDuelAlly(user, target) || isForcedDuelOpponent(user, target)) {
+    return true;
+  }
+
+  return user.getFieldIndex() === target.getFieldIndex();
 }
 
 function getOpponents(user: Pokemon): Pokemon[] {

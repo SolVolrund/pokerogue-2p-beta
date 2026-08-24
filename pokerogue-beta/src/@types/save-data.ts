@@ -99,6 +99,7 @@ export interface SessionSaveData {
   enemyParty: PokemonData[];
   modifiers: ModifierData[];
   enemyModifiers: ModifierData[];
+  vsEnemyModifiersByPlayer?: ModifierData[][];
   arena: ArenaData;
   pokeballCounts: PokeballCounts;
   money: number;
@@ -111,6 +112,7 @@ export interface SessionSaveData {
   multiplayerPlayerCount?: MultiplayerPlayerCount;
   twoPlayerPartySize?: 3 | 6;
   twoPlayerComputerPartner?: boolean;
+  twoPlayerVsMode?: boolean;
   computerPartnerPlayerIndexes?: PlayerIndex[];
   computerPartnerKey?: ComputerPartnerKey;
   computerPartnerKeys?: Partial<Record<PlayerIndex, ComputerPartnerKey>>;

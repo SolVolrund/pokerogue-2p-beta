@@ -41,6 +41,7 @@ export interface TwoPlayerTitleStart {
   gameMode?: number;
   partySize?: 3 | 6;
   playerCount?: 2 | 3;
+  vsMode?: boolean;
   computerPartnerPlayerIndexes?: PlayerIndex[];
   computerPartnerKeys?: Partial<Record<PlayerIndex, ComputerPartnerKey>>;
   computerPartnerRolePreferences?: Partial<Record<PlayerIndex, ComputerPartnerRolePreferences>>;
@@ -249,6 +250,7 @@ function isValidTitleStart(titleStart: unknown): titleStart is TwoPlayerTitleSta
     && (data.gameMode === undefined || typeof data.gameMode === "number")
     && (data.partySize === undefined || data.partySize === 3 || data.partySize === 6)
     && (data.playerCount === undefined || data.playerCount === 2 || data.playerCount === 3)
+    && (data.vsMode === undefined || typeof data.vsMode === "boolean")
     && (data.slotId === undefined || typeof data.slotId === "number")
     && (data.seed === undefined || (typeof data.seed === "string" && data.seed.length > 0));
 }

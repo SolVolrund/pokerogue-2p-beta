@@ -4408,7 +4408,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
     // Critical hits should bypass screens
     if (!isCritical) {
-      globalScene.arena.applyTagsForSide(WeakenMoveScreenTag, defendingSide, source, moveCategory, screenMultiplier);
+      globalScene.arena.applyTagsForSide(WeakenMoveScreenTag, defendingSide, source, this, moveCategory, screenMultiplier);
     }
 
     /**
@@ -4453,10 +4453,10 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
     /** Apply the enemy's Damage and Resistance tokens */
     if (!source.isPlayer()) {
-      globalScene.applyModifiers(EnemyDamageBoosterModifier, false, damage);
+      globalScene.applyEnemyModifiersForPokemon(EnemyDamageBoosterModifier, source, damage);
     }
     if (!this.isPlayer()) {
-      globalScene.applyModifiers(EnemyDamageReducerModifier, false, damage);
+      globalScene.applyEnemyModifiersForPokemon(EnemyDamageReducerModifier, this, damage);
     }
 
     const abAttrParams: PreAttackModifyDamageAbAttrParams = {

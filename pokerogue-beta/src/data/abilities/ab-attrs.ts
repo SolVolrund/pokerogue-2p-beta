@@ -45,7 +45,7 @@ import { SwitchType } from "#enums/switch-type";
 import { WeatherType } from "#enums/weather-type";
 import { BerryUsedEvent, MoveUsedEvent } from "#events/battle-scene";
 import type { EnemyPokemon, Pokemon } from "#field/pokemon";
-import { BerryModifier, HitHealModifier, PokemonHeldItemModifier } from "#modifiers/modifier";
+import { BerryModifier, BoosterEnergyModifier, HitHealModifier, PokemonHeldItemModifier } from "#modifiers/modifier";
 import { BerryModifierType } from "#modifiers/modifier-type";
 import { getMoveTargets } from "#moves/move-utils";
 import { PokemonMove } from "#moves/pokemon-move";
@@ -6295,6 +6295,11 @@ export function getWeatherCondition(...weatherTypes: WeatherType[]): AbAttrCondi
     }
     return weatherTypes.includes(globalScene.arena.weatherType);
   };
+}
+
+export function getBoosterEnergyCondition(): AbAttrCondition {
+  return (pokemon: Pokemon) =>
+    !!globalScene.findModifiersForPokemon(m => m instanceof BoosterEnergyModifier, pokemon).length;
 }
 
 /** Map of all ability attribute constructors, for use with the `.is` method. */

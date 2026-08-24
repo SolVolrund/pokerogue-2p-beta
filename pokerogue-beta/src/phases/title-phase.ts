@@ -816,7 +816,21 @@ export class TitlePhase extends Phase {
   }
 
   private showPlayerCountSelect(gameMode: GameModes): void {
+    const showDailyMultiplayerUnavailable = () => {
+      globalScene.ui.setMode(UiMode.MESSAGE);
+      globalScene.ui.showText(i18next.t("menu:twoPlayerDailyUnavailable"), null, () =>
+        this.showPlayerCountSelect(gameMode),
+      );
+    };
+    const unavailableVsOption = (): OptionSelectItem => ({
+      label: "-",
+      handler: () => false,
+      disabled: true,
+      style: TextStyle.SETTINGS_LOCKED,
+      keepOpen: true,
+    });
     const options: OptionSelectItem[] = [
+      // This option grid is column-major: first the Main column, then the Vs column.
       {
         label: i18next.t("menu:onePlayer"),
         handler: () => {
@@ -841,10 +855,7 @@ export class TitlePhase extends Phase {
         label: "3P",
         handler: () => {
           if (gameMode === GameModes.DAILY) {
-            globalScene.ui.setMode(UiMode.MESSAGE);
-            globalScene.ui.showText(i18next.t("menu:twoPlayerDailyUnavailable"), null, () =>
-              this.showPlayerCountSelect(gameMode),
-            );
+            showDailyMultiplayerUnavailable();
           } else {
             this.showTwoPlayerModeSelect(gameMode, 3);
           }
@@ -865,10 +876,7 @@ export class TitlePhase extends Phase {
         label: i18next.t("menu:onePlayerOneComputer"),
         handler: () => {
           if (gameMode === GameModes.DAILY) {
-            globalScene.ui.setMode(UiMode.MESSAGE);
-            globalScene.ui.showText(i18next.t("menu:twoPlayerDailyUnavailable"), null, () =>
-              this.showPlayerCountSelect(gameMode),
-            );
+            showDailyMultiplayerUnavailable();
           } else {
             this.showComputerPartnerSelect(gameMode, 2);
           }
@@ -880,10 +888,7 @@ export class TitlePhase extends Phase {
         label: "1P+2C",
         handler: () => {
           if (gameMode === GameModes.DAILY) {
-            globalScene.ui.setMode(UiMode.MESSAGE);
-            globalScene.ui.showText(i18next.t("menu:twoPlayerDailyUnavailable"), null, () =>
-              this.showPlayerCountSelect(gameMode),
-            );
+            showDailyMultiplayerUnavailable();
           } else {
             this.showComputerPartnerSelect(gameMode, 3);
           }
@@ -891,6 +896,33 @@ export class TitlePhase extends Phase {
         },
         keepOpen: true,
       },
+      unavailableVsOption(),
+      {
+        label: "P.Vs.P",
+        handler: () => {
+          if (gameMode === GameModes.DAILY) {
+            showDailyMultiplayerUnavailable();
+          } else {
+            this.startMultiplayerRun(gameMode, 2, 6, [], true);
+          }
+          return true;
+        },
+      },
+      unavailableVsOption(),
+      unavailableVsOption(),
+      {
+        label: "P.Vs.C",
+        handler: () => {
+          if (gameMode === GameModes.DAILY) {
+            showDailyMultiplayerUnavailable();
+          } else {
+            this.setComputerPartner(1, "alex");
+            this.startMultiplayerRun(gameMode, 2, 6, [1], true);
+          }
+          return true;
+        },
+      },
+      unavailableVsOption(),
       {
         label: i18next.t("menu:cancel"),
         handler: () => {
@@ -901,7 +933,16 @@ export class TitlePhase extends Phase {
       },
     ];
 
-    this.showOptionSelectWithText(i18next.t("menu:selectPlayerCount"), options);
+    this.showOptionSelectWithText(i18next.t("menu:selectPlayerCount"), options, {
+      gridLayout: {
+        rows: 6,
+        columns: 2,
+        slotCount: 12,
+        minColumnWidth: 62,
+        columnGap: 18,
+        centerLastOption: true,
+      },
+    });
   }
 
   private showComputerPartnerSelect(
@@ -1187,6 +1228,7 @@ export class TitlePhase extends Phase {
     playerCount: 2 | 3,
     partySize: 3 | 6,
     computerPartnerPlayerIndexes: PlayerIndex[] = [],
+    vsMode = false,
   ): void {
     globalScene.configureTwoPlayerMode(
       true,
@@ -1194,6 +1236,7 @@ export class TitlePhase extends Phase {
       computerPartnerPlayerIndexes.length > 0,
       playerCount,
       computerPartnerPlayerIndexes,
+      vsMode,
     );
     globalScene.resetTwoPlayerProfileExchangeForRun();
     const runSeed = activeOverrides.SEED_OVERRIDE || getTwoPlayerRunSeedOverride() || randomString(24);
@@ -1204,6 +1247,7 @@ export class TitlePhase extends Phase {
       gameMode,
       partySize,
       playerCount,
+      vsMode,
       ...(globalScene.twoPlayerComputerPartner
         ? {
             computerPartnerPlayerIndexes: globalScene.getComputerPartnerPlayerIndexes(),
@@ -1252,6 +1296,7 @@ export class TitlePhase extends Phase {
           action: "load-session",
           slotId,
           playerCount: globalScene.multiplayerPlayerCount === 3 ? 3 : 2,
+          vsMode: globalScene.twoPlayerVsMode,
           seed: globalScene.seed,
         };
         if (globalScene.twoPlayerMode && !fromRemoteStart) {
@@ -1304,6 +1349,7 @@ export class TitlePhase extends Phase {
         computerPartnerPlayerIndexes.length > 0,
         playerCount,
         computerPartnerPlayerIndexes,
+        !!titleStart.vsMode,
       );
       globalScene.resetTwoPlayerProfileExchangeForRun();
       this.applyTitleStartComputerPartners(titleStart);

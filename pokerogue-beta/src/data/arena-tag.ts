@@ -107,6 +107,11 @@ interface BaseArenaTag {
    * @defaultValue `ArenaTagSide.BOTH`
    */
   side: ArenaTagSide;
+  /**
+   * In Vs mode, side-based effects can be restricted to a single field lane.
+   * Undefined means the tag keeps normal side-wide behavior.
+   */
+  vsLane?: number;
 }
 
 /**
@@ -123,6 +128,7 @@ export abstract class ArenaTag implements BaseArenaTag {
   public sourceMove?: MoveId;
   public sourceId: number | undefined;
   public side: ArenaTagSide;
+  public vsLane?: number;
 
   /**
    * Return the i18n locales key that will be shown when this tag is added. \
@@ -241,7 +247,7 @@ export abstract class ArenaTag implements BaseArenaTag {
    * @param source - The arena tag being loaded
    */
   loadTag<const T extends this>(source: BaseArenaTag & Pick<T, "tagType">): void {
-    const { sourceMove, turnCount, sourceId, maxDuration, side } = source;
+    const { sourceMove, turnCount, sourceId, maxDuration, side, vsLane } = source;
     this.turnCount = turnCount;
     this.maxDuration = maxDuration;
     if (sourceMove) {
@@ -251,6 +257,11 @@ export abstract class ArenaTag implements BaseArenaTag {
       this.sourceId = sourceId;
     }
     this.side = side;
+    if (vsLane !== undefined) {
+      this.vsLane = vsLane;
+    } else {
+      delete this.vsLane;
+    }
   }
 
   /**
@@ -283,7 +294,11 @@ export abstract class ArenaTag implements BaseArenaTag {
    * @returns Whether this tag can affect `pokemon`.
    */
   protected canAffect(pokemon: Pokemon) {
-    return this.getAffectedPokemon().includes(pokemon);
+    return this.getAffectedPokemon().includes(pokemon) && this.canAffectVsLane(pokemon);
+  }
+
+  protected canAffectVsLane(pokemon: Pokemon): boolean {
+    return !globalScene.twoPlayerVsMode || this.vsLane === undefined || pokemon.getFieldIndex() === this.vsLane;
   }
 }
 
@@ -372,8 +387,26 @@ export abstract class WeakenMoveScreenTag extends SerializableArenaTag {
    * @param damageMultiplier A {@linkcode NumberHolder} containing the damage multiplier
    * @returns `true` if the attacking move was weakened; `false` otherwise.
    */
-  override apply(attacker: Pokemon, moveCategory: MoveCategory, damageMultiplier: NumberHolder): boolean {
+  override apply(
+    attacker: Pokemon,
+    defenderOrMoveCategory: Pokemon | MoveCategory,
+    moveCategoryOrDamageMultiplier: MoveCategory | NumberHolder,
+    damageMultiplierArg?: NumberHolder,
+  ): boolean {
+    const defender = typeof defenderOrMoveCategory === "number" ? undefined : defenderOrMoveCategory;
+    const moveCategory = typeof defenderOrMoveCategory === "number" ? defenderOrMoveCategory : moveCategoryOrDamageMultiplier as MoveCategory;
+    const damageMultiplier = typeof defenderOrMoveCategory === "number"
+      ? moveCategoryOrDamageMultiplier as NumberHolder
+      : damageMultiplierArg;
+
+    if (!damageMultiplier) {
+      return false;
+    }
+
     if (!this.weakenedCategories.includes(moveCategory)) {
+      return false;
+    }
+    if (defender && !this.canAffectVsLane(defender)) {
       return false;
     }
     const bypassed = new BooleanHolder(false);
@@ -1020,7 +1053,7 @@ class ToxicSpikesTag extends EntryHazardTag {
 
     if (pokemon.isOfType(PokemonType.POISON)) {
       // Neutralize the tag and remove it from the field.
-      globalScene.arena.removeTagOnSide(this.tagType, this.side);
+      globalScene.arena.removeTagOnSide(this.tagType, this.side, false, this.vsLane);
       return true;
     }
 

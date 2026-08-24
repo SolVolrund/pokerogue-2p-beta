@@ -41,10 +41,12 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
   private lockRarityButtonContainer: Phaser.GameObjects.Container;
   private transferButtonContainer: Phaser.GameObjects.Container;
   private tradeButtonContainer: Phaser.GameObjects.Container;
+  private tokenShopButtonContainer: Phaser.GameObjects.Container;
   private checkButtonContainer: Phaser.GameObjects.Container;
   private continueButtonContainer: Phaser.GameObjects.Container;
   private rerollCostText: Phaser.GameObjects.Text;
   private alphButtonText: Phaser.GameObjects.Text;
+  private tokenShopButtonText: Phaser.GameObjects.Text;
   private lockRarityButtonText: Phaser.GameObjects.Text;
   private moveInfoOverlay: MoveInfoOverlay;
   private moveInfoOverlayActive = false;
@@ -59,10 +61,16 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
   private rerollCost: number;
   private transferButtonWidth: number;
   private tradeButtonWidth: number;
+  private tokenShopButtonWidth: number;
   private checkButtonWidth: number;
+  private tokenShopActive = false;
+  private canUseTokenShop = false;
+  private healingShopTypeOptions: ModifierTypeOption[] = [];
+  private tokenShopTypeOptions: ModifierTypeOption[] = [];
 
   public options: ModifierOption[];
   public alphTileOptions: AlphTileOption[];
+  public tokenOptions: ModifierOption[];
   public shopOptionsRows: ModifierOption[][];
 
   private cursorObj: Phaser.GameObjects.Image | null;
@@ -72,6 +80,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
 
     this.options = [];
     this.alphTileOptions = [];
+    this.tokenOptions = [];
     this.shopOptionsRows = [];
   }
 
@@ -105,6 +114,23 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
 
     this.tradeButtonWidth = tradeButtonText.displayWidth;
 
+    this.tokenShopButtonContainer = globalScene.add.container(0, OPTION_BUTTON_YPOSITION);
+    this.tokenShopButtonContainer.setName("token-shop-btn");
+    this.tokenShopButtonContainer.setVisible(false);
+    ui.add(this.tokenShopButtonContainer);
+
+    this.tokenShopButtonText = addTextObject(
+      -4,
+      -2,
+      i18next.t("modifierSelectUiHandler:tokens"),
+      TextStyle.PARTY,
+    );
+    this.tokenShopButtonText.setName("text-token-shop-btn");
+    this.tokenShopButtonText.setOrigin(1, 0);
+    this.tokenShopButtonContainer.add(this.tokenShopButtonText);
+
+    this.tokenShopButtonWidth = this.tokenShopButtonText.displayWidth;
+
     this.checkButtonContainer = globalScene.add.container(globalScene.scaledCanvas.width - 1, OPTION_BUTTON_YPOSITION);
     this.checkButtonContainer.setName("use-btn");
     this.checkButtonContainer.setVisible(false);
@@ -117,6 +143,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
 
     this.checkButtonWidth = checkButtonText.displayWidth;
     this.tradeButtonContainer.setX(this.checkButtonContainer.x - this.checkButtonWidth - 8);
+    this.tokenShopButtonContainer.setX(this.tradeButtonContainer.x);
 
     this.rerollButtonContainer = globalScene.add.container(16, OPTION_BUTTON_YPOSITION);
     this.rerollButtonContainer.setName("reroll-brn");
@@ -226,6 +253,9 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     this.tradeButtonContainer.setVisible(false);
     this.tradeButtonContainer.setAlpha(0);
 
+    this.tokenShopButtonContainer.setVisible(false);
+    this.tokenShopButtonContainer.setAlpha(0);
+
     this.checkButtonContainer.setVisible(false);
     this.checkButtonContainer.setAlpha(0);
 
@@ -250,14 +280,26 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
 
     const typeOptions = args[1] as ModifierTypeOption[];
     const alphTileRewardOptions = (args[6] ?? []) as AlphTileRewardOption[];
+    const tokenTypeOptions = (args[7] ?? []) as ModifierTypeOption[];
     const hasShop = globalScene.gameMode.getShopStatus();
     const baseShopCost = new NumberHolder(globalScene.getWaveMoneyAmount(1));
     globalScene.applyModifierForPlayer(HealShopCostModifier, playerIndex, baseShopCost);
     const shopTypeOptions = hasShop
       ? getPlayerShopModifierTypeOptionsForWave(globalScene.currentBattle.waveIndex, baseShopCost.value)
       : [];
+    this.healingShopTypeOptions = shopTypeOptions;
+    this.tokenShopTypeOptions = tokenTypeOptions;
+    this.canUseTokenShop = globalScene.twoPlayerVsMode && tokenTypeOptions.length > 0;
+    if (!this.canUseTokenShop) {
+      this.tokenShopActive = false;
+    }
+    this.updateTokenShopButtonText();
+
+    const visibleShopTypeOptions = this.getVisibleShopTypeOptions();
+    const extraRewardRows = alphTileRewardOptions.length > 0 ? 1 : 0;
     const optionsYOffset =
-      shopTypeOptions.length > SHOP_OPTIONS_ROW_LIMIT ? -SINGLE_SHOP_ROW_YOFFSET : -DOUBLE_SHOP_ROW_YOFFSET;
+      (visibleShopTypeOptions.length > SHOP_OPTIONS_ROW_LIMIT ? -SINGLE_SHOP_ROW_YOFFSET : -DOUBLE_SHOP_ROW_YOFFSET)
+      - Math.max(0, extraRewardRows - 1) * 28;
 
     const rewardRowY = -globalScene.scaledCanvas.height / 2 + optionsYOffset;
     const alphTileRowY = rewardRowY + 34;
@@ -289,28 +331,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     continueButton.y = optionsYOffset - 5;
     continueButton.setVisible(this.options.length === 0);
 
-    for (let m = 0; m < shopTypeOptions.length; m++) {
-      const row = m < SHOP_OPTIONS_ROW_LIMIT ? 0 : 1;
-      const col = m < SHOP_OPTIONS_ROW_LIMIT ? m : m - SHOP_OPTIONS_ROW_LIMIT;
-      const rowOptions = shopTypeOptions.slice(
-        row ? SHOP_OPTIONS_ROW_LIMIT : 0,
-        row ? undefined : SHOP_OPTIONS_ROW_LIMIT,
-      );
-      const sliceWidth = globalScene.scaledCanvas.width / (rowOptions.length + 2);
-      const option = new ModifierOption(
-        sliceWidth * (col + 1) + sliceWidth * 0.5,
-        -globalScene.scaledCanvas.height / 2 - globalScene.game.canvas.height / 32 - (42 - (28 * row - 1)),
-        shopTypeOptions[m],
-      );
-      option.setScale(0.375);
-      globalScene.add.existing(option);
-      this.modifierContainer.add(option);
-
-      if (row >= this.shopOptionsRows.length) {
-        this.shopOptionsRows.push([]);
-      }
-      this.shopOptionsRows[row].push(option);
-    }
+    this.createShopOptionRows(visibleShopTypeOptions, this.tokenShopActive);
 
     const maxUpgradeCount = typeOptions.map(to => to.upgradeCount).reduce((max, current) => Math.max(current, max), 0);
 
@@ -401,18 +422,25 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         this.rerollButtonContainer.setAlpha(0);
         this.alphButtonContainer.setAlpha(0);
         this.tradeButtonContainer.setAlpha(0);
+        this.tokenShopButtonContainer.setAlpha(0);
         this.checkButtonContainer.setAlpha(0);
         this.lockRarityButtonContainer.setAlpha(0);
         this.continueButtonContainer.setAlpha(0);
         this.rerollButtonContainer.setVisible(true);
         this.alphButtonContainer.setVisible(canUseAlphWall);
         this.tradeButtonContainer.setVisible(canTrade);
+        this.tokenShopButtonContainer.setVisible(this.canUseTokenShop && !canTrade);
         this.checkButtonContainer.setVisible(true);
         this.continueButtonContainer.setVisible(this.rerollCost < 0);
         this.lockRarityButtonContainer.setVisible(canLockRarities);
 
         globalScene.tweens.add({
-          targets: [this.tradeButtonContainer, this.checkButtonContainer, this.continueButtonContainer],
+          targets: [
+            this.tradeButtonContainer,
+            this.tokenShopButtonContainer,
+            this.checkButtonContainer,
+            this.continueButtonContainer,
+          ],
           alpha: 1,
           duration: 250,
         });
@@ -427,16 +455,28 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         // Required to ensure that the user cannot interact with the UI before the animations
         // have completed, (which, among other things, would allow the GameObjects to be destroyed
         // before the animations have completed, causing errors).
-        Promise.allSettled([...alphTileAnimPromises, ...shopAnimPromises, ...rewardAnimAllSettledPromises]).then(() => {
+        Promise.allSettled([
+          ...alphTileAnimPromises,
+          ...shopAnimPromises,
+          ...rewardAnimAllSettledPromises,
+        ]).then(() => {
           const updateCursorTarget = () => {
             if (globalScene.shopCursorTarget === ShopCursorTarget.CHECK_TEAM) {
               this.setRowCursor(0);
               this.setCursor(3);
+            } else if (globalScene.shopCursorTarget === ShopCursorTarget.SHOP) {
+              if (!hasShop || this.shopOptionsRows.length === 0) {
+                this.setRowCursor(ShopCursorTarget.REWARDS);
+              } else {
+                this.setRowCursor(this.getFirstShopRowCursor());
+              }
+              this.setCursor(0);
             } else if (
-              globalScene.shopCursorTarget === ShopCursorTarget.SHOP
-              && (!hasShop || this.shopOptionsRows.length === 0)
+              globalScene.shopCursorTarget === ShopCursorTarget.REWARDS
+              && this.options.length === 0
+              && this.hasAlphTileRow()
             ) {
-              this.setRowCursor(ShopCursorTarget.REWARDS);
+              this.setRowCursor(2);
               this.setCursor(0);
             } else {
               this.setRowCursor(globalScene.shopCursorTarget);
@@ -545,7 +585,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
                 }
                 break;
               case 3:
-                if (this.tradeButtonContainer.visible) {
+                if (this.isMiddleRightButtonVisible()) {
                   success = this.setCursor(2);
                 } else if (this.transferButtonContainer.visible) {
                   success = this.setCursor(1);
@@ -586,14 +626,14 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
                   success = this.setCursor(5);
                 } else if (this.transferButtonContainer.visible) {
                   success = this.setCursor(1);
-                } else if (this.tradeButtonContainer.visible) {
+                } else if (this.isMiddleRightButtonVisible()) {
                   success = this.setCursor(2);
                 } else {
                   success = this.setCursor(3);
                 }
                 break;
               case 1:
-                success = this.tradeButtonContainer.visible ? this.setCursor(2) : this.setCursor(3);
+                success = this.isMiddleRightButtonVisible() ? this.setCursor(2) : this.setCursor(3);
                 break;
               case 2:
                 success = this.setCursor(3);
@@ -611,7 +651,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
               case 5:
                 if (this.transferButtonContainer.visible) {
                   success = this.setCursor(1);
-                } else if (this.tradeButtonContainer.visible) {
+                } else if (this.isMiddleRightButtonVisible()) {
                   success = this.setCursor(2);
                 } else {
                   success = this.setCursor(3);
@@ -701,8 +741,23 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       );
       ui.showText(i18next.t("modifierSelectUiHandler:manageItemsDesc"));
     } else if (cursor === 2) {
-      this.cursorObj.setPosition(this.tradeButtonContainer.x - this.tradeButtonWidth - 10, OPTION_BUTTON_YPOSITION + 4);
-      ui.showText(i18next.t("modifierSelectUiHandler:tradeDesc"));
+      if (this.tokenShopButtonContainer.visible) {
+        this.cursorObj.setPosition(
+          this.tokenShopButtonContainer.x - this.tokenShopButtonWidth - 10,
+          OPTION_BUTTON_YPOSITION + 4,
+        );
+        ui.showText(
+          i18next.t(
+            this.tokenShopActive ? "modifierSelectUiHandler:healingDesc" : "modifierSelectUiHandler:tokensDesc",
+          ),
+        );
+      } else {
+        this.cursorObj.setPosition(
+          this.tradeButtonContainer.x - this.tradeButtonWidth - 10,
+          OPTION_BUTTON_YPOSITION + 4,
+        );
+        ui.showText(i18next.t("modifierSelectUiHandler:tradeDesc"));
+      }
     } else if (cursor === 3) {
       this.cursorObj.setPosition(this.checkButtonContainer.x - this.checkButtonWidth - 10, OPTION_BUTTON_YPOSITION + 4);
       ui.showText(i18next.t("modifierSelectUiHandler:checkTeamDesc"));
@@ -739,7 +794,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         if (newCursor === 1 && !this.transferButtonContainer.visible) {
           newCursor = 2;
         }
-        if (newCursor === 2 && !this.tradeButtonContainer.visible) {
+        if (newCursor === 2 && !this.isMiddleRightButtonVisible()) {
           newCursor = 3;
         }
         if (newCursor === 4 && !this.lockRarityButtonContainer.visible) {
@@ -774,11 +829,11 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
   }
 
   private getFirstShopRowCursor(): number {
-    return this.hasAlphTileRow() ? 3 : 2;
+    return 2 + (this.hasAlphTileRow() ? 1 : 0);
   }
 
   private getMaxRowCursor(): number {
-    return this.shopOptionsRows.length + (this.hasAlphTileRow() ? 2 : 1);
+    return this.shopOptionsRows.length + this.getFirstShopRowCursor() - 1;
   }
 
   private getTopRowCursor(): number {
@@ -792,9 +847,13 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     return this.hasAlphTileRow() ? 2 : 0;
   }
 
+  private getLowestRewardRowCursor(): number {
+    return this.hasAlphTileRow() ? 2 : 1;
+  }
+
   private getRowCursorAbove(rowCursor: number): number {
     if (rowCursor === 0) {
-      return this.hasAlphTileRow() ? 2 : 1;
+      return this.getLowestRewardRowCursor();
     }
     if (this.isAlphTileRow(rowCursor)) {
       return 1;
@@ -821,7 +880,10 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       return 1;
     }
     if (rowCursor === 1) {
-      return this.hasAlphTileRow() ? 2 : 0;
+      if (this.hasAlphTileRow()) {
+        return 2;
+      }
+      return 0;
     }
     if (this.isAlphTileRow(rowCursor)) {
       return 0;
@@ -841,7 +903,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       return this.alphTileOptions;
     }
 
-    return this.shopOptionsRows.at(-(rowCursor - (this.hasAlphTileRow() ? 2 : 1)))!;
+    return this.shopOptionsRows.at(-(rowCursor - (this.getFirstShopRowCursor() - 1)))!;
   }
 
   private getRowItems(rowCursor: number): number {
@@ -853,6 +915,107 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       default:
         return this.getSelectableOptionsForRow(rowCursor).length;
     }
+  }
+
+  public isVsTokenShopActive(): boolean {
+    return this.tokenShopActive;
+  }
+
+  public toggleVsTokenShop(): boolean {
+    if (!this.canUseTokenShop) {
+      return false;
+    }
+
+    this.tokenShopActive = !this.tokenShopActive;
+    this.updateTokenShopButtonText();
+    this.clearShopOptionRows(true);
+    this.createShopOptionRows(this.getVisibleShopTypeOptions(), this.tokenShopActive, true);
+    this.updateCostText();
+
+    if (this.rowCursor >= this.getFirstShopRowCursor()) {
+      this.setRowCursor(this.getFirstShopRowCursor());
+      this.setCursor(Math.min(this.cursor, Math.max(0, this.getRowItems(this.rowCursor) - 1)));
+    } else {
+      this.setCursor(this.cursor);
+    }
+
+    return false;
+  }
+
+  private isMiddleRightButtonVisible(): boolean {
+    return this.tradeButtonContainer.visible || this.tokenShopButtonContainer.visible;
+  }
+
+  private getVisibleShopTypeOptions(): ModifierTypeOption[] {
+    return this.tokenShopActive ? this.tokenShopTypeOptions : this.healingShopTypeOptions;
+  }
+
+  private updateTokenShopButtonText(): void {
+    if (!this.tokenShopButtonText) {
+      return;
+    }
+
+    this.tokenShopButtonText.setText(
+      i18next.t(this.tokenShopActive ? "modifierSelectUiHandler:healing" : "modifierSelectUiHandler:tokens"),
+    );
+    this.tokenShopButtonWidth = this.tokenShopButtonText.displayWidth;
+  }
+
+  private createShopOptionRows(
+    shopTypeOptions: ModifierTypeOption[],
+    isTokenShop: boolean,
+    showImmediately = false,
+  ): void {
+    for (let m = 0; m < shopTypeOptions.length; m++) {
+      const row = m < SHOP_OPTIONS_ROW_LIMIT ? 0 : 1;
+      const col = m < SHOP_OPTIONS_ROW_LIMIT ? m : m - SHOP_OPTIONS_ROW_LIMIT;
+      const rowOptions = shopTypeOptions.slice(
+        row ? SHOP_OPTIONS_ROW_LIMIT : 0,
+        row ? undefined : SHOP_OPTIONS_ROW_LIMIT,
+      );
+      const sliceWidth = globalScene.scaledCanvas.width / (rowOptions.length + 2);
+      const option = new ModifierOption(
+        sliceWidth * (col + 1) + sliceWidth * 0.5,
+        -globalScene.scaledCanvas.height / 2 - globalScene.game.canvas.height / 32 - (42 - (28 * row - 1)),
+        shopTypeOptions[m],
+      );
+      option.setScale(0.375);
+      if (showImmediately) {
+        option.showImmediate();
+      }
+      globalScene.add.existing(option);
+      this.modifierContainer.add(option);
+
+      if (row >= this.shopOptionsRows.length) {
+        this.shopOptionsRows.push([]);
+      }
+      this.shopOptionsRows[row].push(option);
+      if (isTokenShop) {
+        this.tokenOptions.push(option);
+      }
+    }
+  }
+
+  private clearShopOptionRows(destroyImmediately = false): void {
+    const options = [...new Set([...this.shopOptionsRows.flat(), ...this.tokenOptions])];
+    this.shopOptionsRows.splice(0, this.shopOptionsRows.length);
+    this.tokenOptions.splice(0, this.tokenOptions.length);
+
+    if (destroyImmediately) {
+      options.forEach(option => option.destroy());
+      return;
+    }
+
+    globalScene.tweens.add({
+      targets: options,
+      scale: 0.01,
+      alpha: 0,
+      duration: 200,
+      ease: "Cubic.easeIn",
+      onComplete: () => {
+        options.forEach(option => option.destroy());
+      },
+    });
   }
 
   clearAlphTileOptions(): void {
@@ -882,7 +1045,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
   }
 
   updateCostText(): void {
-    const shopOptions = this.shopOptionsRows.flat();
+    const shopOptions = [...new Set([...this.tokenOptions, ...this.shopOptionsRows.flat()])];
     for (const shopOption of shopOptions) {
       shopOption.updateCostText();
     }
@@ -945,14 +1108,20 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     /* Normally already called just after the shop, but not sure if it happens in 100% of cases */
     globalScene.refreshPlayerModifierBar();
 
-    const options: Phaser.GameObjects.Container[] = [
+    const options: Phaser.GameObjects.Container[] = [...new Set([
       ...this.options,
       ...this.alphTileOptions,
+      ...this.tokenOptions,
       ...this.shopOptionsRows.flat(),
-    ];
+    ])];
     this.options.splice(0, this.options.length);
     this.alphTileOptions.splice(0, this.alphTileOptions.length);
+    this.tokenOptions.splice(0, this.tokenOptions.length);
     this.shopOptionsRows.splice(0, this.shopOptionsRows.length);
+    this.tokenShopActive = false;
+    this.canUseTokenShop = false;
+    this.healingShopTypeOptions = [];
+    this.tokenShopTypeOptions = [];
 
     globalScene.tweens.add({
       targets: options,
@@ -972,6 +1141,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       this.checkButtonContainer,
       this.transferButtonContainer,
       this.tradeButtonContainer,
+      this.tokenShopButtonContainer,
       this.lockRarityButtonContainer,
       this.continueButtonContainer,
     ].forEach(container => {
@@ -1316,6 +1486,18 @@ class ModifierOption extends Phaser.GameObjects.Container {
     promiseHolder.push(Promise.allSettled([...animPromises, ...finalPromises]).then());
 
     await Promise.allSettled(animPromises);
+  }
+
+  showImmediate(): void {
+    this.itemContainer.setScale(2);
+    this.itemContainer.setAlpha(1);
+    this.itemText.setY(25);
+    this.itemText.setAlpha(1);
+
+    if (this.itemCostText) {
+      this.itemCostText.setY(35);
+      this.itemCostText.setAlpha(1);
+    }
   }
 
   getPbAtlasKey(tierOffset = 0) {

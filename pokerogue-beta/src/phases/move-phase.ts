@@ -27,7 +27,7 @@ import { StatusEffect } from "#enums/status-effect";
 import { MoveUsedEvent } from "#events/battle-scene";
 import type { Pokemon } from "#field/pokemon";
 import { applyMoveAttrs } from "#moves/apply-attrs";
-import { frenzyMissFunc } from "#moves/move-utils";
+import { frenzyMissFunc, isVsLaneTargetLegal } from "#moves/move-utils";
 import type { PokemonMove } from "#moves/pokemon-move";
 import type { Move, PreUseInterruptAttr } from "#types/move-types";
 import type { TurnMove } from "#types/turn-move";
@@ -623,6 +623,11 @@ export class MovePhase extends PokemonPhase {
           this.pokemon.getPassiveAbility().hasAttr("BlockRedirectAbAttr"),
           false,
         );
+      }
+
+      const redirectedPokemon = globalScene.getField(true).find(p => p.getBattlerIndex() === redirectTarget.value);
+      if (redirectedPokemon && !isVsLaneTargetLegal(this.pokemon, redirectedPokemon)) {
+        redirectTarget.value = currentTarget;
       }
 
       this.targets[0] = redirectTarget.value;

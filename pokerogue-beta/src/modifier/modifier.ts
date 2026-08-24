@@ -57,6 +57,7 @@ import type {
   TerastallizeModifierType,
   TmModifierType,
   ZCrystalModifierType,
+  BoosterEnergyModifierType,
 } from "#modifiers/modifier-type";
 import type { Move } from "#moves/move";
 import type { VoucherType } from "#system/voucher";
@@ -3790,6 +3791,26 @@ export class LoadedDiceModifier extends PokemonHeldItemModifier {
   }
 }
 
+export class BoosterEnergyModifier extends PokemonHeldItemModifier {
+  public declare type: BoosterEnergyModifierType;
+
+  matchType(modifier: Modifier): boolean {
+    return modifier instanceof BoosterEnergyModifier;
+  }
+
+  clone(): PersistentModifier {
+    return new BoosterEnergyModifier(this.type, this.pokemonId, this.stackCount);
+  }
+
+  getMaxHeldItemCount(_pokemon: Pokemon): number {
+    return 1;
+  }
+
+  override apply(_pokemon: Pokemon, ..._args: unknown[]): boolean {
+    return true;
+  }
+}
+
 export class PokemonFormChangeItemModifier extends PokemonHeldItemModifier {
   public declare type: FormChangeItemModifierType;
   public formChangeItem: FormChangeItem;
@@ -4721,7 +4742,7 @@ export class EnemyEndureChanceModifier extends EnemyPersistentModifier {
   public chance: number;
 
   constructor(type: ModifierType, _chancePercent?: number, stackCount?: number) {
-    super(type, stackCount || 10);
+    super(type, stackCount ?? 1);
 
     //Hardcode temporarily
     this.chance = 2;
@@ -4983,6 +5004,7 @@ const ModifierClassMap = Object.freeze({
   PokemonNatureWeightModifier,
   PokemonMoveAccuracyBoosterModifier,
   LoadedDiceModifier,
+  BoosterEnergyModifier,
   PokemonMultiHitModifier,
   PokemonFormChangeItemModifier,
   MoneyRewardModifier,

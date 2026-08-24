@@ -13,13 +13,14 @@ import {
   getAlphTileItemIconKey,
 } from "#data/alph/alph-tiles";
 import type { FusionOptions } from "#data/fusion-options";
+import { getVsEnemyTokenModifierTypeOptionsForWave } from "#data/vs-enemy-tokens";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import type { ModifierTier } from "#enums/modifier-tier";
 import { LearnMoveType } from "#enums/learn-move-type";
 import type { MoveId } from "#enums/move-id";
 import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon } from "#field/pokemon";
-import type { Modifier } from "#modifiers/modifier";
+import type { EnemyPersistentModifier, Modifier } from "#modifiers/modifier";
 import {
   ExtraModifierModifier,
   HealShopCostModifier,
@@ -83,6 +84,7 @@ export class SelectModifierPhase extends BattlePhase {
 
   private typeOptions: ModifierTypeOption[];
   private alphTileOptions: AlphTileRewardOption[] = [];
+  private tokenOptions: ModifierTypeOption[] = [];
 
   constructor(
     rerollCount = 0,
@@ -125,6 +127,7 @@ export class SelectModifierPhase extends BattlePhase {
 
     this.typeOptions = this.getModifierTypeOptions(modifierCount);
     this.alphTileOptions = this.presetAlphTileOptions?.slice() ?? this.getAlphTileRewardOptions(modifierCount);
+    this.tokenOptions = this.getVsEnemyTokenOptions();
     globalScene.recordTwoPlayerRewardDebugState(
       this.playerIndex,
       this.rerollCount,
@@ -162,6 +165,10 @@ export class SelectModifierPhase extends BattlePhase {
             case 1:
               return this.openModifierTransferScreen(modifierSelectCallback);
             case 2:
+              if (globalScene.twoPlayerVsMode && this.tokenOptions.length > 0) {
+                (globalScene.ui.getHandler() as ModifierSelectUiHandler).toggleVsTokenShop();
+                return false;
+              }
               return this.openTradeScreen(modifierSelectCallback);
             // Check the party, pass a callback to restore the modifier select screen.
             case 3:
@@ -178,7 +185,7 @@ export class SelectModifierPhase extends BattlePhase {
           return this.selectRewardModifierOption(cursor, modifierSelectCallback);
         // Pick an option from the Alph tile row
         case 2:
-          if (this.alphTileOptions.length > 0) {
+          if (this.isAlphTileRowCursor(rowCursor)) {
             return this.selectAlphTileRewardOption(cursor);
           }
           return this.selectShopModifierOption(rowCursor, cursor, modifierSelectCallback);
@@ -217,6 +224,32 @@ export class SelectModifierPhase extends BattlePhase {
     }
 
     return options;
+  }
+
+  private getVsEnemyTokenOptions(): ModifierTypeOption[] {
+    if (!globalScene.twoPlayerVsMode) {
+      return [];
+    }
+
+    const targetPlayerIndex = this.getVsEnemyTokenTargetPlayerIndex();
+    return getVsEnemyTokenModifierTypeOptionsForWave(
+      globalScene.currentBattle.waveIndex,
+      globalScene.getWaveMoneyAmount(1),
+      globalScene.getVsEnemyModifiersForPlayer(targetPlayerIndex),
+    );
+  }
+
+  private getVsEnemyTokenTargetPlayerIndex(): PlayerIndex {
+    // Vs tokens are bought to pressure the opposing lane, while the storage bucket is keyed by affected lane.
+    return this.playerIndex === 0 ? 1 : 0;
+  }
+
+  private isAlphTileRowCursor(rowCursor: number): boolean {
+    return this.alphTileOptions.length > 0 && rowCursor === 2;
+  }
+
+  private getFirstShopRowCursor(): number {
+    return 2 + (this.alphTileOptions.length > 0 ? 1 : 0);
   }
 
   private isComputerPartnerRewardPlayer(): boolean {
@@ -428,19 +461,71 @@ export class SelectModifierPhase extends BattlePhase {
     return false;
   }
 
+  private selectVsEnemyTokenOption(rowCursor: number, cursor: number): boolean {
+    const firstShopRowCursor = this.getFirstShopRowCursor();
+    const useSecondShopRow = this.tokenOptions.length > SHOP_OPTIONS_ROW_LIMIT && rowCursor === firstShopRowCursor;
+    const tokenOption = this.tokenOptions[useSecondShopRow ? cursor + SHOP_OPTIONS_ROW_LIMIT : cursor];
+    if (!tokenOption) {
+      globalScene.ui.playError();
+      return false;
+    }
+
+    const cost = tokenOption.cost;
+    if (globalScene.getPlayerMoney(this.playerIndex) < cost && !activeOverrides.WAIVE_ROLL_FEE_OVERRIDE) {
+      globalScene.ui.playError();
+      return false;
+    }
+
+    const modifier = tokenOption.type.newModifier() as EnemyPersistentModifier | null;
+    if (!modifier) {
+      globalScene.ui.playError();
+      return false;
+    }
+
+    const targetPlayerIndex = this.getVsEnemyTokenTargetPlayerIndex();
+    const existingModifier = globalScene
+      .getVsEnemyModifiersForPlayer(targetPlayerIndex)
+      .find(existing => existing.match(modifier));
+    if (existingModifier && existingModifier.getStackCount() >= existingModifier.getMaxStackCount()) {
+      globalScene.ui.playError();
+      return false;
+    }
+
+    void globalScene.addVsEnemyModifier(targetPlayerIndex, modifier, false, true).then(() => {
+      if (!activeOverrides.WAIVE_ROLL_FEE_OVERRIDE) {
+        globalScene.setPlayerMoney(globalScene.getPlayerMoney(this.playerIndex) - cost, this.playerIndex);
+        globalScene.updateMoneyText();
+        globalScene.animateMoneyChanged(false);
+      }
+      audioManager.playSound("se/buy");
+      (globalScene.ui.getHandler() as ModifierSelectUiHandler).updateCostText();
+      globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("vs-token-purchased");
+    });
+
+    return false;
+  }
+
   // Pick a modifier from the shop and apply it
   private selectShopModifierOption(
     rowCursor: number,
     cursor: number,
     modifierSelectCallback: ModifierSelectCallback,
   ): boolean {
-    const firstShopRowCursor = this.alphTileOptions.length > 0 ? 3 : 2;
+    if ((globalScene.ui.getHandler() as ModifierSelectUiHandler).isVsTokenShopActive()) {
+      return this.selectVsEnemyTokenOption(rowCursor, cursor);
+    }
+
+    const firstShopRowCursor = this.getFirstShopRowCursor();
     const shopOptions = getPlayerShopModifierTypeOptionsForWave(
       globalScene.currentBattle.waveIndex,
       globalScene.getWaveMoneyAmount(1),
     );
     const useSecondShopRow = shopOptions.length > SHOP_OPTIONS_ROW_LIMIT && rowCursor === firstShopRowCursor;
     const shopOption = shopOptions[useSecondShopRow ? cursor + SHOP_OPTIONS_ROW_LIMIT : cursor];
+    if (!shopOption) {
+      globalScene.ui.playError();
+      return false;
+    }
     const modifierType = shopOption.type;
     // Apply Black Sludge to healing item cost
     const healingItemCost = new NumberHolder(shopOption.cost);
@@ -1124,9 +1209,10 @@ export class SelectModifierPhase extends BattlePhase {
       this.typeOptions,
       modifierSelectCallback,
       this.getRerollCost(this.shouldLockRarities()),
-      globalScene.twoPlayerMode && this.hasAvailableTradeTarget(this.playerIndex),
+      !globalScene.twoPlayerVsMode && globalScene.twoPlayerMode && this.hasAvailableTradeTarget(this.playerIndex),
       this.playerIndex,
       this.alphTileOptions,
+      this.tokenOptions,
     );
   }
 

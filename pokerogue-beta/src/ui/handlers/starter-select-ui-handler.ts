@@ -32,7 +32,14 @@ import { EggSourceType } from "#enums/egg-source-types";
 import { GameModes } from "#enums/game-modes";
 import type { MoveId } from "#enums/move-id";
 import type { Nature } from "#enums/nature";
-import { Passive as PassiveAttr } from "#enums/passive";
+import {
+  getPassiveAttrs,
+  getPassiveEnabledAttr,
+  hasAnyPassiveLocked,
+  hasAnyPassiveUnlocked,
+  isPassiveEnabled,
+  isPassiveUnlocked,
+} from "#enums/passive";
 import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { TextStyle } from "#enums/text-style";
@@ -1491,7 +1498,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     return (
       starterCost != null
       && starterData.candyCount >= getPassiveCandyCount(starterCost)
-      && !(starterData.passiveAttr & PassiveAttr.UNLOCKED)
+      && hasAnyPassiveLocked(starterData.passiveAttr, speciesDataRegistry.getPassiveCount(speciesId, 0))
     );
   }
 
@@ -2235,18 +2242,22 @@ export class StarterSelectUiHandler extends MessageUiHandler {
           }
 
           const passiveAttr = starterData.passiveAttr;
-          if (passiveAttr & PassiveAttr.UNLOCKED) {
+          const selectedPassiveIndex = this.passiveCursor > -1 ? this.passiveCursor : 0;
+          const selectedPassiveUnlocked = isPassiveUnlocked(passiveAttr, selectedPassiveIndex);
+          const selectedPassiveEnabled = isPassiveEnabled(passiveAttr, selectedPassiveIndex);
+          if (selectedPassiveUnlocked) {
             // this is for enabling and disabling the passive
             const label = i18next.t(
-              passiveAttr & PassiveAttr.ENABLED
+              selectedPassiveEnabled
                 ? "starterSelectUiHandler:disablePassive"
                 : "starterSelectUiHandler:enablePassive",
             );
             options.push({
               label,
               handler: () => {
-                starterData.passiveAttr ^= PassiveAttr.ENABLED;
-                persistentStarterData.passiveAttr ^= PassiveAttr.ENABLED;
+                const passiveEnabledAttr = getPassiveEnabledAttr(selectedPassiveIndex);
+                starterData.passiveAttr ^= passiveEnabledAttr;
+                persistentStarterData.passiveAttr ^= passiveEnabledAttr;
                 ui.setMode(UiMode.STARTER_SELECT);
                 this.setSpeciesDetails(this.lastSpecies);
                 return true;
@@ -2324,13 +2335,13 @@ export class StarterSelectUiHandler extends MessageUiHandler {
             const options: any[] = []; // TODO: add proper type
 
             // Unlock passive option
-            if (!(passiveAttr & PassiveAttr.UNLOCKED) && !globalScene.gameMode.hasChallenge(Challenges.FRESH_START)) {
+            if (!selectedPassiveUnlocked && !globalScene.gameMode.hasChallenge(Challenges.FRESH_START)) {
               const passiveCost = getPassiveCandyCount(speciesDataRegistry.getStarterCost(this.lastSpecies.speciesId));
               options.push({
                 label: `×${passiveCost} ${i18next.t("starterSelectUiHandler:unlockPassive")}`,
                 handler: () => {
                   if (activeOverrides.FREE_CANDY_UPGRADE_OVERRIDE || candyCount >= passiveCost) {
-                    persistentStarterData.passiveAttr |= PassiveAttr.UNLOCKED | PassiveAttr.ENABLED;
+                    persistentStarterData.passiveAttr |= getPassiveAttrs(selectedPassiveIndex);
                     starterData.passiveAttr = persistentStarterData.passiveAttr;
                     if (!activeOverrides.FREE_CANDY_UPGRADE_OVERRIDE) {
                       persistentStarterData.candyCount -= passiveCost;
@@ -2931,7 +2942,9 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       female: props.female,
       abilityIndex,
       passiveIndex,
-      passive: !(starterDataEntry.passiveAttr ^ (PassiveAttr.ENABLED | PassiveAttr.UNLOCKED)),
+      passive:
+        isPassiveUnlocked(starterDataEntry.passiveAttr, passiveIndex)
+        && isPassiveEnabled(starterDataEntry.passiveAttr, passiveIndex),
       nature,
       moveset,
       pokerus: this.pokerusSpecies.includes(species),
@@ -3311,8 +3324,9 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       });
 
       // Passive Filter
-      const isPassiveUnlocked = starterData.passiveAttr > 0;
-      const isPassiveUnlockable = this.isPassiveAvailable(container.species.speciesId) && !isPassiveUnlocked;
+      const passiveCount = speciesDataRegistry.getPassiveCount(container.species.speciesId, 0);
+      const isPassiveUnlocked = hasAnyPassiveUnlocked(starterData.passiveAttr, passiveCount);
+      const isPassiveUnlockable = this.isPassiveAvailable(container.species.speciesId);
       const fitsPassive = this.filterBar.getVals(DropDownColumn.UNLOCKS).some(unlocks => {
         if (unlocks.val === "PASSIVE" && unlocks.state === DropDownState.ON) {
           return isPassiveUnlocked;
@@ -4214,8 +4228,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
 
         this.canCycleAbility = [hasAbility1, hasAbility2, hasHiddenAbility].filter(a => a).length > 1;
         this.canCyclePassive =
-          !!(starterDataEntry.passiveAttr & PassiveAttr.UNLOCKED)
-          && speciesDataRegistry.getPassiveCount(species.speciesId, formIndex ?? 0) > 1;
+          !isFreshStartChallenge && speciesDataRegistry.getPassiveCount(species.speciesId, formIndex ?? 0) > 1;
 
         this.canCycleForm =
           species.forms
@@ -4276,8 +4289,8 @@ export class StarterSelectUiHandler extends MessageUiHandler {
         }
 
         if (passiveAbility) {
-          const isUnlocked = !!(passiveAttr & PassiveAttr.UNLOCKED);
-          const isEnabled = !!(passiveAttr & PassiveAttr.ENABLED);
+          const isUnlocked = isPassiveUnlocked(passiveAttr, this.passiveCursor);
+          const isEnabled = isPassiveEnabled(passiveAttr, this.passiveCursor);
 
           const textStyle = isUnlocked && isEnabled ? TextStyle.SUMMARY_ALT : TextStyle.SUMMARY_GRAY;
           const textAlpha = isUnlocked && isEnabled ? 1 : 0.5;

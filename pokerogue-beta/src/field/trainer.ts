@@ -223,12 +223,20 @@ export class Trainer extends Phaser.GameObjects.Container {
         ? trainerConfigs[trainerType]
         : trainerConfigs[TrainerType.ACE_TRAINER]);
 
+    const shouldUseVsMirroredTrainerPartners =
+      !trainerConfigOverride
+      && globalScene.twoPlayerVsMode
+      && globalScene.twoPlayerPartySize === 6
+      && !this.config.doubleOnly;
+    const twoPlayerPartnerTrainerCount = globalScene.multiplayerPlayerCount > 2 ? 2 : 1;
     const lookupPartnerTrainerTypes =
       !trainerConfigOverride
       && globalScene.twoPlayerMode
       && globalScene.twoPlayerPartySize === 6
       && !this.config.doubleOnly
-        ? getRandomTwoPlayerTrainerPartners(trainerType, globalScene.multiplayerPlayerCount > 2 ? 2 : 1)
+        ? shouldUseVsMirroredTrainerPartners
+          ? Array.from({ length: twoPlayerPartnerTrainerCount }, () => trainerType)
+          : getRandomTwoPlayerTrainerPartners(trainerType, twoPlayerPartnerTrainerCount)
         : [];
     this.partnerTrainerType =
       partnerTrainerType
@@ -275,8 +283,15 @@ export class Trainer extends Phaser.GameObjects.Container {
           ? TrainerVariant.FEMALE
           : TrainerVariant.DEFAULT
         : this.variant;
+    const mirroredPartnerVariant =
+      requestedVariant === TrainerVariant.FEMALE && this.config.hasGenders
+        ? TrainerVariant.FEMALE
+        : TrainerVariant.DEFAULT;
     this.partnerVariant =
       partnerVariant
+      ?? (shouldUseVsMirroredTrainerPartners && this.partnerConfig === this.config
+        ? mirroredPartnerVariant
+        : undefined)
       ?? (this.partnerConfig?.hasGenders
         ? this.partnerConfig === this.config
           ? requestedVariant === TrainerVariant.FEMALE
@@ -288,6 +303,9 @@ export class Trainer extends Phaser.GameObjects.Container {
         : TrainerVariant.DEFAULT);
     this.partnerVariant2 =
       partnerVariant2
+      ?? (shouldUseVsMirroredTrainerPartners && this.partnerConfig2 === this.config
+        ? mirroredPartnerVariant
+        : undefined)
       ?? (this.partnerConfig2?.hasGenders
         ? randSeedInt(2)
           ? TrainerVariant.FEMALE

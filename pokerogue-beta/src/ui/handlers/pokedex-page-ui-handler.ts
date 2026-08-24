@@ -29,7 +29,7 @@ import { DexAttr } from "#enums/dex-attr";
 import { EggSourceType } from "#enums/egg-source-types";
 import type { MoveId } from "#enums/move-id";
 import type { Nature } from "#enums/nature";
-import { Passive as PassiveAttr } from "#enums/passive";
+import { getPassiveAttrs, isPassiveUnlocked } from "#enums/passive";
 import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { TextStyle } from "#enums/text-style";
@@ -869,7 +869,7 @@ export class PokedexPageUiHandler extends MessageUiHandler {
 
     const starterData = globalScene.gameData.starterData[this.starterId];
     const abilityAttr = starterData.abilityAttr;
-    this.hasPassive = starterData.passiveAttr > 0;
+    this.hasPassive = isPassiveUnlocked(starterData.passiveAttr, 0);
 
     const hasAbility1 = abilityAttr & AbilityAttr.ABILITY_1;
     const hasAbility2 = abilityAttr & AbilityAttr.ABILITY_2;
@@ -1933,7 +1933,7 @@ export class PokedexPageUiHandler extends MessageUiHandler {
             const passiveAttr = starterData.passiveAttr;
             const candyCount = starterData.candyCount;
 
-            if (!(passiveAttr & PassiveAttr.UNLOCKED)) {
+            if (!isPassiveUnlocked(passiveAttr, 0)) {
               const passiveCost = getPassiveCandyCount(speciesDataRegistry.getStarterCost(this.starterId));
               options.push({
                 label: `×${passiveCost} ${i18next.t("pokedexUiHandler:unlockPassive")}`,
@@ -1942,7 +1942,7 @@ export class PokedexPageUiHandler extends MessageUiHandler {
                     return false;
                   }
 
-                  starterData.passiveAttr |= PassiveAttr.UNLOCKED | PassiveAttr.ENABLED;
+                  starterData.passiveAttr |= getPassiveAttrs(0);
                   if (!activeOverrides.FREE_CANDY_UPGRADE_OVERRIDE) {
                     starterData.candyCount -= passiveCost;
                   }
@@ -2322,7 +2322,7 @@ export class PokedexPageUiHandler extends MessageUiHandler {
 
     return (
       starterData.candyCount >= getPassiveCandyCount(speciesDataRegistry.getStarterCost(this.starterId))
-      && !(starterData.passiveAttr & PassiveAttr.UNLOCKED)
+      && !isPassiveUnlocked(starterData.passiveAttr, 0)
     );
   }
 

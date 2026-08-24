@@ -21,8 +21,9 @@ import {
   Weather,
 } from "#data/weather";
 import { ArenaTagSide } from "#enums/arena-tag-side";
-import type { ArenaTagType } from "#enums/arena-tag-type";
+import { ArenaTagType } from "#enums/arena-tag-type";
 import type { BattlerIndex } from "#enums/battler-index";
+import { BattlerTagType } from "#enums/battler-tag-type";
 import { BiomeId } from "#enums/biome-id";
 import { BiomePoolTier } from "#enums/biome-pool-tier";
 import { CommonAnim } from "#enums/move-anims-common";
@@ -40,7 +41,7 @@ import {
   WeatherChangedEvent,
 } from "#events/arena";
 import type { Pokemon } from "#field/pokemon";
-import { FieldEffectModifier } from "#modifiers/modifier";
+import { BoosterEnergyModifier, FieldEffectModifier } from "#modifiers/modifier";
 import type { Move } from "#moves/move";
 import { isFieldTargeted, isSpreadMove } from "#moves/move-utils";
 import type { ArenaPokemonPools, TrainerPools } from "#types/biomes";
@@ -56,6 +57,23 @@ import { getPokemonSpecies } from "#utils/pokemon-utils";
 import { weightedPick } from "#utils/random";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import type { NonEmptyTuple } from "type-fest";
+
+function hasBoosterEnergySustainedHighestStatTag(pokemon: Pokemon, tagType: BattlerTagType): boolean {
+  return (
+    (tagType === BattlerTagType.PROTOSYNTHESIS || tagType === BattlerTagType.QUARK_DRIVE)
+    && !!globalScene.findModifiersForPokemon(m => m instanceof BoosterEnergyModifier, pokemon).length
+  );
+}
+
+const vsLaneScopedArenaTags = new Set<ArenaTagType>([
+  ArenaTagType.REFLECT,
+  ArenaTagType.LIGHT_SCREEN,
+  ArenaTagType.AURORA_VEIL,
+  ArenaTagType.SPIKES,
+  ArenaTagType.TOXIC_SPIKES,
+  ArenaTagType.STEALTH_ROCK,
+  ArenaTagType.STICKY_WEB,
+]);
 
 export class Arena {
   public readonly biomeId: BiomeId;
@@ -396,7 +414,10 @@ export class Arena {
     for (const pokemon of inSpeedOrder(ArenaTagSide.BOTH)) {
       // TODO: Specify the type of tags which are being removed here
       pokemon.findAndRemoveTags(
-        tag => "weatherTypes" in tag && !(tag.weatherTypes as WeatherType[]).find(w => w === weather),
+        tag =>
+          "weatherTypes" in tag
+          && !(tag.weatherTypes as WeatherType[]).find(w => w === weather)
+          && !hasBoosterEnergySustainedHighestStatTag(pokemon, tag.tagType),
       );
       applyAbAttrs("PostWeatherChangeAbAttr", { pokemon, weather });
     }
@@ -518,7 +539,10 @@ export class Arena {
 
     for (const pokemon of inSpeedOrder(ArenaTagSide.BOTH)) {
       pokemon.findAndRemoveTags(
-        tag => "terrainTypes" in tag && !(tag.terrainTypes as TerrainType[]).find(t => t === terrain),
+        tag =>
+          "terrainTypes" in tag
+          && !(tag.terrainTypes as TerrainType[]).find(t => t === terrain)
+          && !hasBoosterEnergySustainedHighestStatTag(pokemon, tag.tagType),
       );
       applyAbAttrs("PostTerrainChangeAbAttr", { pokemon, terrain });
       applyAbAttrs("TerrainEventTypeChangeAbAttr", { pokemon });
@@ -777,7 +801,7 @@ export class Arena {
         continue;
       }
 
-      if (side !== ArenaTagSide.BOTH && tag.side !== ArenaTagSide.BOTH && side !== tag.side) {
+      if (!this.tagMatchesSide(tag, side)) {
         continue;
       }
 
@@ -829,8 +853,9 @@ export class Arena {
     sourceId: number,
     side: ArenaTagSide = ArenaTagSide.BOTH,
     quiet = false,
+    vsLane = this.getVsLaneForTag(tagType, sourceId, side),
   ): boolean {
-    const existingTag = this.getTagOnSide(tagType, side);
+    const existingTag = this.getTagOnSide(tagType, side, vsLane);
     if (existingTag) {
       existingTag.onOverlap(globalScene.getPokemonById(sourceId));
       return false;
@@ -840,6 +865,9 @@ export class Arena {
     const newTag = getArenaTag(tagType, turnCount, sourceMove, sourceId, side);
     if (!newTag) {
       return false;
+    }
+    if (vsLane !== undefined) {
+      newTag.vsLane = vsLane;
     }
 
     newTag.onAdd(quiet);
@@ -886,13 +914,14 @@ export class Arena {
   public getTagOnSide(
     tagType: ArenaTagType | Constructor<ArenaTag> | AbstractConstructor<ArenaTag>,
     side: ArenaTagSide,
+    vsLane?: number,
   ): ArenaTag | undefined {
     return typeof tagType === "string"
       ? this.tags.find(
-          t => t.tagType === tagType && (side === ArenaTagSide.BOTH || t.side === ArenaTagSide.BOTH || t.side === side),
+          t => t.tagType === tagType && this.tagMatchesSide(t, side, vsLane),
         )
       : this.tags.find(
-          t => t instanceof tagType && (side === ArenaTagSide.BOTH || t.side === ArenaTagSide.BOTH || t.side === side),
+          t => t instanceof tagType && this.tagMatchesSide(t, side, vsLane),
         );
   }
 
@@ -914,10 +943,8 @@ export class Arena {
    * @param side The {@linkcode ArenaTagSide} to look at
    * @returns array of {@linkcode ArenaTag}s from which the Arena's tags return `true` and apply to the given side
    */
-  public findTagsOnSide(tagPredicate: (t: ArenaTag) => boolean, side: ArenaTagSide): ArenaTag[] {
-    return this.tags.filter(
-      t => tagPredicate(t) && (side === ArenaTagSide.BOTH || t.side === ArenaTagSide.BOTH || t.side === side),
-    );
+  public findTagsOnSide(tagPredicate: (t: ArenaTag) => boolean, side: ArenaTagSide, vsLane?: number): ArenaTag[] {
+    return this.tags.filter(t => tagPredicate(t) && this.tagMatchesSide(t, side, vsLane));
   }
 
   public lapseTags(): void {
@@ -946,8 +973,8 @@ export class Arena {
   }
 
   // TODO: Remove unused boolean return
-  public removeTagOnSide(tagType: ArenaTagType, side: ArenaTagSide, quiet = false): boolean {
-    const tag = this.getTagOnSide(tagType, side);
+  public removeTagOnSide(tagType: ArenaTagType, side: ArenaTagSide, quiet = false, vsLane?: number): boolean {
+    const tag = this.getTagOnSide(tagType, side, vsLane);
     if (!tag) {
       return false;
     }
@@ -966,13 +993,18 @@ export class Arena {
    * @param quiet - Whether to suppress removal messages from currently-present tags; default `false`
    * @todo Review the other tag manipulation functions to see if they can be migrated towards using this (more efficient + foolproof)
    */
-  public removeTagsOnSide(tagTypes: ArenaTagType[] | readonly ArenaTagType[], side: ArenaTagSide, quiet = false): void {
+  public removeTagsOnSide(
+    tagTypes: ArenaTagType[] | readonly ArenaTagType[],
+    side: ArenaTagSide,
+    quiet = false,
+    vsLane?: number,
+  ): void {
     const leftoverTags: ArenaTag[] = [];
     for (const tag of this.tags) {
       // Skip tags of different types or on the wrong side of the field
       if (
         !tagTypes.includes(tag.tagType)
-        || !(side === ArenaTagSide.BOTH || tag.side === ArenaTagSide.BOTH || tag.side === side)
+        || !this.tagMatchesSide(tag, side, vsLane)
       ) {
         leftoverTags.push(tag);
         continue;
@@ -991,6 +1023,26 @@ export class Arena {
       this.eventTarget.dispatchEvent(new ArenaTagRemovedEvent(tag.tagType, tag.side));
     }
     this.tags = [];
+  }
+
+  private getVsLaneForTag(tagType: ArenaTagType, sourceId: number, side: ArenaTagSide): number | undefined {
+    if (!globalScene.twoPlayerVsMode || side === ArenaTagSide.BOTH || !vsLaneScopedArenaTags.has(tagType)) {
+      return undefined;
+    }
+
+    return globalScene.getPokemonById(sourceId)?.getFieldIndex();
+  }
+
+  private tagMatchesSide(tag: ArenaTag, side: ArenaTagSide, vsLane?: number): boolean {
+    if (side !== ArenaTagSide.BOTH && tag.side !== ArenaTagSide.BOTH && side !== tag.side) {
+      return false;
+    }
+
+    if (!globalScene.twoPlayerVsMode || vsLane === undefined || !vsLaneScopedArenaTags.has(tag.tagType)) {
+      return true;
+    }
+
+    return tag.vsLane === undefined || tag.vsLane === vsLane;
   }
 
   // #endregion Arena Tags

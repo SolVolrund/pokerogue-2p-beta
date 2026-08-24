@@ -1279,6 +1279,13 @@ export class GameData {
         .filter(m => !m.eonFluteGuestItem)
         .map(m => new PersistentModifierData(m, true)),
       enemyModifiers: globalScene.findModifiers(() => true, false).map(m => new PersistentModifierData(m, false)),
+      vsEnemyModifiersByPlayer: globalScene.twoPlayerVsMode
+        ? ([0, 1, 2] as PlayerIndex[]).map(playerIndex =>
+            globalScene
+              .getVsEnemyModifiersForPlayer(playerIndex)
+              .map(modifier => new PersistentModifierData(modifier, false)),
+          )
+        : undefined,
       arena: new ArenaData(globalScene.arena),
       pokeballCounts: globalScene.pokeballCounts,
       money: Math.floor(globalScene.money),
@@ -1291,6 +1298,7 @@ export class GameData {
       multiplayerPlayerCount: globalScene.twoPlayerMode ? globalScene.multiplayerPlayerCount : undefined,
       twoPlayerPartySize: globalScene.twoPlayerPartySize,
       twoPlayerComputerPartner: globalScene.twoPlayerComputerPartner,
+      twoPlayerVsMode: globalScene.twoPlayerMode ? globalScene.twoPlayerVsMode : undefined,
       computerPartnerPlayerIndexes: globalScene.twoPlayerComputerPartner
         ? globalScene.getComputerPartnerPlayerIndexes()
         : undefined,
@@ -1632,6 +1640,20 @@ export class GameData {
       }
     }
 
+    globalScene.clearVsEnemyModifiers();
+    if (globalScene.twoPlayerVsMode) {
+      for (const playerIndex of globalScene.getActivePlayerIndexes()) {
+        const laneModifiers = fromSession.vsEnemyModifiersByPlayer?.[playerIndex] ?? [];
+        for (const modifierData of laneModifiers) {
+          const modifier = modifierData.toModifier(Modifier[modifierData.className]);
+          if (modifier instanceof Modifier.EnemyPersistentModifier) {
+            globalScene.addVsEnemyModifier(playerIndex, modifier, true);
+          }
+        }
+      }
+      globalScene.refreshPlayerModifierBar();
+    }
+
     globalScene.updateModifiers(false);
 
     await Promise.all(loadPokemonAssets);
@@ -1689,6 +1711,7 @@ export class GameData {
       isComputerPartnerSession,
       playerCount,
       computerPartnerPlayerIndexes,
+      !!fromSession.twoPlayerVsMode,
     );
 
     if (isComputerPartnerSession) {
@@ -1976,6 +1999,16 @@ export class GameData {
             ret.push(new PersistentModifierData(md, k === "modifiers"));
           }
           return ret;
+        }
+
+        case "vsEnemyModifiersByPlayer": {
+          return (v ?? []).map((laneModifiers: unknown[]) => {
+            const ret: PersistentModifierData[] = [];
+            for (const md of laneModifiers ?? []) {
+              ret.push(new PersistentModifierData(md, false));
+            }
+            return ret;
+          });
         }
 
         case "arena":

@@ -735,7 +735,7 @@ export class MoveEffectPhase extends PokemonPhase {
       user.turnData.totalDamageDealt += Math.min(initialDmg, substitute.hp);
       substitute.hp -= initialDmg;
     } else if (!target.isPlayer() && initialDmg >= target.hp) {
-      globalScene.applyModifiers(EnemyEndureChanceModifier, false, target);
+      globalScene.applyEnemyModifiersForPokemon(EnemyEndureChanceModifier, target, target);
     }
 
     const finalDmg = isBlockedBySubstitute
@@ -875,7 +875,7 @@ export class MoveEffectPhase extends PokemonPhase {
 
     // We assume only enemy Pokemon are able to have the EnemyAttackStatusEffectChanceModifier from tokens
     if (!user.isPlayer() && this.move.is("AttackMove")) {
-      globalScene.applyShuffledModifiers(EnemyAttackStatusEffectChanceModifier, false, target);
+      globalScene.applyShuffledEnemyModifiersForPokemon(EnemyAttackStatusEffectChanceModifier, user, target);
     }
 
     // Apply Grip Claw's chance to steal an item from the target

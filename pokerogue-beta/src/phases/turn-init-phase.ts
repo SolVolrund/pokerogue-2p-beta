@@ -15,7 +15,13 @@ export class TurnInitPhase extends FieldPhase {
   start() {
     super.start();
 
+    let queuedVsModeVictory = false;
+
     globalScene.getPlayerField().forEach(p => {
+      if (queuedVsModeVictory) {
+        return;
+      }
+
       // If this pokemon is in play and evolved into something illegal under the current challenge, force a switch
       if (p.isOnField() && !p.isAllowedInBattle()) {
         globalScene.phaseManager.queueMessage(
@@ -28,7 +34,10 @@ export class TurnInitPhase extends FieldPhase {
         const activePartySlotCount = globalScene.twoPlayerMode ? 1 : globalScene.currentBattle.getBattlerCount();
         const allowedPokemon = globalScene.getPokemonAllowedInBattle(playerIndex);
 
-        if (allowedPokemon.length === 0 && globalScene.areAllActivePlayersOutOfUsablePokemon()) {
+        if (allowedPokemon.length === 0 && globalScene.queueVsModeVictoryIfDecided()) {
+          queuedVsModeVictory = true;
+          return;
+        } else if (allowedPokemon.length === 0 && globalScene.areAllActivePlayersOutOfUsablePokemon()) {
           // If no active player has legal Pokemon left, game over.
           globalScene.phaseManager.clearPhaseQueue();
           globalScene.phaseManager.unshiftNew("GameOverPhase");
@@ -55,6 +64,11 @@ export class TurnInitPhase extends FieldPhase {
         }
       }
     });
+
+    if (queuedVsModeVictory) {
+      this.end();
+      return;
+    }
 
     globalScene.eventTarget.dispatchEvent(new TurnInitEvent());
 

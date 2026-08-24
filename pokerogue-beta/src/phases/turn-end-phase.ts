@@ -58,8 +58,8 @@ export class TurnEndPhase extends FieldPhase {
         }
 
         if (!pokemon.isPlayer()) {
-          globalScene.applyModifiers(EnemyTurnHealModifier, false, pokemon);
-          globalScene.applyModifier(EnemyStatusEffectHealChanceModifier, false, pokemon);
+          globalScene.applyEnemyModifiersForPokemon(EnemyTurnHealModifier, pokemon, pokemon);
+          globalScene.applyEnemyModifierForPokemon(EnemyStatusEffectHealChanceModifier, pokemon, pokemon);
         }
 
         globalScene.applyModifiersForPokemon(ShinyBadgeModifier, pokemon, pokemon, "status");
