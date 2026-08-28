@@ -1825,7 +1825,7 @@ export class PartyUiHandler extends MessageUiHandler {
         let amountText = ` (${this.transferQuantities[option]})`;
 
         /** If the amount held is the maximum, display the count in red */
-        if (this.transferQuantitiesMax[option] === itemModifier.getMaxHeldItemCount(undefined)) {
+        if (this.transferQuantitiesMax[option] === itemModifier.getMaxHeldItemCount(pokemon)) {
           amountText = `[color=${getTextColor(TextStyle.SUMMARY_RED)}]${amountText}[/color]`;
         }
 

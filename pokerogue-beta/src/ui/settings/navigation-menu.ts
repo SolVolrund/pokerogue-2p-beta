@@ -11,6 +11,9 @@ import { specialIconKeys, specialIcons } from "./special-icons";
 
 const LEFT = "LEFT";
 const RIGHT = "RIGHT";
+const LABEL_GAP = 6;
+const LABEL_WINDOW_LEFT = 28;
+const LABEL_WINDOW_RIGHT_PADDING = 28;
 
 /**
  * Manages navigation and menus tabs within the setting menu.
@@ -34,6 +37,7 @@ export class NavigationManager {
       UiMode.SETTINGS_DISPLAY,
       UiMode.SETTINGS_AUDIO,
       UiMode.SETTINGS_EVENTS,
+      UiMode.SETTINGS_ITEMS,
       UiMode.SETTINGS_GAMEPAD,
       UiMode.SETTINGS_KEYBOARD,
     ];
@@ -42,6 +46,7 @@ export class NavigationManager {
       i18next.t("settings:display"),
       i18next.t("settings:audio"),
       i18next.t("settings:events"),
+      "Items",
       i18next.t("settings:gamepad"),
       i18next.t("settings:keyboard"),
     ];
@@ -111,6 +116,7 @@ export class NavigationManager {
 export class NavigationMenu extends Phaser.GameObjects.Container {
   private navigationIcons: InputsIcons;
   protected headerTitles: Phaser.GameObjects.Text[] = [];
+  private headerWidth = 0;
 
   /**
    * Creates an instance of NavigationMenu.
@@ -133,6 +139,7 @@ export class NavigationMenu extends Phaser.GameObjects.Container {
     this.add(headerBg);
     this.width = headerBg.width;
     this.height = headerBg.height;
+    this.headerWidth = headerBg.width;
 
     this.navigationIcons = {};
 
@@ -146,16 +153,11 @@ export class NavigationMenu extends Phaser.GameObjects.Container {
     iconNextTab.setPositionRelative(headerBg, headerBg.width - 20, 4);
     this.navigationIcons["BUTTON_CYCLE_SHINY"] = iconNextTab;
 
-    let relative: Phaser.GameObjects.Sprite | Phaser.GameObjects.Text = iconPreviousTab;
-    let relativeWidth: number = iconPreviousTab.width * 6;
     for (const label of navigationManager.labels) {
       const labelText = addTextObject(0, 0, label, TextStyle.SETTINGS_LABEL_NAVBAR);
       labelText.setOrigin(0, 0);
-      labelText.setPositionRelative(relative, 6 + relativeWidth / 6, 0);
       this.add(labelText);
       this.headerTitles.push(labelText);
-      relative = labelText;
-      relativeWidth = labelText.width;
     }
 
     this.add(iconPreviousTab);
@@ -170,10 +172,52 @@ export class NavigationMenu extends Phaser.GameObjects.Container {
   update() {
     const navigationManager = NavigationManager.getInstance();
     const posSelected = navigationManager.modes.indexOf(navigationManager.selectedMode);
+    const [windowStart, windowEnd] = this.getVisibleTitleWindow(posSelected);
+    let x = LABEL_WINDOW_LEFT;
 
     for (const [index, title] of this.headerTitles.entries()) {
+      const visible = index >= windowStart && index <= windowEnd;
+      title.setVisible(visible);
+      if (visible) {
+        title.setPosition(x, 4);
+        x += this.getTitleWidth(title) + LABEL_GAP;
+      }
       setTextStyle(title, index === posSelected ? TextStyle.SETTINGS_SELECTED : TextStyle.SETTINGS_LABEL);
     }
+  }
+
+  private getVisibleTitleWindow(posSelected: number): [number, number] {
+    const availableWidth = this.headerWidth - LABEL_WINDOW_LEFT - LABEL_WINDOW_RIGHT_PADDING;
+    let windowStart = posSelected;
+    let windowEnd = posSelected;
+    let usedWidth = this.getTitleWidth(this.headerTitles[posSelected]);
+
+    while (true) {
+      const leftCount = posSelected - windowStart;
+      const rightCount = windowEnd - posSelected;
+      const canGrowLeft =
+        windowStart > 0
+        && usedWidth + LABEL_GAP + this.getTitleWidth(this.headerTitles[windowStart - 1]) <= availableWidth;
+      const canGrowRight =
+        windowEnd < this.headerTitles.length - 1
+        && usedWidth + LABEL_GAP + this.getTitleWidth(this.headerTitles[windowEnd + 1]) <= availableWidth;
+
+      if (canGrowLeft && (!canGrowRight || leftCount <= rightCount)) {
+        windowStart--;
+        usedWidth += LABEL_GAP + this.getTitleWidth(this.headerTitles[windowStart]);
+      } else if (canGrowRight) {
+        windowEnd++;
+        usedWidth += LABEL_GAP + this.getTitleWidth(this.headerTitles[windowEnd]);
+      } else {
+        break;
+      }
+    }
+
+    return [windowStart, windowEnd];
+  }
+
+  private getTitleWidth(title: Phaser.GameObjects.Text): number {
+    return title.width / 6;
   }
 
   /**

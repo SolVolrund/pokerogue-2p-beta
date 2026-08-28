@@ -55,4 +55,5 @@ export enum UiMode {
   MINING_INPUT,
   ALPH_WALL,
   FUSION_SUMMARY,
+  SETTINGS_ITEMS,
 }

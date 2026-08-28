@@ -702,7 +702,9 @@ export async function catchPokemon(
         if (!globalScene.getEnemyParty().some(p => p.id === pokemon.id)) {
           globalScene.getEnemyParty().push(pokemon);
         }
-        globalScene.phaseManager.unshiftNew("VictoryPhase", pokemon.id, true);
+        if (!isObtain) {
+          globalScene.phaseManager.unshiftNew("VictoryPhase", pokemon.id, true);
+        }
         globalScene.pokemonInfoContainer.hide();
         if (pokeball) {
           removePb(pokeball);

@@ -155,8 +155,8 @@ import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
 import { getModifierPoolForType, getModifierType } from "#utils/modifier-utils";
 import { toCamelCase } from "#utils/strings";
 import {
-  getValidZCrystalsForParty,
-  getValidZCrystalsForPokemon,
+  getReceivableZCrystalsForParty,
+  getReceivableZCrystalsForPokemon,
   getZCrystalLocaleKey,
   hasZMoveAccessForParty,
 } from "#utils/z-move-utils";
@@ -519,7 +519,7 @@ export class ZCrystalModifierType extends PokemonHeldItemModifierType implements
         return heldItemResult;
       }
 
-      return getValidZCrystalsForPokemon(pokemon).includes(zCrystal) ? null : PartyUiHandler.NoEffectMessage;
+      return getReceivableZCrystalsForPokemon(pokemon).includes(zCrystal) ? null : PartyUiHandler.NoEffectMessage;
     };
   }
 
@@ -2397,12 +2397,12 @@ const modifierTypeInitObj = Object.freeze({
         return null;
       }
 
-      const validCrystals = getValidZCrystalsForParty(party);
-      if (validCrystals.length === 0) {
+      const receivableCrystals = getReceivableZCrystalsForParty(party);
+      if (receivableCrystals.length === 0) {
         return null;
       }
 
-      const zCrystal = randSeedItem(validCrystals);
+      const zCrystal = randSeedItem(receivableCrystals);
       return new ZCrystalModifierType(getZCrystalLocaleKey(zCrystal), zCrystal);
     }),
   ALORAICHIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.ALORAICHIUM_Z", ZCrystal.ALORAICHIUM_Z),

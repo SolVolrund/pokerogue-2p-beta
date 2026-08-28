@@ -142,6 +142,12 @@ import {
 import { PokemonMove } from "#moves/pokemon-move";
 import { getDueDejaVuSchedule } from "#mystery-encounters/deja-vu-ghosts";
 import { getGtsMalfunctionTargetWave } from "#mystery-encounters/gts-malfunction-encounter";
+import {
+  getMysteryEncounterCompatibilityAllowlist,
+  getMysteryEncounterCompatibilityMode,
+  type MysteryEncounterCompatibilityContext,
+  type MysteryEncounterCompatibilityMode,
+} from "#mystery-encounters/mystery-encounter-compatibility";
 import { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterSaveData } from "#mystery-encounters/mystery-encounter-save-data";
 import { allMysteryEncounters, mysteryEncountersByBiome } from "#mystery-encounters/mystery-encounters";
@@ -281,88 +287,6 @@ const EON_FLUTE_BERRY_LOADOUT = [
   BerryType.PETAYA,
 ] as const;
 const EON_FLUTE_ROGUE_LOADOUT = [modifierTypes.LEFTOVERS, modifierTypes.SHELL_BELL, modifierTypes.LEFTOVERS] as const;
-const TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST = [
-  MysteryEncounterType.MYSTERIOUS_CHEST,
-  MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
-  MysteryEncounterType.DARK_DEAL,
-  MysteryEncounterType.FIGHT_OR_FLIGHT,
-  MysteryEncounterType.SLUMBERING_SNORLAX,
-  MysteryEncounterType.TRAINING_SESSION,
-  MysteryEncounterType.DEPARTMENT_STORE_SALE,
-  MysteryEncounterType.SHADY_VITAMIN_DEALER,
-  MysteryEncounterType.SAFARI_ZONE,
-  MysteryEncounterType.LOST_AT_SEA,
-  MysteryEncounterType.FIERY_FALLOUT,
-  MysteryEncounterType.THE_STRONG_STUFF,
-  MysteryEncounterType.THE_POKEMON_SALESMAN,
-  MysteryEncounterType.AN_OFFER_YOU_CANT_REFUSE,
-  MysteryEncounterType.DELIBIRDY,
-  MysteryEncounterType.ABSOLUTE_AVARICE,
-  MysteryEncounterType.A_TRAINERS_TEST,
-  MysteryEncounterType.TRASH_TO_TREASURE,
-  MysteryEncounterType.BERRIES_ABOUND,
-  MysteryEncounterType.CLOWNING_AROUND,
-  MysteryEncounterType.PART_TIMER,
-  MysteryEncounterType.DANCING_LESSONS,
-  MysteryEncounterType.WEIRD_DREAM,
-  MysteryEncounterType.THE_WINSTRATE_CHALLENGE,
-  MysteryEncounterType.TELEPORTING_HIJINKS,
-  MysteryEncounterType.BUG_TYPE_SUPERFAN,
-  MysteryEncounterType.FUN_AND_GAMES,
-  MysteryEncounterType.UNCOMMON_BREED,
-  MysteryEncounterType.GLOBAL_TRADE_SYSTEM,
-  MysteryEncounterType.GTS_MALFUNCTION,
-  MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
-  MysteryEncounterType.SHINY_BADGE,
-  MysteryEncounterType.LEGENDARY_CONFLICT,
-  MysteryEncounterType.POKE_POACHERS,
-  MysteryEncounterType.CHEFS_ON_VACATION,
-  MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE,
-  MysteryEncounterType.FARAWAY_ISLAND_TREASURE,
-  MysteryEncounterType.CONTEST_HALL,
-  MysteryEncounterType.DEJA_VU,
-  MysteryEncounterType.MINING,
-];
-const THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] = [
-  MysteryEncounterType.MYSTERIOUS_CHEST,
-  MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
-  MysteryEncounterType.DARK_DEAL,
-  MysteryEncounterType.FIGHT_OR_FLIGHT,
-  MysteryEncounterType.SLUMBERING_SNORLAX,
-  MysteryEncounterType.TRAINING_SESSION,
-  MysteryEncounterType.DEPARTMENT_STORE_SALE,
-  MysteryEncounterType.SHADY_VITAMIN_DEALER,
-  MysteryEncounterType.SAFARI_ZONE,
-  MysteryEncounterType.LOST_AT_SEA,
-  MysteryEncounterType.FIERY_FALLOUT,
-  MysteryEncounterType.THE_STRONG_STUFF,
-  MysteryEncounterType.THE_POKEMON_SALESMAN,
-  MysteryEncounterType.AN_OFFER_YOU_CANT_REFUSE,
-  MysteryEncounterType.ABSOLUTE_AVARICE,
-  MysteryEncounterType.A_TRAINERS_TEST,
-  MysteryEncounterType.DELIBIRDY,
-  MysteryEncounterType.TRASH_TO_TREASURE,
-  MysteryEncounterType.BERRIES_ABOUND,
-  MysteryEncounterType.CLOWNING_AROUND,
-  MysteryEncounterType.PART_TIMER,
-  MysteryEncounterType.DANCING_LESSONS,
-  MysteryEncounterType.WEIRD_DREAM,
-  MysteryEncounterType.THE_WINSTRATE_CHALLENGE,
-  MysteryEncounterType.TELEPORTING_HIJINKS,
-  MysteryEncounterType.BUG_TYPE_SUPERFAN,
-  MysteryEncounterType.GLOBAL_TRADE_SYSTEM,
-  MysteryEncounterType.GTS_MALFUNCTION,
-  MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
-  MysteryEncounterType.SHINY_BADGE,
-  MysteryEncounterType.LEGENDARY_CONFLICT,
-  MysteryEncounterType.POKE_POACHERS,
-  MysteryEncounterType.CHEFS_ON_VACATION,
-  MysteryEncounterType.FARAWAY_ISLAND_TREASURE,
-  MysteryEncounterType.CONTEST_HALL,
-  MysteryEncounterType.DEJA_VU,
-  MysteryEncounterType.MINING,
-];
-
 export interface PlayerRunState {
   party: PlayerPokemon[];
   money: number;
@@ -6686,10 +6610,21 @@ export class BattleScene extends SceneBase {
     );
   }
 
+  public getMysteryEncounterCompatibilityContext(): MysteryEncounterCompatibilityContext {
+    return {
+      twoPlayerMode: this.twoPlayerMode,
+      twoPlayerVsMode: this.twoPlayerVsMode,
+      multiplayerPlayerCount: this.multiplayerPlayerCount,
+      twoPlayerPartySize: this.twoPlayerPartySize,
+    };
+  }
+
+  public getMysteryEncounterCompatibilityMode(): MysteryEncounterCompatibilityMode {
+    return getMysteryEncounterCompatibilityMode(this.getMysteryEncounterCompatibilityContext());
+  }
+
   private getMultiplayerMysteryEncounterAllowlist(): readonly MysteryEncounterType[] {
-    return this.multiplayerPlayerCount >= 3
-      ? THREE_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST
-      : TWO_PLAYER_MYSTERY_ENCOUNTER_ALLOWLIST;
+    return getMysteryEncounterCompatibilityAllowlist(this.getMysteryEncounterCompatibilityContext());
   }
 
   private isMysteryEncounterAllowedInMultiplayer(encounterType: MysteryEncounterType): boolean {

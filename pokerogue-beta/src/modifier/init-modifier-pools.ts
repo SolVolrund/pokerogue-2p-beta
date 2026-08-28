@@ -33,7 +33,7 @@ import type { initModifierTypes } from "#modifiers/modifier-type";
 import { WeightedModifierType } from "#modifiers/modifier-type";
 import type { WeightedModifierTypeWeightFunc } from "#types/modifier-types";
 import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
-import { getValidZCrystalsForParty, hasZMoveAccessForParty } from "#utils/z-move-utils";
+import { getReceivableZCrystalsForParty, hasZMoveAccessForParty } from "#utils/z-move-utils";
 
 /**
  * Initialize the wild modifier pool
@@ -360,7 +360,7 @@ function initGreatModifierPool() {
     new WeightedModifierType(
       modifierTypes.Z_CRYSTAL,
       (party: Pokemon[]) =>
-        hasZMoveAccessForParty(party) && getValidZCrystalsForParty(party).length > 0 ? 1 : 0,
+        hasZMoveAccessForParty(party) && getReceivableZCrystalsForParty(party).length > 0 ? 1 : 0,
     ),
     new WeightedModifierType(
       modifierTypes.DNA_SPLICERS,
@@ -876,7 +876,7 @@ function initTrainerModifierPool() {
     new WeightedModifierType(modifierTypes.TYPE_GEM, (party: Pokemon[]) => party.some(hasTypeGemTarget) ? 2 : 0, 2),
     new WeightedModifierType(
       modifierTypes.Z_CRYSTAL,
-      (party: Pokemon[]) => getValidZCrystalsForParty(party).length > 0 ? 1 : 0,
+      (party: Pokemon[]) => getReceivableZCrystalsForParty(party).length > 0 ? 1 : 0,
       1,
     ),
   ].map(m => {

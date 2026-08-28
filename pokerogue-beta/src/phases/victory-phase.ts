@@ -25,14 +25,27 @@ export class VictoryPhase extends PokemonPhase {
   public override start(): void {
     super.start();
 
+    const defeatedPokemon = this.getPokemon() as ReturnType<typeof this.getPokemon> | undefined;
     const isMysteryEncounter = globalScene.currentBattle.isBattleMysteryEncounter();
+    if (!defeatedPokemon) {
+      console.warn("[VictoryPhase] Missing defeated Pokemon; skipping victory EXP.", {
+        battlerIndex: this.battlerIndex,
+        isExpOnly: this.isExpOnly,
+        isMysteryEncounter,
+      });
+      if (isMysteryEncounter) {
+        handleMysteryEncounterVictory(false, this.isExpOnly);
+      }
+      this.end();
+      return;
+    }
 
     // update Pokemon defeated count except for MEs that disable it
     if (!isMysteryEncounter || !globalScene.currentBattle.mysteryEncounter?.preventGameStatsUpdates) {
       globalScene.gameData.gameStats.pokemonDefeated++;
     }
 
-    const expValue = this.getPokemon().getExpValue();
+    const expValue = defeatedPokemon.getExpValue();
     globalScene.applyPartyExp(expValue, true);
 
     if (isMysteryEncounter) {
@@ -41,7 +54,6 @@ export class VictoryPhase extends PokemonPhase {
       return;
     }
 
-    const defeatedPokemon = this.getPokemon();
     const defeatedUnownFinalBoss =
       isUnownRealFinalBossWave(globalScene.currentBattle.waveIndex, globalScene.gameMode.modeId)
       && defeatedPokemon.id === globalScene.currentBattle.unownFinalBossState?.bossPokemonId;

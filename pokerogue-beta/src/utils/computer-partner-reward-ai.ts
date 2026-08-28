@@ -44,7 +44,7 @@ import {
   type ComputerPartnerRole,
 } from "#utils/computer-partner-profile";
 import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
-import { getValidZCrystalsForPokemon } from "#utils/z-move-utils";
+import { getReceivableZCrystalsForPokemon, getValidZCrystalsForPokemon } from "#utils/z-move-utils";
 
 export type ComputerPartnerRecoveryItemId =
   | "POTION"
@@ -464,13 +464,14 @@ function chooseZCrystalTarget(
   profile?: ComputerPartnerProfile,
 ): RewardTarget | undefined {
   return chooseScoredPokemonTarget(type, party, (pokemon, targetPokemonIndex) => {
-    if (!getValidZCrystalsForPokemon(pokemon).includes(type.zCrystal)) {
+    if (!getReceivableZCrystalsForPokemon(pokemon).includes(type.zCrystal)) {
       return undefined;
     }
 
     const aceBonus = profile && isComputerPartnerAcePokemon(pokemon, profile) ? 120 : 0;
+    const validCrystals = getValidZCrystalsForPokemon(pokemon);
     const usableCrystalCount = getKnownMoves(pokemon)
-      .filter(move => getValidZCrystalsForPokemon(pokemon).includes(type.zCrystal)).length;
+      .filter(move => validCrystals.includes(type.zCrystal)).length;
 
     return aceBonus + usableCrystalCount * 35 + getAttackingStatScore(pokemon, targetPokemonIndex) / 10;
   });

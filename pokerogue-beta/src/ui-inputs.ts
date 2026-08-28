@@ -26,6 +26,7 @@ import { SettingsAudioUiHandler } from "#ui/settings-audio-ui-handler";
 import { SettingsDisplayUiHandler } from "#ui/settings-display-ui-handler";
 import { SettingsEventsUiHandler } from "#ui/settings-events-ui-handler";
 import { SettingsGamepadUiHandler } from "#ui/settings-gamepad-ui-handler";
+import { SettingsItemsUiHandler } from "#ui/settings-items-ui-handler";
 import { SettingsKeyboardUiHandler } from "#ui/settings-keyboard-ui-handler";
 import { SettingsUiHandler } from "#ui/settings-ui-handler";
 import { StarterSelectUiHandler } from "#ui/starter-select-ui-handler";
@@ -973,6 +974,7 @@ export class UiInputs {
       SettingsDisplayUiHandler,
       SettingsAudioUiHandler,
       SettingsEventsUiHandler,
+      SettingsItemsUiHandler,
       SettingsGamepadUiHandler,
       SettingsKeyboardUiHandler,
       FusionSummaryUiHandler,

@@ -170,6 +170,7 @@ export enum SettingType {
   DISPLAY,
   AUDIO,
   EVENTS,
+  ITEMS,
 }
 
 export type SettingOption = {

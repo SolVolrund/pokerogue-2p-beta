@@ -78,6 +78,7 @@ type ContestLiveFeedState = {
 type ContestMoveSelectorRow = {
   markerText: ContestLayoutText;
   nameText: ContestLayoutText;
+  nameMaskGraphics: Phaser.GameObjects.Graphics;
   tween: Phaser.Tweens.Tween | null;
   layoutObject: ContestLayoutObject;
   rowIndex: number;
@@ -115,6 +116,7 @@ const CONTEST_MOVE_SELECTOR_MARKER_WIDTH = 8;
 const CONTEST_MOVE_SELECTOR_SCROLL_DELAY = 900;
 const CONTEST_MOVE_SELECTOR_SCROLL_HOLD = 900;
 const CONTEST_MOVE_SELECTOR_SCROLL_PIXELS_PER_SECOND = 18;
+const CONTEST_MOVE_SELECTOR_SCROLL_PADDING = 4;
 const MOVE_ANIM_USER_FOCUS_X = 106;
 const MOVE_ANIM_USER_FOCUS_Y = 116;
 const MOVE_ANIM_TARGET_FOCUS_X = 234;
@@ -480,6 +482,9 @@ export class ContestUi {
   destroy(): void {
     this.audienceAnimationTimer?.remove(false);
     this.clearMoveSelectorTweens();
+    for (const row of this.moveSelectorRows) {
+      row.nameMaskGraphics.destroy();
+    }
     this.destroyPerformerSprite();
     this.destroyIntroSprites();
     this.container.destroy(true);
@@ -544,10 +549,19 @@ export class ContestUi {
       nameText.setOrigin(0);
       nameText.setVisible(false);
 
+      const nameMaskGraphics = globalScene.make.graphics({});
+      nameMaskGraphics.setScale(6);
+      nameMaskGraphics.fillStyle(0xffffff);
+      nameMaskGraphics.beginPath();
+      nameMaskGraphics.fillRect(nameX, rowY, object.width - CONTEST_MOVE_SELECTOR_MARKER_WIDTH, rowHeight);
+      nameMaskGraphics.closePath();
+      nameText.setMask(nameMaskGraphics.createGeometryMask());
+
       this.container.add([markerText, nameText]);
       this.moveSelectorRows.push({
         markerText,
         nameText,
+        nameMaskGraphics,
         tween: null,
         layoutObject: object,
         rowIndex,
@@ -593,7 +607,7 @@ export class ContestUi {
     const baseX = row.layoutObject.x + CONTEST_MOVE_SELECTOR_MARKER_WIDTH;
     const maxWidth = row.layoutObject.width - CONTEST_MOVE_SELECTOR_MARKER_WIDTH;
     row.nameText.setX(baseX);
-    row.nameText.setCrop(0, 0, maxWidth * 6, row.layoutObject.height * 6 / CONTEST_MOVE_SELECTOR_ROW_COUNT);
+    row.nameText.setCrop();
 
     const overflow = row.nameText.displayWidth - maxWidth;
     if (!selected || overflow <= 0) {
@@ -606,7 +620,7 @@ export class ContestUi {
       duration: Math.max(600, (overflow / CONTEST_MOVE_SELECTOR_SCROLL_PIXELS_PER_SECOND) * 1000),
       hold: CONTEST_MOVE_SELECTOR_SCROLL_HOLD,
       loop: -1,
-      x: baseX - overflow,
+      x: baseX - overflow - CONTEST_MOVE_SELECTOR_SCROLL_PADDING,
     });
   }
 

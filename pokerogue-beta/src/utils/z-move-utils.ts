@@ -249,9 +249,37 @@ export function getValidZCrystalsForParty(party: readonly Pokemon[]): ZCrystal[]
   return Array.from(validCrystals);
 }
 
+export function getReceivableZCrystalsForParty(party: readonly Pokemon[]): ZCrystal[] {
+  const receivableCrystals = new Set<ZCrystal>();
+
+  for (const pokemon of party) {
+    for (const zCrystal of getReceivableZCrystalsForPokemon(pokemon)) {
+      receivableCrystals.add(zCrystal);
+    }
+  }
+
+  return Array.from(receivableCrystals);
+}
+
 export function hasZMoveAccessForParty(party: readonly Pokemon[]): boolean {
   const playerIndex = getPlayerIndexForParty(party);
   return globalScene.findModifierForPlayer(modifier => modifier instanceof ZMoveAccessModifier, playerIndex) !== undefined;
+}
+
+export function getReceivableZCrystalsForPokemon(pokemon: Pokemon): ZCrystal[] {
+  const heldCrystals = new Set<ZCrystal>();
+  const modifiers = globalScene.findModifiersForPokemon(
+    modifier => modifier instanceof ZCrystalModifier && modifier.pokemonId === pokemon.id,
+    pokemon,
+  );
+
+  for (const modifier of modifiers) {
+    if (modifier instanceof ZCrystalModifier) {
+      heldCrystals.add(modifier.zCrystal);
+    }
+  }
+
+  return getValidZCrystalsForPokemon(pokemon).filter(zCrystal => !heldCrystals.has(zCrystal));
 }
 
 export function getValidZCrystalsForPokemon(pokemon: Pokemon): ZCrystal[] {

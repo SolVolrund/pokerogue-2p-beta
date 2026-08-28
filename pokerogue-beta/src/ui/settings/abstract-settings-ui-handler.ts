@@ -305,7 +305,7 @@ export class AbstractSettingsUiHandler extends MessageUiHandler {
             // First, set the cursor to the last visible element, preparing for the scroll to the end.
             const successA = this.setCursor(this.rowsToDisplay - 1);
             // Then, adjust the scroll to display the bottommost elements of the menu.
-            const successB = this.setScrollCursor(this.optionValueLabels.length - this.rowsToDisplay);
+            const successB = this.setScrollCursor(Math.max(this.optionValueLabels.length - this.rowsToDisplay, 0));
             success = successA && successB; // success is just there to play the little validation sound effect
           }
           break;
