@@ -42,6 +42,7 @@ interface ShinyBadgeData {
   choices: ShinyBadgeChoice[];
   shinyBadgeDuelActive?: boolean;
   shinyBadgeDuelPlayerIndexes?: PlayerIndex[];
+  suppressVsModeVictory?: boolean;
   skipSelectedDialogueOnce?: boolean;
   selectingPlayerIndex?: PlayerIndex;
 }
@@ -209,6 +210,7 @@ async function runShinyBadgeChoices(): Promise<boolean> {
   const duelPlayerIndexes = wantChoices.map(choice => choice.playerIndex);
   data.shinyBadgeDuelActive = true;
   data.shinyBadgeDuelPlayerIndexes = duelPlayerIndexes;
+  data.suppressVsModeVictory = true;
   encounter.onGameOver = onShinyBadgeDuelGameOver;
   encounter.onPokemonFaint = handleShinyBadgeDuelFaint;
   globalScene.setMysteryEncounterBattlePlayerFieldOwners(duelPlayerIndexes);
@@ -288,6 +290,7 @@ function finishShinyBadgeDuel(winner: PlayerIndex, duelPlayerIndexes: PlayerInde
   const data = getShinyBadgeData();
   data.shinyBadgeDuelActive = false;
   delete data.shinyBadgeDuelPlayerIndexes;
+  delete data.suppressVsModeVictory;
   encounter.onGameOver = undefined;
   encounter.onPokemonFaint = undefined;
   encounter.dialogue.outro = [

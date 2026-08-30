@@ -41,6 +41,7 @@ import {
 } from "#modifiers/modifier-type";
 import { PokemonMove } from "#moves/pokemon-move";
 import { showEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
+import { getLimitedPartyMysteryEncounterTrainerPokemonLimit } from "#mystery-encounters/mystery-encounter-compatibility";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import type { Variant } from "#sprites/variant";
@@ -54,6 +55,7 @@ import type { PartyOption, PokemonSelectFilter } from "#ui/party-ui-handler";
 import { PartyUiMode } from "#ui/party-ui-handler";
 import { coerceArray } from "#utils/array";
 import { BooleanHolder, randSeedInt, randSeedItem } from "#utils/common";
+import { isModifierAllowedByItemSettings } from "#utils/item-settings-utils";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -160,6 +162,8 @@ export interface EnemyPartyConfig {
   disableSwitch?: boolean;
   /** Allows one visible trainer to send two active Pokemon without requiring a double trainer sprite. */
   forceDoubleBattle?: boolean;
+  /** Overrides active enemy slots for asymmetric scripted mystery battles. */
+  battlerCountOverride?: number;
   /** `true` or leaving undefined will increment dex seen count for the encounter battle, `false` will not */
   countAsSeen?: boolean;
   /** Allows mystery encounter battles that intentionally have no enemy-side Pokemon. */
@@ -177,6 +181,7 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
   const loadEnemyAssets: Promise<void>[] = [];
 
   const battle: Battle = globalScene.currentBattle;
+  battle.mysteryEncounterBattlerCount = partyConfig.battlerCountOverride;
 
   let doubleBattle: boolean = partyConfig?.doubleBattle ?? false;
 
@@ -234,6 +239,15 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
       partnerVariant2,
       partnerTrainerConfig2,
     );
+    if (!partyConfig.pokemonConfigs?.length) {
+      const limitedTrainerPokemonLimit = getLimitedPartyMysteryEncounterTrainerPokemonLimit(
+        globalScene.getMysteryEncounterCompatibilityContext(),
+        globalScene.currentBattle.mysteryEncounter?.encounterType,
+      );
+      if (limitedTrainerPokemonLimit != null) {
+        newTrainer.setPartyMemberLimitPerTrainer(limitedTrainerPokemonLimit);
+      }
+    }
     newTrainer.x += 300;
     newTrainer.setVisible(false);
     globalScene.field.add(newTrainer);
@@ -260,6 +274,15 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
   });
   battle.enemyParty = [];
   battle.double = doubleBattle;
+  battle.enemyLevels ??= [];
+
+  if ((partyConfig.pokemonConfigs?.length ?? 0) > battle.enemyLevels.length) {
+    battle.enemyLevels.push(
+      ...new Array(partyConfig.pokemonConfigs!.length - battle.enemyLevels.length)
+        .fill(null)
+        .map(() => globalScene.currentBattle.getLevelForWave()),
+    );
+  }
 
   // ME levels are modified by an additive value that scales with wave index
   // Base scaling: Every 10 waves, modifier gets +1 level
@@ -577,7 +600,7 @@ export function updatePlayerMoney(moneyAmount: number, playSound = true, showMes
  */
 export function generateModifierType(modifier: () => ModifierType, pregenArgs?: any[]): ModifierType | null {
   const modifierId = Object.keys(modifierTypes).find(k => modifierTypes[k] === modifier);
-  if (!modifierId) {
+  if (!modifierId || !isModifierAllowedByItemSettings(modifierId, pregenArgs)) {
     return null;
   }
 
@@ -588,9 +611,11 @@ export function generateModifierType(modifier: () => ModifierType, pregenArgs?: 
     .withIdFromFunc(modifierTypes[modifierId])
     .withTierFromPool(ModifierPoolType.PLAYER, globalScene.getPlayerParty());
 
-  return result instanceof ModifierTypeGenerator
+  const generatedType = result instanceof ModifierTypeGenerator
     ? result.generateType(globalScene.getPlayerParty(), pregenArgs)
     : result;
+
+  return generatedType && isModifierAllowedByItemSettings(generatedType.id, pregenArgs) ? generatedType : null;
 }
 
 /**

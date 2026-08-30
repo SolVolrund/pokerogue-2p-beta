@@ -27,6 +27,8 @@ import i18next from "i18next";
 
 type TateLizaPairPool = "normal" | "strong";
 type TateLizaPair = readonly [lizaSpecies: SpeciesId, tateSpecies: SpeciesId];
+type TrainerPartyConfigSlot = { config: TrainerConfig; trainerSlot: TrainerSlot };
+type LimitedPartyMemberSlot = TrainerPartyConfigSlot & { partyIndex: number };
 
 const TATE_LIZA_OPENING_PAIR: TateLizaPair = [SpeciesId.LUNATONE, SpeciesId.SOLROCK];
 
@@ -180,6 +182,7 @@ export class Trainer extends Phaser.GameObjects.Container {
   private partnerConfig: TrainerConfig | undefined;
   private partnerConfig2: TrainerConfig | undefined;
   public originalIndexes: { [key: number]: number } = {};
+  private limitedPartyMemberSlots: LimitedPartyMemberSlot[] | undefined;
 
   /**
    * Create a new Trainer.
@@ -497,7 +500,7 @@ export class Trainer extends Phaser.GameObjects.Container {
     }
   }
 
-  private getTrainerPartyConfigs(): { config: TrainerConfig; trainerSlot: TrainerSlot }[] {
+  private getTrainerPartyConfigs(): TrainerPartyConfigSlot[] {
     const ret = [{ config: this.config, trainerSlot: TrainerSlot.TRAINER }];
     if (this.partnerConfig) {
       ret.push({ config: this.partnerConfig, trainerSlot: TrainerSlot.TRAINER_PARTNER });
@@ -508,7 +511,62 @@ export class Trainer extends Phaser.GameObjects.Container {
     return ret;
   }
 
+  public setPartyMemberLimitPerTrainer(limit: number): void {
+    if (limit <= 0) {
+      this.limitedPartyMemberSlots = undefined;
+      return;
+    }
+
+    const selections = this.getTrainerPartyConfigs().map(({ config, trainerSlot }) => {
+      const template = this.getPartyTemplate(config);
+      return {
+        config,
+        trainerSlot,
+        originalSize: template.size,
+        partyIndexes: this.getStrongestPartyMemberIndexes(template, limit),
+      };
+    });
+
+    const hasNamedPartnerConfig = selections.length > 1;
+    if (!hasNamedPartnerConfig && !selections.some(selection => selection.partyIndexes.length < selection.originalSize)) {
+      this.limitedPartyMemberSlots = undefined;
+      return;
+    }
+
+    const ret: LimitedPartyMemberSlot[] = [];
+    const totalSize = Math.max(...selections.map(selection => selection.partyIndexes.length));
+
+    for (let partyPosition = 0; partyPosition < totalSize; partyPosition++) {
+      for (const selection of selections) {
+        const partyIndex = selection.partyIndexes[partyPosition];
+        if (partyIndex != null) {
+          ret.push({
+            config: selection.config,
+            trainerSlot: selection.trainerSlot,
+            partyIndex,
+          });
+        }
+      }
+    }
+
+    this.limitedPartyMemberSlots = ret.length > 0 ? ret : undefined;
+  }
+
+  private getStrongestPartyMemberIndexes(template: TrainerPartyTemplate, limit: number): number[] {
+    return Array.from({ length: template.size }, (_, index) => ({
+      index,
+      strength: template.getStrength(index),
+    }))
+      .sort((a, b) => b.strength - a.strength || a.index - b.index)
+      .slice(0, Math.min(template.size, limit))
+      .map(entry => entry.index);
+  }
+
   private getTeraPartyIndexForPokemon(pokemon: EnemyPokemon): number {
+    if (this.limitedPartyMemberSlots) {
+      return this.originalIndexes[pokemon.initialTeamIndex] ?? pokemon.initialTeamIndex;
+    }
+
     if (this.shouldUseTwoPlayerNamedPartnerParty() && !this.shouldUseTateLizaPairParty()) {
       return globalScene.currentBattle.enemyParty
         .filter(p => p.trainerSlot === pokemon.trainerSlot)
@@ -516,6 +574,16 @@ export class Trainer extends Phaser.GameObjects.Container {
     }
 
     return pokemon.initialTeamIndex;
+  }
+
+  private getSameSpeciesSourcePokemon(sourcePartyIndex: number, trainerSlot: TrainerSlot): EnemyPokemon | undefined {
+    return globalScene.currentBattle.enemyParty.find((pokemon, battlePartyIndex) => {
+      if (!pokemon || pokemon.trainerSlot !== trainerSlot) {
+        return false;
+      }
+
+      return (this.originalIndexes[battlePartyIndex] ?? battlePartyIndex) === sourcePartyIndex;
+    });
   }
 
   isInstantTeraTarget(pokemon: EnemyPokemon): boolean {
@@ -811,6 +879,18 @@ export class Trainer extends Phaser.GameObjects.Container {
   }
 
   getPartyLevels(waveIndex: number): number[] {
+    if (this.limitedPartyMemberSlots) {
+      const levelSets = new Map<TrainerConfig, number[]>();
+      return this.limitedPartyMemberSlots.map(({ config, partyIndex }) => {
+        let levels = levelSets.get(config);
+        if (!levels) {
+          levels = this.getPartyLevelsForConfig(config, waveIndex);
+          levelSets.set(config, levels);
+        }
+        return levels[partyIndex] ?? levels[levels.length - 1] ?? 1;
+      });
+    }
+
     if (this.shouldUseTateLizaPairParty()) {
       const levels = this.getPartyLevelsForConfig(this.config, waveIndex, 2);
       const targetSize = getTateLizaPairCountForWave(waveIndex) * 2;
@@ -844,6 +924,11 @@ export class Trainer extends Phaser.GameObjects.Container {
   }
 
   public getTrainerSlotForPartyIndex(index: number): TrainerSlot {
+    const limitedPartyMemberSlot = this.limitedPartyMemberSlots?.[index];
+    if (limitedPartyMemberSlot) {
+      return limitedPartyMemberSlot.trainerSlot;
+    }
+
     if (this.shouldUseTwoPlayerNamedPartnerParty() && !this.shouldUseTateLizaPairParty()) {
       return this.getTwoPlayerNamedPartnerPartySlot(index).trainerSlot;
     }
@@ -878,6 +963,16 @@ export class Trainer extends Phaser.GameObjects.Container {
   }
 
   genPartyMember(index: number): EnemyPokemon {
+    const limitedPartyMemberSlot = this.limitedPartyMemberSlots?.[index];
+    if (limitedPartyMemberSlot) {
+      return this.genPartyMemberForConfig(
+        limitedPartyMemberSlot.config,
+        limitedPartyMemberSlot.partyIndex,
+        limitedPartyMemberSlot.trainerSlot,
+        index,
+      );
+    }
+
     if (this.shouldUseTwoPlayerNamedPartnerParty() && !this.shouldUseTateLizaPairParty()) {
       const { config, partyIndex, trainerSlot } = this.getTwoPlayerNamedPartnerPartySlot(index);
       return this.genPartyMemberForConfig(config, partyIndex, trainerSlot, index);
@@ -885,6 +980,10 @@ export class Trainer extends Phaser.GameObjects.Container {
 
     const battle = globalScene.currentBattle;
     const level = battle.enemyLevels?.[index]!; // TODO: is this bang correct?
+    const trainerSlot = this.isDouble()
+      ? getTrainerSlotForFieldIndex(index % globalScene.currentBattle.getBattlerCount())
+      : TrainerSlot.TRAINER;
+    this.originalIndexes[index] = index;
 
     let ret: EnemyPokemon;
 
@@ -983,12 +1082,16 @@ export class Trainer extends Phaser.GameObjects.Container {
         }
 
         // If useNewSpeciesPool is true, we need to generate a new species from the new species pool, otherwise we generate a random species
+        const sameSpeciesSourcePokemon =
+          template.isSameSpecies(index) && index > offset
+            ? battle.enemyParty[offset]
+            : undefined;
         let species = useNewSpeciesPool
           ? // TODO: should this use `randSeedItem`?
             getPokemonSpecies(newSpeciesPool[Math.floor(randSeedInt(newSpeciesPool.length))])
-          : template.isSameSpecies(index) && index > offset
+          : sameSpeciesSourcePokemon
             ? getPokemonSpecies(
-                battle.enemyParty[offset].species.getTrainerSpeciesForLevel(
+                sameSpeciesSourcePokemon.species.getTrainerSpeciesForLevel(
                   level,
                   false,
                   template.getStrength(offset),
@@ -1004,13 +1107,7 @@ export class Trainer extends Phaser.GameObjects.Container {
           );
         }
 
-        ret = globalScene.addEnemyPokemon(
-          species,
-          level,
-          this.isDouble()
-            ? getTrainerSlotForFieldIndex(index % globalScene.currentBattle.getBattlerCount())
-            : TrainerSlot.TRAINER,
-        );
+        ret = globalScene.addEnemyPokemon(species, level, trainerSlot);
       },
       this.config.hasStaticParty
         ? this.config.getDerivedType()
@@ -1031,6 +1128,7 @@ export class Trainer extends Phaser.GameObjects.Container {
   ): EnemyPokemon {
     const battle = globalScene.currentBattle;
     const level = battle.enemyLevels?.[battlePartyIndex]!;
+    this.originalIndexes[battlePartyIndex] = index;
 
     let ret: EnemyPokemon;
 
@@ -1064,17 +1162,20 @@ export class Trainer extends Phaser.GameObjects.Container {
           }
         }
 
-        const species =
+        const sameSpeciesSourcePokemon =
           template.isSameSpecies(index) && index > offset
-            ? getPokemonSpecies(
-                battle.enemyParty[offset].species.getTrainerSpeciesForLevel(
-                  level,
-                  false,
-                  template.getStrength(offset),
-                  template.evoLevelThresholdKind,
-                ),
-              )
-            : this.genNewPartyMemberSpecies(level, strength, undefined, config, template);
+            ? this.getSameSpeciesSourcePokemon(offset, trainerSlot)
+            : undefined;
+        const species = sameSpeciesSourcePokemon
+          ? getPokemonSpecies(
+              sameSpeciesSourcePokemon.species.getTrainerSpeciesForLevel(
+                level,
+                false,
+                template.getStrength(offset),
+                template.evoLevelThresholdKind,
+              ),
+            )
+          : this.genNewPartyMemberSpecies(level, strength, undefined, config, template);
 
         ret = globalScene.addEnemyPokemon(species, level, trainerSlot);
       },
@@ -1276,7 +1377,12 @@ export class Trainer extends Phaser.GameObjects.Container {
   }
 
   getPartyMemberModifierChanceMultiplier(index: number): number {
-    switch (this.getPartyTemplate().getStrength(index)) {
+    const enemyPokemon = globalScene.currentBattle.enemyParty[index];
+    const config = this.limitedPartyMemberSlots?.[index]?.config
+      ?? this.getConfigForTrainerSlot(enemyPokemon?.trainerSlot ?? TrainerSlot.TRAINER);
+    const partyIndex = this.originalIndexes[index] ?? index;
+
+    switch (this.getPartyTemplate(config).getStrength(partyIndex)) {
       case PartyMemberStrength.WEAKER:
         return 0.75;
       case PartyMemberStrength.WEAK:
@@ -1294,7 +1400,7 @@ export class Trainer extends Phaser.GameObjects.Container {
   }
 
   genModifiers(party: readonly EnemyPokemon[]): PersistentModifier[] {
-    if (this.shouldUseTwoPlayerNamedPartnerParty()) {
+    if (this.shouldUseTwoPlayerNamedPartnerParty() || this.limitedPartyMemberSlots) {
       const ret: PersistentModifier[] = [];
 
       for (const { config, trainerSlot } of this.getTrainerPartyConfigs()) {
@@ -1314,7 +1420,7 @@ export class Trainer extends Phaser.GameObjects.Container {
   }
 
   genAI(party: readonly EnemyPokemon[]) {
-    if (this.shouldUseTwoPlayerNamedPartnerParty()) {
+    if (this.shouldUseTwoPlayerNamedPartnerParty() || this.limitedPartyMemberSlots) {
       for (const { config, trainerSlot } of this.getTrainerPartyConfigs()) {
         const trainerParty = party.filter(p => p.trainerSlot === trainerSlot);
         config.genAIFuncs?.forEach(f => f(trainerParty));

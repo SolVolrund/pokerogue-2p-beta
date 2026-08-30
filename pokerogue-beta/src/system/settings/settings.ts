@@ -262,6 +262,10 @@ export const SettingKeys = {
   Move_Touch_Controls: "MOVE_TOUCH_CONTROLS",
   Shop_Overlay_Opacity: "SHOP_OVERLAY_OPACITY",
   Prefer_Baton_Pass: "PREFER_BATON_PASS",
+  Item_Set_Boss_Items: "ITEM_SET_BOSS_ITEMS",
+  Item_Set_Type_Gems: "ITEM_SET_TYPE_GEMS",
+  Item_Set_Resist_Berries: "ITEM_SET_RESIST_BERRIES",
+  Item_Set_Z_Ring: "ITEM_SET_Z_RING",
 };
 
 export enum MusicPreference {
@@ -904,6 +908,34 @@ export const Setting: Setting[] = [
     default: 1,
     type: SettingType.DISPLAY,
   },
+  {
+    key: SettingKeys.Item_Set_Boss_Items,
+    label: "New Boss Items",
+    options: OFF_ON,
+    default: 1,
+    type: SettingType.ITEMS,
+  },
+  {
+    key: SettingKeys.Item_Set_Type_Gems,
+    label: "Type Gems",
+    options: OFF_ON,
+    default: 1,
+    type: SettingType.ITEMS,
+  },
+  {
+    key: SettingKeys.Item_Set_Resist_Berries,
+    label: "Resist Berries",
+    options: OFF_ON,
+    default: 1,
+    type: SettingType.ITEMS,
+  },
+  {
+    key: SettingKeys.Item_Set_Z_Ring,
+    label: "Z Ring",
+    options: OFF_ON,
+    default: 1,
+    type: SettingType.ITEMS,
+  },
 ];
 
 if (isDev) {
@@ -1216,4 +1248,14 @@ export function setSetting(setting: string, value: number): boolean {
   }
 
   return true;
+}
+
+export function isSettingEnabled(setting: string): boolean {
+  const index = settingIndex(setting);
+  if (index === -1) {
+    return true;
+  }
+
+  const savedValue = getSavedSettingCursor(setting, Setting[index].default);
+  return Setting[index].options[savedValue]?.value === "On";
 }

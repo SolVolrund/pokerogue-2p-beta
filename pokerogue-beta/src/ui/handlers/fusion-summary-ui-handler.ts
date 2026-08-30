@@ -1123,12 +1123,13 @@ export class FusionSummaryUiHandler extends UiHandler {
       void this.applyFusionPalettePreview(sprite, pokemon, fusionPaletteSource, this.renderRevision);
     }
 
-    const spriteKey = pokemon.getSpriteKey(true);
     const playSprite = () => {
       if (!this.active || !sprite.scene) {
         return;
       }
+      const spriteKey = pokemon.getSpriteKey(true);
       try {
+        sprite.setPipelineData("spriteKey", pokemon.getSpriteKey());
         sprite.play(spriteKey);
         sprite.setVisible(true);
       } catch (err) {
@@ -1136,9 +1137,13 @@ export class FusionSummaryUiHandler extends UiHandler {
       }
     };
 
+    const spriteKey = pokemon.getSpriteKey(true);
+    const needsGeneratedSprite = pokemon.canGenerateCustomFrontSpriteKey(true) && !spriteKey.includes("__spots__");
     if (globalScene.anims.exists(spriteKey)) {
-      playSprite();
-      return;
+      if (!needsGeneratedSprite) {
+        playSprite();
+        return;
+      }
     }
 
     void pokemon

@@ -403,8 +403,7 @@ export class SummaryUiHandler extends UiHandler {
     this.numberText.setShadowColor(
       getTextColor(this.pokemon.isShiny() ? TextStyle.SUMMARY_GOLD : TextStyle.SUMMARY, true),
     );
-    const spriteKey = this.pokemon.getSpriteKey(true);
-    this.playSummaryPokemonSprite(this.pokemon, spriteKey);
+    this.playSummaryPokemonSprite(this.pokemon);
     this.pokemonSprite
       .setPipelineData("teraColor", getTypeRgb(this.pokemon.getTeraType()))
       .setPipelineData("isTerastallized", this.pokemon.isTerastallized)
@@ -717,12 +716,14 @@ export class SummaryUiHandler extends UiHandler {
     return success || error;
   }
 
-  private playSummaryPokemonSprite(pokemon: PlayerPokemon, spriteKey: string): void {
+  private playSummaryPokemonSprite(pokemon: PlayerPokemon): void {
     const playSprite = () => {
       if (this.pokemon !== pokemon || !this.summaryContainer.visible) {
         return;
       }
+      const spriteKey = pokemon.getSpriteKey(true);
       try {
+        this.pokemonSprite.setPipelineData("spriteKey", pokemon.getSpriteKey());
         this.pokemonSprite.play(spriteKey);
         this.pokemonSprite.setVisible(true);
       } catch (err: unknown) {
@@ -734,7 +735,9 @@ export class SummaryUiHandler extends UiHandler {
 
     this.pokemonSprite.stop();
     this.pokemonSprite.setVisible(false);
-    if (globalScene.anims.exists(spriteKey)) {
+    const spriteKey = pokemon.getSpriteKey(true);
+    const needsGeneratedSprite = pokemon.canGenerateCustomFrontSpriteKey(true) && !spriteKey.includes("__spots__");
+    if (globalScene.anims.exists(spriteKey) && !needsGeneratedSprite) {
       playSprite();
       return;
     }

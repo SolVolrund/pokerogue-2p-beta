@@ -148,6 +148,7 @@ import type { HitsTagAttr, Move } from "#moves/move";
 import { getMoveTargets, isForcedDuelAlly, isForcedDuelOpponent } from "#moves/move-utils";
 import { PokemonMove } from "#moves/pokemon-move";
 import { loadMoveAnimations } from "#sprites/pokemon-asset-loader";
+import { ensureSpindaSpotTexture, getLoadedSpindaSpotTextureKey, getSpindaSpotTextureKey } from "#sprites/spinda-spots";
 import type { Variant } from "#sprites/variant";
 import { populateVariantColors, variantColorCache, variantData } from "#sprites/variant";
 import { achvs } from "#system/achv";
@@ -944,6 +945,12 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     // See https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Using_promises#creating_a_promise_around_an_old_callback_api
     await waitOnLoadPromise;
 
+    await ensureSpindaSpotTexture(
+      this,
+      `pkmn__${this.getBattleSpriteId(false, ignoreOverride)}`,
+      this.getBattleSpriteAtlasPath(false, ignoreOverride),
+    );
+
     // With the sprites loaded, generate the animation frame information
     if (this.isPlayer()) {
       const originalWarn = console.warn;
@@ -1236,16 +1243,29 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
   getSpriteKey(ignoreOverride?: boolean): string {
     const formIndex = this.getSpriteFormIndex(false);
-    return this.getSpriteSpeciesForm(ignoreOverride, false).getSpriteKey(
+    const baseSpriteKey = this.getSpriteSpeciesForm(ignoreOverride, false).getSpriteKey(
       this.getGender(ignoreOverride) === Gender.FEMALE,
       formIndex,
       this.isShiny(false),
       this.getVariant(false),
     );
+    return getLoadedSpindaSpotTextureKey(this, baseSpriteKey) ?? baseSpriteKey;
   }
 
   getBattleSpriteKey(back?: boolean, ignoreOverride?: boolean): string {
-    return `pkmn__${this.getBattleSpriteId(back, ignoreOverride)}`;
+    const baseBattleSpriteKey = `pkmn__${this.getBattleSpriteId(back, ignoreOverride)}`;
+    return getLoadedSpindaSpotTextureKey(this, baseBattleSpriteKey) ?? baseBattleSpriteKey;
+  }
+
+  canGenerateCustomFrontSpriteKey(ignoreOverride?: boolean): boolean {
+    const formIndex = this.getSpriteFormIndex(false);
+    const baseSpriteKey = this.getSpriteSpeciesForm(ignoreOverride, false).getSpriteKey(
+      this.getGender(ignoreOverride) === Gender.FEMALE,
+      formIndex,
+      this.isShiny(false),
+      this.getVariant(false),
+    );
+    return getSpindaSpotTextureKey(this, baseSpriteKey) !== null;
   }
 
   getFusionSpriteId(ignoreOverride?: boolean): string {

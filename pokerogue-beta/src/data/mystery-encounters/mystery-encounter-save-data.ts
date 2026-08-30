@@ -39,6 +39,7 @@ export interface ContestHallProgress {
 export interface DejaVuScheduledEncounterData {
   scheduledWave: number;
   mode: GameModes;
+  runKey?: string;
   ghostTimestampsByPlayer: Partial<Record<PlayerIndex, number>>;
   completed?: boolean;
 }
@@ -52,6 +53,7 @@ export class MysteryEncounterSaveData {
   lostAtSeaFirstSeaStartWave?: number;
   lostAtSeaFirstSeaForcedDone = false;
   dejaVuScheduleInitialized = false;
+  dejaVuScheduleRunKey?: string;
   dejaVuScheduledEncounters: DejaVuScheduledEncounterData[] = [];
 
   constructor(data?: MysteryEncounterSaveData) {

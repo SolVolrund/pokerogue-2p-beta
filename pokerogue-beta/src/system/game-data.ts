@@ -140,6 +140,7 @@ const systemShortKeys = {
   caughtCount: "$c",
   hatchedCount: "$hc",
   ivs: "$i",
+  spindaPidDigitMasks: "$sp",
   contestStats: "$cs",
   moveset: "$m",
   eggMoves: "$em",
@@ -150,6 +151,10 @@ const systemShortKeys = {
   valueReduction: "$vr",
   classicWinCount: "$wc",
 };
+
+const SPINDA_PID_DIGIT_COUNT = 8;
+const SPINDA_PID_DIGIT_MASK = 0xffff;
+const DEFAULT_SPINDA_PID_DIGIT_MASKS = Array.from({ length: SPINDA_PID_DIGIT_COUNT }, () => 1);
 
 export class GameData {
   private static getFallbackNatureAttr(speciesKey: string): number {
@@ -182,7 +187,7 @@ export class GameData {
   public voucherUnlocks: VoucherUnlocks;
   public computerPartnerUnlocks: Partial<Record<ComputerPartnerKey, number>>;
   public computerPartnerProgress: Partial<Record<ComputerPartnerKey, ComputerPartnerProgressData>>;
-  public dejaVuGhosts: Partial<Record<GameModes, DejaVuGhostData>>;
+  public dejaVuGhosts: Partial<Record<string, DejaVuGhostData>>;
   public voucherCounts: VoucherCounts;
   public eggs: Egg[];
   public eggPity: number[];
@@ -470,11 +475,10 @@ export class GameData {
 
     this.dejaVuGhosts = {};
     if (systemData.dejaVuGhosts) {
-      for (const modeKey of Object.keys(systemData.dejaVuGhosts)) {
-        const mode = Number(modeKey) as GameModes;
-        const ghost = systemData.dejaVuGhosts[mode];
+      for (const ghostKey of Object.keys(systemData.dejaVuGhosts)) {
+        const ghost = systemData.dejaVuGhosts[ghostKey];
         if (ghost) {
-          this.dejaVuGhosts[mode] = GameData.normalizeDejaVuGhost(ghost);
+          this.dejaVuGhosts[ghostKey] = GameData.normalizeDejaVuGhost(ghost);
         }
       }
     }
@@ -675,11 +679,11 @@ export class GameData {
         ribbons: new RibbonData(0),
       };
 
-      GameData.mergeDexEntryProgress(target[speciesId], sourceEntry);
+      GameData.mergeDexEntryProgress(target[speciesId], sourceEntry, Number(speciesId));
     }
   }
 
-  private static mergeDexEntryProgress(target: DexEntry, source: DexEntry): void {
+  private static mergeDexEntryProgress(target: DexEntry, source: DexEntry, speciesId?: number): void {
     target.seenAttr = (target.seenAttr ?? 0n) | (source.seenAttr ?? 0n);
     target.caughtAttr = (target.caughtAttr ?? 0n) | (source.caughtAttr ?? 0n);
     target.natureAttr = (target.natureAttr ?? 0) | (source.natureAttr ?? 0);
@@ -687,6 +691,18 @@ export class GameData {
     target.caughtCount = Math.max(target.caughtCount ?? 0, source.caughtCount ?? 0);
     target.hatchedCount = Math.max(target.hatchedCount ?? 0, source.hatchedCount ?? 0);
     target.ivs = Array.from({ length: 6 }, (_, i) => Math.max(target.ivs?.[i] ?? 0, source.ivs?.[i] ?? 0));
+    if (speciesId === SpeciesId.SPINDA) {
+      const spindaPidDigitMasks = GameData.mergeSpindaPidDigitMasks(
+        target.spindaPidDigitMasks,
+        source.spindaPidDigitMasks,
+        target.caughtAttr,
+      );
+      if (spindaPidDigitMasks) {
+        target.spindaPidDigitMasks = spindaPidDigitMasks;
+      } else {
+        delete target.spindaPidDigitMasks;
+      }
+    }
     target.contestStats = GameData.mergeContestStatsProgress(
       target.contestStats,
       GameData.getDexEntryContestStats(source),
@@ -695,6 +711,102 @@ export class GameData {
     const targetRibbons = target.ribbons?.getRibbons?.() ?? 0n;
     const sourceRibbons = source.ribbons?.getRibbons?.() ?? 0n;
     target.ribbons = new RibbonData(targetRibbons | sourceRibbons);
+  }
+
+  public static getSpindaPidDigitMasksForPid(pid: number): number[] {
+    const normalizedPid = pid >>> 0;
+    return Array.from({ length: SPINDA_PID_DIGIT_COUNT }, (_, position) => {
+      const shift = (SPINDA_PID_DIGIT_COUNT - position - 1) * 4;
+      const digit = (normalizedPid >>> shift) & 0xf;
+      return 1 << digit;
+    });
+  }
+
+  public static getSpindaPidDigit(pid: number, position: number): number {
+    const shift = (SPINDA_PID_DIGIT_COUNT - position - 1) * 4;
+    return (pid >>> shift) & 0xf;
+  }
+
+  public static setSpindaPidDigit(pid: number, position: number, digit: number): number {
+    const shift = (SPINDA_PID_DIGIT_COUNT - position - 1) * 4;
+    const clearMask = ~(0xf << shift);
+    return (((pid >>> 0) & clearMask) | ((digit & 0xf) << shift)) >>> 0;
+  }
+
+  private static getFirstUnlockedSpindaPidDigit(mask: number): number {
+    for (let digit = 0; digit < 16; digit++) {
+      if (mask & (1 << digit)) {
+        return digit;
+      }
+    }
+    return 0;
+  }
+
+  public static normalizeSpindaPidForDigitMasks(pid: number | undefined, masks: readonly number[]): number {
+    let normalizedPid = (pid ?? 0) >>> 0;
+    for (let position = 0; position < SPINDA_PID_DIGIT_COUNT; position++) {
+      const mask = masks[position] ?? 0;
+      const digit = GameData.getSpindaPidDigit(normalizedPid, position);
+      if (!(mask & (1 << digit))) {
+        normalizedPid = GameData.setSpindaPidDigit(
+          normalizedPid,
+          position,
+          GameData.getFirstUnlockedSpindaPidDigit(mask),
+        );
+      }
+    }
+    return normalizedPid >>> 0;
+  }
+
+  private static normalizeSpindaPidDigitMasks(masks: unknown, caughtAttr: bigint | number = 0n): number[] | undefined {
+    const hasSpindaCaught = BigInt(caughtAttr) !== 0n;
+    if (!Array.isArray(masks)) {
+      return hasSpindaCaught ? [...DEFAULT_SPINDA_PID_DIGIT_MASKS] : undefined;
+    }
+
+    const normalized = Array.from({ length: SPINDA_PID_DIGIT_COUNT }, (_, index) => {
+      const value = Number(masks[index] ?? 0);
+      return Number.isFinite(value) ? Math.trunc(value) & SPINDA_PID_DIGIT_MASK : 0;
+    });
+
+    return hasSpindaCaught && normalized.every(mask => mask === 0)
+      ? [...DEFAULT_SPINDA_PID_DIGIT_MASKS]
+      : normalized;
+  }
+
+  private static mergeSpindaPidDigitMasks(
+    target: unknown,
+    source: unknown,
+    caughtAttr: bigint | number = 0n,
+  ): number[] | undefined {
+    const targetMasks = GameData.normalizeSpindaPidDigitMasks(target, caughtAttr);
+    const sourceMasks = GameData.normalizeSpindaPidDigitMasks(source, caughtAttr);
+    if (!targetMasks && !sourceMasks) {
+      return undefined;
+    }
+
+    return Array.from(
+      { length: SPINDA_PID_DIGIT_COUNT },
+      (_, index) => (targetMasks?.[index] ?? 0) | (sourceMasks?.[index] ?? 0),
+    );
+  }
+
+  private static recordSpindaPidDigitMasks(entry: DexEntry | ComputerPartnerDexProgressEntry, pid: number): void {
+    const spindaPidDigitMasks = GameData.mergeSpindaPidDigitMasks(
+      entry.spindaPidDigitMasks,
+      GameData.getSpindaPidDigitMasksForPid(pid),
+      entry.caughtAttr,
+    );
+    if (spindaPidDigitMasks) {
+      entry.spindaPidDigitMasks = spindaPidDigitMasks;
+    } else {
+      delete entry.spindaPidDigitMasks;
+    }
+  }
+
+  public getSpindaPidDigitMasks(): number[] {
+    const entry = this.dexData[SpeciesId.SPINDA];
+    return GameData.normalizeSpindaPidDigitMasks(entry?.spindaPidDigitMasks, entry?.caughtAttr) ?? [];
   }
 
   private static mergeContestStatsProgress(
@@ -821,13 +933,23 @@ export class GameData {
         continue;
       }
 
-      normalized.dexData[speciesId] = {
+      const normalizedDexEntry: ComputerPartnerDexProgressEntry = {
         caughtAttr: BigInt(sourceEntry.caughtAttr ?? 0n),
         natureAttr: sourceEntry.natureAttr ?? 0,
         caughtCount: sourceEntry.caughtCount ?? 0,
         hatchedCount: sourceEntry.hatchedCount ?? 0,
         ivs: Array.from({ length: 6 }, (_, i) => sourceEntry.ivs?.[i] ?? 0),
       };
+      if (Number(speciesId) === SpeciesId.SPINDA) {
+        const spindaPidDigitMasks = GameData.normalizeSpindaPidDigitMasks(
+          sourceEntry.spindaPidDigitMasks,
+          normalizedDexEntry.caughtAttr,
+        );
+        if (spindaPidDigitMasks) {
+          normalizedDexEntry.spindaPidDigitMasks = spindaPidDigitMasks;
+        }
+      }
+      normalized.dexData[speciesId] = normalizedDexEntry;
     }
 
     for (const speciesId of Object.keys(progress.starterData ?? {})) {
@@ -892,6 +1014,18 @@ export class GameData {
       targetEntry.ivs = Array.from({ length: 6 }, (_, i) =>
         Math.max(targetEntry.ivs?.[i] ?? 0, sourceEntry.ivs?.[i] ?? 0),
       );
+      if (Number(speciesId) === SpeciesId.SPINDA) {
+        const spindaPidDigitMasks = GameData.mergeSpindaPidDigitMasks(
+          targetEntry.spindaPidDigitMasks,
+          sourceEntry.spindaPidDigitMasks,
+          targetEntry.caughtAttr,
+        );
+        if (spindaPidDigitMasks) {
+          targetEntry.spindaPidDigitMasks = spindaPidDigitMasks;
+        } else {
+          delete targetEntry.spindaPidDigitMasks;
+        }
+      }
     }
 
     for (const speciesId of Object.keys(source.starterData)) {
@@ -919,30 +1053,33 @@ export class GameData {
         heldItems: (entry.heldItems ?? []).map(item => new PersistentModifierData(item, true)),
       }));
 
-    return {
+    const normalizedGhost: DejaVuGhostData = {
       mode: ghost.mode ?? GameModes.CLASSIC,
       waveIndex: ghost.waveIndex ?? 1,
       timestamp: ghost.timestamp ?? 0,
       playerGender: ghost.playerGender ?? PlayerGender.UNSET,
       party,
     };
+    if (ghost.runKey != null) {
+      normalizedGhost.runKey = ghost.runKey;
+    }
+    return normalizedGhost;
   }
 
   private static mergeDejaVuGhosts(
-    target: Partial<Record<GameModes, DejaVuGhostData>>,
-    source: Partial<Record<GameModes, DejaVuGhostData>>,
+    target: Partial<Record<string, DejaVuGhostData>>,
+    source: Partial<Record<string, DejaVuGhostData>>,
   ): void {
-    for (const modeKey of Object.keys(source)) {
-      const mode = Number(modeKey) as GameModes;
-      const sourceGhost = source[mode];
+    for (const ghostKey of Object.keys(source)) {
+      const sourceGhost = source[ghostKey];
       if (!sourceGhost) {
         continue;
       }
 
       const normalizedSource = GameData.normalizeDejaVuGhost(sourceGhost);
-      const targetGhost = target[mode];
+      const targetGhost = target[ghostKey];
       if (!targetGhost || (normalizedSource.timestamp ?? 0) > (targetGhost.timestamp ?? 0)) {
-        target[mode] = normalizedSource;
+        target[ghostKey] = normalizedSource;
       }
     }
   }
@@ -2550,6 +2687,9 @@ export class GameData {
 
     // Mark as caught
     dexEntry.caughtAttr |= dexAttr;
+    if (species.speciesId === SpeciesId.SPINDA) {
+      GameData.recordSpindaPidDigitMasks(dexEntry, pokemon.id);
+    }
 
     // If the caught form is a battleform, we want to also mark the base form as caught.
     // This snippet assumes that the base form has formIndex equal to 0, which should be
@@ -2732,17 +2872,18 @@ export class GameData {
     return true;
   }
 
-  public getDejaVuGhost(mode: GameModes): DejaVuGhostData | undefined {
-    const ghost = this.dejaVuGhosts[mode];
+  public getDejaVuGhost(mode: GameModes, runKey?: string): DejaVuGhostData | undefined {
+    const ghost = this.dejaVuGhosts[runKey ?? String(mode)];
     return ghost ? GameData.normalizeDejaVuGhost(ghost) : undefined;
   }
 
   public setDejaVuGhost(ghost: DejaVuGhostData): void {
-    this.dejaVuGhosts[ghost.mode] = GameData.normalizeDejaVuGhost(ghost);
+    const normalizedGhost = GameData.normalizeDejaVuGhost(ghost);
+    this.dejaVuGhosts[normalizedGhost.runKey ?? String(normalizedGhost.mode)] = normalizedGhost;
   }
 
-  public clearDejaVuGhost(mode: GameModes): void {
-    delete this.dejaVuGhosts[mode];
+  public clearDejaVuGhost(mode: GameModes, runKey?: string): void {
+    delete this.dejaVuGhosts[runKey ?? String(mode)];
   }
 
   public getComputerPartnerProgress(key: ComputerPartnerKey): ComputerPartnerProgressData {
@@ -2819,6 +2960,9 @@ export class GameData {
     const dexAttr = pokemon.getDexAttr() & species.getFullUnlocksData();
 
     dexEntry.caughtAttr |= dexAttr;
+    if (speciesId === SpeciesId.SPINDA) {
+      GameData.recordSpindaPidDigitMasks(dexEntry, pokemon.id);
+    }
     dexEntry.natureAttr |= 1 << (pokemon.nature + 1);
     if (fromEgg) {
       dexEntry.hatchedCount++;
@@ -3127,6 +3271,15 @@ export class GameData {
       }
       if (!Object.hasOwn(entry, "ribbons")) {
         entry.ribbons = new RibbonData(0);
+      }
+      if (Number(k) === SpeciesId.SPINDA) {
+        const spindaPidDigitMasks = GameData.normalizeSpindaPidDigitMasks(
+          entry.spindaPidDigitMasks,
+          entry.caughtAttr,
+        );
+        if (spindaPidDigitMasks) {
+          entry.spindaPidDigitMasks = spindaPidDigitMasks;
+        }
       }
       entry.contestStats = GameData.getDexEntryContestStats(entry);
       delete (entry as DexEntry & { caughtCounts?: PartialContestStats }).caughtCounts;

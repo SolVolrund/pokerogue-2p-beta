@@ -23,6 +23,15 @@ export type MysteryEncounterBattleGroup =
   | "special-battle"
   | "non-battle";
 
+export type MysteryEncounterVsVariant =
+  | "disabled"
+  | "owner-scoped-non-battle"
+  | "native-lane-trainer-battle"
+  | "solo-sequence-trainer-battle"
+  | "split-pve-battle"
+  | "competitive-shared"
+  | "special-scripted";
+
 export const TRAINER_BATTLE_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
   MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
   MysteryEncounterType.A_TRAINERS_TEST,
@@ -100,6 +109,99 @@ for (const [group, encounterTypes] of Object.entries(MYSTERY_ENCOUNTER_BATTLE_GR
   for (const encounterType of encounterTypes) {
     MYSTERY_ENCOUNTER_BATTLE_GROUP_BY_TYPE.set(encounterType, group);
   }
+}
+
+export const VS_DISABLED_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.FIELD_TRIP,
+  MysteryEncounterType.GTS_MALFUNCTION,
+  MysteryEncounterType.SAFARI_ZONE,
+  MysteryEncounterType.CHEFS_ON_VACATION,
+  MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE,
+];
+
+export const VS_OWNER_SCOPED_NON_BATTLE_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.DEPARTMENT_STORE_SALE,
+  MysteryEncounterType.SHADY_VITAMIN_DEALER,
+  MysteryEncounterType.LOST_AT_SEA,
+  MysteryEncounterType.THE_POKEMON_SALESMAN,
+  MysteryEncounterType.AN_OFFER_YOU_CANT_REFUSE,
+  MysteryEncounterType.DELIBIRDY,
+  MysteryEncounterType.PART_TIMER,
+  MysteryEncounterType.GLOBAL_TRADE_SYSTEM,
+  MysteryEncounterType.MINING,
+];
+
+export const VS_NATIVE_LANE_TRAINER_BATTLE_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
+  MysteryEncounterType.A_TRAINERS_TEST,
+  MysteryEncounterType.BUG_TYPE_SUPERFAN,
+  MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
+];
+
+export const VS_SOLO_SEQUENCE_TRAINER_BATTLE_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.THE_WINSTRATE_CHALLENGE,
+];
+
+export const VS_SPLIT_PVE_BATTLE_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.FIGHT_OR_FLIGHT,
+  MysteryEncounterType.SLUMBERING_SNORLAX,
+  MysteryEncounterType.TRAINING_SESSION,
+  MysteryEncounterType.FIERY_FALLOUT,
+  MysteryEncounterType.THE_STRONG_STUFF,
+  MysteryEncounterType.TRASH_TO_TREASURE,
+  MysteryEncounterType.BERRIES_ABOUND,
+  MysteryEncounterType.CLOWNING_AROUND,
+  MysteryEncounterType.DANCING_LESSONS,
+  MysteryEncounterType.UNCOMMON_BREED,
+];
+
+export const VS_COMPETITIVE_SHARED_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.MYSTERIOUS_CHEST,
+  MysteryEncounterType.ABSOLUTE_AVARICE,
+  MysteryEncounterType.FUN_AND_GAMES,
+  MysteryEncounterType.TELEPORTING_HIJINKS,
+  MysteryEncounterType.FARAWAY_ISLAND_TREASURE,
+];
+
+export const VS_SPECIAL_SCRIPTED_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.DARK_DEAL,
+  MysteryEncounterType.WEIRD_DREAM,
+  MysteryEncounterType.DEJA_VU,
+  MysteryEncounterType.SHINY_BADGE,
+  MysteryEncounterType.LEGENDARY_CONFLICT,
+  MysteryEncounterType.POKE_POACHERS,
+  MysteryEncounterType.CONTEST_HALL,
+];
+
+export const MYSTERY_ENCOUNTER_VS_VARIANTS = {
+  disabled: VS_DISABLED_MYSTERY_ENCOUNTERS,
+  "owner-scoped-non-battle": VS_OWNER_SCOPED_NON_BATTLE_MYSTERY_ENCOUNTERS,
+  "native-lane-trainer-battle": VS_NATIVE_LANE_TRAINER_BATTLE_MYSTERY_ENCOUNTERS,
+  "solo-sequence-trainer-battle": VS_SOLO_SEQUENCE_TRAINER_BATTLE_MYSTERY_ENCOUNTERS,
+  "split-pve-battle": VS_SPLIT_PVE_BATTLE_MYSTERY_ENCOUNTERS,
+  "competitive-shared": VS_COMPETITIVE_SHARED_MYSTERY_ENCOUNTERS,
+  "special-scripted": VS_SPECIAL_SCRIPTED_MYSTERY_ENCOUNTERS,
+} as const satisfies Record<MysteryEncounterVsVariant, readonly MysteryEncounterType[]>;
+
+const MYSTERY_ENCOUNTER_VS_VARIANT_BY_TYPE = new Map<MysteryEncounterType, MysteryEncounterVsVariant>();
+for (const [variant, encounterTypes] of Object.entries(MYSTERY_ENCOUNTER_VS_VARIANTS) as [
+  MysteryEncounterVsVariant,
+  readonly MysteryEncounterType[],
+][]) {
+  for (const encounterType of encounterTypes) {
+    MYSTERY_ENCOUNTER_VS_VARIANT_BY_TYPE.set(encounterType, variant);
+  }
+}
+
+export function getMysteryEncounterVsVariantForType(
+  encounterType: MysteryEncounterType,
+): MysteryEncounterVsVariant | undefined {
+  return MYSTERY_ENCOUNTER_VS_VARIANT_BY_TYPE.get(encounterType);
+}
+
+export function isMysteryEncounterAllowedInVsMode(encounterType: MysteryEncounterType): boolean {
+  const variant = getMysteryEncounterVsVariantForType(encounterType);
+  return variant != null && variant !== "disabled";
 }
 
 export const TWO_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] = [
@@ -192,7 +294,11 @@ export const TWO_PLAYER_LIMITED_COOP_MYSTERY_ENCOUNTER_ALLOWLIST: readonly Myste
 export const THREE_PLAYER_LIMITED_COOP_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] =
   THREE_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST;
 export const TWO_PLAYER_VS_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] =
-  TWO_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST;
+  TWO_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST.filter(isMysteryEncounterAllowedInVsMode);
+
+const LIMITED_PARTY_TRAINER_CAP_EXEMPTIONS: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER,
+];
 
 export function getMysteryEncounterCompatibilityMode(
   context: MysteryEncounterCompatibilityContext,
@@ -238,6 +344,39 @@ export function isLimitedPartyMysteryEncounterCompatibilityMode(
   return mode === "two-player-limited-coop" || mode === "three-player-limited-coop";
 }
 
+export function getLimitedPartyMysteryEncounterTrainerPokemonLimit(
+  context: MysteryEncounterCompatibilityContext,
+  encounterType?: MysteryEncounterType,
+): number | undefined {
+  if (
+    encounterType == null
+    || getMysteryEncounterBattleGroup(encounterType) !== "trainer-battle"
+    || LIMITED_PARTY_TRAINER_CAP_EXEMPTIONS.includes(encounterType)
+  ) {
+    return undefined;
+  }
+
+  switch (getMysteryEncounterCompatibilityMode(context)) {
+    case "two-player-limited-coop":
+      return 3;
+    case "three-player-limited-coop":
+      return 2;
+    default:
+      return undefined;
+  }
+}
+
+export function getMysteryEncounterVsVariant(
+  context: MysteryEncounterCompatibilityContext,
+  encounterType?: MysteryEncounterType,
+): MysteryEncounterVsVariant | undefined {
+  if (encounterType == null || getMysteryEncounterCompatibilityMode(context) !== "two-player-vs") {
+    return undefined;
+  }
+
+  return getMysteryEncounterVsVariantForType(encounterType);
+}
+
 export function getMysteryEncounterBattleGroup(
   encounterType: MysteryEncounterType,
 ): MysteryEncounterBattleGroup | undefined {
@@ -248,4 +387,10 @@ export function getMysteryEncounterTypesByBattleGroup(
   group: MysteryEncounterBattleGroup,
 ): readonly MysteryEncounterType[] {
   return MYSTERY_ENCOUNTER_BATTLE_GROUPS[group];
+}
+
+export function getMysteryEncounterTypesByVsVariant(
+  variant: MysteryEncounterVsVariant,
+): readonly MysteryEncounterType[] {
+  return MYSTERY_ENCOUNTER_VS_VARIANTS[variant];
 }

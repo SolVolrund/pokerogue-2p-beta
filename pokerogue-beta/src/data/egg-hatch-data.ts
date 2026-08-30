@@ -53,6 +53,9 @@ export class EggHatchData {
       ivs: [...currDexEntry.ivs],
       ribbons: currDexEntry.ribbons,
     };
+    if (currDexEntry.spindaPidDigitMasks) {
+      this.dexEntryBeforeUpdate.spindaPidDigitMasks = [...currDexEntry.spindaPidDigitMasks];
+    }
     this.starterDataEntryBeforeUpdate = {
       moveset: currStarterDataEntry.moveset,
       eggMoves: currStarterDataEntry.eggMoves,

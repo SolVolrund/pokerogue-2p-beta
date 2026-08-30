@@ -110,6 +110,7 @@ export class Battle {
   /** If the current battle is a Mystery Encounter, this will always be defined */
   public mysteryEncounter?: MysteryEncounter | undefined;
   public playerFieldOwners: PlayerIndex[] | undefined;
+  public mysteryEncounterBattlerCount?: number | undefined;
   public mysteryEncounterEnemySidePlayerIndexes: PlayerIndex[] | undefined;
   public computerPartnerCaptureClaims: Array<{ playerIndex: PlayerIndex; targetId: number }> = [];
   public computerPartnerReservedCaptureTargetIds: number[] = [];
@@ -228,6 +229,10 @@ export class Battle {
   getBattlerCount(): number {
     if (!this.double) {
       return 1;
+    }
+
+    if (this.mysteryEncounterBattlerCount != null) {
+      return this.mysteryEncounterBattlerCount;
     }
 
     return globalScene.twoPlayerMode ? globalScene.getBattleFieldSlotCount() : 2;

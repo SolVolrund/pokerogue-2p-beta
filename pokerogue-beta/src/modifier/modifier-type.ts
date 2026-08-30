@@ -151,6 +151,7 @@ import { getModifierTierTextTint } from "#ui/text";
 import { applyChallenges } from "#utils/challenge-utils";
 import { BooleanHolder, formatMoney, NumberHolder, padInt, randSeedInt, randSeedItem } from "#utils/common";
 import { getEnumKeys, getEnumValues } from "#utils/enums";
+import { areResistBerriesEnabled, isModifierAllowedByItemSettings } from "#utils/item-settings-utils";
 import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
 import { getModifierPoolForType, getModifierType } from "#utils/modifier-utils";
 import { toCamelCase } from "#utils/strings";
@@ -372,6 +373,15 @@ export class ModifierTypeGenerator extends ModifierType {
 
 export interface GeneratedPersistentModifierType {
   getPregenArgs(): any[];
+}
+
+function getPregenArgsForItemSettings(modifierType: ModifierType): any[] | undefined {
+  const generatedModifierType = modifierType as Partial<GeneratedPersistentModifierType>;
+  return typeof generatedModifierType.getPregenArgs === "function" ? generatedModifierType.getPregenArgs() : undefined;
+}
+
+function isGeneratedModifierAllowedByItemSettings(modifierType: ModifierType | null): boolean {
+  return !modifierType || isModifierAllowedByItemSettings(modifierType.id, getPregenArgsForItemSettings(modifierType));
 }
 
 export class AddPokeballModifierType extends ModifierType {
@@ -1039,7 +1049,7 @@ function getRandomGroupedBerryHeldItemType(pokemon?: Pokemon): PokemonHeldItemMo
     {
       weight: 30,
       generate: () => getRandomDamageReductionBerryType(pokemon),
-      enabled: ALL_DAMAGE_REDUCTION_BERRY_TYPES.length > 0,
+      enabled: areResistBerriesEnabled() && ALL_DAMAGE_REDUCTION_BERRY_TYPES.length > 0,
     },
     { weight: 15, generate: getRandomReactiveHeldItemType, enabled: true },
   ].filter(group => group.enabled);
@@ -2671,7 +2681,8 @@ const modifierTypeInitObj = Object.freeze({
   BERRY: () =>
     new ModifierTypeGenerator((_party: readonly Pokemon[], pregenArgs?: any[]) => {
       if (pregenArgs && pregenArgs.length === 1 && pregenArgs[0] in BerryType) {
-        return new BerryModifierType(pregenArgs[0] as BerryType);
+        const berryType = pregenArgs[0] as BerryType;
+        return isModifierAllowedByItemSettings("BERRY", [berryType]) ? new BerryModifierType(berryType) : null;
       }
       const enemyPokemon = _party.find(pokemon => pokemon.isEnemy());
       return getRandomGroupedBerryHeldItemType(enemyPokemon);
@@ -3125,11 +3136,15 @@ export function regenerateModifierPoolThresholds(
             weightedModifierType.modifierType instanceof ModifierTypeGenerator
               ? weightedModifierType.modifierType.generateType(party)
               : weightedModifierType.modifierType;
+          const allowedBySettings =
+            isModifierAllowedByItemSettings(weightedModifierType.modifierType.id)
+            && isGeneratedModifierAllowedByItemSettings(itemModifierType);
           const weight =
-            existingModifiers.length === 0
-            || itemModifierType instanceof PokemonHeldItemModifierType
-            || itemModifierType instanceof FormChangeItemModifierType
-            || existingModifiers.find(m => m.stackCount < m.getMaxStackCount(true))
+            allowedBySettings
+            && (existingModifiers.length === 0
+              || itemModifierType instanceof PokemonHeldItemModifierType
+              || itemModifierType instanceof FormChangeItemModifierType
+              || existingModifiers.find(m => m.stackCount < m.getMaxStackCount(true)))
               ? weightedModifierType.weight instanceof Function
                 ? // biome-ignore lint/complexity/noBannedTypes: TODO: refactor to not use Function type
                   (weightedModifierType.weight as Function)(party, rerollCount)
@@ -3251,7 +3266,11 @@ export function getPlayerModifierTypeOptions(
       customModifierSettings?.guaranteedModifierTypeOptions
       && customModifierSettings.guaranteedModifierTypeOptions.length > 0
     ) {
-      options.push(...customModifierSettings.guaranteedModifierTypeOptions!);
+      options.push(
+        ...customModifierSettings.guaranteedModifierTypeOptions!.filter(option =>
+          isGeneratedModifierAllowedByItemSettings(option.type),
+        ),
+      );
     }
 
     // Guaranteed mod functions second
@@ -3270,7 +3289,7 @@ export function getPlayerModifierTypeOptions(
 
         const modType =
           guaranteedMod instanceof ModifierTypeGenerator ? guaranteedMod.generateType(party) : guaranteedMod;
-        if (modType) {
+        if (modType && isGeneratedModifierAllowedByItemSettings(modType)) {
           const option = new ModifierTypeOption(modType, 0);
           options.push(option);
         }
@@ -3375,7 +3394,10 @@ export function overridePlayerModifierTypeOptions(options: ModifierTypeOption[],
     }
 
     if (modifierType) {
-      options[i].type = modifierType.withIdFromFunc(modifierFunc).withTierFromPool(ModifierPoolType.PLAYER, party);
+      const optionType = modifierType.withIdFromFunc(modifierFunc).withTierFromPool(ModifierPoolType.PLAYER, party);
+      if (isGeneratedModifierAllowedByItemSettings(optionType)) {
+        options[i].type = optionType;
+      }
     }
   }
 }
@@ -3422,6 +3444,9 @@ export function getPlayerShopModifierTypeOptionsForWave(waveIndex: number, baseC
     .slice(0, Math.ceil(Math.max(waveIndex + 10, 0) / 30))
     .flat()
     .filter(shopItem => {
+      if (!isGeneratedModifierAllowedByItemSettings(shopItem.type)) {
+        return false;
+      }
       const status = new BooleanHolder(true);
       applyChallenges(ChallengeType.SHOP_ITEM, shopItem, status);
       return status.value;
@@ -3626,12 +3651,14 @@ function getNewModifierTypeOption(
   let modifierType: ModifierType | null = pool[tier][index].modifierType;
   if (modifierType instanceof ModifierTypeGenerator) {
     modifierType = (modifierType as ModifierTypeGenerator).generateType(party);
-    if (modifierType === null) {
+    if (modifierType === null || !isGeneratedModifierAllowedByItemSettings(modifierType)) {
       if (player) {
         console.log(ModifierTier[tier], upgradeCount);
       }
       return getNewModifierTypeOption(party, poolType, tier, upgradeCount, ++retryCount);
     }
+  } else if (!isGeneratedModifierAllowedByItemSettings(modifierType)) {
+    return getNewModifierTypeOption(party, poolType, tier, upgradeCount, ++retryCount);
   }
 
   console.log(modifierType, player ? "" : "(enemy)");

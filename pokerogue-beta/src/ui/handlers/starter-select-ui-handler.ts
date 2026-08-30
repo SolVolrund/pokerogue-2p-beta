@@ -50,9 +50,12 @@ import { BattleSceneEventType } from "#events/battle-scene";
 import type { Move } from "#moves/move";
 import type { Variant } from "#sprites/variant";
 import { getVariantIcon, getVariantTint } from "#sprites/variant";
+import { ensureSpindaSpotTexture } from "#sprites/spinda-spots";
 import { achvs } from "#system/achv";
+import { GameData } from "#system/game-data";
 import { RibbonData } from "#system/ribbons/ribbon-data";
 import { SettingKeyboard } from "#system/settings-keyboard";
+import type { Pokemon } from "#field/pokemon";
 import type { DexEntry } from "#types/dex-data";
 import type { LevelMoves } from "#types/pokemon-species";
 import type { Starter, StarterAttributes, StarterDataEntry, StarterMoveset } from "#types/save-data";
@@ -322,7 +325,10 @@ interface SpeciesDetails {
   natureIndex?: number | undefined;
   forSeen?: boolean | undefined; // default = false
   teraType?: PokemonType | undefined;
+  spindaPid?: number | undefined;
 }
+
+const SPINDA_PATTERN_HEX_DIGITS = "0123456789ABCDEF".split("");
 
 export class StarterSelectUiHandler extends MessageUiHandler {
   private starterSelectContainer: Phaser.GameObjects.Container;
@@ -1414,6 +1420,16 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       }
     }
 
+    if (species.speciesId === SpeciesId.SPINDA) {
+      const spindaPidDigitMasks = globalScene.gameData.getSpindaPidDigitMasks();
+      starterAttributes.spindaPid = GameData.normalizeSpindaPidForDigitMasks(
+        starterAttributes.spindaPid,
+        spindaPidDigitMasks,
+      );
+    } else {
+      delete starterAttributes.spindaPid;
+    }
+
     return starterAttributes;
   }
 
@@ -2240,6 +2256,15 @@ export class StarterSelectUiHandler extends MessageUiHandler {
               },
             });
           }
+          if (this.lastSpecies.speciesId === SpeciesId.SPINDA) {
+            options.push({
+              label: i18next.t("starterSelectUiHandler:managePattern"),
+              handler: () => {
+                this.showSpindaPatternOptions(starterAttributes, originalStarterAttributes);
+                return true;
+              },
+            });
+          }
 
           const passiveAttr = starterData.passiveAttr;
           const selectedPassiveIndex = this.passiveCursor > -1 ? this.passiveCursor : 0;
@@ -2906,6 +2931,85 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     return [isDupe, removeIndex];
   }
 
+  private showSpindaPatternOptions(
+    starterAttributes: StarterAttributes,
+    originalStarterAttributes: StarterAttributes,
+  ): void {
+    const ui = this.getUi();
+    const spindaPidDigitMasks = globalScene.gameData.getSpindaPidDigitMasks();
+    if (spindaPidDigitMasks.length === 0) {
+      ui.playError();
+      return;
+    }
+
+    let selectedPid = GameData.normalizeSpindaPidForDigitMasks(starterAttributes.spindaPid, spindaPidDigitMasks);
+    starterAttributes.spindaPid = selectedPid;
+    originalStarterAttributes.spindaPid = selectedPid;
+
+    this.blockInput = true;
+    ui.setMode(UiMode.STARTER_SELECT).then(() => {
+      ui.showText(i18next.t("starterSelectUiHandler:selectPattern"), null, () => {
+        const options: OptionSelectItem[] = [];
+        for (let position = 0; position < 8; position++) {
+          options.push({
+            label: `${position + 1}:`,
+            style: TextStyle.SUMMARY_GOLD,
+            disabled: true,
+            handler: () => false,
+          });
+        }
+        for (let digit = 0; digit < 16; digit++) {
+          for (let position = 0; position < 8; position++) {
+            const unlocked = !!(spindaPidDigitMasks[position] & (1 << digit));
+            const selected = GameData.getSpindaPidDigit(selectedPid, position) === digit;
+            options.push({
+              label: SPINDA_PATTERN_HEX_DIGITS[digit],
+              style: selected ? TextStyle.SUMMARY_GOLD : unlocked ? TextStyle.WINDOW : TextStyle.SUMMARY_GRAY,
+              keepOpen: true,
+              overrideSound: !unlocked,
+              handler: () => {
+                if (!unlocked) {
+                  return true;
+                }
+                const nextPid = GameData.setSpindaPidDigit(starterAttributes.spindaPid ?? selectedPid, position, digit);
+                selectedPid = nextPid;
+                starterAttributes.spindaPid = nextPid;
+                originalStarterAttributes.spindaPid = nextPid;
+                this.setSpeciesDetails(this.lastSpecies, { spindaPid: nextPid });
+                this.showSpindaPatternOptions(starterAttributes, originalStarterAttributes);
+                return true;
+              },
+            });
+          }
+        }
+
+        options.push({
+          label: i18next.t("menu:cancel"),
+          handler: () => {
+            this.clearText();
+            ui.setMode(UiMode.STARTER_SELECT);
+            this.blockInput = false;
+            return true;
+          },
+        });
+
+        ui.setModeWithoutClear(UiMode.OPTION_SELECT, {
+          options,
+          gridLayout: {
+            rows: 8,
+            columns: 17,
+            slotCount: 136,
+            minColumnWidth: 9,
+            columnGap: 5,
+            centerLastOption: true,
+          },
+          yOffset: 47,
+        });
+        this.blockInput = false;
+      });
+    });
+  }
+
   addToParty(
     species: PokemonSpecies,
     dexAttr: bigint,
@@ -2917,6 +3021,13 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     randomSelection = false,
   ) {
     const props = globalScene.gameData.getSpeciesDexAttrProps(species, dexAttr);
+    const spindaPid =
+      species.speciesId === SpeciesId.SPINDA
+        ? GameData.normalizeSpindaPidForDigitMasks(
+            this.starterPreferences[species.speciesId]?.spindaPid,
+            globalScene.gameData.getSpindaPidDigitMasks(),
+          )
+        : undefined;
     this.starterIcons[this.starterSpecies.length].setTexture(
       species.getIconAtlasKey(props.formIndex, props.shiny, props.variant),
     );
@@ -2934,7 +3045,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
 
     const { dexEntry, starterDataEntry } = this.getSpeciesData(species.speciesId);
 
-    const starter = {
+    const starter: Starter = {
       speciesId: species.speciesId,
       shiny: props.shiny,
       variant: props.variant,
@@ -2952,6 +3063,9 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       teraType,
       ivs: dexEntry.ivs,
     };
+    if (spindaPid !== undefined) {
+      starter.spindaPid = spindaPid;
+    }
 
     this.starters.push(starter);
     this.starterSpecies.push(species);
@@ -3885,6 +3999,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
               abilityIndex: starter.abilityIndex,
               natureIndex: starter.nature,
               teraType: starter.teraType,
+              spindaPid: starter.spindaPid,
             },
             false,
           );
@@ -3911,6 +4026,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
               abilityIndex: defaultAbilityIndex,
               natureIndex: defaultNature,
               teraType: starterAttributes?.tera,
+              spindaPid: starterAttributes?.spindaPid,
             },
             false,
           );
@@ -4019,7 +4135,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   }
 
   setSpeciesDetails(species: PokemonSpecies, options: SpeciesDetails = {}, save = true): void {
-    let { shiny, formIndex, female, variant, abilityIndex, passiveIndex, natureIndex, teraType } = options;
+    let { shiny, formIndex, female, variant, abilityIndex, passiveIndex, natureIndex, teraType, spindaPid } = options;
     const forSeen: boolean = options.forSeen ?? false;
     const oldProps = species ? globalScene.gameData.getSpeciesDexAttrProps(species, this.dexAttrCursor) : null;
     const oldAbilityIndex =
@@ -4040,7 +4156,11 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     // We will only update the sprite if there is a change to form, shiny/variant
     // or gender for species with gender sprite differences
     const shouldUpdateSprite =
-      (species?.genderDiffs && female != null) || formIndex != null || shiny != null || variant != null;
+      (species?.genderDiffs && female != null)
+      || formIndex != null
+      || shiny != null
+      || variant != null
+      || (species?.speciesId === SpeciesId.SPINDA && spindaPid != null);
 
     const isFreshStartChallenge = globalScene.gameMode.hasChallenge(Challenges.FRESH_START);
 
@@ -4088,6 +4208,16 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       this.passiveCursor = passiveIndex;
       this.natureCursor = natureIndex === undefined ? (natureIndex = oldNatureIndex) : natureIndex;
       this.teraCursor = teraType == null ? (teraType = oldTeraType) : teraType;
+      if (species.speciesId === SpeciesId.SPINDA) {
+        spindaPid = GameData.normalizeSpindaPidForDigitMasks(
+          spindaPid ?? this.starterPreferences[species.speciesId]?.spindaPid,
+          globalScene.gameData.getSpindaPidDigitMasks(),
+        );
+        this.starterPreferences[species.speciesId] ??= {};
+        this.originalStarterPreferences[species.speciesId] ??= {};
+        this.starterPreferences[species.speciesId]!.spindaPid = spindaPid;
+        this.originalStarterPreferences[species.speciesId]!.spindaPid = spindaPid;
+      }
       const [isInParty, partyIndex]: [boolean, number] = this.isInParty(species); // we use this to firstly check if the pokemon is in the party, and if so, to get the party index in order to update the icon image
       if (isInParty) {
         this.updatePartyIcon(species, partyIndex);
@@ -4164,6 +4294,9 @@ export class StarterSelectUiHandler extends MessageUiHandler {
           starter.passiveIndex = this.passiveCursor;
           starter.nature = this.natureCursor;
           starter.teraType = this.teraCursor;
+          if (species.speciesId === SpeciesId.SPINDA) {
+            starter.spindaPid = spindaPid;
+          }
         }
 
         const assetLoadCancelled = new BooleanHolder(false);
@@ -4175,15 +4308,34 @@ export class StarterSelectUiHandler extends MessageUiHandler {
             if (assetLoadCancelled.value) {
               return;
             }
-            this.assetLoadCancelled = null;
-            this.speciesLoaded.set(species.speciesId, true);
-            // Note: Bangs are correct due to `female ??= false` above
-            this.pokemonSprite
-              .play(species.getSpriteKey(female!, formIndex, shiny, variant))
-              .setPipelineData("shiny", shiny)
-              .setPipelineData("variant", variant)
-              .setPipelineData("spriteKey", species.getSpriteKey(female!, formIndex, shiny, variant))
-              .setVisible(!this.statsMode);
+            const baseSpriteKey = species.getSpriteKey(female!, formIndex, shiny, variant);
+            const atlasPath = species.getSpriteAtlasPath(female!, formIndex, shiny, variant);
+            const previewPokemon = {
+              species,
+              id: spindaPid ?? 0,
+              shiny: shiny ?? false,
+              variant: variant ?? 0,
+              isFusion: () => false,
+            } as unknown as Pokemon;
+            const spriteKeyPromise =
+              species.speciesId === SpeciesId.SPINDA && spindaPid != null
+                ? ensureSpindaSpotTexture(previewPokemon, baseSpriteKey, atlasPath).then(key => key ?? baseSpriteKey)
+                : Promise.resolve(baseSpriteKey);
+
+            spriteKeyPromise.then(spriteKey => {
+              if (assetLoadCancelled.value) {
+                return;
+              }
+              this.assetLoadCancelled = null;
+              this.speciesLoaded.set(species.speciesId, true);
+              // Note: Bangs are correct due to `female ??= false` above
+              this.pokemonSprite
+                .play(spriteKey)
+                .setPipelineData("shiny", shiny)
+                .setPipelineData("variant", variant)
+                .setPipelineData("spriteKey", spriteKey)
+                .setVisible(!this.statsMode);
+            });
           });
         } else {
           this.pokemonSprite.setVisible(!this.statsMode);

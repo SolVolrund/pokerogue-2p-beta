@@ -32,6 +32,7 @@ import type { DejaVuGhostData, SessionSaveData } from "#types/save-data";
 import { checkSpeciesValidForChallenge, isNuzlockeChallenge } from "#utils/challenge-utils";
 import { isUnownCrystalGauntletWave } from "#utils/classic-final-boss-utils";
 import { fixedInt, isLocalServerConnected } from "#utils/common";
+import { getDejaVuGhostRunKey } from "#utils/deja-vu-run-key";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -378,6 +379,7 @@ export class GameOverPhase extends BattlePhase {
 
       const ghost: DejaVuGhostData = {
         mode: globalScene.gameMode.modeId,
+        runKey: getDejaVuGhostRunKey(globalScene),
         waveIndex: globalScene.currentBattle.waveIndex,
         timestamp: Date.now(),
         playerGender: globalScene.getTrainerGender(playerIndex),

@@ -145,8 +145,10 @@ import { getGtsMalfunctionTargetWave } from "#mystery-encounters/gts-malfunction
 import {
   getMysteryEncounterCompatibilityAllowlist,
   getMysteryEncounterCompatibilityMode,
+  getMysteryEncounterVsVariant,
   type MysteryEncounterCompatibilityContext,
   type MysteryEncounterCompatibilityMode,
+  type MysteryEncounterVsVariant,
 } from "#mystery-encounters/mystery-encounter-compatibility";
 import { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterSaveData } from "#mystery-encounters/mystery-encounter-save-data";
@@ -2793,6 +2795,10 @@ export class BattleScene extends SceneBase {
   }
 
   public queueVsModeVictoryIfDecided(): boolean {
+    if (this.isVsModeVictorySuppressed()) {
+      return false;
+    }
+
     const winnerPlayerIndex = this.getVsModeWinnerPlayerIndex();
     if (winnerPlayerIndex === undefined) {
       return false;
@@ -2801,6 +2807,10 @@ export class BattleScene extends SceneBase {
     this.phaseManager.clearPhaseQueue(true);
     this.phaseManager.pushNew("VsModeVictoryPhase", winnerPlayerIndex);
     return true;
+  }
+
+  public isVsModeVictorySuppressed(): boolean {
+    return !!this.currentBattle?.mysteryEncounter?.misc?.suppressVsModeVictory;
   }
 
   public areAllActivePlayersOutOfUsablePokemon(): boolean {
@@ -6512,7 +6522,6 @@ export class BattleScene extends SceneBase {
       && this.isMysteryEncounterEnabled(encounterType)
       && !timedEventManager.getEventMysteryEncountersDisabled().includes(encounterType)
       && this.isMysteryEncounterValidForWave(battleType, waveIndex)
-      && encounter.meetsRequirements()
       && !!getDueDejaVuSchedule(this, waveIndex)
     );
   }
@@ -6621,6 +6630,12 @@ export class BattleScene extends SceneBase {
 
   public getMysteryEncounterCompatibilityMode(): MysteryEncounterCompatibilityMode {
     return getMysteryEncounterCompatibilityMode(this.getMysteryEncounterCompatibilityContext());
+  }
+
+  public getMysteryEncounterVsVariant(
+    encounterType: MysteryEncounterType | undefined = this.currentBattle?.mysteryEncounter?.encounterType,
+  ): MysteryEncounterVsVariant | undefined {
+    return getMysteryEncounterVsVariant(this.getMysteryEncounterCompatibilityContext(), encounterType);
   }
 
   private getMultiplayerMysteryEncounterAllowlist(): readonly MysteryEncounterType[] {

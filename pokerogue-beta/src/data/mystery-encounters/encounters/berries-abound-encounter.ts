@@ -57,6 +57,7 @@ import {
 import { getComputerPartnerTeamConfidence } from "#utils/computer-partner-team-confidence";
 import { randSeedItem } from "#utils/common";
 import { getEnumValues } from "#utils/enums";
+import { getBerryTypesAllowedByItemSettings } from "#utils/item-settings-utils";
 import i18next from "i18next";
 
 /** the i18n namespace for the encounter */
@@ -625,7 +626,7 @@ export const BerriesAboundEncounter: MysteryEncounter = MysteryEncounterBuilder.
   .build();
 
 function tryGiveBerry(prioritizedPokemon?: PlayerPokemon, playerIndex: PlayerIndex = globalScene.activePlayerIndex) {
-  const berryType = randSeedItem(getEnumValues(BerryType));
+  const berryType = randSeedItem(getBerryTypesAllowedByItemSettings(getEnumValues(BerryType)));
   const berry = generateModifierType(modifierTypes.BERRY, [berryType]) as BerryModifierType;
 
   globalScene.setActivePlayerIndex(playerIndex);

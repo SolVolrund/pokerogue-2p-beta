@@ -36,7 +36,7 @@ export interface SystemSaveData {
   voucherUnlocks: VoucherUnlocks;
   computerPartnerUnlocks?: Partial<Record<ComputerPartnerKey, number>>;
   computerPartnerProgress?: Partial<Record<ComputerPartnerKey, ComputerPartnerProgressData>>;
-  dejaVuGhosts?: Partial<Record<GameModes, DejaVuGhostData>>;
+  dejaVuGhosts?: Partial<Record<string, DejaVuGhostData>>;
   voucherCounts: VoucherCounts;
   eggs: EggData[];
   gameVersion: string;
@@ -51,6 +51,7 @@ export interface ComputerPartnerDexProgressEntry {
   caughtCount: number;
   hatchedCount: number;
   ivs: number[];
+  spindaPidDigitMasks?: number[];
 }
 
 export interface ComputerPartnerStarterProgressEntry {
@@ -75,6 +76,7 @@ export interface DejaVuGhostPokemonData {
 
 export interface DejaVuGhostData {
   mode: GameModes;
+  runKey?: string;
   waveIndex: number;
   timestamp: number;
   playerGender: PlayerGender;
@@ -176,6 +178,7 @@ export interface StarterAttributes {
   favorite?: boolean | undefined;
   nickname?: string | undefined;
   tera?: PokemonType | undefined;
+  spindaPid?: number | undefined;
 }
 
 export interface DexAttrProps {
@@ -199,6 +202,7 @@ export interface Starter {
   pokerus: boolean;
   nickname?: string | undefined;
   teraType?: PokemonType | undefined;
+  spindaPid?: number | undefined;
   ivs: number[];
 }
 

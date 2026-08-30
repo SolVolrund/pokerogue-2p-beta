@@ -410,12 +410,42 @@ function getPokePoachersDuelRelation(user: Pokemon, target: Pokemon): "ally" | "
     return "ally";
   }
 
+  if (globalScene.twoPlayerVsMode && (userIsPoacher || targetIsPoacher)) {
+    if (
+      (userIsPoacher && targetIsProtectedLegendary)
+      || (targetIsPoacher && userIsProtectedLegendary)
+    ) {
+      return "opponent";
+    }
+
+    if (targetIsPoacher && user.isPlayer() && isPokePoachersVsPlayerPoacherPair(user, target)) {
+      return "opponent";
+    }
+
+    if (userIsPoacher && target.isPlayer() && isPokePoachersVsPlayerPoacherPair(target, user)) {
+      return "opponent";
+    }
+
+    return;
+  }
+
   if (
     (userIsPoacher && (targetIsProtectedLegendary || target.isPlayer()))
     || (targetIsPoacher && (userIsProtectedLegendary || user.isPlayer()))
   ) {
     return "opponent";
   }
+}
+
+function isPokePoachersVsPlayerPoacherPair(playerPokemon: Pokemon, poacherPokemon: Pokemon): boolean {
+  const playerIndex = globalScene.getPlayerIndexForPokemon(playerPokemon);
+  if (playerIndex == null) {
+    return false;
+  }
+
+  const idsByPlayer = globalScene.currentBattle?.mysteryEncounter?.misc?.vsPoacherPokemonIdsByPlayer;
+  const poacherIds = idsByPlayer?.[playerIndex];
+  return Array.isArray(poacherIds) && poacherIds.includes(poacherPokemon.id);
 }
 
 export const frenzyMissFunc: UserMoveConditionFunc = (user: Pokemon, move: Move) => {

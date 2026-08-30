@@ -39,6 +39,7 @@ import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-s
 import type { PartyOption } from "#ui/party-ui-handler";
 import { PartyUiMode } from "#ui/party-ui-handler";
 import { updateWindowType } from "#ui/ui-theme";
+import { getDejaVuGhostRunKey } from "#utils/deja-vu-run-key";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -559,7 +560,10 @@ function getPartyUiFieldSlotForPlayer(playerIndex: PlayerIndex): number {
 }
 
 function clearDejaVuGhostForPlayer(playerIndex: PlayerIndex): void {
-  globalScene.getPlayerGameData(playerIndex).clearDejaVuGhost(globalScene.gameMode.modeId);
+  globalScene.getPlayerGameData(playerIndex).clearDejaVuGhost(
+    globalScene.gameMode.modeId,
+    getDejaVuGhostRunKey(globalScene),
+  );
   saveDejaVuGhostProfile(playerIndex);
 }
 

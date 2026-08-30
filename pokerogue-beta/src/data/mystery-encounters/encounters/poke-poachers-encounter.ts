@@ -31,6 +31,7 @@ import {
 } from "#mystery-encounters/encounter-phase-utils";
 import {
   getMysteryEncounterPlayerIndexes,
+  getMysteryEncounterPlayerTitle,
   getNextMysteryEncounterPlayerIndex,
   showMysteryEncounterPlayerMenu,
 } from "#mystery-encounters/encounter-player-utils";
@@ -66,9 +67,12 @@ interface PokePoachersData {
   rescueActive?: boolean;
   rewardEligible?: boolean;
   rewardQueued?: boolean;
+  rewardPlayerIndexes?: PlayerIndex[];
   protectedLegendaryId?: number;
   protectedLegendaryPartyIndex?: number;
   poacherPokemonIds?: number[];
+  vsEscapePlayerIndex?: PlayerIndex;
+  vsPoacherPokemonIdsByPlayer?: Partial<Record<PlayerIndex, number[]>>;
   skipSelectedDialogueOnce?: boolean;
 }
 
@@ -95,7 +99,7 @@ export const PokePoachersEncounter: MysteryEncounter = MysteryEncounterBuilder.w
     const playerIndexes = getMysteryEncounterPlayerIndexes();
     const protectedSpeciesId = randSeedItem(PROTECTED_LEGENDARIES);
     const poacherTrainerTypes =
-      playerIndexes.length > 2
+      globalScene.twoPlayerVsMode || playerIndexes.length > 2
         ? [TrainerType.ANNIE, TrainerType.OAKLEY]
         : [randSeedItem([TrainerType.ANNIE, TrainerType.OAKLEY])];
     const scenario = {
@@ -263,7 +267,11 @@ async function startPokePoachersBattle(playerIndexes: PlayerIndex[]): Promise<vo
   updateWindowType(playerIndexes[0] + 1);
   await initBattleWithEnemyConfig(createPokePoachersBattleConfig(data.scenario, playerIndexes.length));
 
-  data.protectedLegendaryPartyIndex = getProtectedLegendaryPartyIndex(data.scenario, playerIndexes.length);
+  data.protectedLegendaryPartyIndex = getProtectedLegendaryPartyIndex(
+    data.scenario,
+    playerIndexes.length,
+    globalScene.twoPlayerVsMode,
+  );
   const protectedLegendary = getProtectedLegendary(data);
   if (protectedLegendary) {
     data.protectedLegendaryId = protectedLegendary.id;
@@ -274,11 +282,20 @@ async function startPokePoachersBattle(playerIndexes: PlayerIndex[]): Promise<vo
     .getEnemyParty()
     .filter((pokemon, index) => pokemon && index !== data.protectedLegendaryPartyIndex)
     .map(pokemon => pokemon.id);
+  if (globalScene.twoPlayerVsMode) {
+    data.vsPoacherPokemonIdsByPlayer = getPokePoachersVsPoacherPokemonIdsByPlayer(playerIndexes);
+  } else {
+    delete data.vsPoacherPokemonIdsByPlayer;
+  }
 
-  queuePokePoachersStartOfBattleEffects(playerIndexes.length);
+  queuePokePoachersStartOfBattleEffects();
 }
 
 function createPokePoachersBattleConfig(scenario: PokePoachersScenario, playerCount: number): EnemyPartyConfig {
+  if (globalScene.twoPlayerVsMode) {
+    return createVsPokePoachersBattleConfig(scenario, playerCount);
+  }
+
   const primaryPoacher = scenario.poacherTrainerTypes[0];
   const secondaryPoacher = scenario.poacherTrainerTypes[1];
   const pokemonConfigs = [
@@ -309,19 +326,81 @@ function createPokePoachersBattleConfig(scenario: PokePoachersScenario, playerCo
   };
 }
 
+function createVsPokePoachersBattleConfig(
+  scenario: PokePoachersScenario,
+  playerCount: number,
+): EnemyPartyConfig {
+  const primaryPoacher = scenario.poacherTrainerTypes[0];
+  const secondaryPoacher = scenario.poacherTrainerTypes[1] ?? TrainerType.OAKLEY;
+  const primarySpecies = getPokePoacherSpecies(primaryPoacher);
+  const secondarySpecies = getPokePoacherSpecies(secondaryPoacher);
+  const pokemonConfigs: EnemyPokemonConfig[] = [
+    createPoacherPokemonConfig(primaryPoacher, TrainerSlot.TRAINER, FieldPosition.LEFT, primarySpecies[0]),
+    createProtectedLegendaryConfig(scenario.protectedSpeciesId, FieldPosition.CENTER, playerCount),
+    createPoacherPokemonConfig(secondaryPoacher, TrainerSlot.TRAINER_PARTNER, FieldPosition.RIGHT, secondarySpecies[0]),
+  ];
+  const maxBackupCount = Math.max(primarySpecies.length, secondarySpecies.length);
+
+  for (let i = 1; i < maxBackupCount; i++) {
+    if (primarySpecies[i] != null) {
+      pokemonConfigs.push(createPoacherPokemonConfig(primaryPoacher, TrainerSlot.TRAINER, undefined, primarySpecies[i]));
+    }
+    if (secondarySpecies[i] != null) {
+      pokemonConfigs.push(
+        createPoacherPokemonConfig(secondaryPoacher, TrainerSlot.TRAINER_PARTNER, undefined, secondarySpecies[i]),
+      );
+    }
+  }
+
+  return {
+    trainerType: primaryPoacher,
+    partnerTrainerType: secondaryPoacher,
+    doubleBattle: true,
+    forceDoubleBattle: true,
+    battlerCountOverride: 3,
+    disableSwitch: false,
+    female: false,
+    partnerFemale: false,
+    pokemonConfigs,
+  };
+}
+
+function getPokePoacherSpecies(trainerType: TrainerType): SpeciesId[] {
+  return trainerType === TrainerType.ANNIE
+    ? [
+        SpeciesId.GLIMMORA,
+        SpeciesId.LEDYBA,
+        SpeciesId.HISUI_SNEASEL,
+        SpeciesId.BELLOSSOM,
+        SpeciesId.ESPEON,
+        SpeciesId.KABUTO,
+      ]
+    : [
+        SpeciesId.ARIADOS,
+        SpeciesId.GLISCOR,
+        SpeciesId.SNEASEL,
+        SpeciesId.VILEPLUME,
+        SpeciesId.UMBREON,
+        SpeciesId.AERODACTYL,
+      ];
+}
+
 function createPoacherPokemonConfig(
   trainerType: TrainerType,
   trainerSlot: TrainerSlot,
-  fieldPosition: FieldPosition,
+  fieldPosition?: FieldPosition,
+  speciesId: SpeciesId = trainerType === TrainerType.ANNIE ? SpeciesId.GLIMMORA : SpeciesId.ARIADOS,
 ): EnemyPokemonConfig {
-  const speciesId = trainerType === TrainerType.ANNIE ? SpeciesId.GLIMMORA : SpeciesId.ARIADOS;
-  return {
+  const config: EnemyPokemonConfig = {
     species: getPokemonSpecies(speciesId),
     isBoss: false,
     aiType: AiType.SMART,
     trainerSlot,
-    fieldPosition,
   };
+  if (fieldPosition != null) {
+    config.fieldPosition = fieldPosition;
+  }
+  return config;
 }
 
 function createProtectedLegendaryConfig(
@@ -346,7 +425,15 @@ function createProtectedLegendaryConfig(
   };
 }
 
-function getProtectedLegendaryPartyIndex(scenario?: PokePoachersScenario, playerCount?: number): number {
+function getProtectedLegendaryPartyIndex(
+  scenario?: PokePoachersScenario,
+  playerCount?: number,
+  isVsBattle = false,
+): number {
+  if (isVsBattle) {
+    return 1;
+  }
+
   return (playerCount ?? 0) > 2 && scenario?.poacherTrainerTypes[1] != null ? 2 : 1;
 }
 
@@ -358,7 +445,11 @@ function getProtectedLegendary(data: PokePoachersData): Pokemon | undefined {
     }
   }
 
-  const partyIndex = data.protectedLegendaryPartyIndex ?? getProtectedLegendaryPartyIndex(data.scenario, data.battlePlayerIndexes?.length);
+  const partyIndex = data.protectedLegendaryPartyIndex ?? getProtectedLegendaryPartyIndex(
+    data.scenario,
+    data.battlePlayerIndexes?.length,
+    globalScene.twoPlayerVsMode,
+  );
   return globalScene.getEnemyParty()[partyIndex];
 }
 
@@ -369,7 +460,7 @@ function getActivePoacherPokemon(data: PokePoachersData): Pokemon[] {
     .filter(pokemon => !!pokemon && poacherPokemonIds.includes(pokemon.id) && pokemon.isActive(false));
 }
 
-function queuePokePoachersStartOfBattleEffects(playerCount: number): void {
+function queuePokePoachersStartOfBattleEffects(): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const data = getPokePoachersData();
   const protectedLegendary = getProtectedLegendary(data);
@@ -387,7 +478,7 @@ function queuePokePoachersStartOfBattleEffects(playerCount: number): void {
     });
   }
 
-  if (playerCount <= 2) {
+  if (globalScene.currentBattle.getBattlerCount() <= 2) {
     return;
   }
 
@@ -418,11 +509,77 @@ function handlePokePoachersFaint(pokemon: Pokemon): boolean {
     return false;
   }
 
+  const vsRescuePlayerIndex = getPokePoachersVsRescuePlayerIndex(data, pokemon.id);
+  if (
+    vsRescuePlayerIndex != null
+    && !hasRemainingVsPoacherPokemon(data, vsRescuePlayerIndex, pokemon.id)
+    && isProtectedLegendaryStillStanding(data)
+  ) {
+    finishPokePoachersBattle(true, [vsRescuePlayerIndex]);
+    return false;
+  }
+
   if (!hasRemainingPoacherPokemon(data, pokemon.id) && isProtectedLegendaryStillStanding(data)) {
     finishPokePoachersBattle(true);
   }
 
   return false;
+}
+
+function getPokePoachersVsPoacherPokemonIdsByPlayer(
+  playerIndexes: PlayerIndex[],
+): Partial<Record<PlayerIndex, number[]>> {
+  const idsByPlayer: Partial<Record<PlayerIndex, number[]>> = {};
+  const primaryPlayerIndex = playerIndexes[0];
+  const secondaryPlayerIndex = playerIndexes[1];
+
+  if (primaryPlayerIndex != null) {
+    idsByPlayer[primaryPlayerIndex] = [];
+  }
+  if (secondaryPlayerIndex != null) {
+    idsByPlayer[secondaryPlayerIndex] = [];
+  }
+
+  for (const pokemon of globalScene.getEnemyParty()) {
+    if (pokemon.trainerSlot === TrainerSlot.TRAINER && primaryPlayerIndex != null) {
+      idsByPlayer[primaryPlayerIndex]!.push(pokemon.id);
+    } else if (pokemon.trainerSlot === TrainerSlot.TRAINER_PARTNER && secondaryPlayerIndex != null) {
+      idsByPlayer[secondaryPlayerIndex]!.push(pokemon.id);
+    }
+  }
+
+  return idsByPlayer;
+}
+
+function getPokePoachersVsRescuePlayerIndex(
+  data: PokePoachersData,
+  poacherPokemonId: number,
+): PlayerIndex | undefined {
+  if (!globalScene.twoPlayerVsMode) {
+    return undefined;
+  }
+
+  for (const [playerIndexKey, poacherPokemonIds] of Object.entries(data.vsPoacherPokemonIdsByPlayer ?? {})) {
+    if (poacherPokemonIds?.includes(poacherPokemonId)) {
+      return Number(playerIndexKey) as PlayerIndex;
+    }
+  }
+}
+
+function hasRemainingVsPoacherPokemon(
+  data: PokePoachersData,
+  playerIndex: PlayerIndex,
+  faintingPokemonId?: number,
+): boolean {
+  const poacherPokemonIds = data.vsPoacherPokemonIdsByPlayer?.[playerIndex] ?? [];
+  return globalScene
+    .getEnemyParty()
+    .some(pokemon =>
+      poacherPokemonIds.includes(pokemon.id)
+      && pokemon.id !== faintingPokemonId
+      && !pokemon.isFainted(true)
+      && pokemon.hp > 0,
+    );
 }
 
 function hasRemainingPoacherPokemon(data: PokePoachersData, faintingPokemonId?: number): boolean {
@@ -442,7 +599,7 @@ function isProtectedLegendaryStillStanding(data: PokePoachersData): boolean {
   return !!protectedLegendary && !protectedLegendary.isFainted(true) && protectedLegendary.hp > 0;
 }
 
-function finishPokePoachersBattle(success: boolean): void {
+function finishPokePoachersBattle(success: boolean, rewardPlayerIndexes?: PlayerIndex[]): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const data = getPokePoachersData();
   if (!data.rescueActive) {
@@ -451,29 +608,55 @@ function finishPokePoachersBattle(success: boolean): void {
 
   data.rescueActive = false;
   data.rewardEligible = success;
+  const eligibleRewardPlayerIndexes = success
+    ? rewardPlayerIndexes ?? data.battlePlayerIndexes ?? getMysteryEncounterPlayerIndexes()
+    : [];
+  data.rewardPlayerIndexes = eligibleRewardPlayerIndexes;
+  if (rewardPlayerIndexes?.length === 1) {
+    data.vsEscapePlayerIndex = rewardPlayerIndexes[0];
+  } else {
+    delete data.vsEscapePlayerIndex;
+  }
   encounter.onPokemonFaint = undefined;
+  setPokePoachersVsEscapeDialogueToken(data.vsEscapePlayerIndex);
   encounter.dialogue.outro = [
     {
-      text: success ? `${namespace}:outro.success` : `${namespace}:outro.failed`,
+      text: getPokePoachersOutroKey(data),
     },
   ];
 
   globalScene.phaseManager.clearPhaseQueue(true);
   if (success) {
-    queuePokePoachersRewards(data);
+    queuePokePoachersRewards(data, eligibleRewardPlayerIndexes);
     handleMysteryEncounterVictory(false);
   } else {
     handleMysteryEncounterBattleFailed(false);
   }
 }
 
-function queuePokePoachersRewards(data: PokePoachersData): void {
+function getPokePoachersOutroKey(data: PokePoachersData): string {
+  if (!data.rewardEligible) {
+    return `${namespace}:outro.failed`;
+  }
+
+  return data.vsEscapePlayerIndex != null ? `${namespace}:outro.successVs` : `${namespace}:outro.success`;
+}
+
+function setPokePoachersVsEscapeDialogueToken(playerIndex?: PlayerIndex): void {
+  if (playerIndex == null) {
+    return;
+  }
+
+  globalScene.currentBattle.mysteryEncounter!.setDialogueToken("player", getMysteryEncounterPlayerTitle(playerIndex));
+}
+
+function queuePokePoachersRewards(data: PokePoachersData, playerIndexes: PlayerIndex[]): void {
   if (data.rewardQueued) {
     return;
   }
 
   data.rewardQueued = true;
-  for (const playerIndex of data.battlePlayerIndexes ?? getMysteryEncounterPlayerIndexes()) {
+  for (const playerIndex of playerIndexes) {
     setEncounterRewards(
       {
         guaranteedModifierTypeFuncs: [modifierTypes.EON_FLUTE],
@@ -493,6 +676,7 @@ async function applyPokePoachersRewards(): Promise<void> {
 
   data.rescueActive = false;
   delete data.poacherPokemonIds;
+  delete data.vsPoacherPokemonIdsByPlayer;
   delete data.protectedLegendaryId;
 
   if (data.declined) {
@@ -500,9 +684,10 @@ async function applyPokePoachersRewards(): Promise<void> {
     return;
   }
 
+  setPokePoachersVsEscapeDialogueToken(data.vsEscapePlayerIndex);
   encounter.dialogue.outro = [
     {
-      text: data.rewardEligible ? `${namespace}:outro.success` : `${namespace}:outro.failed`,
+      text: getPokePoachersOutroKey(data),
     },
   ];
 }

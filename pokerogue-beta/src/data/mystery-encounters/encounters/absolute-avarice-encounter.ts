@@ -347,8 +347,10 @@ function returnSomeBerries(playerIndex: PlayerIndex): void {
       for (let i = 0; i < returnedBerryCount; i++) {
         Phaser.Math.RND.shuffle(berryTypesAsArray);
         const randBerryType = berryTypesAsArray.pop();
-        const berryModType = generateModifierType(modifierTypes.BERRY, [randBerryType]) as BerryModifierType;
-        applyModifierTypeToPlayerPokemon(pokemon, berryModType);
+        const berryModType = generateModifierType(modifierTypes.BERRY, [randBerryType]) as BerryModifierType | null;
+        if (berryModType) {
+          applyModifierTypeToPlayerPokemon(pokemon, berryModType);
+        }
       }
     }
   });

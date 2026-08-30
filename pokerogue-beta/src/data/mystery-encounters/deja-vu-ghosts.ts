@@ -5,12 +5,14 @@ import type { GameModes } from "#enums/game-modes";
 import { getGtsMalfunctionTargetWave } from "#mystery-encounters/gts-malfunction-encounter";
 import type { DejaVuScheduledEncounterData } from "#mystery-encounters/mystery-encounter-save-data";
 import type { DejaVuGhostData } from "#types/save-data";
+import { getDejaVuGhostRunKey } from "#utils/deja-vu-run-key";
 
 const DEJA_VU_BUCKET_SIZE = 10;
 
 export interface DejaVuGhostContext {
   playerIndex: PlayerIndex;
   ghost: DejaVuGhostData;
+  runKey: string;
 }
 
 type DejaVuScheduleWaveValidator = (waveIndex: number) => boolean;
@@ -27,16 +29,18 @@ function getActiveGhostForPlayer(
   scene: BattleScene,
   playerIndex: PlayerIndex,
   mode: GameModes = scene.gameMode.modeId,
+  runKey: string = getDejaVuGhostRunKey(scene, mode),
 ): DejaVuGhostData | undefined {
   if (!isHumanProfilePlayer(scene, playerIndex)) {
     return undefined;
   }
 
-  const ghost = scene.getPlayerGameData(playerIndex).getDejaVuGhost(mode);
+  const ghost = scene.getPlayerGameData(playerIndex).getDejaVuGhost(mode, runKey);
   return ghost?.party?.length ? ghost : undefined;
 }
 
 function getScheduleGhostContexts(scene: BattleScene, schedule: DejaVuScheduledEncounterData): DejaVuGhostContext[] {
+  const runKey = schedule.runKey ?? getDejaVuGhostRunKey(scene, schedule.mode);
   const activePlayerIndexes = new Set(scene.getActivePlayerIndexes());
   return Object.entries(schedule.ghostTimestampsByPlayer)
     .map(([playerIndexKey, timestamp]) => {
@@ -45,8 +49,8 @@ function getScheduleGhostContexts(scene: BattleScene, schedule: DejaVuScheduledE
         return undefined;
       }
 
-      const ghost = getActiveGhostForPlayer(scene, playerIndex, schedule.mode);
-      return ghost && ghost.timestamp === timestamp ? { playerIndex, ghost } : undefined;
+      const ghost = getActiveGhostForPlayer(scene, playerIndex, schedule.mode, runKey);
+      return ghost && ghost.timestamp === timestamp ? { playerIndex, ghost, runKey } : undefined;
     })
     .filter((entry): entry is DejaVuGhostContext => !!entry);
 }
@@ -76,7 +80,7 @@ function getScheduledWaveForGhost(
 }
 
 export function isValidDejaVuScheduleWave(scene: BattleScene, waveIndex: number): boolean {
-  const contestHallWave = ensureContestHallScheduledWave(scene.currentBattle.waveIndex);
+  const contestHallWave = ensureContestHallScheduledWave(waveIndex);
   const gtsMalfunctionWave = getGtsMalfunctionTargetWave();
   return (
     scene.isMysteryEncounterValidForWave(BattleType.WILD, waveIndex)
@@ -93,14 +97,15 @@ export function ensureDejaVuScheduledEncounters(
   isValidScheduleWave: DejaVuScheduleWaveValidator = waveIndex => isValidDejaVuScheduleWave(scene, waveIndex),
 ): void {
   const saveData = scene.mysteryEncounterSaveData;
-  if (saveData.dejaVuScheduleInitialized) {
+  const runKey = getDejaVuGhostRunKey(scene);
+  if (saveData.dejaVuScheduleInitialized && saveData.dejaVuScheduleRunKey === runKey) {
     return;
   }
 
   const mode = scene.gameMode.modeId;
   const schedulesByWave = new Map<number, DejaVuScheduledEncounterData>();
   for (const playerIndex of scene.getActivePlayerIndexes()) {
-    const ghost = getActiveGhostForPlayer(scene, playerIndex, mode);
+    const ghost = getActiveGhostForPlayer(scene, playerIndex, mode, runKey);
     if (!ghost) {
       continue;
     }
@@ -113,6 +118,7 @@ export function ensureDejaVuScheduledEncounters(
     const schedule = schedulesByWave.get(scheduledWave) ?? {
       scheduledWave,
       mode,
+      runKey,
       ghostTimestampsByPlayer: {},
     };
     schedule.ghostTimestampsByPlayer[playerIndex] = ghost.timestamp;
@@ -123,6 +129,7 @@ export function ensureDejaVuScheduledEncounters(
     (a, b) => a.scheduledWave - b.scheduledWave,
   );
   saveData.dejaVuScheduleInitialized = true;
+  saveData.dejaVuScheduleRunKey = runKey;
 }
 
 export function getDueDejaVuSchedule(
@@ -130,10 +137,12 @@ export function getDueDejaVuSchedule(
   waveIndex: number = scene.currentBattle.waveIndex,
 ): DejaVuScheduledEncounterData | undefined {
   ensureDejaVuScheduledEncounters(scene);
+  const runKey = getDejaVuGhostRunKey(scene);
 
   return scene.mysteryEncounterSaveData.dejaVuScheduledEncounters.find(schedule => (
     !schedule.completed
     && schedule.mode === scene.gameMode.modeId
+    && schedule.runKey === runKey
     && schedule.scheduledWave <= waveIndex
     && getScheduleGhostContexts(scene, schedule).length > 0
   ));

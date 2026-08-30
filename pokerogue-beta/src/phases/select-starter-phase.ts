@@ -7,6 +7,7 @@ import { modifierTypes } from "#data/data-lists";
 import { SpeciesFormChangeMoveLearnedTrigger } from "#data/form-change-triggers";
 import { Gender } from "#data/gender";
 import { ChallengeType } from "#enums/challenge-type";
+import { SpeciesId } from "#enums/species-id";
 import { UiMode } from "#enums/ui-mode";
 import { overrideHeldItems, overrideModifiers, PersistentModifier } from "#modifiers/modifier";
 import type { Starter } from "#types/save-data";
@@ -184,6 +185,9 @@ export class SelectStarterPhase extends Phase {
         starter.ivs,
         starter.nature,
       );
+      if (starter.speciesId === SpeciesId.SPINDA && starter.spindaPid != null) {
+        starterPokemon.id = starter.spindaPid >>> 0;
+      }
       if (globalScene.isComputerPartnerPlayer(playerIndex)) {
         const computerPartnerProfile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
         starterPokemon.computerPartnerAce = isComputerPartnerStarterAce(computerPartnerProfile, starter, i);
