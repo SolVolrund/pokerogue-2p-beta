@@ -107,6 +107,10 @@ async function promptShinyBadgePlayer(playerIndex: PlayerIndex, startingCursorIn
     overrideQuery: "What will you do?",
     overrideOptions: buildShinyBadgeOptions(playerIndex),
     startingCursorIndex,
+    privateOwnerPlayerIndex: playerIndex,
+    privateWaitingQuery: `Player ${playerIndex + 1} is choosing...`,
+    privateOptionLabel: "???",
+    privateOptionTooltip: `Waiting for Player ${playerIndex + 1} to choose.`,
     computerPartnerOption: {
       chooseOptionIndex: chooseComputerPartnerShinyBadgeOption,
       onOptionChosen: (optionIndex, choicePlayerIndex) =>

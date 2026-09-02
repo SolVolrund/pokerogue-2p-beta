@@ -1,3 +1,4 @@
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { getPokeballAtlasKey } from "#data/pokeball";
 import { Button } from "#enums/buttons";
@@ -10,6 +11,7 @@ import type { OptionSelectSettings } from "#mystery-encounters/encounter-phase-u
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import type { MysteryEncounterPhase } from "#phases/mystery-encounter-phases";
 import { PartyUiMode } from "#ui/party-ui-handler";
+import { shouldRedactInputOwner } from "#ui/private-input-display";
 import { addBBCodeTextObject, getBBCodeFrag } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { addWindow, WindowVariant } from "#ui/ui-theme";
@@ -129,7 +131,6 @@ export class MysteryEncounterUiHandler extends UiHandler {
     let success = false;
 
     const cursor = this.getCursor();
-
     if (button === Button.CANCEL || button === Button.ACTION) {
       if (button === Button.ACTION) {
         const selected = this.encounterOptions[cursor];
@@ -185,7 +186,7 @@ export class MysteryEncounterUiHandler extends UiHandler {
       this.displayOptionTooltip();
     }
 
-    if (success) {
+    if (success && !this.isPrivateChoiceRedacted()) {
       ui.playSelect();
     }
 
@@ -341,6 +342,9 @@ export class MysteryEncounterUiHandler extends UiHandler {
   unblockInput() {
     if (this.blockInput) {
       this.blockInput = false;
+      if (this.isPrivateChoiceRedacted()) {
+        return;
+      }
       for (let i = 0; i < this.optionsContainer.length - 1; i++) {
         const optionMode = this.encounterOptions[i].optionMode;
         if (
@@ -361,6 +365,27 @@ export class MysteryEncounterUiHandler extends UiHandler {
 
   private getOptionRowSpacing(): number {
     return this.overrideSettings?.optionRowSpacing ?? 16;
+  }
+
+  private getPrivateOwnerPlayerIndex(): PlayerIndex | undefined {
+    return this.overrideSettings?.privateOwnerPlayerIndex;
+  }
+
+  private isPrivateChoiceRedacted(): boolean {
+    const privateOwnerPlayerIndex = this.getPrivateOwnerPlayerIndex();
+    return privateOwnerPlayerIndex != null && shouldRedactInputOwner(privateOwnerPlayerIndex);
+  }
+
+  private getPrivateWaitingText(): string {
+    const privateOwnerPlayerIndex = this.getPrivateOwnerPlayerIndex();
+    return this.overrideSettings?.privateWaitingQuery
+      ?? `Player ${(privateOwnerPlayerIndex ?? globalScene.activePlayerIndex) + 1} is choosing...`;
+  }
+
+  private getPrivateOptionTooltipText(): string {
+    const privateOwnerPlayerIndex = this.getPrivateOwnerPlayerIndex();
+    return this.overrideSettings?.privateOptionTooltip
+      ?? `Waiting for Player ${(privateOwnerPlayerIndex ?? globalScene.activePlayerIndex) + 1} to choose.`;
   }
 
   override setCursor(cursor: number): boolean {
@@ -397,6 +422,8 @@ export class MysteryEncounterUiHandler extends UiHandler {
       );
     }
 
+    this.cursorObj.setVisible(!this.isPrivateChoiceRedacted());
+
     return changed;
   }
 
@@ -405,6 +432,7 @@ export class MysteryEncounterUiHandler extends UiHandler {
     const mysteryEncounter = globalScene.currentBattle.mysteryEncounter!;
     this.encounterOptions = this.overrideSettings?.overrideOptions ?? mysteryEncounter.options;
     this.optionsMeetsReqs = [];
+    const privateChoiceRedacted = this.isPrivateChoiceRedacted();
 
     const titleText: string | null = getEncounterText(
       this.overrideSettings?.overrideTitle ?? mysteryEncounter.dialogue.encounterOptionsDialogue?.title,
@@ -415,7 +443,9 @@ export class MysteryEncounterUiHandler extends UiHandler {
       TextStyle.TOOLTIP_CONTENT,
     );
     const queryText: string | null = getEncounterText(
-      this.overrideSettings?.overrideQuery ?? mysteryEncounter.dialogue.encounterOptionsDialogue?.query,
+      privateChoiceRedacted
+        ? this.getPrivateWaitingText()
+        : (this.overrideSettings?.overrideQuery ?? mysteryEncounter.dialogue.encounterOptionsDialogue?.query),
       TextStyle.TOOLTIP_CONTENT,
     );
 
@@ -465,12 +495,15 @@ export class MysteryEncounterUiHandler extends UiHandler {
 
       this.optionsMeetsReqs.push(option.meetsRequirements());
       const optionDialogue = option.dialogue!;
-      const label =
-        !this.optionsMeetsReqs[i] && optionDialogue.disabledButtonLabel
-          ? optionDialogue.disabledButtonLabel
-          : optionDialogue.buttonLabel;
+      const label = privateChoiceRedacted
+        ? (this.overrideSettings?.privateOptionLabel ?? "???")
+        : (!this.optionsMeetsReqs[i] && optionDialogue.disabledButtonLabel
+            ? optionDialogue.disabledButtonLabel
+            : optionDialogue.buttonLabel);
       let text: string | null;
       if (
+        !privateChoiceRedacted
+        &&
         option.hasRequirements()
         && this.optionsMeetsReqs[i]
         && (option.optionMode === MysteryEncounterOptionMode.DEFAULT_OR_SPECIAL
@@ -493,7 +526,7 @@ export class MysteryEncounterUiHandler extends UiHandler {
       ) {
         optionText.setAlpha(0.5);
       }
-      if (this.blockInput) {
+      if (this.blockInput || privateChoiceRedacted) {
         optionText.setAlpha(0.5);
       }
 
@@ -639,17 +672,23 @@ export class MysteryEncounterUiHandler extends UiHandler {
     }
 
     let text: string | null;
-    const cursorOption = this.encounterOptions[cursor];
-    const optionDialogue = cursorOption.dialogue!;
-    if (
-      !this.optionsMeetsReqs[cursor]
-      && (cursorOption.optionMode === MysteryEncounterOptionMode.DISABLED_OR_DEFAULT
-        || cursorOption.optionMode === MysteryEncounterOptionMode.DISABLED_OR_SPECIAL)
-      && optionDialogue.disabledButtonTooltip
-    ) {
-      text = getEncounterText(optionDialogue.disabledButtonTooltip, TextStyle.TOOLTIP_CONTENT);
+    let showDexProgress = false;
+    if (this.isPrivateChoiceRedacted()) {
+      text = getEncounterText(this.getPrivateOptionTooltipText(), TextStyle.TOOLTIP_CONTENT);
     } else {
-      text = getEncounterText(optionDialogue.buttonTooltip, TextStyle.TOOLTIP_CONTENT);
+      const cursorOption = this.encounterOptions[cursor];
+      const optionDialogue = cursorOption.dialogue!;
+      if (
+        !this.optionsMeetsReqs[cursor]
+        && (cursorOption.optionMode === MysteryEncounterOptionMode.DISABLED_OR_DEFAULT
+          || cursorOption.optionMode === MysteryEncounterOptionMode.DISABLED_OR_SPECIAL)
+        && optionDialogue.disabledButtonTooltip
+      ) {
+        text = getEncounterText(optionDialogue.disabledButtonTooltip, TextStyle.TOOLTIP_CONTENT);
+      } else {
+        text = getEncounterText(optionDialogue.buttonTooltip, TextStyle.TOOLTIP_CONTENT);
+      }
+      showDexProgress = cursorOption.hasDexProgress;
     }
 
     // Auto-color options green/blue for good/bad by looking for (+)/(-)
@@ -712,12 +751,7 @@ export class MysteryEncounterUiHandler extends UiHandler {
       }
     }
 
-    // Dex progress indicator
-    if (cursorOption.hasDexProgress && !this.showDexProgress) {
-      this.showHideDexProgress(true);
-    } else if (!cursorOption.hasDexProgress) {
-      this.showHideDexProgress(false);
-    }
+    this.showHideDexProgress(showDexProgress);
   }
 
   override clear(): void {

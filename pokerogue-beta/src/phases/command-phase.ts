@@ -119,7 +119,7 @@ export class CommandPhase extends FieldPhase {
   }
 
   private shouldComputerPartnerSwitch(): number | undefined {
-    if (!globalScene.plannerAiEnabled) {
+    if (globalScene.twoPlayerVsMode || !globalScene.plannerAiEnabled) {
       return;
     }
 
@@ -139,7 +139,7 @@ export class CommandPhase extends FieldPhase {
   }
 
   private shouldComputerPartnerReposition(): FieldPosition | undefined {
-    if (!globalScene.plannerAiEnabled) {
+    if (globalScene.twoPlayerVsMode || !globalScene.plannerAiEnabled) {
       return;
     }
 
@@ -311,7 +311,7 @@ export class CommandPhase extends FieldPhase {
             globalScene.getComputerPartnerKey(playerIndex),
             globalScene.getPlayerParty(playerIndex),
             playerPokemon,
-            globalScene.getEnemyField(),
+            this.getVsModeCaptureTargetsForPokemon(playerPokemon),
             globalScene.getPlayerPokeballCounts(playerIndex),
             blockedTargetIds,
             globalScene.getComputerPartnerRolePreferences(playerIndex),
@@ -359,6 +359,7 @@ export class CommandPhase extends FieldPhase {
     blockedTargetIds: number[],
     options?: ComputerPartnerCaptureDecisionOptions,
   ) {
+    const enemyField = this.getVsModeCaptureTargetsForPokemon(playerPokemon);
     const cachedInterests = globalScene.currentBattle.computerPartnerCaptureInterests.find(
       entry => entry.playerIndex === playerIndex,
     )?.interests;
@@ -368,7 +369,7 @@ export class CommandPhase extends FieldPhase {
         globalScene.getComputerPartnerKey(playerIndex),
         globalScene.getPlayerParty(playerIndex),
         playerPokemon,
-        globalScene.getEnemyField(),
+        enemyField,
         globalScene.getPlayerPokeballCounts(playerIndex),
         blockedTargetIds,
         globalScene.getComputerPartnerRolePreferences(playerIndex),
@@ -379,11 +380,21 @@ export class CommandPhase extends FieldPhase {
     return getComputerPartnerCaptureDecisionsFromInterests(
       playerPokemon,
       cachedInterests,
-      globalScene.getEnemyField(),
+      enemyField,
       globalScene.getPlayerPokeballCounts(playerIndex),
       blockedTargetIds,
       options,
     )[0];
+  }
+
+  private getVsModeCaptureTargetsForPokemon(playerPokemon: PlayerPokemon): EnemyPokemon[] {
+    const enemyField = globalScene.getEnemyField();
+    if (!globalScene.twoPlayerVsMode) {
+      return enemyField;
+    }
+
+    const fieldIndex = playerPokemon.getFieldIndex();
+    return enemyField.filter(target => target.getFieldIndex() === fieldIndex);
   }
 
   private canComputerPartnerCaptureInCurrentBattle(): boolean {
@@ -420,6 +431,10 @@ export class CommandPhase extends FieldPhase {
   }
 
   private getComputerPartnerBlockedCaptureTargetIds(playerIndex: PlayerIndex): number[] {
+    if (globalScene.twoPlayerVsMode) {
+      return [];
+    }
+
     const battle = globalScene.currentBattle;
     const activeTargetIds = new Set(
       globalScene
@@ -548,6 +563,10 @@ export class CommandPhase extends FieldPhase {
     playerPokemon: PlayerPokemon,
     turnMove: TurnMove,
   ): TurnMove {
+    if (globalScene.twoPlayerVsMode) {
+      return turnMove;
+    }
+
     const reservedTargets = this.getComputerPartnerBlockedCaptureTargets(playerIndex);
     const plannedDamageRatios = this.getQueuedCaptureDamageRatios(playerPokemon.getBattlerIndex());
     if (
@@ -1392,6 +1411,7 @@ export class CommandPhase extends FieldPhase {
     const targets = globalScene
       .getEnemyField()
       .filter(p => p.isActive(true))
+      .filter(p => !globalScene.twoPlayerVsMode || p.getFieldIndex() === this.fieldIndex)
       .map(p => p.getBattlerIndex());
 
     if (!this.checkCanUseBall()) {
@@ -1581,6 +1601,7 @@ export class CommandPhase extends FieldPhase {
     const playerPokemon = this.getPokemon();
     if (
       !globalScene.twoPlayerMode
+      || globalScene.twoPlayerVsMode
       || globalScene.getPlayerFieldOwners().length < 3
       || globalScene.currentBattle.getBattlerCount() < 3
       || playerPokemon.fieldPosition === targetPosition

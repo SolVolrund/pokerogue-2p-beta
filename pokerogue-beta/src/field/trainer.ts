@@ -19,6 +19,7 @@ import { trainerConfigs } from "#trainers/trainer-config";
 import { TrainerPartyCompoundTemplate, type TrainerPartyTemplate } from "#trainers/trainer-party-template";
 import { getRandomTwoPlayerTrainerPartners } from "#trainers/two-player-trainer-partners";
 import { randSeedInt, randSeedItem } from "#utils/common";
+import { filterAiRelevantOpponentsForPosition } from "#utils/ai-targeting";
 import { getRandomLocaleEntry } from "#utils/i18n";
 import { isMysteryEncounterSwitchProtectedPokemon } from "#utils/mystery-encounter-switch-protection";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
@@ -1301,7 +1302,11 @@ export class Trainer extends Phaser.GameObjects.Container {
     return currentSpecies.includes(baseSpecies) || staticSpecies.includes(baseSpecies);
   }
 
-  getPartyMemberMatchupScores(trainerSlot: TrainerSlot = TrainerSlot.NONE, forSwitch = false): [number, number][] {
+  getPartyMemberMatchupScores(
+    trainerSlot: TrainerSlot = TrainerSlot.NONE,
+    forSwitch = false,
+    referencePokemon?: EnemyPokemon,
+  ): [number, number][] {
     if (trainerSlot && !this.isDouble()) {
       trainerSlot = TrainerSlot.NONE;
     }
@@ -1313,7 +1318,12 @@ export class Trainer extends Phaser.GameObjects.Container {
       .filter(p => !forSwitch || !isMysteryEncounterSwitchProtectedPokemon(p))
       .filter(p => !trainerSlot || p.trainerSlot === trainerSlot);
     const partyMemberScores = nonFaintedLegalPartyMembers.map(p => {
-      const playerField = globalScene.getPlayerField().filter(p => p.isAllowedInBattle());
+      const playerField = referencePokemon
+        ? filterAiRelevantOpponentsForPosition(
+            referencePokemon,
+            globalScene.getPlayerField().filter(p => p.isAllowedInBattle()),
+          )
+        : globalScene.getPlayerField().filter(p => p.isAllowedInBattle());
       let score = 0;
 
       if (playerField.length > 0) {
@@ -1350,12 +1360,14 @@ export class Trainer extends Phaser.GameObjects.Container {
 
   getNextSummonIndex(
     trainerSlot: TrainerSlot = TrainerSlot.NONE,
-    partyMemberScores: [number, number][] = this.getPartyMemberMatchupScores(trainerSlot),
+    partyMemberScores?: [number, number][],
+    referencePokemon?: EnemyPokemon,
   ): number {
     if (trainerSlot && !this.isDouble()) {
       trainerSlot = TrainerSlot.NONE;
     }
 
+    partyMemberScores ??= this.getPartyMemberMatchupScores(trainerSlot, false, referencePokemon);
     const sortedPartyMemberScores = this.getSortedPartyMemberMatchupScores(partyMemberScores);
 
     const maxScorePartyMemberIndexes = partyMemberScores

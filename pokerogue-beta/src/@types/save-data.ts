@@ -2,6 +2,7 @@ import type { MultiplayerPlayerCount, PlayerIndex, PokeballCounts } from "#app/b
 import type { Tutorial } from "#app/tutorial";
 import type { AlphTileCounts } from "#data/alph/alph-tiles";
 import type { AlphLegendaryHelperId } from "#data/alph/legendary-helpers";
+import type { VsEnemyTokenPurchaseState } from "#data/vs-enemy-tokens";
 import type { BattleType } from "#enums/battle-type";
 import type { GameModes } from "#enums/game-modes";
 import type { MoveId } from "#enums/move-id";
@@ -102,6 +103,7 @@ export interface SessionSaveData {
   modifiers: ModifierData[];
   enemyModifiers: ModifierData[];
   vsEnemyModifiersByPlayer?: ModifierData[][];
+  vsEnemyTokenPurchaseStateByPlayer?: Partial<Record<PlayerIndex, VsEnemyTokenPurchaseState>>;
   arena: ArenaData;
   pokeballCounts: PokeballCounts;
   money: number;

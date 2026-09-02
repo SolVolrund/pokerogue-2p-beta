@@ -13,14 +13,18 @@ import {
   getAlphTileItemIconKey,
 } from "#data/alph/alph-tiles";
 import type { FusionOptions } from "#data/fusion-options";
-import { getVsEnemyTokenModifierTypeOptionsForWave } from "#data/vs-enemy-tokens";
+import {
+  getVsEnemyTokenDefinitionForModifierTypeId,
+  getVsEnemyTokenModifierTypeOptionsForWave,
+  isVsEnemyTokenAtStackLimit,
+} from "#data/vs-enemy-tokens";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import type { ModifierTier } from "#enums/modifier-tier";
 import { LearnMoveType } from "#enums/learn-move-type";
 import type { MoveId } from "#enums/move-id";
 import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon } from "#field/pokemon";
-import type { EnemyPersistentModifier, Modifier } from "#modifiers/modifier";
+import type { EnemyPersistentModifier, Modifier, PersistentModifier } from "#modifiers/modifier";
 import {
   ExtraModifierModifier,
   HealShopCostModifier,
@@ -62,15 +66,26 @@ import {
   type ComputerPartnerRewardChoice,
   chooseComputerPartnerRecoveryOption,
   chooseComputerPartnerRewardOption,
+  getComputerPartnerShopReserve,
 } from "#utils/computer-partner-reward-ai";
 import i18next from "i18next";
 
 export type ModifierSelectCallback = (rowCursor: number, cursor: number) => boolean;
 
+const COMPUTER_PARTNER_LOWER_TIER_TOKEN_PURCHASE_LIMIT = 4;
+
 export interface AlphTileRewardOption {
   character: AlphFiniteTileCharacter;
   iconImage: string;
   name: string;
+}
+
+interface ComputerPartnerVsTokenChoice {
+  option: ModifierTypeOption;
+  modifier: EnemyPersistentModifier;
+  targetPlayerIndexes: PlayerIndex[];
+  tier: ModifierTier;
+  isHighestAvailableTier: boolean;
 }
 
 export class SelectModifierPhase extends BattlePhase {
@@ -231,17 +246,26 @@ export class SelectModifierPhase extends BattlePhase {
       return [];
     }
 
-    const targetPlayerIndex = this.getVsEnemyTokenTargetPlayerIndex();
+    const targetModifierGroups = this.getVsEnemyTokenTargetPlayerIndexes().map(playerIndex =>
+      globalScene.getVsEnemyModifiersForPlayer(playerIndex)
+    );
     return getVsEnemyTokenModifierTypeOptionsForWave(
       globalScene.currentBattle.waveIndex,
       globalScene.getWaveMoneyAmount(1),
-      globalScene.getVsEnemyModifiersForPlayer(targetPlayerIndex),
+      [],
+      targetModifierGroups,
     );
   }
 
-  private getVsEnemyTokenTargetPlayerIndex(): PlayerIndex {
-    // Vs tokens are bought to pressure the opposing lane, while the storage bucket is keyed by affected lane.
-    return this.playerIndex === 0 ? 1 : 0;
+  private getVsEnemyTokenTargetPlayerIndexes(): PlayerIndex[] {
+    // Vs tokens are bought to pressure every opposing lane that can still accept the chosen token.
+    return globalScene.getActivePlayerIndexes().filter(playerIndex => playerIndex !== this.playerIndex);
+  }
+
+  private getVsEnemyTokenEligibleTargetPlayerIndexes(modifier: PersistentModifier): PlayerIndex[] {
+    return this.getVsEnemyTokenTargetPlayerIndexes().filter(playerIndex =>
+      !isVsEnemyTokenAtStackLimit(globalScene.getVsEnemyModifiersForPlayer(playerIndex), modifier)
+    );
   }
 
   private isAlphTileRowCursor(rowCursor: number): boolean {
@@ -298,6 +322,22 @@ export class SelectModifierPhase extends BattlePhase {
       purchases++;
     }
 
+    const tokenChoice = this.chooseComputerPartnerVsTokenOption(this.getComputerPartnerShopOptions());
+    if (tokenChoice) {
+      void this.applyComputerPartnerVsTokenChoice(tokenChoice).then(message => {
+        if (message) {
+          messages.push(message);
+        }
+        this.finishAutoComputerPartnerReward(messages);
+      });
+      return true;
+    }
+
+    this.finishAutoComputerPartnerReward(messages);
+    return true;
+  }
+
+  private finishAutoComputerPartnerReward(messages: string[]): void {
     const rewardChoice = chooseComputerPartnerRewardOption(
       this.typeOptions,
       globalScene.getPlayerParty(this.playerIndex),
@@ -314,12 +354,103 @@ export class SelectModifierPhase extends BattlePhase {
       messages.push(this.getComputerPartnerChoiceMessage(rewardChoice, rewardModifier, false));
       this.queueComputerPartnerChoiceMessages(messages);
       this.applyComputerPartnerRewardModifier(rewardModifier);
-      return true;
+      return;
     }
 
     this.queueComputerPartnerChoiceMessages(messages);
     this.skipComputerPartnerReward();
-    return true;
+  }
+
+  private chooseComputerPartnerVsTokenOption(shopOptions: ModifierTypeOption[]): ComputerPartnerVsTokenChoice | undefined {
+    if (!globalScene.twoPlayerVsMode || this.tokenOptions.length === 0) {
+      return;
+    }
+
+    const money = activeOverrides.WAIVE_ROLL_FEE_OVERRIDE
+      ? Number.MAX_SAFE_INTEGER
+      : globalScene.getPlayerMoney(this.playerIndex);
+    const emergencyReserve = getComputerPartnerShopReserve(shopOptions);
+    const spendableMoney = Math.max(0, money - emergencyReserve);
+    if (spendableMoney <= 0) {
+      return;
+    }
+
+    const highestAvailableTier = Math.max(...this.tokenOptions.map(option => option.type.tier ?? 0)) as ModifierTier;
+    const hasLowerTierOptions = this.tokenOptions.some(option => (option.type.tier ?? 0) < highestAvailableTier);
+    const purchaseState = globalScene.getVsEnemyTokenPurchaseState(this.playerIndex);
+    const lowerTierLocked =
+      hasLowerTierOptions
+      && purchaseState.lowerTierPurchasesSinceHighest >= COMPUTER_PARTNER_LOWER_TIER_TOKEN_PURCHASE_LIMIT;
+
+    return this.tokenOptions
+      .map((option): ComputerPartnerVsTokenChoice | undefined => {
+        const definition = getVsEnemyTokenDefinitionForModifierTypeId(option.type.id);
+        const tier = definition?.tier ?? option.type.tier;
+        if (tier === undefined) {
+          return;
+        }
+
+        if (lowerTierLocked && tier < highestAvailableTier) {
+          return;
+        }
+
+        if (option.cost > spendableMoney / 2) {
+          return;
+        }
+
+        const modifier = option.type.newModifier() as EnemyPersistentModifier | null;
+        if (!modifier) {
+          return;
+        }
+
+        const targetPlayerIndexes = this.getVsEnemyTokenEligibleTargetPlayerIndexes(modifier);
+        if (targetPlayerIndexes.length === 0) {
+          return;
+        }
+
+        return {
+          option,
+          modifier,
+          targetPlayerIndexes,
+          tier,
+          isHighestAvailableTier: tier === highestAvailableTier,
+        };
+      })
+      .filter((choice): choice is ComputerPartnerVsTokenChoice => !!choice)
+      .sort((a, b) => b.tier - a.tier || b.option.cost - a.option.cost)[0];
+  }
+
+  private async applyComputerPartnerVsTokenChoice(
+    choice: ComputerPartnerVsTokenChoice,
+  ): Promise<string | undefined> {
+    await Promise.all(
+      choice.targetPlayerIndexes.map(targetPlayerIndex =>
+        globalScene.addVsEnemyModifier(
+          targetPlayerIndex,
+          choice.modifier.clone() as EnemyPersistentModifier,
+          false,
+          true,
+        )
+      ),
+    );
+
+    if (!activeOverrides.WAIVE_ROLL_FEE_OVERRIDE) {
+      globalScene.setPlayerMoney(globalScene.getPlayerMoney(this.playerIndex) - choice.option.cost, this.playerIndex);
+      globalScene.updateMoneyText();
+      globalScene.animateMoneyChanged(false);
+    }
+
+    const purchaseState = globalScene.getVsEnemyTokenPurchaseState(this.playerIndex);
+    globalScene.setVsEnemyTokenPurchaseState(this.playerIndex, {
+      lowerTierPurchasesSinceHighest: choice.isHighestAvailableTier
+        ? 0
+        : purchaseState.lowerTierPurchasesSinceHighest + 1,
+    });
+    audioManager.playSound("se/buy");
+    globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("vs-token-purchased");
+
+    const partnerName = getComputerPartnerProfile(globalScene.getComputerPartnerKey(this.playerIndex)).name;
+    return `${partnerName}: Purchased ${choice.option.type.name} for opposing lanes.`;
   }
 
   private skipComputerPartnerReward(): void {
@@ -482,16 +613,17 @@ export class SelectModifierPhase extends BattlePhase {
       return false;
     }
 
-    const targetPlayerIndex = this.getVsEnemyTokenTargetPlayerIndex();
-    const existingModifier = globalScene
-      .getVsEnemyModifiersForPlayer(targetPlayerIndex)
-      .find(existing => existing.match(modifier));
-    if (existingModifier && existingModifier.getStackCount() >= existingModifier.getMaxStackCount()) {
+    const targetPlayerIndexes = this.getVsEnemyTokenEligibleTargetPlayerIndexes(modifier);
+    if (targetPlayerIndexes.length === 0) {
       globalScene.ui.playError();
       return false;
     }
 
-    void globalScene.addVsEnemyModifier(targetPlayerIndex, modifier, false, true).then(() => {
+    void Promise.all(
+      targetPlayerIndexes.map(targetPlayerIndex =>
+        globalScene.addVsEnemyModifier(targetPlayerIndex, modifier.clone() as EnemyPersistentModifier, false, true)
+      ),
+    ).then(() => {
       if (!activeOverrides.WAIVE_ROLL_FEE_OVERRIDE) {
         globalScene.setPlayerMoney(globalScene.getPlayerMoney(this.playerIndex) - cost, this.playerIndex);
         globalScene.updateMoneyText();

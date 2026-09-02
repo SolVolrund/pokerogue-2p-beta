@@ -1423,6 +1423,14 @@ export class GameData {
               .map(modifier => new PersistentModifierData(modifier, false)),
           )
         : undefined,
+      vsEnemyTokenPurchaseStateByPlayer: globalScene.twoPlayerVsMode
+        ? Object.fromEntries(
+            ([0, 1, 2] as PlayerIndex[]).map(playerIndex => [
+              playerIndex,
+              globalScene.getVsEnemyTokenPurchaseState(playerIndex),
+            ]),
+          )
+        : undefined,
       arena: new ArenaData(globalScene.arena),
       pokeballCounts: globalScene.pokeballCounts,
       money: Math.floor(globalScene.money),
@@ -1778,6 +1786,7 @@ export class GameData {
     }
 
     globalScene.clearVsEnemyModifiers();
+    globalScene.resetVsEnemyTokenPurchaseStates();
     if (globalScene.twoPlayerVsMode) {
       for (const playerIndex of globalScene.getActivePlayerIndexes()) {
         const laneModifiers = fromSession.vsEnemyModifiersByPlayer?.[playerIndex] ?? [];
@@ -1787,6 +1796,7 @@ export class GameData {
             globalScene.addVsEnemyModifier(playerIndex, modifier, true);
           }
         }
+        globalScene.setVsEnemyTokenPurchaseState(playerIndex, fromSession.vsEnemyTokenPurchaseStateByPlayer?.[playerIndex]);
       }
       globalScene.refreshPlayerModifierBar();
     }
@@ -2147,6 +2157,21 @@ export class GameData {
             return ret;
           });
         }
+
+        case "vsEnemyTokenPurchaseStateByPlayer":
+          return Object.fromEntries(
+            Object.entries((v ?? {}) as Record<string, { lowerTierPurchasesSinceHighest?: unknown }>).map(
+              ([playerIndex, state]) => [
+                playerIndex,
+                {
+                  lowerTierPurchasesSinceHighest: Math.max(
+                    0,
+                    Math.floor(Number(state?.lowerTierPurchasesSinceHighest ?? 0)),
+                  ),
+                },
+              ],
+            ),
+          );
 
         case "arena":
           return new ArenaData(v as SerializedArenaData);

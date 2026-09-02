@@ -20,7 +20,7 @@ import { type HealAttr, type Move, WeatherHealAttr } from "#moves/move";
 import { getMoveTargets } from "#moves/move-utils";
 import type { PokemonMove } from "#moves/pokemon-move";
 import type { TurnMove } from "#types/turn-move";
-import { getAiMoveTargetData } from "#utils/ai-targeting";
+import { getAiMoveTargetData, getAiRelevantOpponents } from "#utils/ai-targeting";
 import { BooleanHolder } from "#utils/common";
 
 const FAIL_SCORE = -100_000;
@@ -238,7 +238,7 @@ export function getPlannerSwitchIndex(
 ): number | undefined {
   installPlannerDebugConsoleHelper();
 
-  if (partyMemberScores.length === 0 || activePokemon.getOpponents().length === 0) {
+  if (partyMemberScores.length === 0 || getAiRelevantOpponents(activePokemon).length === 0) {
     return;
   }
 
@@ -252,8 +252,7 @@ export function getPlannerSwitchIndex(
   const bestScore = Math.max(...partyMemberScores.map(([, score]) => score));
   const bestAdjustedScore = bestScore * switchMultiplier;
   const hpRatio = activePokemon.getHpRatio();
-  const canThreatenKo = activePokemon
-    .getOpponents()
+  const canThreatenKo = getAiRelevantOpponents(activePokemon)
     .some(opponent => estimateBestDamage(activePokemon, opponent).damage >= getPlannerHp(opponent, activePokemon));
   const currentIncoming = estimateIncomingDamageDetailed(activePokemon);
   const currentIncomingDamage = currentIncoming.incomingDamage;
@@ -392,7 +391,11 @@ export function getPlannerRepositionTarget(
 ): FieldPosition | undefined {
   installPlannerDebugConsoleHelper();
 
-  if ((globalScene.currentBattle?.getBattlerCount() ?? 1) < 3 || activePokemon.getOpponents().length === 0) {
+  if (
+    globalScene.twoPlayerVsMode
+    || (globalScene.currentBattle?.getBattlerCount() ?? 1) < 3
+    || getAiRelevantOpponents(activePokemon).length === 0
+  ) {
     return;
   }
 
@@ -3042,14 +3045,12 @@ function estimateBestDamageByCategory(
 }
 
 function estimateIncomingDamage(user: Pokemon): number {
-  return user
-    .getOpponents()
+  return getAiRelevantOpponents(user)
     .reduce((highestDamage, opponent) => Math.max(highestDamage, estimateBestDamage(opponent, user).damage), 0);
 }
 
 function estimateIncomingDamageDetailed(user: Pokemon): PlannerIncomingDamageEstimate {
-  const threats = user
-    .getOpponents()
+  const threats = getAiRelevantOpponents(user)
     .map(
       opponent =>
         opponent
@@ -3350,7 +3351,7 @@ function getAverageActiveFieldMaxHp(): number {
 }
 
 function getBestOffensivePressure(user: Pokemon): PlannerOffensivePressure {
-  return user.getOpponents().reduce<PlannerOffensivePressure>(
+  return getAiRelevantOpponents(user).reduce<PlannerOffensivePressure>(
     (best, opponent) => {
       const damage = estimateBestDamage(user, opponent).damage;
       const opponentHp = getPlannerHp(opponent, user);
@@ -3374,7 +3375,7 @@ function targetReliesOnAttackCategory(
   category: MoveCategory.PHYSICAL | MoveCategory.SPECIAL,
 ): boolean {
   const oppositeCategory = category === MoveCategory.PHYSICAL ? MoveCategory.SPECIAL : MoveCategory.PHYSICAL;
-  const defenders = target.getOpponents();
+  const defenders = getAiRelevantOpponents(target);
   const categoryDamage = defenders.reduce(
     (best, defender) => Math.max(best, estimateBestDamageByCategory(target, defender, category)),
     0,
@@ -3511,7 +3512,7 @@ function hasSpreadDamagePressure(attacker: Pokemon, defender: Pokemon): boolean 
 }
 
 function getAverageMatchupScore(pokemon: Pokemon): number {
-  const opponents = pokemon.getOpponents();
+  const opponents = getAiRelevantOpponents(pokemon);
   if (opponents.length === 0) {
     return 0;
   }

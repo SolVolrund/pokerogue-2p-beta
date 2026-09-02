@@ -13,6 +13,7 @@ import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
 import { PokemonMove } from "#moves/pokemon-move";
 import type { CommandPhase } from "#phases/command-phase";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
+import { shouldRedactCombatInputOwner } from "#ui/private-input-display";
 import { addTextObject, getTextColor } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { fixedInt, getLocalizedSpriteKey, padInt } from "#utils/common";
@@ -209,7 +210,7 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
         break;
     }
 
-    if (success) {
+    if (success && !this.isMoveChoiceRedacted()) {
       ui.playSelect();
     }
 
@@ -221,6 +222,14 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
    * @param visible - The visibility of the info overlay; the move names and cursor's visibility will be set to the opposite
    */
   toggleInfo(visible: boolean): void {
+    if (this.isMoveChoiceRedacted()) {
+      this.movesContainer.setVisible(true).setAlpha(1);
+      this.cursorObj?.setVisible(false).setAlpha(1);
+      this.setInfoVis(false);
+      this.moveInfoOverlay.clear();
+      return;
+    }
+
     // The info overlay will already fade in, so we should hide the move name text and cursor immediately
     // rather than adjusting alpha via a tween.
     if (visible) {
@@ -272,6 +281,15 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
     this.setInfoVis(hasMove);
 
     if (!hasMove) {
+      return;
+    }
+
+    if (this.isMoveChoiceRedacted()) {
+      this.setInfoVis(false);
+      this.moveInfoOverlay.clear();
+      pokemon.getOpponents().forEach(opponent => {
+        (opponent as EnemyPokemon).updateEffectiveness();
+      });
       return;
     }
 
@@ -347,8 +365,13 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
     }
 
     this.cursorObj.setPosition(13 + (cursor % 2 === 1 ? 114 : 0), -31 + (cursor >= 2 ? 15 : 0));
+    this.cursorObj.setVisible(!this.isMoveChoiceRedacted());
 
     return changed;
+  }
+
+  private isMoveChoiceRedacted(): boolean {
+    return shouldRedactCombatInputOwner();
   }
 
   /**
@@ -388,6 +411,15 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
       if (moveIndex < moveset.length) {
         const pokemonMove = moveset[moveIndex]!; // TODO is the bang correct?
         const displayPokemonMove = this.getDisplayPokemonMove(pokemon, pokemonMove);
+        if (this.isMoveChoiceRedacted()) {
+          moveText
+            .setText("???")
+            .setName("text-redacted-move")
+            .setColor(getTextColor(TextStyle.WINDOW, false));
+          this.movesContainer.add(moveText);
+          continue;
+        }
+
         moveText
           .setText(displayPokemonMove?.getName() ?? pokemonMove.getName())
           .setName(displayPokemonMove?.getName() ?? pokemonMove.getName())

@@ -700,7 +700,11 @@ export class EncounterPhase extends BattlePhase {
   }
 
   getComputerPartnerCaptureAnnouncement(): ComputerPartnerCaptureAnnouncement | undefined {
-    if (!globalScene.twoPlayerComputerPartner || globalScene.currentBattle.battleType !== BattleType.WILD) {
+    if (
+      globalScene.twoPlayerVsMode
+      || !globalScene.twoPlayerComputerPartner
+      || globalScene.currentBattle.battleType !== BattleType.WILD
+    ) {
       return;
     }
 

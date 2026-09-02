@@ -12,6 +12,10 @@ export interface MysteryEncounterPlayerMenuConfig {
   startingCursorIndex?: number;
   slideInDescription?: boolean;
   optionRowSpacing?: number;
+  privateOwnerPlayerIndex?: PlayerIndex;
+  privateWaitingQuery?: string;
+  privateOptionLabel?: string;
+  privateOptionTooltip?: string;
   computerPartnerOption?: MysteryEncounterComputerPartnerOptionConfig;
 }
 
@@ -51,6 +55,10 @@ export async function showMysteryEncounterPlayerMenu({
   startingCursorIndex = 0,
   slideInDescription = false,
   optionRowSpacing,
+  privateOwnerPlayerIndex,
+  privateWaitingQuery,
+  privateOptionLabel,
+  privateOptionTooltip,
   computerPartnerOption,
 }: MysteryEncounterPlayerMenuConfig): Promise<boolean | undefined> {
   if (computerPartnerOption && globalScene.isComputerPartnerPlayer(playerIndex)) {
@@ -69,6 +77,10 @@ export async function showMysteryEncounterPlayerMenu({
       overrideOptions,
       startingCursorIndex,
       optionRowSpacing,
+      privateOwnerPlayerIndex,
+      privateWaitingQuery,
+      privateOptionLabel,
+      privateOptionTooltip,
     });
   });
   return undefined;

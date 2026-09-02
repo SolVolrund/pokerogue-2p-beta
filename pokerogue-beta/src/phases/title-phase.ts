@@ -908,7 +908,17 @@ export class TitlePhase extends Phase {
           return true;
         },
       },
-      unavailableVsOption(),
+      {
+        label: "P.Vs.P.Vs.P",
+        handler: () => {
+          if (gameMode === GameModes.DAILY) {
+            showDailyMultiplayerUnavailable();
+          } else {
+            this.startMultiplayerRun(gameMode, 3, 6, [], true);
+          }
+          return true;
+        },
+      },
       unavailableVsOption(),
       {
         label: "P.Vs.C",
@@ -916,13 +926,22 @@ export class TitlePhase extends Phase {
           if (gameMode === GameModes.DAILY) {
             showDailyMultiplayerUnavailable();
           } else {
-            this.setComputerPartner(1, "alex");
-            this.startMultiplayerRun(gameMode, 2, 6, [1], true);
+            this.showComputerPartnerSelect(gameMode, 2, undefined, undefined, [1], true);
           }
           return true;
         },
       },
-      unavailableVsOption(),
+      {
+        label: "P.Vs.C.Vs.C",
+        handler: () => {
+          if (gameMode === GameModes.DAILY) {
+            showDailyMultiplayerUnavailable();
+          } else {
+            this.showComputerPartnerSelect(gameMode, 3, undefined, undefined, [1, 2], true);
+          }
+          return true;
+        },
+      },
       {
         label: i18next.t("menu:cancel"),
         handler: () => {
@@ -951,6 +970,7 @@ export class TitlePhase extends Phase {
     firstPartnerKey?: ComputerPartnerKey,
     firstPartnerRolePreferences?: ComputerPartnerRolePreferences,
     computerPartnerPlayerIndexes?: PlayerIndex[],
+    vsMode = false,
   ): void {
     const selectedComputerPartnerPlayerIndexes = this.getComputerPartnerSelectionIndexes(
       playerCount,
@@ -984,6 +1004,7 @@ export class TitlePhase extends Phase {
               firstPartnerKey,
               firstPartnerRolePreferences,
               selectedComputerPartnerPlayerIndexes,
+              vsMode,
             );
             return true;
           }
@@ -995,6 +1016,7 @@ export class TitlePhase extends Phase {
               key,
               undefined,
               selectedComputerPartnerPlayerIndexes,
+              vsMode,
             );
             return true;
           }
@@ -1002,6 +1024,10 @@ export class TitlePhase extends Phase {
           this.setComputerPartner(firstPartnerPlayerIndex, firstPartnerKey ?? key, firstPartnerRolePreferences);
           if (selectedComputerPartnerPlayerIndexes.length > 1) {
             this.setComputerPartner(currentPartnerPlayerIndex, key);
+          }
+          if (vsMode) {
+            this.startMultiplayerRun(gameMode, playerCount, 6, selectedComputerPartnerPlayerIndexes, true);
+            return true;
           }
           this.showTwoPlayerModeSelect(gameMode, playerCount, selectedComputerPartnerPlayerIndexes);
           return true;
@@ -1029,6 +1055,7 @@ export class TitlePhase extends Phase {
             undefined,
             undefined,
             selectedComputerPartnerPlayerIndexes,
+            vsMode,
           );
         } else {
           this.showPlayerCountSelect(gameMode);
@@ -1039,7 +1066,7 @@ export class TitlePhase extends Phase {
     });
 
     this.showOptionSelectWithText(
-      `${i18next.t("menu:selectComputerPartner")} (${playerLabel})`,
+      `${vsMode ? "Choose CPU Opponent" : i18next.t("menu:selectComputerPartner")} (${playerLabel})`,
       options,
       {
         gridLayout: {
@@ -1072,6 +1099,7 @@ export class TitlePhase extends Phase {
     firstPartnerKey?: ComputerPartnerKey,
     firstPartnerRolePreferences?: ComputerPartnerRolePreferences,
     computerPartnerPlayerIndexes?: PlayerIndex[],
+    vsMode = false,
     partySlot = 2,
     rolePreferences: ComputerPartnerRolePreferences = [],
   ): void {
@@ -1094,6 +1122,7 @@ export class TitlePhase extends Phase {
           firstPartnerKey,
           firstPartnerRolePreferences,
           selectedComputerPartnerPlayerIndexes,
+          vsMode,
           partySlot + 1,
           nextRolePreferences,
         );
@@ -1107,6 +1136,7 @@ export class TitlePhase extends Phase {
           key,
           nextRolePreferences,
           selectedComputerPartnerPlayerIndexes,
+          vsMode,
         );
         return;
       }
@@ -1118,6 +1148,10 @@ export class TitlePhase extends Phase {
       );
       if (selectedComputerPartnerPlayerIndexes.length > 1) {
         this.setComputerPartner(currentPartnerPlayerIndex, key, nextRolePreferences);
+      }
+      if (vsMode) {
+        this.startMultiplayerRun(gameMode, playerCount, 6, selectedComputerPartnerPlayerIndexes, true);
+        return;
       }
       this.showTwoPlayerModeSelect(gameMode, playerCount, selectedComputerPartnerPlayerIndexes);
     };
@@ -1160,6 +1194,7 @@ export class TitlePhase extends Phase {
             firstPartnerKey,
             firstPartnerRolePreferences,
             selectedComputerPartnerPlayerIndexes,
+            vsMode,
           );
           return true;
         },

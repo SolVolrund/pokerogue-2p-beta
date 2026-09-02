@@ -55,6 +55,10 @@ export class AttemptCapturePhase extends PokemonPhase {
       return this.end();
     }
 
+    if (globalScene.twoPlayerVsMode && pokemon.getFieldIndex() !== this.getCapturingPlayerFieldIndex()) {
+      return this.end();
+    }
+
     if (globalScene.currentBattle.capturedBattlerIndexesThisTurn.has(this.battlerIndex) || !this.canSpendPokeball()) {
       return this.end();
     }

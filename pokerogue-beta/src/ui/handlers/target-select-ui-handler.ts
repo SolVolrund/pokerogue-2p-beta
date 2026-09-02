@@ -8,6 +8,7 @@ import { UiMode } from "#enums/ui-mode";
 import type { Pokemon } from "#field/pokemon";
 import type { ModifierBar } from "#modifiers/modifier";
 import { getMoveTargets } from "#moves/move-utils";
+import { shouldRedactCombatInputOwner } from "#ui/private-input-display";
 import { UiHandler } from "#ui/ui-handler";
 import { fixedInt } from "#utils/common";
 import { isEnemyBattlerIndex, isPlayerBattlerIndex } from "#utils/battler-index-utils";
@@ -24,7 +25,7 @@ export class TargetSelectUiHandler extends UiHandler {
 
   private isMultipleTargets = false;
   private targets: BattlerIndex[];
-  private targetsHighlighted: Pokemon[];
+  private targetsHighlighted: Pokemon[] = [];
   private targetFlashTween: Phaser.Tweens.Tween | null;
   private enemyModifiers: ModifierBar;
   private targetBattleInfoMoveTween: Phaser.Tweens.Tween[] = [];
@@ -155,7 +156,7 @@ export class TargetSelectUiHandler extends UiHandler {
       }
     }
 
-    if (success) {
+    if (success && !shouldRedactCombatInputOwner()) {
       ui.playSelect();
     }
 
@@ -214,18 +215,15 @@ export class TargetSelectUiHandler extends UiHandler {
 
   setCursor(cursor: number): boolean {
     const singleTarget = globalScene.getField()[cursor];
-    const multipleTargets = this.targets.map(index => globalScene.getField()[index]);
+    const multipleTargets = this.targets.map(index => globalScene.getField()[index]).filter((pokemon): pokemon is Pokemon => !!pokemon);
 
-    this.targetsHighlighted = this.isMultipleTargets ? multipleTargets : [singleTarget];
+    this.resetTargetVisuals(multipleTargets);
+    this.targetsHighlighted = this.isMultipleTargets ? multipleTargets : singleTarget ? [singleTarget] : [];
 
     const ret = super.setCursor(cursor);
 
-    if (this.targetFlashTween) {
-      this.targetFlashTween.stop();
-      for (const pokemon of multipleTargets) {
-        pokemon.setAlpha(pokemon.getTag(SubstituteTag) ? 0.5 : 1);
-        this.highlightItems(pokemon.id, 1);
-      }
+    if (shouldRedactCombatInputOwner()) {
+      return ret;
     }
 
     this.targetFlashTween = globalScene.tweens.add({
@@ -243,13 +241,6 @@ export class TargetSelectUiHandler extends UiHandler {
         }
       },
     });
-
-    if (this.targetBattleInfoMoveTween.length > 0) {
-      this.targetBattleInfoMoveTween.filter(t => t !== undefined).forEach(tween => tween.stop());
-      for (const pokemon of multipleTargets) {
-        pokemon.getBattleInfo().resetY();
-      }
-    }
 
     const targetsBattleInfo = this.targetsHighlighted.map(target => target.getBattleInfo());
 
@@ -269,29 +260,34 @@ export class TargetSelectUiHandler extends UiHandler {
   }
 
   eraseCursor() {
+    this.resetTargetVisuals(this.targetsHighlighted);
+  }
+
+  private highlightItems(targetId: number, val: number): void {
+    if (!this.enemyModifiers) {
+      return;
+    }
+    const targetItems = this.enemyModifiers.getAll("name", targetId.toString());
+    for (const item of targetItems as Phaser.GameObjects.Container[]) {
+      item.setAlpha(val);
+    }
+  }
+
+  private resetTargetVisuals(targets: Pokemon[]): void {
     if (this.targetFlashTween) {
       this.targetFlashTween.stop();
       this.targetFlashTween = null;
-    }
-
-    for (const pokemon of this.targetsHighlighted) {
-      pokemon.setAlpha(pokemon.getTag(SubstituteTag) ? 0.5 : 1);
-      this.highlightItems(pokemon.id, 1);
     }
 
     if (this.targetBattleInfoMoveTween.length > 0) {
       this.targetBattleInfoMoveTween.filter(t => t !== undefined).forEach(tween => tween.stop());
       this.targetBattleInfoMoveTween = [];
     }
-    for (const pokemon of this.targetsHighlighted) {
-      pokemon.getBattleInfo().resetY();
-    }
-  }
 
-  private highlightItems(targetId: number, val: number): void {
-    const targetItems = this.enemyModifiers.getAll("name", targetId.toString());
-    for (const item of targetItems as Phaser.GameObjects.Container[]) {
-      item.setAlpha(val);
+    for (const pokemon of targets) {
+      pokemon.setAlpha(pokemon.getTag(SubstituteTag) ? 0.5 : 1);
+      this.highlightItems(pokemon.id, 1);
+      pokemon.getBattleInfo().resetY();
     }
   }
 

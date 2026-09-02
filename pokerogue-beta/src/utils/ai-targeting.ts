@@ -39,8 +39,43 @@ export function getAiMoveTargetData(user: Pokemon, moveId: MoveId): AiMoveTarget
   };
 }
 
+export function getAiRelevantOpponents(user: Pokemon): Pokemon[] {
+  return filterAiRelevantOpponentsForPosition(user, user.getOpponents(), user.getFieldIndex(), user.fieldPosition);
+}
+
+export function filterAiRelevantOpponentsForPosition(
+  referencePokemon: Pokemon,
+  opponents: Pokemon[],
+  fieldIndex = referencePokemon.getFieldIndex(),
+  fieldPosition = referencePokemon.fieldPosition,
+): Pokemon[] {
+  if (globalScene.twoPlayerVsMode) {
+    return opponents.filter(
+      opponent =>
+        isForcedDuelOpponent(referencePokemon, opponent)
+        || isForcedDuelAlly(referencePokemon, opponent)
+        || opponent.getFieldIndex() === fieldIndex,
+    );
+  }
+
+  if ((globalScene.currentBattle?.getBattlerCount() ?? 1) < 3) {
+    return opponents;
+  }
+
+  return opponents.filter(
+    opponent =>
+      isForcedDuelOpponent(referencePokemon, opponent)
+      || isForcedDuelAlly(referencePokemon, opponent)
+      || areAiFieldPositionsAdjacent(fieldPosition, opponent.fieldPosition),
+  );
+}
+
 export function shouldAiRepositionToCenter(user: Pokemon): boolean {
-  if ((globalScene.currentBattle?.getBattlerCount() ?? 1) < 3 || user.fieldPosition === FieldPosition.CENTER) {
+  if (
+    globalScene.twoPlayerVsMode
+    || (globalScene.currentBattle?.getBattlerCount() ?? 1) < 3
+    || user.fieldPosition === FieldPosition.CENTER
+  ) {
     return false;
   }
 
@@ -84,12 +119,19 @@ function areAiBattlersAdjacent(user: Pokemon, target: Pokemon): boolean {
     return true;
   }
 
-  const userCenter = user.fieldPosition === FieldPosition.CENTER;
-  const targetCenter = target.fieldPosition === FieldPosition.CENTER;
-
   if (areBattlerIndexesAllies(userIndex, targetIndex)) {
-    return userCenter || targetCenter;
+    return areAiFieldPositionsAdjacent(user.fieldPosition, target.fieldPosition, true);
   }
 
-  return userCenter || targetCenter || user.fieldPosition === target.fieldPosition;
+  return areAiFieldPositionsAdjacent(user.fieldPosition, target.fieldPosition);
+}
+
+function areAiFieldPositionsAdjacent(
+  userPosition: FieldPosition,
+  targetPosition: FieldPosition,
+  sameSide = false,
+): boolean {
+  const userCenter = userPosition === FieldPosition.CENTER;
+  const targetCenter = targetPosition === FieldPosition.CENTER;
+  return sameSide ? userCenter || targetCenter : userCenter || targetCenter || userPosition === targetPosition;
 }

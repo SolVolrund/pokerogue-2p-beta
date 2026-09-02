@@ -12,6 +12,7 @@ import type { PlayerPokemon } from "#field/pokemon";
 import type { CommandPhase } from "#phases/command-phase";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { PartyUiHandler } from "#ui/party-ui-handler";
+import { shouldRedactCombatInputOwner } from "#ui/private-input-display";
 import { addTextObject } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { canTerastallize } from "#utils/pokemon-utils";
@@ -251,7 +252,7 @@ export class CommandUiHandler extends UiHandler {
       }
     }
 
-    if (success) {
+    if (success && !shouldRedactCombatInputOwner()) {
       ui.playSelect();
     }
 
@@ -333,6 +334,7 @@ export class CommandUiHandler extends UiHandler {
   private shouldShowTriplePokemonMenu(): boolean {
     return (
       globalScene.twoPlayerMode
+      && !globalScene.twoPlayerVsMode
       && globalScene.getPlayerFieldOwners().length > 2
       && (globalScene.currentBattle?.getBattlerCount() ?? 1) > 2
     );
@@ -419,12 +421,12 @@ export class CommandUiHandler extends UiHandler {
       tone: [0.0, 0.0, 0.0, 0.0],
       ignoreTimeTint: true,
       teraColor: getTypeRgb(activePokemon.getTeraType()),
-      isTerastallized: this.getCursor() === Command.TERA,
+      isTerastallized: !shouldRedactCombatInputOwner() && this.getCursor() === Command.TERA,
     });
   }
 
   toggleZMoveButton() {
-    const selected = this.getCursor() === Command.Z_MOVE;
+    const selected = !shouldRedactCombatInputOwner() && this.getCursor() === Command.Z_MOVE;
 
     this.updateZMoveButtonFrame();
     this.zMoveButton?.setAlpha(selected ? 1 : 0.8);
@@ -455,7 +457,7 @@ export class CommandUiHandler extends UiHandler {
     this.toggleTeraButton();
     this.toggleZMoveButton();
 
-    if (cursor === Command.TERA || cursor === Command.Z_MOVE) {
+    if (shouldRedactCombatInputOwner() || cursor === Command.TERA || cursor === Command.Z_MOVE) {
       this.cursorObj.setVisible(false);
     } else {
       this.cursorObj.setPosition(-5 + (cursor % 2 === 1 ? 56 : 0), 8 + (cursor >= 2 ? 16 : 0));

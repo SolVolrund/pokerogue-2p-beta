@@ -981,6 +981,10 @@ export class OptionSelectSettings {
   overrideOptions?: MysteryEncounterOption[];
   startingCursorIndex?: number;
   optionRowSpacing?: number;
+  privateOwnerPlayerIndex?: PlayerIndex;
+  privateWaitingQuery?: string;
+  privateOptionLabel?: string;
+  privateOptionTooltip?: string;
 }
 
 /**

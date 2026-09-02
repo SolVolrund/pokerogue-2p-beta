@@ -54,7 +54,7 @@ export class EnemyCommandPhase extends FieldPhase {
       this.skipTurn = true;
     }
 
-    if (!this.skipTurn && shouldAiRepositionToCenter(enemyPokemon)) {
+    if (!globalScene.twoPlayerVsMode && !this.skipTurn && shouldAiRepositionToCenter(enemyPokemon)) {
       battle.turnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = {
         command: Command.REPOSITION,
         cursor: FieldPosition.CENTER,
@@ -65,7 +65,7 @@ export class EnemyCommandPhase extends FieldPhase {
     }
 
     const usePlannerAi = globalScene.plannerAiEnabled && enemyPokemon.aiType === AiType.PLANNER;
-    if (!this.skipTurn && usePlannerAi) {
+    if (!globalScene.twoPlayerVsMode && !this.skipTurn && usePlannerAi) {
       const allyAlreadyRepositioning = globalScene.getEnemyField().some((fieldPokemon, fieldIndex) => {
         if (fieldPokemon === enemyPokemon) {
           return false;
@@ -96,13 +96,14 @@ export class EnemyCommandPhase extends FieldPhase {
      */
     if (
       trainer
+      && !globalScene.twoPlayerVsMode
       && enemyPokemon.getMoveQueue().length === 0
       && !isMysteryEncounterSwitchProtectedPokemon(enemyPokemon)
     ) {
       const opponents = enemyPokemon.getOpponents();
 
       if (!enemyPokemon.isTrapped()) {
-        const partyMemberScores = trainer.getPartyMemberMatchupScores(enemyPokemon.trainerSlot, true);
+        const partyMemberScores = trainer.getPartyMemberMatchupScores(enemyPokemon.trainerSlot, true, enemyPokemon);
 
         if (partyMemberScores.length > 0) {
           const matchupScores = opponents.map(opp => enemyPokemon.getMatchupScore(opp));
@@ -140,7 +141,8 @@ export class EnemyCommandPhase extends FieldPhase {
             && sortedPartyMemberScores[0][1] * switchMultiplier >= matchupScore * (trainer.config.isBoss ? 2 : 3);
 
           if (plannerSwitchIndex !== undefined || legacyShouldSwitch) {
-            const index = plannerSwitchIndex ?? trainer.getNextSummonIndex(enemyPokemon.trainerSlot, partyMemberScores);
+            const index =
+              plannerSwitchIndex ?? trainer.getNextSummonIndex(enemyPokemon.trainerSlot, partyMemberScores, enemyPokemon);
 
             battle.turnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = {
               command: Command.POKEMON,

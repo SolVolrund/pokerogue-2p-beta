@@ -10,7 +10,7 @@ import { ArenaTagSide } from "#enums/arena-tag-side";
 import { Command } from "#enums/command";
 import { SwitchType } from "#enums/switch-type";
 import { getTrainerSlotForFieldIndex } from "#enums/trainer-slot";
-import type { Pokemon } from "#field/pokemon";
+import type { EnemyPokemon, Pokemon } from "#field/pokemon";
 import { SwitchEffectTransferModifier } from "#modifiers/modifier";
 import { SummonPhase } from "#phases/summon-phase";
 import type { MoveAttrString } from "#types/move-types";
@@ -77,9 +77,12 @@ export class SwitchSummonPhase extends SummonPhase {
 
     if (!this.player) {
       if (this.slotIndex === -1) {
+        const referencePokemon = globalScene.getEnemyField()[this.fieldIndex] as EnemyPokemon | undefined;
         //@ts-expect-error
         this.slotIndex = globalScene.currentBattle.trainer?.getNextSummonIndex(
           getTrainerSlotForFieldIndex(this.fieldIndex),
+          undefined,
+          referencePokemon,
         ); // TODO: what would be the default trainer-slot fallback?
       }
       if (isMysteryEncounterSwitchProtectedPokemon(globalScene.getEnemyParty()[this.slotIndex])) {

@@ -83,7 +83,7 @@ export class SwitchPhase extends BattlePhase {
 
     if (isComputerPartnerFieldIndex(fieldIndex)) {
       const switchIndex = this.isModal
-        ? getComputerPartnerBestSwitchIndex(playerIndex)
+        ? getComputerPartnerBestSwitchIndex(playerIndex, fieldIndex)
         : getComputerPartnerImprovedSwitchIndex(fieldIndex);
       if (switchIndex !== undefined) {
         globalScene.phaseManager.unshiftNew(

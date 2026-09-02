@@ -25,6 +25,10 @@ export interface VsEnemyTokenDefinition {
   maxStacks: number;
 }
 
+export interface VsEnemyTokenPurchaseState {
+  lowerTierPurchasesSinceHighest: number;
+}
+
 export const VS_ENEMY_TOKEN_DEFINITIONS: readonly VsEnemyTokenDefinition[] = [
   {
     key: "damage",
@@ -106,6 +110,10 @@ export function getVsEnemyTokenDefinition(key: VsEnemyTokenKey): VsEnemyTokenDef
   return VS_ENEMY_TOKEN_DEFINITIONS.find(definition => definition.key === key);
 }
 
+export function getVsEnemyTokenDefinitionForModifierTypeId(modifierTypeId: string): VsEnemyTokenDefinition | undefined {
+  return VS_ENEMY_TOKEN_DEFINITIONS.find(definition => definition.modifierTypeId === modifierTypeId);
+}
+
 export function getUnlockedVsEnemyTokenTiersForWave(waveIndex: number): ModifierTier[] {
   return VS_ENEMY_TOKEN_TIER_WAVE_UNLOCKS.filter(([, unlockWave]) => waveIndex >= unlockWave).map(([tier]) => tier);
 }
@@ -114,6 +122,7 @@ export function getVsEnemyTokenModifierTypeOptionsForWave(
   waveIndex: number,
   baseCost: number,
   existingModifiers: readonly PersistentModifier[] = [],
+  existingModifierGroups?: readonly (readonly PersistentModifier[])[],
 ): ModifierTypeOption[] {
   const unlockedTiers = new Set(getUnlockedVsEnemyTokenTiersForWave(waveIndex));
   if (unlockedTiers.size === 0) {
@@ -134,15 +143,22 @@ export function getVsEnemyTokenModifierTypeOptionsForWave(
       return [];
     }
 
-    const existingModifier = existingModifiers.find(existing => existing.match(modifier));
-    if (
-      existingModifier
-      && existingModifier.getStackCount() >= Math.min(existingModifier.getMaxStackCount(), definition.maxStacks)
-    ) {
+    const modifierGroups = existingModifierGroups?.length ? existingModifierGroups : [existingModifiers];
+    if (modifierGroups.length > 0 && modifierGroups.every(group => isVsEnemyTokenAtStackLimit(group, modifier, definition))) {
       return [];
     }
 
     const costMultiplier = VS_ENEMY_TOKEN_TIER_COST_MULTIPLIERS.get(definition.tier) ?? 1;
     return [new ModifierTypeOption(modifierType, 0, Math.max(baseCost * costMultiplier, 1))];
   });
+}
+
+export function isVsEnemyTokenAtStackLimit(
+  existingModifiers: readonly PersistentModifier[],
+  modifier: PersistentModifier,
+  definition: VsEnemyTokenDefinition | undefined = getVsEnemyTokenDefinitionForModifierTypeId(modifier.type.id),
+): boolean {
+  const maxStacks = Math.min(modifier.getMaxStackCount(), definition?.maxStacks ?? modifier.getMaxStackCount());
+  const existingModifier = existingModifiers.find(existing => existing.match(modifier));
+  return !!existingModifier && existingModifier.getStackCount() >= maxStacks;
 }

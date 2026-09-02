@@ -7,6 +7,7 @@ import { Command } from "#enums/command";
 import type { MoveId } from "#enums/move-id";
 import type { PlayerPokemon } from "#field/pokemon";
 import { getPlannerSwitchIndex } from "#utils/battle-planner-ai";
+import { filterAiRelevantOpponentsForPosition, getAiRelevantOpponents } from "#utils/ai-targeting";
 import { isDawnEntryHazardMove } from "#utils/computer-partner-hazard-support";
 import { getComputerPartnerProfile, isComputerPartnerAcePokemon } from "#utils/computer-partner-profile";
 
@@ -14,9 +15,17 @@ export function isComputerPartnerFieldIndex(fieldIndex: number): boolean {
   return globalScene.isComputerPartnerPlayer(globalScene.getPlayerIndexForFieldSlot(fieldIndex));
 }
 
-export function getComputerPartnerPartyMemberMatchupScores(playerIndex: PlayerIndex): [number, number][] {
+export function getComputerPartnerPartyMemberMatchupScores(
+  playerIndex: PlayerIndex,
+  referencePokemon?: PlayerPokemon,
+): [number, number][] {
   const party = globalScene.getPlayerParty(playerIndex);
-  const enemyField = globalScene.getEnemyField().filter(p => p.isAllowedInBattle());
+  const enemyField = referencePokemon
+    ? filterAiRelevantOpponentsForPosition(
+        referencePokemon,
+        globalScene.getEnemyField().filter(p => p.isAllowedInBattle()),
+      )
+    : globalScene.getEnemyField().filter(p => p.isAllowedInBattle());
 
   return party
     .map((pokemon, partyIndex) => [pokemon, partyIndex] as const)
@@ -68,8 +77,9 @@ export function getComputerPartnerNextSummonIndex(partyMemberScores: [number, nu
   return maxScorePartyMemberIndexes[0];
 }
 
-export function getComputerPartnerBestSwitchIndex(playerIndex: PlayerIndex): number | undefined {
-  const partyMemberScores = getComputerPartnerPartyMemberMatchupScores(playerIndex);
+export function getComputerPartnerBestSwitchIndex(playerIndex: PlayerIndex, fieldIndex?: number): number | undefined {
+  const referencePokemon = fieldIndex === undefined ? undefined : globalScene.getPlayerPokemonForFieldSlot(fieldIndex);
+  const partyMemberScores = getComputerPartnerPartyMemberMatchupScores(playerIndex, referencePokemon);
   return (
     getDawnEntryHazardSwitchIndex(playerIndex, partyMemberScores)
     ?? getComputerPartnerNextSummonIndex(partyMemberScores)
@@ -87,7 +97,11 @@ export function getComputerPartnerImprovedSwitchIndex(
     return;
   }
 
-  const partyMemberScores = getComputerPartnerPartyMemberMatchupScores(playerIndex);
+  if (globalScene.twoPlayerVsMode) {
+    return;
+  }
+
+  const partyMemberScores = getComputerPartnerPartyMemberMatchupScores(playerIndex, playerPokemon);
   if (partyMemberScores.length === 0) {
     return;
   }
@@ -97,7 +111,7 @@ export function getComputerPartnerImprovedSwitchIndex(
     return dawnHazardSwitchIndex;
   }
 
-  const opponents = playerPokemon.getOpponents();
+  const opponents = getAiRelevantOpponents(playerPokemon);
   if (opponents.length === 0) {
     return;
   }

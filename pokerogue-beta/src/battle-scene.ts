@@ -52,6 +52,7 @@ import { allMoves, biomeDepths, modifierTypes } from "#data/data-lists";
 import { getClassicFinalBossDialogue } from "#data/dialogue";
 import { getLevelTotalExp } from "#data/exp";
 import type { FusionComponent } from "#data/fusion-options";
+import type { VsEnemyTokenPurchaseState } from "#data/vs-enemy-tokens";
 import type { SpeciesFormChangeTrigger } from "#data/form-change-triggers";
 import { SpeciesFormChangeManualTrigger, SpeciesFormChangeTimeOfDayTrigger } from "#data/form-change-triggers";
 import { Gender } from "#data/gender";
@@ -709,6 +710,11 @@ export class BattleScene extends SceneBase {
     0: [],
     1: [],
     2: [],
+  };
+  private vsEnemyTokenPurchaseStateByPlayer: Record<PlayerIndex, VsEnemyTokenPurchaseState> = {
+    0: { lowerTierPurchasesSinceHighest: 0 },
+    1: { lowerTierPurchasesSinceHighest: 0 },
+    2: { lowerTierPurchasesSinceHighest: 0 },
   };
   public uiContainer: Phaser.GameObjects.Container;
   public ui: UI;
@@ -3336,6 +3342,8 @@ export class BattleScene extends SceneBase {
 
     this.modifiers = [];
     this.enemyModifiers = [];
+    this.clearVsEnemyModifiers();
+    this.resetVsEnemyTokenPurchaseStates();
     this.modifierBar.removeAll(true);
     this.enemyModifierBar.removeAll(true);
 
@@ -4907,6 +4915,20 @@ export class BattleScene extends SceneBase {
     return this.vsEnemyModifiersByPlayer[playerIndex];
   }
 
+  getVsEnemyTokenPurchaseState(playerIndex: PlayerIndex): VsEnemyTokenPurchaseState {
+    return this.vsEnemyTokenPurchaseStateByPlayer[playerIndex];
+  }
+
+  setVsEnemyTokenPurchaseState(playerIndex: PlayerIndex, state?: Partial<VsEnemyTokenPurchaseState>): void {
+    this.vsEnemyTokenPurchaseStateByPlayer[playerIndex] = {
+      lowerTierPurchasesSinceHighest: Math.max(0, Math.floor(state?.lowerTierPurchasesSinceHighest ?? 0)),
+    };
+  }
+
+  resetVsEnemyTokenPurchaseStates(): void {
+    ([0, 1, 2] as PlayerIndex[]).forEach(playerIndex => this.setVsEnemyTokenPurchaseState(playerIndex));
+  }
+
   /**
    * Try to transfer a held item to another pokemon.
    * If the recepient already has the maximum amount allowed for this item, the transfer is cancelled.
@@ -5520,8 +5542,8 @@ export class BattleScene extends SceneBase {
     }
 
     const fieldIndex = pokemon.getFieldIndex();
-    // Vs mode is two-player lane based: enemy field slot 0 pressures P1, slot 1 pressures P2.
-    return fieldIndex === 0 || fieldIndex === 1 ? (fieldIndex as PlayerIndex) : undefined;
+    // Vs mode is lane based: enemy field slot 0 pressures P1, slot 1 pressures P2, slot 2 pressures P3.
+    return this.getActivePlayerIndexes().includes(fieldIndex as PlayerIndex) ? (fieldIndex as PlayerIndex) : undefined;
   }
 
   private getEnemyModifierListForLane(playerIndex?: PlayerIndex): PersistentModifier[] {

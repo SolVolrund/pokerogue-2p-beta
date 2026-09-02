@@ -5,6 +5,7 @@ import { Command } from "#enums/command";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import type { CommandPhase } from "#phases/command-phase";
+import { shouldRedactCombatInputOwner } from "#ui/private-input-display";
 import { addTextObject, getTextStyleOptions } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { addWindow } from "#ui/ui-theme";
@@ -117,7 +118,7 @@ export class BallUiHandler extends UiHandler {
       }
     }
 
-    if (success) {
+    if (success && !shouldRedactCombatInputOwner()) {
       ui.playSelect();
     }
 
@@ -142,6 +143,7 @@ export class BallUiHandler extends UiHandler {
 
     this.cursorObj.setScale(this.scale * 6);
     this.cursorObj.setPositionRelative(this.pokeballSelectBg, 12, 15 + (6 + this.cursor * 96) * this.scale);
+    this.cursorObj.setVisible(!shouldRedactCombatInputOwner());
 
     return ret;
   }
