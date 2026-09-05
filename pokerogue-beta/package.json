@@ -53,7 +53,8 @@
     "update-submodules": "git submodule update --progress --init --recursive --force --depth 1",
     "update-submodules:remote": "pnpm update-submodules --remote",
     "sample-movesets": "vite-node scripts/gen-moveset/gen-moveset-driver.ts",
-    "species-data:export": "vite-node scripts/species-data-exporter/main.ts"
+    "species-data:export": "vite-node scripts/species-data-exporter/main.ts",
+    "accessory-anchor-lab": "node scripts/accessory-anchor-lab-server.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",

@@ -4,7 +4,6 @@ import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { modifierTypes } from "#data/data-lists";
-import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BerryType } from "#enums/berry-type";
 import { FieldPosition } from "#enums/field-position";
@@ -77,6 +76,8 @@ interface BerriesAboundData {
   numBerries: number;
   skipSelectedDialogueOnce?: boolean;
 }
+
+type BerriesAboundPokemonConfig = NonNullable<EnemyPartyConfig["pokemonConfigs"]>[number];
 
 function getBerriesAboundData(): BerriesAboundData {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
@@ -270,8 +271,40 @@ function getRaceResult(playerIndex: PlayerIndex): {
   return { fastestPokemon, speedDiff, berryCount };
 }
 
-function configureEnragedBoss(): EnemyPartyConfig {
-  const config = globalScene.currentBattle.mysteryEncounter!.enemyPartyConfigs[0];
+function getBerriesAboundBossConfig(): BerriesAboundPokemonConfig {
+  return globalScene.currentBattle.mysteryEncounter!.enemyPartyConfigs[0].pokemonConfigs![0];
+}
+
+function getBerriesAboundFieldPosition(fieldIndex: number, battlerCount: number): FieldPosition | undefined {
+  if (battlerCount <= 1) {
+    return undefined;
+  }
+
+  if (battlerCount > 2) {
+    return [FieldPosition.LEFT, FieldPosition.RIGHT, FieldPosition.CENTER][fieldIndex] ?? FieldPosition.CENTER;
+  }
+
+  return fieldIndex === 0 ? FieldPosition.LEFT : FieldPosition.RIGHT;
+}
+
+function createBerriesAboundPokemonConfig(
+  fieldIndex: number,
+  battlerCount: number,
+  enraged: boolean,
+): BerriesAboundPokemonConfig {
+  const baseConfig = getBerriesAboundBossConfig();
+  const config: BerriesAboundPokemonConfig = {
+    ...baseConfig,
+  };
+  const fieldPosition = getBerriesAboundFieldPosition(fieldIndex, battlerCount);
+  if (fieldPosition != null) {
+    config.fieldPosition = fieldPosition;
+  }
+
+  if (!enraged) {
+    return config;
+  }
+
   const statChangesForBattle: (
     | Stat.ATK
     | Stat.DEF
@@ -285,9 +318,11 @@ function configureEnragedBoss(): EnemyPartyConfig {
       ? [Stat.DEF, Stat.SPDEF, Stat.SPD]
       : [Stat.ATK, Stat.DEF, Stat.SPATK, Stat.SPDEF, Stat.SPD];
 
-  config.pokemonConfigs![0].tags = [BattlerTagType.MYSTERY_ENCOUNTER_POST_SUMMON];
-  config.pokemonConfigs![0].mysteryEncounterBattleEffects = (pokemon: Pokemon) => {
-    queueEncounterMessage(`${namespace}:option.2.bossEnraged`);
+  config.tags = [...new Set([...(baseConfig.tags ?? []), BattlerTagType.MYSTERY_ENCOUNTER_POST_SUMMON])];
+  config.mysteryEncounterBattleEffects = (pokemon: Pokemon) => {
+    if (pokemon.getFieldIndex() === 0) {
+      queueEncounterMessage(`${namespace}:option.2.bossEnraged`);
+    }
     globalScene.phaseManager.unshiftNew("StatStageChangePhase", {
       battlerIndex: pokemon.getBattlerIndex(),
       changes: statChangesForBattle.map(stat => ({ stat, stages: 1 })),
@@ -298,31 +333,34 @@ function configureEnragedBoss(): EnemyPartyConfig {
   return config;
 }
 
+function configureEnragedBoss(): EnemyPartyConfig {
+  const baseConfig = globalScene.currentBattle.mysteryEncounter!.enemyPartyConfigs[0];
+  return {
+    ...baseConfig,
+    pokemonConfigs: [createBerriesAboundPokemonConfig(0, 1, true)],
+  };
+}
+
 function createBerriesAboundBattleConfig(battlePlayers: PlayerIndex[], enraged: boolean): EnemyPartyConfig {
   const baseConfig = enraged
     ? configureEnragedBoss()
     : globalScene.currentBattle.mysteryEncounter!.enemyPartyConfigs[0];
-  const fieldPosition = battlePlayers.length > 2 ? FieldPosition.CENTER : undefined;
 
-  const config: EnemyPartyConfig = {
+  return {
     ...baseConfig,
     doubleBattle: battlePlayers.length > 1,
+    pokemonConfigs: battlePlayers.map((_playerIndex, fieldIndex) =>
+      createBerriesAboundPokemonConfig(fieldIndex, battlePlayers.length, enraged),
+    ),
   };
-  if (baseConfig.pokemonConfigs) {
-    config.pokemonConfigs = baseConfig.pokemonConfigs.map((pokemonConfig, index) =>
-      index === 0 && fieldPosition != null ? { ...pokemonConfig, fieldPosition } : pokemonConfig,
-    );
-  }
-  return config;
 }
 
 function queueBerriesAboundStartOfBattleEffects(battlePlayers: PlayerIndex[]): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
-  const bossBattlerIndex = BattlerIndex.ENEMY;
   encounter.startOfBattleEffects.push(
-    ...battlePlayers.map(() => ({
-      sourceBattlerIndex: bossBattlerIndex,
-      targets: [bossBattlerIndex],
+    ...battlePlayers.map((_playerIndex, fieldIndex) => ({
+      sourceBattlerIndex: globalScene.getEnemyBattlerIndex(fieldIndex),
+      targets: [globalScene.getEnemyBattlerIndex(fieldIndex)],
       move: new PokemonMove(MoveId.STOCKPILE),
       useMode: MoveUseMode.IGNORE_PP,
     })),
@@ -330,17 +368,21 @@ function queueBerriesAboundStartOfBattleEffects(battlePlayers: PlayerIndex[]): v
 }
 
 function registerBerriesAboundCaptureClaims(battlePlayers: PlayerIndex[]): void {
-  const boss = globalScene.getEnemyParty()[0];
-  if (!boss) {
+  if (globalScene.getEnemyParty().length === 0) {
     globalScene.currentBattle.computerPartnerCaptureClaims = [];
     globalScene.currentBattle.computerPartnerReservedCaptureTargetIds = [];
     globalScene.currentBattle.computerPartnerReservedCaptureTargetId = undefined;
     return;
   }
 
-  const captureClaim = battlePlayers
-    .map((playerIndex): { playerIndex: PlayerIndex; targetId: number; target: EnemyPokemon } | undefined => {
+  const captureClaims = battlePlayers
+    .map((playerIndex, targetIndex): { playerIndex: PlayerIndex; targetId: number; target: EnemyPokemon } | undefined => {
       if (!globalScene.isComputerPartnerPlayer(playerIndex)) {
+        return undefined;
+      }
+
+      const target = globalScene.getEnemyParty()[targetIndex];
+      if (!target) {
         return undefined;
       }
 
@@ -351,21 +393,21 @@ function registerBerriesAboundCaptureClaims(battlePlayers: PlayerIndex[]): void 
       const replacementScore = getBestComputerPartnerReplacementSlot(
         profile,
         globalScene.getPlayerParty(playerIndex),
-        boss,
+        target,
         globalScene.getPlayerPartyLimit(playerIndex),
       );
-      return replacementScore ? { playerIndex, targetId: boss.id, target: boss } : undefined;
+      return replacementScore ? { playerIndex, targetId: target.id, target } : undefined;
     })
-    .find((claim): claim is { playerIndex: PlayerIndex; targetId: number; target: EnemyPokemon } => !!claim);
+    .filter((claim): claim is { playerIndex: PlayerIndex; targetId: number; target: EnemyPokemon } => !!claim);
 
-  globalScene.currentBattle.computerPartnerCaptureClaims = captureClaim
-    ? [{ playerIndex: captureClaim.playerIndex, targetId: captureClaim.targetId }]
-    : [];
-  globalScene.currentBattle.computerPartnerReservedCaptureTargetIds = captureClaim ? [captureClaim.targetId] : [];
-  globalScene.currentBattle.computerPartnerReservedCaptureTargetId = captureClaim?.targetId;
+  globalScene.currentBattle.computerPartnerCaptureClaims = captureClaims.map(({ playerIndex, targetId }) => ({
+    playerIndex,
+    targetId,
+  }));
+  globalScene.currentBattle.computerPartnerReservedCaptureTargetIds = captureClaims.map(claim => claim.targetId);
+  globalScene.currentBattle.computerPartnerReservedCaptureTargetId = captureClaims[0]?.targetId;
 
-  if (captureClaim) {
-    const claim = captureClaim;
+  for (const claim of captureClaims) {
     const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(claim.playerIndex));
     globalScene.phaseManager.queueMessage(
       `${profile.name} is interested in catching ${claim.target.getNameToRender()}.`,

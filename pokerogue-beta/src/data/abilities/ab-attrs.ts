@@ -4736,7 +4736,12 @@ export class DoubleBerryEffectAbAttr extends AbAttr {
  * Attribute to prevent opposing berry use while on the field.
  * Used by {@linkcode AbilityId.UNNERVE}, {@linkcode AbilityId.AS_ONE_GLASTRIER} and {@linkcode AbilityId.AS_ONE_SPECTRIER}
  */
-export class PreventBerryUseAbAttr extends CancelInteractionAbAttr {}
+export class PreventBerryUseAbAttr extends CancelInteractionAbAttr {
+  private declare readonly _: never;
+  constructor() {
+    super(false);
+  }
+}
 
 export interface PostAllyBerryUsedAbAttrParams extends AbAttrBaseParams {
   /** The allied Pokemon that ate the berry */
