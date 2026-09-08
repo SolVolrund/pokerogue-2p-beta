@@ -284,9 +284,10 @@ export class SummonPhase extends PartyMemberPokemonPhase {
             globalScene.updateModifiers(this.player);
             globalScene.updateFieldScale();
             pokemon.showInfo();
-            pokemon.playAnim();
             pokemon.setVisible(true);
             pokemon.getSprite().setVisible(true);
+            pokemon.playAnim();
+            pokemon.refreshAccessoryOutfitSprites();
             pokemon.setScale(0.5);
             pokemon.tint(getPokeballTintColor(pokemon.getPokeball(true)));
             pokemon.untint(250, "Sine.easeIn");
@@ -304,6 +305,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
                 if (pokemon.summonData.speciesForm) {
                   pokemon.loadAssets(false);
                 }
+                pokemon.refreshAccessoryOutfitSprites();
                 globalScene.time.delayedCall(1000, () => this.end());
               },
             });
@@ -352,9 +354,10 @@ export class SummonPhase extends PartyMemberPokemonPhase {
     globalScene.updateModifiers(this.player);
     globalScene.updateFieldScale();
     pokemon.showInfo();
-    pokemon.playAnim();
     pokemon.setVisible(true);
     pokemon.getSprite().setVisible(true);
+    pokemon.playAnim();
+    pokemon.refreshAccessoryOutfitSprites();
     pokemon.setScale(0.75);
     pokemon.tint(getPokeballTintColor(pokemon.pokeball));
     pokemon.untint(250, "Sine.easeIn");
@@ -377,6 +380,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
         pokemon.getSprite().clearTint();
         pokemon.fieldSetup();
         globalScene.updateFieldScale();
+        pokemon.refreshAccessoryOutfitSprites();
         globalScene.time.delayedCall(1000, () => this.end());
       },
     });

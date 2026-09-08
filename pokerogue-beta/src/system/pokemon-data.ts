@@ -1,6 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import type { PlayerIndex } from "#app/battle-scene";
 import type { Gender } from "#data/gender";
+import type { PokemonAccessoryOutfitItem } from "#data/pokemon-accessory-anchors";
 import { CustomPokemonData, PokemonBattleData, PokemonSummonData } from "#data/pokemon-data";
 import { FusionOptions } from "#data/fusion-options";
 import { Status } from "#data/status-effect";
@@ -47,6 +48,8 @@ export class PokemonData {
   public luck: number;
   public pauseEvolutions: boolean;
   public pokerus: boolean;
+  public ace: boolean;
+  public accessoryOutfit: PokemonAccessoryOutfitItem[];
   public usedTMs: MoveId[];
   public teraType: PokemonType;
   public isTerastallized: boolean;
@@ -125,6 +128,8 @@ export class PokemonData {
     this.luck = source.luck ?? (source.shiny ? source.variant + 1 : 0);
     this.pauseEvolutions = !!source.pauseEvolutions;
     this.pokerus = !!source.pokerus;
+    this.ace = !!source.ace;
+    this.accessoryOutfit = source.accessoryOutfit?.map((item: PokemonAccessoryOutfitItem) => ({ ...item })) ?? [];
     this.usedTMs = source.usedTMs ?? [];
     this.teraType = source.teraType as PokemonType;
     this.isTerastallized = !!source.isTerastallized;

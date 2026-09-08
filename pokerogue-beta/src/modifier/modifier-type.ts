@@ -1969,8 +1969,7 @@ class SpeciesStatBoosterModifierTypeGenerator extends ModifierTypeGenerator {
       for (const p of party) {
         const speciesId = p.getSpeciesForm(true).speciesId;
         const fusionSpeciesId = p.isFusion() ? p.getFusionSpeciesForm(true).speciesId : null;
-        // TODO: Use commented boolean when Fling is implemented
-        const hasFling = false; /* p.getMoveset(true).some(m => m.moveId === MoveId.FLING) */
+        const hasFling = p.getMoveset(true).some(m => m.moveId === MoveId.FLING);
 
         for (const i in values) {
           const checkedSpecies = values[i].species;

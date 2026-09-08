@@ -3765,6 +3765,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       [1, MoveId.DEFENSE_CURL],
       [1, MoveId.SPLASH],
       [1, MoveId.FORESIGHT],
+      [1, MoveId.SWITCHEROO],
       [6, MoveId.ENDURE],
       [10, MoveId.BABY_DOLL_EYES],
       [13, MoveId.FRUSTRATION],

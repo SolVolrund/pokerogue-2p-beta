@@ -12,6 +12,7 @@ import type { PlayerGender } from "#enums/player-gender";
 import type { PokemonType } from "#enums/pokemon-type";
 import type { SpeciesId } from "#enums/species-id";
 import type { MysteryEncounterSaveData } from "#mystery-encounters/mystery-encounter-save-data";
+import type { PokemonAccessoryOutfitItem } from "#data/pokemon-accessory-anchors";
 import type { Variant } from "#sprites/variant";
 import type { ArenaData } from "#system/arena-data";
 import type { ChallengeData } from "#system/challenge-data";
@@ -178,6 +179,8 @@ export interface StarterAttributes {
   female?: boolean | undefined;
   shiny?: boolean | undefined;
   favorite?: boolean | undefined;
+  ace?: boolean | undefined;
+  accessoryOutfit?: PokemonAccessoryOutfitItem[] | undefined;
   nickname?: string | undefined;
   tera?: PokemonType | undefined;
   spindaPid?: number | undefined;
@@ -205,6 +208,8 @@ export interface Starter {
   nickname?: string | undefined;
   teraType?: PokemonType | undefined;
   spindaPid?: number | undefined;
+  ace?: boolean | undefined;
+  accessoryOutfit?: PokemonAccessoryOutfitItem[] | undefined;
   ivs: number[];
 }
 

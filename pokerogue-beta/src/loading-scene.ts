@@ -4,6 +4,7 @@ import { initializeGame } from "#app/init/init";
 import { activeOverrides } from "#app/overrides";
 import { SceneBase } from "#app/scene-base";
 import { isMobile } from "#app/touch-controls";
+import { loadPokemonAccessoryAnchors } from "#data/pokemon-accessory-anchors";
 import { BiomeId } from "#enums/biome-id";
 import { GachaType } from "#enums/gacha-types";
 import { getPlayerTrainerSpriteBackTextureKey, PLAYER_TRAINER_SPRITE_OPTIONS } from "#enums/player-trainer-sprite";
@@ -183,6 +184,7 @@ export class LoadingScene extends SceneBase {
       .loadImage("select_cursor_highlight", "ui")
       .loadImage("select_cursor_highlight_thick", "ui")
       .loadImage("select_cursor_pokerus", "ui")
+      .loadImage("select_cursor_ace", "ui")
       .loadImage("select_gen_cursor", "ui")
       .loadImage("select_gen_cursor_highlight", "ui")
 
@@ -201,6 +203,7 @@ export class LoadingScene extends SceneBase {
       .loadAtlas("c_rival_f", "character", "rival_f")
 
       // Load pokemon-related images
+      .loadImage("pokemon_accessories", "pokemon/accessories", "accessories.png", { legacy: false })
       .loadImage("pkmn__back__sub", "pokemon/back", "sub.png")
       .loadImage("pkmn__sub", "pokemon", "sub.png")
       .loadAtlas("battle_stats", "effects")
@@ -573,6 +576,7 @@ export class LoadingScene extends SceneBase {
 
   async create() {
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.handleDestroy());
+    await loadPokemonAccessoryAnchors();
     this.scene.start("battle");
   }
 

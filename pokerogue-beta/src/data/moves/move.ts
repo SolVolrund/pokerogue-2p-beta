@@ -29,7 +29,7 @@ import {
   TrappedTag,
   TypeBoostTag,
 } from "#data/battler-tags";
-import { getBerryEffectFunc } from "#data/berry";
+import { getBerryEffectFunc, isDamageReductionBerryType } from "#data/berry";
 import { allAbilities, allMoves } from "#data/data-lists";
 import { SpeciesFormChangeRevertWeatherFormTrigger } from "#data/form-change-triggers";
 import { getNonVolatileStatusEffects, getStatusEffectHealText, isNonVolatileStatusEffect } from "#data/status-effect";
@@ -42,6 +42,7 @@ import { ArenaTagType } from "#enums/arena-tag-type";
 import { BattleType } from "#enums/battle-type";
 import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
+import { BerryType } from "#enums/berry-type";
 import { BiomeId } from "#enums/biome-id";
 import { ChallengeType } from "#enums/challenge-type";
 import { Command } from "#enums/command";
@@ -3499,6 +3500,164 @@ export class SwitchHeldItemAttr extends MoveEffectAttr {
   }
 }
 
+interface FlingItemEffect {
+  power: number;
+  statusEffect?: StatusEffect;
+  flinch?: boolean;
+}
+
+const FLING_ITEM_EFFECTS: Record<string, FlingItemEffect> = {
+  flame_orb: { power: 30, statusEffect: StatusEffect.BURN },
+  iron_ball: { power: 130 },
+  kings_rock: { power: 30, flinch: true },
+  lag_tail: { power: 10 },
+  light_ball: { power: 30, statusEffect: StatusEffect.PARALYSIS },
+  poison_barb: { power: 70, statusEffect: StatusEffect.POISON },
+  sticky_barbs: { power: 80 },
+  toxic_orb: { power: 30, statusEffect: StatusEffect.TOXIC },
+};
+
+const ALLY_FLING_STAT_BERRIES = [
+  BerryType.LIECHI,
+  BerryType.GANLON,
+  BerryType.PETAYA,
+  BerryType.APICOT,
+  BerryType.SALAC,
+  BerryType.LANSAT,
+  BerryType.STARF,
+];
+
+function getFlingItemKey(item: PokemonHeldItemModifier): string {
+  return item.type.iconImage || item.type.id;
+}
+
+function getFlingItemEffect(item: PokemonHeldItemModifier): FlingItemEffect | undefined {
+  if (item instanceof BerryModifier) {
+    return { power: 10 };
+  }
+
+  return FLING_ITEM_EFFECTS[getFlingItemKey(item)];
+}
+
+function isFlingEligibleItem(item: PokemonHeldItemModifier): boolean {
+  return item.isTransferable && !!getFlingItemEffect(item);
+}
+
+function getFlingHeldItems(user: Pokemon): PokemonHeldItemModifier[] {
+  return user.getHeldItems().filter(isFlingEligibleItem);
+}
+
+function getBestEnemyFlingItem(user: Pokemon): PokemonHeldItemModifier | undefined {
+  return getFlingHeldItems(user).sort((a, b) => getFlingItemEffect(b)!.power - getFlingItemEffect(a)!.power)[0];
+}
+
+function getBestAllyFlingItem(user: Pokemon, target: Pokemon): PokemonHeldItemModifier | undefined {
+  const heldBerries = getFlingHeldItems(user).filter((item): item is BerryModifier => item instanceof BerryModifier);
+  const findBerry = (berryType: BerryType) => heldBerries.find(item => item.berryType === berryType);
+
+  if (target.status || target.getTag(BattlerTagType.CONFUSED)) {
+    const lumBerry = findBerry(BerryType.LUM);
+    if (lumBerry) {
+      return lumBerry;
+    }
+  }
+
+  if (target.getMoveset().some(pokemonMove => pokemonMove.ppUsed >= pokemonMove.getMovePp())) {
+    const leppaBerry = findBerry(BerryType.LEPPA);
+    if (leppaBerry) {
+      return leppaBerry;
+    }
+  }
+
+  if (target.getHpRatio() < 0.75) {
+    const sitrusBerry = findBerry(BerryType.SITRUS);
+    if (sitrusBerry) {
+      return sitrusBerry;
+    }
+  }
+
+  return ALLY_FLING_STAT_BERRIES.map(findBerry).find((item): item is BerryModifier => !!item);
+}
+
+function getBestFlingItem(user: Pokemon, target: Pokemon): PokemonHeldItemModifier | undefined {
+  return user.isPlayer() === target.isPlayer() ? getBestAllyFlingItem(user, target) : getBestEnemyFlingItem(user);
+}
+
+export class FlingAttr extends MoveEffectAttr {
+  apply(user: Pokemon, target: Pokemon, move: Move, _args: any[]): boolean {
+    const item = getBestFlingItem(user, target);
+    const effect = item ? getFlingItemEffect(item) : undefined;
+    if (!item || !effect || !globalScene.tryFlingHeldItemModifier(item, user, !(item instanceof BerryModifier))) {
+      return false;
+    }
+
+    if (target.isFainted()) {
+      return true;
+    }
+
+    if (item instanceof BerryModifier) {
+      getBerryEffectFunc(item.berryType)(target);
+      applyAbAttrs("HealFromBerryUseAbAttr", { pokemon: target });
+      target.recordEatenBerry(item.berryType, false);
+      return true;
+    }
+
+    if (effect.statusEffect) {
+      target.trySetStatus(effect.statusEffect, user, undefined, null, false, true);
+    }
+
+    if (effect.flinch) {
+      target.addTag(BattlerTagType.FLINCHED, 0, move.id, user.id);
+    }
+
+    return true;
+  }
+
+  getCondition(): MoveConditionFunc {
+    return (user, target) => !!getBestFlingItem(user, target);
+  }
+
+  getUserBenefitScore(user: Pokemon, target: Pokemon, _move: Move): number {
+    const item = getBestFlingItem(user, target);
+    if (!item) {
+      return 0;
+    }
+
+    if (user.isPlayer() === target.isPlayer()) {
+      return item instanceof BerryModifier ? 8 : -8;
+    }
+
+    return item instanceof BerryModifier && [BerryType.SITRUS, BerryType.LUM, BerryType.LEPPA].includes(item.berryType)
+      ? -4
+      : 2;
+  }
+
+  getTargetBenefitScore(user: Pokemon, target: Pokemon, _move: Move): number {
+    const item = getBestFlingItem(user, target);
+    if (!item) {
+      return 0;
+    }
+
+    if (user.isPlayer() === target.isPlayer()) {
+      return item instanceof BerryModifier ? 8 : -8;
+    }
+
+    const effect = getFlingItemEffect(item);
+    if (!effect || item instanceof BerryModifier) {
+      return item instanceof BerryModifier && !isDamageReductionBerryType(item.berryType) ? 2 : 0;
+    }
+
+    let score = -Math.floor(effect.power / 10);
+    if (effect.statusEffect && target.canSetStatus(effect.statusEffect, true, false, user)) {
+      score -= 4;
+    }
+    if (effect.flinch && !target.getTag(BattlerTagType.FLINCHED)) {
+      score -= 3;
+    }
+    return score;
+  }
+}
+
 /**
  * Removes a random held item (or berry) from target.
  * Used for Incinerate and Knock Off.
@@ -4818,6 +4977,19 @@ export class VariablePowerAttr extends MoveAttr {
   apply(_user: Pokemon, _target: Pokemon, _move: Move, _args: any[]): boolean {
     //const power = args[0] as Utils.NumberHolder;
     return false;
+  }
+}
+
+export class FlingPowerAttr extends VariablePowerAttr {
+  apply(user: Pokemon, target: Pokemon, _move: Move, args: any[]): boolean {
+    const item = getBestFlingItem(user, target);
+    const effect = item ? getFlingItemEffect(item) : undefined;
+    if (!effect) {
+      return false;
+    }
+
+    (args[0] as NumberHolder).value = effect.power;
+    return true;
   }
 }
 
@@ -9744,6 +9916,7 @@ const MoveAttrs = Object.freeze({
   HpSplitAttr,
   VariablePowerAttr,
   ZMovePowerAttr,
+  FlingPowerAttr,
   LessPPMorePowerAttr,
   MovePowerMultiplierAttr,
   BeatUpAttr,
@@ -9828,6 +10001,7 @@ const MoveAttrs = Object.freeze({
   CurseAttr,
   RemoveBattlerTagAttr,
   FlinchAttr,
+  FlingAttr,
   ConfuseAttr,
   RechargeAttr,
   TrapAttr,
@@ -11149,7 +11323,8 @@ export function initMoves() {
       .unimplemented(),
     new AttackMove(MoveId.FLING, PokemonType.DARK, MoveCategory.PHYSICAL, -1, 100, 10, -1, 0, 4)
       .makesContact(false)
-      .unimplemented(),
+      .attr(FlingPowerAttr)
+      .attr(FlingAttr),
     new StatusMove(MoveId.PSYCHO_SHIFT, PokemonType.PSYCHIC, 100, 10, -1, 0, 4)
       .attr(PsychoShiftEffectAttr)
       // TODO: Verify status applied if a statused pokemon obtains Comatose (via Transform) and uses Psycho Shift

@@ -14,6 +14,7 @@ export interface OptionSelectConfig {
   yOffset?: number;
   options: OptionSelectItem[];
   maxOptions?: number;
+  initialCursor?: number;
   delay?: number;
   noCancel?: boolean;
   supportHover?: boolean;
@@ -209,7 +210,8 @@ export abstract class AbstractOptionSelectUiHandler extends UiHandler {
     this.optionSelectContainer.setVisible(true);
     this.scrollCursor = 0;
     this.fullCursor = -1;
-    this.setCursor(0);
+    const initialCursor = Math.max(0, Math.min(this.unskippedIndices.length - 1, Math.trunc(this.config.initialCursor ?? 0)));
+    this.setCursor(initialCursor);
 
     if (this.config.delay) {
       this.blockInput = true;

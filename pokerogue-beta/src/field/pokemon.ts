@@ -55,6 +55,14 @@ import {
 import { Gender } from "#data/gender";
 import { getNatureStatMultiplier } from "#data/nature";
 import {
+  getPokemonAccessory,
+  getPokemonAccessoryAnchor,
+  getPokemonAccessoryFrameSize,
+  type PokemonAccessory,
+  type PokemonAccessoryOutfitItem,
+  type PokemonAccessorySide,
+} from "#data/pokemon-accessory-anchors";
+import {
   CustomPokemonData,
   PokemonBattleData,
   PokemonSummonData,
@@ -208,6 +216,9 @@ import SoundFade from "phaser3-rex-plugins/plugins/soundfade";
 import type { NonEmptyTuple } from "type-fest";
 import { getBaseLearnableMoveSource, getLevelMoves } from "./learnsets";
 
+const POKEMON_ACCESSORY_OUTFIT_SPRITE_LIMIT = 8;
+const pokemonAccessoryTextureFrameKeys = new Set<string>();
+
 function isCosplayPikachuSpeciesForm(species: PokemonSpecies, formIndex?: number): boolean {
   return isCosplayPikachuForm(species.speciesId, species.forms?.[formIndex ?? 0]?.getFormKey());
 }
@@ -321,6 +332,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   public luck: number;
   public pauseEvolutions: boolean;
   public pokerus: boolean;
+  public ace: boolean;
+  public accessoryOutfit: PokemonAccessoryOutfitItem[];
   /**
    * Indicates whether this Pokémon has left or is about to leave the field
    * @remarks
@@ -387,6 +400,10 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    */
   public usedTMs: MoveId[];
 
+  private pokemonSprite: Phaser.GameObjects.Sprite | undefined;
+  private pokemonTintSprite: Phaser.GameObjects.Sprite | undefined;
+  private accessoryOutfitBackSprites: Phaser.GameObjects.Image[] = [];
+  private accessoryOutfitFrontSprites: Phaser.GameObjects.Image[] = [];
   private shinySparkle: Phaser.GameObjects.Sprite;
   private readonly encounterModifierPlayerIndex: PlayerIndex | undefined;
   private readonly constructorHasTrainer: boolean | undefined;
@@ -460,6 +477,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       this.metWave = dataSource.metWave ?? (this.metBiome === -1 ? -1 : 0);
       this.pauseEvolutions = dataSource.pauseEvolutions;
       this.pokerus = !!dataSource.pokerus;
+      this.ace = !!dataSource.ace;
+      this.accessoryOutfit = dataSource.accessoryOutfit?.map(item => ({ ...item })) ?? [];
       this.fusionSpecies =
         dataSource.fusionSpecies instanceof PokemonSpecies
           ? dataSource.fusionSpecies
@@ -522,6 +541,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       this.metSpecies = species.speciesId;
       this.metWave = globalScene.currentBattle ? globalScene.currentBattle.waveIndex : -1;
       this.pokerus = false;
+      this.ace = false;
+      this.accessoryOutfit = [];
 
       if (level > 1) {
         const fused = new BooleanHolder(globalScene.gameMode.isSplicedOnly);
@@ -642,11 +663,33 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
     tintSprite.setVisible(false);
 
-    this.addAt(sprite, 0);
-    this.addAt(tintSprite, 1);
+    this.pokemonSprite = sprite;
+    this.pokemonTintSprite = tintSprite;
+    sprite.on(
+      Phaser.Animations.Events.ANIMATION_UPDATE,
+      (_animation: Phaser.Animations.Animation, frame: Phaser.Animations.AnimationFrame) =>
+        this.updateAccessoryOutfitSprites(`${frame.textureFrame}`),
+    );
+    globalScene.events.on(Phaser.Scenes.Events.POST_UPDATE, this.updateAccessoryOutfitSpritesFromSceneUpdate, this);
+    this.initAccessoryOutfitSprites();
+
+    this.accessoryOutfitBackSprites.forEach(accessorySprite => this.add(accessorySprite));
+    this.add(sprite);
+    this.add(tintSprite);
+    this.accessoryOutfitFrontSprites.forEach(accessorySprite => this.add(accessorySprite));
 
     if (this.isShiny(true) && !this.shinySparkle) {
       this.initShinySparkle();
+    }
+  }
+
+  private initAccessoryOutfitSprites(): void {
+    this.accessoryOutfitBackSprites = [];
+    this.accessoryOutfitFrontSprites = [];
+
+    for (let i = 0; i < POKEMON_ACCESSORY_OUTFIT_SPRITE_LIMIT; i++) {
+      this.accessoryOutfitBackSprites.push(globalScene.add.image(0, 0, "pokemon_accessories").setVisible(false));
+      this.accessoryOutfitFrontSprites.push(globalScene.add.image(0, 0, "pokemon_accessories").setVisible(false));
     }
   }
 
@@ -1418,11 +1461,139 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   getSprite(): Phaser.GameObjects.Sprite {
-    return this.getAt(0);
+    return this.pokemonSprite ?? (this.getAt(0) as Phaser.GameObjects.Sprite);
   }
 
   getTintSprite(): Phaser.GameObjects.Sprite | null {
-    return this.maskEnabled ? this.maskSprite : (this.getAt(1) as Phaser.GameObjects.Sprite);
+    return this.maskEnabled ? this.maskSprite : (this.pokemonTintSprite ?? (this.getAt(1) as Phaser.GameObjects.Sprite));
+  }
+
+  private getAccessoryOutfitSide(): PokemonAccessorySide {
+    if (!this.isPlayer()) {
+      return "front";
+    }
+    const playerIndex = globalScene.getPlayerIndexForPokemon(this);
+    return playerIndex == null || !globalScene.isMysteryEncounterEnemySidePlayer(playerIndex) ? "back" : "front";
+  }
+
+  private getAccessoryTextureFrameKey(accessory: PokemonAccessory): string {
+    return `pokemon_accessory_${accessory.id}`;
+  }
+
+  private ensureAccessoryTextureFrame(accessory: PokemonAccessory): string {
+    const frameKey = this.getAccessoryTextureFrameKey(accessory);
+    const texture = globalScene.textures.get("pokemon_accessories");
+    if (pokemonAccessoryTextureFrameKeys.has(frameKey) && texture.has(frameKey)) {
+      return frameKey;
+    }
+
+    if (!texture.has(frameKey)) {
+      texture.add(frameKey, 0, accessory.rect.x, accessory.rect.y, accessory.rect.w, accessory.rect.h);
+    }
+    pokemonAccessoryTextureFrameKeys.add(frameKey);
+    return frameKey;
+  }
+
+  private clearAccessoryOutfitSprites(): void {
+    for (const sprite of [...this.accessoryOutfitBackSprites, ...this.accessoryOutfitFrontSprites]) {
+      sprite.setVisible(false);
+    }
+  }
+
+  public refreshAccessoryOutfitSprites(): void {
+    this.updateAccessoryOutfitSprites(this.getAccessoryOutfitFrameName());
+  }
+
+  private updateAccessoryOutfitSpritesFromSceneUpdate(): void {
+    if (!this.isPlayer() || !this.accessoryOutfit.length) {
+      return;
+    }
+    this.updateAccessoryOutfitSprites(this.getAccessoryOutfitFrameName());
+  }
+
+  private getAccessoryOutfitFrameName(): string {
+    const sprite = this.getSprite();
+    return `${sprite.anims.currentFrame?.textureFrame ?? sprite.frame.name}`;
+  }
+
+  private updateAccessoryOutfitSprites(frameName = `${this.getSprite().frame.name}`): void {
+    if (!this.isPlayer() || !this.accessoryOutfit.length || !this.getSprite().visible) {
+      this.clearAccessoryOutfitSprites();
+      return;
+    }
+
+    const side = this.getAccessoryOutfitSide();
+    const speciesForm = this.getSpriteSpeciesForm(false, true);
+    const speciesId = speciesForm.speciesId;
+    const formKey = speciesForm instanceof PokemonSpecies ? undefined : speciesForm.getFormKey() || undefined;
+    const frameSize = getPokemonAccessoryFrameSize(speciesId, formKey);
+    if (!frameSize) {
+      this.clearAccessoryOutfitSprites();
+      return;
+    }
+
+    const sideOutfit = this.accessoryOutfit.filter(item =>
+      (item.speciesId ?? this.species.speciesId) === speciesId
+      && (item.formKey ?? "") === (formKey ?? "")
+      && (item.side ?? "front") === side,
+    );
+
+    this.updateAccessoryOutfitLayer(
+      this.accessoryOutfitBackSprites,
+      sideOutfit.filter(item => item.layer === "back"),
+      speciesId,
+      side,
+      formKey,
+      frameName,
+      frameSize,
+    );
+    this.updateAccessoryOutfitLayer(
+      this.accessoryOutfitFrontSprites,
+      sideOutfit.filter(item => item.layer !== "back"),
+      speciesId,
+      side,
+      formKey,
+      frameName,
+      frameSize,
+    );
+  }
+
+  private updateAccessoryOutfitLayer(
+    sprites: Phaser.GameObjects.Image[],
+    outfit: PokemonAccessoryOutfitItem[],
+    speciesId: SpeciesId,
+    side: PokemonAccessorySide,
+    formKey: string | undefined,
+    frameName: string,
+    frameSize: { w: number; h: number },
+  ): void {
+    sprites.forEach((sprite, index) => {
+      const item = outfit[index];
+      const accessory = item ? getPokemonAccessory(item.accessoryId) : undefined;
+      const anchor = item ? getPokemonAccessoryAnchor(speciesId, item.slot, frameName, side, formKey) : undefined;
+      if (!item || !accessory || !anchor) {
+        sprite.setVisible(false);
+        return;
+      }
+
+      const frameKey = this.ensureAccessoryTextureFrame(accessory);
+      const scaleX = item.scaleX ?? item.scale ?? 1;
+      const scaleY = item.scaleY ?? item.scale ?? 1;
+      sprite
+        .setTexture("pokemon_accessories", frameKey)
+        .setCrop()
+        .setScale(scaleX, scaleY)
+        .setOrigin(
+          accessory.rect.w ? accessory.pivot.x / accessory.rect.w : 0.5,
+          accessory.rect.h ? accessory.pivot.y / accessory.rect.h : 0.5,
+        )
+        .setPosition(
+          -frameSize.w / 2 + anchor.x + (item.offsetX ?? 0),
+          -frameSize.h + anchor.y + (item.offsetY ?? 0),
+        )
+        .setRotation(Phaser.Math.DegToRad(item.rotation ?? 0))
+        .setVisible(true);
+    });
   }
 
   getSpriteScale(): number {
@@ -1458,6 +1629,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   public resetSprite(): void {
     // Resetting properties should not be shown on the field
     this.setVisible(false);
+    this.clearAccessoryOutfitSprites();
 
     // Remove the offset from having a Substitute active
     if (this.isOffsetBySubstitute()) {
@@ -1541,6 +1713,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
   playAnim(): void {
     this.playSprite(this.getSprite(), this.getTintSprite(), this.getBattleSpriteKey());
+    this.updateAccessoryOutfitSprites();
   }
 
   getFieldPositionOffset(): [number, number] {
@@ -6429,6 +6602,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * {@linkcode battleInfo} and substitute sprite (as applicable).
    */
   destroy(): void {
+    globalScene?.events.off(Phaser.Scenes.Events.POST_UPDATE, this.updateAccessoryOutfitSpritesFromSceneUpdate, this);
     this.battleInfo?.destroy();
     this.destroySubstitute();
     super.destroy();

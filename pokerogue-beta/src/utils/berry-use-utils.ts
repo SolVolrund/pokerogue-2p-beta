@@ -42,7 +42,7 @@ export function consumeBerryModifier(
   context: BerryUseContext = { trigger: "turn-end" },
   options: ConsumeBerryModifierOptions = {},
 ): boolean {
-  if (!canUseBerry(pokemon)) {
+  if (!canUseBerry(pokemon, context.trigger === "turn-end")) {
     return false;
   }
 
@@ -93,7 +93,7 @@ export function tryEatBerries(pokemon: Pokemon, context: BerryUseContext = { tri
     return false;
   }
 
-  if (!canUseBerry(pokemon)) {
+  if (!canUseBerry(pokemon, context.trigger === "turn-end")) {
     return false;
   }
 

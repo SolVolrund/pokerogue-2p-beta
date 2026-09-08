@@ -102,6 +102,10 @@ const VS_ENEMY_TOKEN_TIER_COST_MULTIPLIERS = new Map<ModifierTier, number>([
   [ModifierTier.MASTER, 5],
 ]);
 
+export function getVsEnemyTokenModeCostMultiplier(multiplayerPlayerCount: number): number {
+  return multiplayerPlayerCount > 2 ? 2 : 1;
+}
+
 export function getVsEnemyTokenDefinitionsForTier(tier: ModifierTier): readonly VsEnemyTokenDefinition[] {
   return VS_ENEMY_TOKEN_DEFINITIONS.filter(definition => definition.tier === tier);
 }
@@ -123,6 +127,7 @@ export function getVsEnemyTokenModifierTypeOptionsForWave(
   baseCost: number,
   existingModifiers: readonly PersistentModifier[] = [],
   existingModifierGroups?: readonly (readonly PersistentModifier[])[],
+  modeCostMultiplier = 1,
 ): ModifierTypeOption[] {
   const unlockedTiers = new Set(getUnlockedVsEnemyTokenTiersForWave(waveIndex));
   if (unlockedTiers.size === 0) {
@@ -148,7 +153,7 @@ export function getVsEnemyTokenModifierTypeOptionsForWave(
       return [];
     }
 
-    const costMultiplier = VS_ENEMY_TOKEN_TIER_COST_MULTIPLIERS.get(definition.tier) ?? 1;
+    const costMultiplier = (VS_ENEMY_TOKEN_TIER_COST_MULTIPLIERS.get(definition.tier) ?? 1) * modeCostMultiplier;
     return [new ModifierTypeOption(modifierType, 0, Math.max(baseCost * costMultiplier, 1))];
   });
 }

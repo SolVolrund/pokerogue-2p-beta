@@ -397,6 +397,22 @@ export class CommandPhase extends FieldPhase {
     return enemyField.filter(target => target.getFieldIndex() === fieldIndex);
   }
 
+  private hasActiveVsModeLaneOpponent(playerPokemon: PlayerPokemon): boolean {
+    return this.getVsModeCaptureTargetsForPokemon(playerPokemon).some(target => target.isActive(true) && !target.isFainted());
+  }
+
+  private shouldAutoSkipClearedVsModeLane(playerPokemon: PlayerPokemon): boolean {
+    return globalScene.twoPlayerVsMode && !playerPokemon.status?.isPostTurn() && !this.hasActiveVsModeLaneOpponent(playerPokemon);
+  }
+
+  private queueSkippedFightCommand(): void {
+    this.setTurnCommand({
+      command: Command.FIGHT,
+      move: { move: MoveId.NONE, targets: [], useMode: MoveUseMode.NORMAL },
+      skip: true,
+    });
+  }
+
   private canComputerPartnerCaptureInCurrentBattle(): boolean {
     const battle = globalScene.currentBattle;
     if (battle.battleType === BattleType.WILD) {
@@ -1078,6 +1094,12 @@ export class CommandPhase extends FieldPhase {
 
   public override start(): void {
     super.start();
+
+    if (this.shouldAutoSkipClearedVsModeLane(this.getPokemon())) {
+      this.queueSkippedFightCommand();
+      this.end();
+      return;
+    }
 
     this.setActiveCommandPlayer();
     globalScene.updateGameInfo();

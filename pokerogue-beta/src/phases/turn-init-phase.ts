@@ -89,6 +89,7 @@ export class TurnInitPhase extends FieldPhase {
       if (pokemon?.isActive()) {
         if (pokemon.isPlayer()) {
           globalScene.currentBattle.addParticipant(pokemon as PlayerPokemon);
+          pokemon.refreshAccessoryOutfitSprites();
         }
 
         pokemon.resetTurnData();

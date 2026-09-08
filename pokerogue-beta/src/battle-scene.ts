@@ -70,6 +70,7 @@ import { EaseType } from "#enums/ease-type";
 import { ExpGainsSpeed } from "#enums/exp-gains-speed";
 import { ExpNotification } from "#enums/exp-notification";
 import { FieldPosition } from "#enums/field-position";
+import { ClassicFixedBossWaves } from "#enums/fixed-boss-waves";
 import { FormChangeItem } from "#enums/form-change-item";
 import { GameModes } from "#enums/game-modes";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
@@ -178,6 +179,7 @@ import type {
   NewBattleSavedProps,
 } from "#types/new-battle-props";
 import type { SessionSaveData } from "#types/save-data";
+import type { ModifierTypeFunc } from "#types/modifier-types";
 import { AbilityBar } from "#ui/ability-bar";
 import { ArenaFlyout } from "#ui/arena-flyout";
 import { CandyBar } from "#ui/candy-bar";
@@ -706,6 +708,7 @@ export class BattleScene extends SceneBase {
 
   public modifiers: PersistentModifier[];
   private enemyModifiers: PersistentModifier[];
+  private flungRecoverableBattleItems: PokemonHeldItemModifier[] = [];
   private vsEnemyModifiersByPlayer: Record<PlayerIndex, PersistentModifier[]> = {
     0: [],
     1: [],
@@ -2813,6 +2816,81 @@ export class BattleScene extends SceneBase {
     this.phaseManager.clearPhaseQueue(true);
     this.phaseManager.pushNew("VsModeVictoryPhase", winnerPlayerIndex);
     return true;
+  }
+
+  public queueVsModeTrainerRoundEndIfPlayerDefeated(playerIndex: PlayerIndex): boolean {
+    if (
+      !this.twoPlayerVsMode
+      || this.currentBattle?.battleType !== BattleType.TRAINER
+      || this.hasPlayerUsablePokemonOrEonFlute(playerIndex)
+      || this.getVsModeWinnerPlayerIndex() !== undefined
+    ) {
+      return false;
+    }
+
+    if (
+      this.phaseManager.hasPhaseOfType("BattleEndPhase")
+      || this.phaseManager.hasPhaseOfType("TrainerVictoryPhase")
+    ) {
+      return true;
+    }
+
+    this.phaseManager.clearPhaseQueue(true);
+    this.phaseManager.pushNew("BattleEndPhase", true);
+    this.phaseManager.pushNew("TrainerVictoryPhase");
+    this.queueVsModeTrainerRoundVictoryRewards();
+    return true;
+  }
+
+  private queueVsModeTrainerRoundVictoryRewards(): void {
+    const gameMode = this.gameMode;
+    const currentWaveIndex = this.currentBattle.waveIndex;
+    const isFinalWave = gameMode.isWaveFinal(currentWaveIndex);
+
+    if (!gameMode.isEndless && isFinalWave) {
+      this.phaseManager.pushNew("NewBattlePhase");
+      return;
+    }
+
+    this.phaseManager.pushNew("EggLapsePhase");
+    if (gameMode.isClassic) {
+      switch (currentWaveIndex) {
+        case ClassicFixedBossWaves.RIVAL_1:
+        case ClassicFixedBossWaves.RIVAL_2:
+          timedEventManager
+            .getFixedBattleEventRewards(currentWaveIndex)
+            .forEach(reward => this.pushVsModeTrainerRoundModifierReward(modifierTypes[reward]));
+          break;
+        case ClassicFixedBossWaves.EVIL_BOSS_2:
+          this.pushVsModeTrainerRoundModifierReward(modifierTypes.LOCK_CAPSULE);
+          break;
+      }
+    }
+
+    if (currentWaveIndex % 10) {
+      this.getActivePlayerIndexes().forEach(playerIndex => {
+        this.phaseManager.pushNew(
+          "SelectModifierPhase",
+          undefined,
+          undefined,
+          gameMode.getFixedBattle(currentWaveIndex)?.customModifierRewardSettings,
+          false,
+          playerIndex,
+        );
+      });
+    }
+
+    if (gameMode.hasRandomBiomes || this.isNewBiome()) {
+      this.phaseManager.pushNew("SelectBiomePhase");
+    }
+
+    this.phaseManager.pushNew("NewBattlePhase");
+  }
+
+  private pushVsModeTrainerRoundModifierReward(modifierTypeFunc: ModifierTypeFunc): void {
+    this.getActivePlayerIndexes().forEach(playerIndex => {
+      this.phaseManager.pushNew("ModifierRewardPhase", modifierTypeFunc, playerIndex);
+    });
   }
 
   public isVsModeVictorySuppressed(): boolean {
@@ -5060,15 +5138,21 @@ export class BattleScene extends SceneBase {
         this.findModifiersForPlayer(
           m => m instanceof PokemonHeldItemModifier && !!m.recoverableBattleTransfer,
           playerIndex,
-        ).map(modifier => ({ modifier: modifier as PokemonHeldItemModifier, playerIndex })),
+        ).map(modifier => ({ modifier: modifier as PokemonHeldItemModifier, playerIndex, transient: false })),
       ),
       ...this.findModifiers(m => m instanceof PokemonHeldItemModifier && !!m.recoverableBattleTransfer, false).map(
-        modifier => ({ modifier: modifier as PokemonHeldItemModifier, playerIndex: undefined }),
+        modifier => ({ modifier: modifier as PokemonHeldItemModifier, playerIndex: undefined, transient: false }),
       ),
+      ...this.flungRecoverableBattleItems.map(modifier => ({
+        modifier,
+        playerIndex: undefined,
+        transient: true,
+      })),
     ];
+    this.flungRecoverableBattleItems = [];
     const recoveredPokemon = new Set<Pokemon>();
 
-    for (const { modifier, playerIndex } of trackedItems) {
+    for (const { modifier, playerIndex, transient } of trackedItems) {
       const transferSource = modifier.recoverableBattleTransfer;
       if (!transferSource) {
         continue;
@@ -5092,7 +5176,8 @@ export class BattleScene extends SceneBase {
       ) as PokemonHeldItemModifier | undefined;
       const originalCanHoldMore =
         !existingOriginalItem || existingOriginalItem.getStackCount() < existingOriginalItem.getMaxStackCount();
-      const removed = this.removeModifier(modifier, currentHolder?.isEnemy() ?? playerIndex === undefined, playerIndex);
+      const removed =
+        transient || this.removeModifier(modifier, currentHolder?.isEnemy() ?? playerIndex === undefined, playerIndex);
 
       if (!removed) {
         continue;
@@ -5116,6 +5201,43 @@ export class BattleScene extends SceneBase {
         }),
       );
     }
+  }
+
+  tryFlingHeldItemModifier(
+    itemModifier: PokemonHeldItemModifier,
+    source: Pokemon,
+    recoverAfterBattle = false,
+  ): boolean {
+    if (itemModifier.pokemonId !== -1 && itemModifier.pokemonId !== source.id) {
+      return false;
+    }
+
+    const sourcePlayerIndex = source.isPlayer() ? this.getPlayerIndexForPokemon(source) : undefined;
+    const recoverable = recoverAfterBattle && source.isPlayer() && sourcePlayerIndex !== undefined;
+    const flungModifier = itemModifier.clone() as PokemonHeldItemModifier;
+    flungModifier.pokemonId = -1;
+    flungModifier.stackCount = 1;
+    if (recoverable) {
+      flungModifier.recoverableBattleTransfer = {
+        pokemonId: source.id,
+        playerIndex: sourcePlayerIndex,
+      };
+    }
+
+    itemModifier.stackCount--;
+    const removed =
+      itemModifier.stackCount > 0 || this.removeModifier(itemModifier, source.isEnemy(), sourcePlayerIndex);
+    if (!removed) {
+      return false;
+    }
+
+    if (recoverable) {
+      this.flungRecoverableBattleItems.push(flungModifier);
+    }
+
+    applyAbAttrs("PostItemLostAbAttr", { pokemon: source });
+    this.updateModifiers(source.isPlayer(), true, sourcePlayerIndex);
+    return true;
   }
 
   /**

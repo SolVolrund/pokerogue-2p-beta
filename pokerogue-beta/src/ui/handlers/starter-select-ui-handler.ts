@@ -19,6 +19,19 @@ import { Egg } from "#data/egg";
 import { GrowthRate, getGrowthRateColor } from "#data/exp";
 import { Gender, getGenderColor, getGenderSymbol } from "#data/gender";
 import { getNatureName } from "#data/nature";
+import {
+  getPokemonAccessoriesForSlot,
+  getPokemonAccessory,
+  getPokemonAccessoryAnchor,
+  getPokemonAccessoryCatalogSlots,
+  getPokemonAccessoryFrameSize,
+  getPokemonAccessorySlots,
+  hasPokemonAccessoryAnchors,
+  type PokemonAccessory,
+  type PokemonAccessoryLayer,
+  type PokemonAccessoryOutfitItem,
+  type PokemonAccessorySide,
+} from "#data/pokemon-accessory-anchors";
 import { isCosplayPikachuForm, type PokemonSpecies } from "#data/pokemon-species";
 import { AbilityAttr } from "#enums/ability-attr";
 import { AbilityId } from "#enums/ability-id";
@@ -85,7 +98,7 @@ import {
 } from "#utils/common";
 import type { StarterPreferences } from "#utils/data";
 import { deepCopy } from "#utils/data";
-import { getDexNumber, getPokemonSpeciesForm, getPokerusStarters } from "#utils/pokemon-utils";
+import { getDexNumber, getPokemonSpecies, getPokemonSpeciesForm, getPokerusStarters } from "#utils/pokemon-utils";
 import { toCamelCase, toTitleCase } from "#utils/strings";
 import i18next from "i18next";
 import type { GameObjects } from "phaser";
@@ -330,6 +343,15 @@ interface SpeciesDetails {
 
 const SPINDA_PATTERN_HEX_DIGITS = "0123456789ABCDEF".split("");
 
+type AceDressAdjustField = "scaleX" | "scaleY" | "offsetX" | "offsetY" | "rotation";
+
+interface AceDressTarget {
+  speciesId: SpeciesId;
+  formIndex?: number;
+  formKey?: string;
+  label: string;
+}
+
 export class StarterSelectUiHandler extends MessageUiHandler {
   private starterSelectContainer: Phaser.GameObjects.Container;
   private starterSelectScrollBar: ScrollBar;
@@ -447,6 +469,13 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   public cursorObj: Phaser.GameObjects.Image;
   private starterCursorObjs: Phaser.GameObjects.Image[];
   private pokerusCursorObjs: Phaser.GameObjects.Image[];
+  private aceCursorObj: Phaser.GameObjects.Image;
+  private accessoryTextureFrameKeys = new Set<string>();
+  private accessoryPreviewBackSprites: Phaser.GameObjects.Image[] = [];
+  private accessoryPreviewFrontSprites: Phaser.GameObjects.Image[] = [];
+  private accessoryPreviewTarget: AceDressTarget | undefined;
+  private accessoryPreviewSide: PokemonAccessorySide = "front";
+  private accessoryPreviewSpriteLoadId = 0;
   private starterIcons: Phaser.GameObjects.Sprite[];
   private starterIconsCursorObj: Phaser.GameObjects.Image;
   private valueLimitLabel: Phaser.GameObjects.Text;
@@ -674,6 +703,16 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       tone: [0.0, 0.0, 0.0, 0.0],
       ignoreTimeTint: true,
     });
+    this.pokemonSprite.on("animationupdate", () => this.updateAccessoryPreview());
+
+    for (let i = 0; i < 8; i++) {
+      this.accessoryPreviewBackSprites.push(
+        globalScene.add.image(0, 0, "pokemon_accessories").setVisible(false),
+      );
+      this.accessoryPreviewFrontSprites.push(
+        globalScene.add.image(0, 0, "pokemon_accessories").setVisible(false),
+      );
+    }
 
     this.pokemonNumberText = addTextObject(41, 1, "0000", TextStyle.SUMMARY_DEX_NUM).setOrigin(1, 0);
 
@@ -821,6 +860,11 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       starterBoxContainer.add(cursorObj);
       this.pokerusCursorObjs.push(cursorObj);
     }
+
+    this.aceCursorObj = globalScene.add.image(0, 0, "select_cursor_ace");
+    this.aceCursorObj.setVisible(false);
+    this.aceCursorObj.setOrigin(0);
+    starterBoxContainer.add(this.aceCursorObj);
 
     this.starterCursorObjs = [];
     for (let i = 0; i < 6; i++) {
@@ -1193,7 +1237,9 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       addWindow(teamWindowX, teamWindowY, teamWindowWidth, teamWindowHeight),
       addWindow(teamWindowX, teamWindowY + teamWindowHeight, teamWindowWidth, teamWindowWidth, true),
       starterContainerWindow,
+      ...this.accessoryPreviewBackSprites,
       this.pokemonSprite,
+      ...this.accessoryPreviewFrontSprites,
       this.pokemonNumberText,
       this.pokemonNameText,
       this.pokemonGrowthRateLabelText,
@@ -2265,6 +2311,13 @@ export class StarterSelectUiHandler extends MessageUiHandler {
               },
             });
           }
+          options.push({
+            label: "Ace",
+            handler: () => {
+              this.showAceOptions(starterAttributes, originalStarterAttributes);
+              return true;
+            },
+          });
 
           const passiveAttr = starterData.passiveAttr;
           const selectedPassiveIndex = this.passiveCursor > -1 ? this.passiveCursor : 0;
@@ -3010,6 +3063,859 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     });
   }
 
+  private showAceOptions(
+    starterAttributes: StarterAttributes,
+    originalStarterAttributes: StarterAttributes,
+  ): void {
+    const ui = this.getUi();
+    this.restoreAceDressBasePreview();
+    const hasAnchors = this.getAceDressTargets().some(target => hasPokemonAccessoryAnchors(target.speciesId, target.formKey));
+    const isAce = starterAttributes.ace ?? false;
+    const hasOutfit = !!starterAttributes.accessoryOutfit?.length;
+
+    this.blockInput = true;
+    ui.setMode(UiMode.STARTER_SELECT).then(() => {
+      ui.showText("Choose ace settings.", null, () => {
+        ui.setModeWithoutClear(UiMode.OPTION_SELECT, {
+          options: [
+            {
+              label: isAce ? "Selected Ace" : "Select Ace",
+              handler: () => {
+                this.setAceSpecies(this.lastSpecies, starterAttributes, originalStarterAttributes);
+                this.clearText();
+                ui.setMode(UiMode.STARTER_SELECT);
+                this.blockInput = false;
+                return true;
+              },
+            },
+            {
+              label: "Dress Ace",
+              disabled: !hasAnchors,
+              style: hasAnchors ? TextStyle.WINDOW : TextStyle.SETTINGS_LOCKED,
+              handler: () => {
+                this.showAceDressSlotOptions(starterAttributes, originalStarterAttributes);
+                return true;
+              },
+            },
+            {
+              label: "Clear Outfit",
+              disabled: !hasOutfit,
+              style: hasOutfit ? TextStyle.WINDOW : TextStyle.SETTINGS_LOCKED,
+              handler: () => {
+                starterAttributes.accessoryOutfit = [];
+                originalStarterAttributes.accessoryOutfit = [];
+                globalScene.savePlayerStarterPreferences(this.originalStarterPreferences, globalScene.activePlayerIndex);
+                this.updateAccessoryPreview();
+                this.showAceOptions(starterAttributes, originalStarterAttributes);
+                return true;
+              },
+            },
+            {
+              label: i18next.t("menu:cancel"),
+              handler: () => {
+                this.clearText();
+                ui.setMode(UiMode.STARTER_SELECT);
+                this.blockInput = false;
+                return true;
+              },
+            },
+          ],
+          maxOptions: 8,
+          yOffset: 19,
+        });
+        this.blockInput = false;
+      });
+    });
+  }
+
+  private getAceDressTargets(): AceDressTarget[] {
+    const rootSpeciesId = speciesDataRegistry.getStarter(this.lastSpecies.speciesId);
+    const speciesIds = [rootSpeciesId, ...speciesDataRegistry.getEvolutionChain(rootSpeciesId)];
+    return speciesIds.flatMap(speciesId => {
+      const species = getPokemonSpecies(speciesId);
+      const targets: AceDressTarget[] = [{ speciesId, label: species.getName() }];
+      if (species.forms.length > 1) {
+        species.forms.forEach((form, formIndex) => {
+          if (!form.formKey || formIndex === 0) {
+            return;
+          }
+          targets.push({
+            speciesId,
+            formIndex,
+            formKey: form.formKey,
+            label: species.getName(formIndex),
+          });
+        });
+      }
+      return targets;
+    });
+  }
+
+  private getDefaultAceDressTarget(): AceDressTarget {
+    const targets = this.getAceDressTargets();
+    const selectedFormIndex = this.starterPreferences[this.lastSpecies.speciesId]?.form;
+    const selectedFormKey = selectedFormIndex !== undefined
+      ? this.lastSpecies.forms[selectedFormIndex]?.formKey || undefined
+      : undefined;
+    return targets.find(target =>
+      target.speciesId === this.lastSpecies.speciesId
+      && (target.formKey ?? "") === (selectedFormKey ?? ""),
+    ) ?? targets.find(target => hasPokemonAccessoryAnchors(target.speciesId, target.formKey)) ?? targets[0];
+  }
+
+  private showAceDressTargetOptions(
+    starterAttributes: StarterAttributes,
+    originalStarterAttributes: StarterAttributes,
+    target: AceDressTarget,
+    side: PokemonAccessorySide,
+  ): void {
+    const ui = this.getUi();
+    const targets = this.getAceDressTargets();
+    const selectedCursor = Math.max(0, targets.findIndex(option =>
+      option.speciesId === target.speciesId && (option.formKey ?? "") === (target.formKey ?? ""),
+    ));
+
+    this.blockInput = true;
+    ui.setMode(UiMode.STARTER_SELECT).then(() => {
+      ui.showText("Choose an ace form.", null, () => {
+        const options: OptionSelectItem[] = targets.map(option => {
+          const hasAnchors = hasPokemonAccessoryAnchors(option.speciesId, option.formKey);
+          const selected = option.speciesId === target.speciesId && (option.formKey ?? "") === (target.formKey ?? "");
+          return {
+            label: selected ? `${option.label} (on)` : option.label,
+            disabled: !hasAnchors,
+            style: selected ? TextStyle.SUMMARY_GOLD : hasAnchors ? TextStyle.WINDOW : TextStyle.SETTINGS_LOCKED,
+            handler: () => {
+              this.showAceDressSlotOptions(starterAttributes, originalStarterAttributes, option, side, 0);
+              return true;
+            },
+          };
+        });
+        options.push({
+          label: i18next.t("menu:cancel"),
+          handler: () => {
+            this.showAceDressSlotOptions(starterAttributes, originalStarterAttributes, target, side, 0);
+            return true;
+          },
+        });
+
+        ui.setModeWithoutClear(UiMode.OPTION_SELECT, {
+          options,
+          maxOptions: 8,
+          initialCursor: selectedCursor,
+          yOffset: 19,
+        });
+        this.blockInput = false;
+      });
+    });
+  }
+
+  private showAceDressSlotOptions(
+    starterAttributes: StarterAttributes,
+    originalStarterAttributes: StarterAttributes,
+    target: AceDressTarget = this.getDefaultAceDressTarget(),
+    side: PokemonAccessorySide = "front",
+    initialCursor = 0,
+  ): void {
+    const ui = this.getUi();
+    const slots = getPokemonAccessoryCatalogSlots();
+    if (!slots.length) {
+      ui.playError();
+      return;
+    }
+
+    this.updateAceDressBasePreview(target, side);
+    this.blockInput = true;
+    ui.setMode(UiMode.STARTER_SELECT).then(() => {
+      ui.showText(`${target.label} ${side === "front" ? "front" : "back"} accessories.`, null, () => {
+        const availableSlots = getPokemonAccessorySlots(target.speciesId, side, target.formKey).map(slot => slot.id);
+        const options: OptionSelectItem[] = [
+          {
+            label: `Form: ${target.label}`,
+            handler: () => {
+              this.showAceDressTargetOptions(starterAttributes, originalStarterAttributes, target, side);
+              return true;
+            },
+          },
+          {
+            label: `Switch to ${side === "front" ? "Back" : "Front"}`,
+            handler: () => {
+              this.showAceDressSlotOptions(starterAttributes, originalStarterAttributes, target, side === "front" ? "back" : "front", 1);
+              return true;
+            },
+          },
+        ];
+
+        options.push(...slots.map(slot => {
+          const available = availableSlots.includes(slot.id);
+          return {
+            label: this.getAceSlotOptionLabel(slot.id, slot.label, starterAttributes.accessoryOutfit, target, side),
+            disabled: !available,
+            style: available ? TextStyle.WINDOW : TextStyle.SETTINGS_LOCKED,
+            handler: () => {
+              if (this.getAceOutfitItem(slot.id, target, side, starterAttributes.accessoryOutfit)) {
+                this.showAceDressAdjustOptions(slot.id, starterAttributes, originalStarterAttributes, target, side);
+              } else {
+                this.showAceDressAccessoryOptions(slot.id, starterAttributes, originalStarterAttributes, target, side);
+              }
+              return true;
+            },
+          } satisfies OptionSelectItem;
+        }));
+
+        options.push({
+          label: "Done",
+          handler: () => {
+            this.showAceOptions(starterAttributes, originalStarterAttributes);
+            return true;
+          },
+        });
+
+        ui.setModeWithoutClear(UiMode.OPTION_SELECT, {
+          options,
+          maxOptions: 8,
+          initialCursor,
+          yOffset: 19,
+        });
+        this.blockInput = false;
+      });
+    });
+  }
+
+  private showAceDressAccessoryOptions(
+    slot: string,
+    starterAttributes: StarterAttributes,
+    originalStarterAttributes: StarterAttributes,
+    target: AceDressTarget,
+    side: PokemonAccessorySide,
+  ): void {
+    const ui = this.getUi();
+    const accessories = getPokemonAccessoriesForSlot(slot);
+    if (!accessories.length) {
+      ui.playError();
+      return;
+    }
+
+    this.blockInput = true;
+    ui.setMode(UiMode.STARTER_SELECT).then(() => {
+      ui.showText("Choose an accessory.", null, () => {
+        const options: OptionSelectItem[] = accessories.map(accessory => ({
+          label: this.getAceAccessoryOptionLabel(slot, accessory, starterAttributes.accessoryOutfit, target, side),
+          handler: () => {
+            this.showAceDressLayerOptions(slot, accessory, starterAttributes, originalStarterAttributes, target, side);
+            return true;
+          },
+        }));
+        options.push({
+          label: "None",
+          handler: () => {
+            this.saveAceOutfitItem(slot, null, starterAttributes, originalStarterAttributes, target, side);
+            this.showAceDressSlotOptions(starterAttributes, originalStarterAttributes, target, side);
+            return true;
+          },
+        });
+        options.push({
+          label: i18next.t("menu:cancel"),
+          handler: () => {
+            this.showAceDressSlotOptions(starterAttributes, originalStarterAttributes, target, side);
+            return true;
+          },
+        });
+
+        ui.setModeWithoutClear(UiMode.OPTION_SELECT, {
+          options,
+          maxOptions: 8,
+          yOffset: 19,
+        });
+        this.blockInput = false;
+      });
+    });
+  }
+
+  private showAceDressLayerOptions(
+    slot: string,
+    accessory: PokemonAccessory,
+    starterAttributes: StarterAttributes,
+    originalStarterAttributes: StarterAttributes,
+    target: AceDressTarget,
+    side: PokemonAccessorySide,
+  ): void {
+    const ui = this.getUi();
+    const layerOptions: { label: string; layer: PokemonAccessoryLayer }[] = [
+      { label: "Draw over", layer: "front" },
+      { label: "Draw under", layer: "back" },
+    ];
+
+    this.blockInput = true;
+    ui.setMode(UiMode.STARTER_SELECT).then(() => {
+      ui.showText(`Place ${accessory.name} where?`, null, () => {
+        const options: OptionSelectItem[] = layerOptions.map(option => ({
+          label: option.label,
+          handler: () => {
+            const outfitItem = {
+              accessoryId: accessory.id,
+              slot,
+              speciesId: target.speciesId,
+              ...(target.formIndex !== undefined ? { formIndex: target.formIndex } : {}),
+              ...(target.formKey !== undefined ? { formKey: target.formKey } : {}),
+              side,
+              layer: option.layer,
+              scaleX: 1,
+              scaleY: 1,
+              offsetX: 0,
+              offsetY: 0,
+              rotation: 0,
+            };
+            this.saveAceOutfitItem(
+              slot,
+              outfitItem,
+              starterAttributes,
+              originalStarterAttributes,
+              target,
+              side,
+            );
+            this.showAceDressAdjustOptions(slot, starterAttributes, originalStarterAttributes, target, side);
+            return true;
+          },
+        }));
+        options.push({
+          label: i18next.t("menu:cancel"),
+          handler: () => {
+            this.showAceDressAccessoryOptions(slot, starterAttributes, originalStarterAttributes, target, side);
+            return true;
+          },
+        });
+
+        ui.setModeWithoutClear(UiMode.OPTION_SELECT, {
+          options,
+          maxOptions: 8,
+          yOffset: 19,
+        });
+        this.blockInput = false;
+      });
+    });
+  }
+
+  private showAceDressAdjustOptions(
+    slot: string,
+    starterAttributes: StarterAttributes,
+    originalStarterAttributes: StarterAttributes,
+    target: AceDressTarget,
+    side: PokemonAccessorySide,
+    initialCursor = 0,
+  ): void {
+    const ui = this.getUi();
+    const item = this.getAceOutfitItem(slot, target, side, starterAttributes.accessoryOutfit);
+    const accessory = item ? getPokemonAccessory(item.accessoryId) : undefined;
+    if (!item || !accessory) {
+      this.showAceDressSlotOptions(starterAttributes, originalStarterAttributes, target, side);
+      return;
+    }
+
+    const scaleX = item.scaleX ?? item.scale ?? 1;
+    const scaleY = item.scaleY ?? item.scale ?? 1;
+    const offsetX = item.offsetX ?? 0;
+    const offsetY = item.offsetY ?? 0;
+    const rotation = item.rotation ?? 0;
+
+    this.blockInput = true;
+    ui.setMode(UiMode.STARTER_SELECT).then(() => {
+      ui.showText(`${accessory.name}: ${scaleX.toFixed(2)}x/${scaleY.toFixed(2)}x, ${offsetX},${offsetY}, ${rotation}deg`, null, () => {
+        const options: OptionSelectItem[] = [
+          {
+            label: "Change Accessory",
+            handler: () => {
+              this.showAceDressAccessoryOptions(slot, starterAttributes, originalStarterAttributes, target, side);
+              return true;
+            },
+          },
+          {
+            label: "H Scale",
+            handler: () => {
+              this.showAceDressValueAdjustOptions(slot, "scaleX", starterAttributes, originalStarterAttributes, target, side);
+              return true;
+            },
+          },
+          {
+            label: "V Scale",
+            handler: () => {
+              this.showAceDressValueAdjustOptions(slot, "scaleY", starterAttributes, originalStarterAttributes, target, side);
+              return true;
+            },
+          },
+          {
+            label: "X Offset",
+            handler: () => {
+              this.showAceDressValueAdjustOptions(slot, "offsetX", starterAttributes, originalStarterAttributes, target, side);
+              return true;
+            },
+          },
+          {
+            label: "Y Offset",
+            handler: () => {
+              this.showAceDressValueAdjustOptions(slot, "offsetY", starterAttributes, originalStarterAttributes, target, side);
+              return true;
+            },
+          },
+          {
+            label: "Rotate",
+            handler: () => {
+              this.showAceDressValueAdjustOptions(slot, "rotation", starterAttributes, originalStarterAttributes, target, side);
+              return true;
+            },
+          },
+          {
+            label: "Remove",
+            handler: () => {
+              this.saveAceOutfitItem(slot, null, starterAttributes, originalStarterAttributes, target, side);
+              this.showAceDressSlotOptions(starterAttributes, originalStarterAttributes, target, side);
+              return true;
+            },
+          },
+          {
+            label: "Done",
+            handler: () => {
+              this.showAceDressSlotOptions(starterAttributes, originalStarterAttributes, target, side);
+              return true;
+            },
+          },
+        ];
+
+        ui.setModeWithoutClear(UiMode.OPTION_SELECT, {
+          options,
+          maxOptions: 8,
+          initialCursor,
+          yOffset: 19,
+        });
+        this.blockInput = false;
+      });
+    });
+  }
+
+  private showAceDressValueAdjustOptions(
+    slot: string,
+    field: AceDressAdjustField,
+    starterAttributes: StarterAttributes,
+    originalStarterAttributes: StarterAttributes,
+    target: AceDressTarget,
+    side: PokemonAccessorySide,
+    initialCursor = 0,
+  ): void {
+    const ui = this.getUi();
+    const item = this.getAceOutfitItem(slot, target, side, starterAttributes.accessoryOutfit);
+    const accessory = item ? getPokemonAccessory(item.accessoryId) : undefined;
+    if (!item || !accessory) {
+      this.showAceDressSlotOptions(starterAttributes, originalStarterAttributes, target, side);
+      return;
+    }
+
+    const scaleX = item.scaleX ?? item.scale ?? 1;
+    const scaleY = item.scaleY ?? item.scale ?? 1;
+    const offsetX = item.offsetX ?? 0;
+    const offsetY = item.offsetY ?? 0;
+    const rotation = item.rotation ?? 0;
+    const fieldConfig: Record<AceDressAdjustField, {
+      title: string;
+      decreaseLabel: string;
+      increaseLabel: string;
+      valueLabel: string;
+      getDecreasedValue: () => number;
+      getIncreasedValue: () => number;
+    }> = {
+      scaleX: {
+        title: "H Scale",
+        decreaseLabel: "H Scale -",
+        increaseLabel: "H Scale +",
+        valueLabel: `${scaleX.toFixed(2)}x`,
+        getDecreasedValue: () => Math.max(0.1, Number((scaleX - 0.05).toFixed(2))),
+        getIncreasedValue: () => Math.min(4, Number((scaleX + 0.05).toFixed(2))),
+      },
+      scaleY: {
+        title: "V Scale",
+        decreaseLabel: "V Scale -",
+        increaseLabel: "V Scale +",
+        valueLabel: `${scaleY.toFixed(2)}x`,
+        getDecreasedValue: () => Math.max(0.1, Number((scaleY - 0.05).toFixed(2))),
+        getIncreasedValue: () => Math.min(4, Number((scaleY + 0.05).toFixed(2))),
+      },
+      offsetX: {
+        title: "X Offset",
+        decreaseLabel: "X -",
+        increaseLabel: "X +",
+        valueLabel: `${offsetX}`,
+        getDecreasedValue: () => offsetX - 1,
+        getIncreasedValue: () => offsetX + 1,
+      },
+      offsetY: {
+        title: "Y Offset",
+        decreaseLabel: "Y -",
+        increaseLabel: "Y +",
+        valueLabel: `${offsetY}`,
+        getDecreasedValue: () => offsetY - 1,
+        getIncreasedValue: () => offsetY + 1,
+      },
+      rotation: {
+        title: "Rotate",
+        decreaseLabel: "Rotate -",
+        increaseLabel: "Rotate +",
+        valueLabel: `${rotation}deg`,
+        getDecreasedValue: () => rotation - 5,
+        getIncreasedValue: () => rotation + 5,
+      },
+    };
+    const config = fieldConfig[field];
+
+    const adjust = (value: number, nextCursor: number) => {
+      this.saveAceOutfitItem(
+        slot,
+        {
+          ...item,
+          [field]: value,
+        },
+        starterAttributes,
+        originalStarterAttributes,
+        target,
+        side,
+      );
+      this.showAceDressValueAdjustOptions(slot, field, starterAttributes, originalStarterAttributes, target, side, nextCursor);
+      return true;
+    };
+    const parentCursor: Record<AceDressAdjustField, number> = {
+      scaleX: 1,
+      scaleY: 2,
+      offsetX: 3,
+      offsetY: 4,
+      rotation: 5,
+    };
+
+    this.blockInput = true;
+    ui.setMode(UiMode.STARTER_SELECT).then(() => {
+      ui.showText(`${accessory.name} ${config.title}: ${config.valueLabel}`, null, () => {
+        ui.setModeWithoutClear(UiMode.OPTION_SELECT, {
+          options: [
+            {
+              label: config.decreaseLabel,
+              handler: () => adjust(config.getDecreasedValue(), 0),
+            },
+            {
+              label: config.increaseLabel,
+              handler: () => adjust(config.getIncreasedValue(), 1),
+            },
+            {
+              label: `Value: ${config.valueLabel}`,
+              disabled: true,
+              style: TextStyle.SUMMARY_GOLD,
+              handler: () => false,
+            },
+            {
+              label: "Back",
+              handler: () => {
+                this.showAceDressAdjustOptions(slot, starterAttributes, originalStarterAttributes, target, side, parentCursor[field]);
+                return true;
+              },
+            },
+          ],
+          maxOptions: 8,
+          initialCursor,
+          yOffset: 19,
+        });
+        this.blockInput = false;
+      });
+    });
+  }
+
+  private getAceSlotOptionLabel(
+    slot: string,
+    label: string,
+    outfit: PokemonAccessoryOutfitItem[] | undefined,
+    target: AceDressTarget,
+    side: PokemonAccessorySide,
+  ): string {
+    const item = this.getAceOutfitItem(slot, target, side, outfit);
+    const accessory = item ? getPokemonAccessory(item.accessoryId) : undefined;
+    return accessory ? `${label}: ${accessory.name}` : label;
+  }
+
+  private getAceAccessoryOptionLabel(
+    slot: string,
+    accessory: PokemonAccessory,
+    outfit: PokemonAccessoryOutfitItem[] | undefined,
+    target: AceDressTarget,
+    side: PokemonAccessorySide,
+  ): string {
+    return this.getAceOutfitItem(slot, target, side, outfit)?.accessoryId === accessory.id
+      ? `${accessory.name} (on)`
+      : accessory.name;
+  }
+
+  private getAceOutfitItem(
+    slot: string,
+    target: AceDressTarget,
+    side: PokemonAccessorySide,
+    outfit: PokemonAccessoryOutfitItem[] | undefined,
+  ): PokemonAccessoryOutfitItem | undefined {
+    return outfit?.find(item =>
+      item.slot === slot
+      && (item.speciesId ?? this.lastSpecies.speciesId) === target.speciesId
+      && (item.formKey ?? "") === (target.formKey ?? "")
+      && (item.side ?? "front") === side,
+    );
+  }
+
+  private saveAceOutfitItem(
+    slot: string,
+    outfitItem: PokemonAccessoryOutfitItem | null,
+    starterAttributes: StarterAttributes,
+    originalStarterAttributes: StarterAttributes,
+    target: AceDressTarget,
+    side: PokemonAccessorySide,
+  ): void {
+    const outfit = [...(starterAttributes.accessoryOutfit ?? [])].filter(item =>
+      item.slot !== slot
+      || (item.speciesId ?? this.lastSpecies.speciesId) !== target.speciesId
+      || (item.formKey ?? "") !== (target.formKey ?? "")
+      || (item.side ?? "front") !== side,
+    );
+    if (outfitItem) {
+      outfit.push(outfitItem);
+    }
+    starterAttributes.accessoryOutfit = outfit;
+    originalStarterAttributes.accessoryOutfit = outfit.map(item => ({ ...item }));
+    globalScene.savePlayerStarterPreferences(this.originalStarterPreferences, globalScene.activePlayerIndex);
+    this.updateAccessoryPreview();
+  }
+
+  private setAceSpecies(
+    species: PokemonSpecies,
+    starterAttributes: StarterAttributes,
+    originalStarterAttributes: StarterAttributes,
+  ): void {
+    for (const preferences of [this.starterPreferences, this.originalStarterPreferences]) {
+      for (const attributes of Object.values(preferences)) {
+        if (attributes?.ace) {
+          attributes.ace = false;
+        }
+      }
+    }
+
+    starterAttributes.ace = true;
+    originalStarterAttributes.ace = true;
+    this.starterPreferences[species.speciesId] ??= starterAttributes;
+    this.originalStarterPreferences[species.speciesId] ??= originalStarterAttributes;
+    this.starterPreferences[species.speciesId]!.ace = true;
+    this.originalStarterPreferences[species.speciesId]!.ace = true;
+    globalScene.savePlayerStarterPreferences(this.originalStarterPreferences, globalScene.activePlayerIndex);
+    this.updateScroll();
+  }
+
+  private clearAccessoryPreview(): void {
+    for (const sprite of [...this.accessoryPreviewBackSprites, ...this.accessoryPreviewFrontSprites]) {
+      sprite.setVisible(false);
+    }
+  }
+
+  private restoreAceDressBasePreview(): void {
+    this.accessoryPreviewTarget = undefined;
+    this.accessoryPreviewSide = "front";
+    this.accessoryPreviewSpriteLoadId++;
+
+    if (!this.lastSpecies || !this.speciesStarterDexEntry?.caughtAttr) {
+      this.updateAccessoryPreview();
+      return;
+    }
+
+    const props = globalScene.gameData.getSpeciesDexAttrProps(
+      this.lastSpecies,
+      this.getCurrentDexProps(this.lastSpecies.speciesId),
+    );
+    this.loadAccessoryBasePreviewSprite(
+      this.lastSpecies,
+      props.female,
+      props.formIndex,
+      props.shiny,
+      props.variant,
+      "front",
+      this.starterPreferences[this.lastSpecies.speciesId]?.spindaPid,
+    );
+  }
+
+  private updateAceDressBasePreview(target: AceDressTarget, side: PokemonAccessorySide): void {
+    const species = getPokemonSpecies(target.speciesId);
+    const sourceSpecies = this.lastSpecies ?? species;
+    const sourceProps = globalScene.gameData.getSpeciesDexAttrProps(
+      sourceSpecies,
+      this.getCurrentDexProps(sourceSpecies.speciesId),
+    );
+    const sourcePreferences = this.starterPreferences[sourceSpecies.speciesId];
+    let female = sourcePreferences?.female ?? sourceProps.female;
+    const formIndex = target.formIndex ?? 0;
+    if (isCosplayPikachuStarterForm(species, formIndex)) {
+      female = true;
+    }
+
+    this.accessoryPreviewTarget = target;
+    this.accessoryPreviewSide = side;
+    this.loadAccessoryBasePreviewSprite(
+      species,
+      female,
+      formIndex,
+      sourcePreferences?.shiny ?? sourceProps.shiny,
+      (sourcePreferences?.variant as Variant | undefined) ?? sourceProps.variant,
+      side,
+      species.speciesId === SpeciesId.SPINDA ? sourcePreferences?.spindaPid : undefined,
+    );
+  }
+
+  private loadAccessoryBasePreviewSprite(
+    species: PokemonSpecies,
+    female: boolean,
+    formIndex: number | undefined,
+    shiny: boolean,
+    variant: Variant,
+    side: PokemonAccessorySide,
+    spindaPid?: number,
+  ): void {
+    const back = side === "back";
+    const loadId = ++this.accessoryPreviewSpriteLoadId;
+    if (this.assetLoadCancelled) {
+      this.assetLoadCancelled.value = true;
+      this.assetLoadCancelled = null;
+    }
+
+    species.loadAssets(female, formIndex, shiny, variant, true, back).then(() => {
+      if (loadId !== this.accessoryPreviewSpriteLoadId) {
+        return;
+      }
+
+      const baseSpriteKey = species.getSpriteKey(female, formIndex, shiny, variant, back);
+      const atlasPath = species.getSpriteAtlasPath(female, formIndex, shiny, variant, back);
+      const previewPokemon = {
+        species,
+        id: spindaPid ?? 0,
+        shiny,
+        variant,
+        isFusion: () => false,
+      } as unknown as Pokemon;
+      const spriteKeyPromise =
+        !back && species.speciesId === SpeciesId.SPINDA && spindaPid != null
+          ? ensureSpindaSpotTexture(previewPokemon, baseSpriteKey, atlasPath).then(key => key ?? baseSpriteKey)
+          : Promise.resolve(baseSpriteKey);
+
+      spriteKeyPromise.then(spriteKey => {
+        if (loadId !== this.accessoryPreviewSpriteLoadId) {
+          return;
+        }
+        this.pokemonSprite
+          .play(spriteKey)
+          .setPipelineData("shiny", shiny)
+          .setPipelineData("variant", variant)
+          .setPipelineData("spriteKey", spriteKey)
+          .setVisible(!this.statsMode);
+        this.updateAccessoryPreview();
+      });
+    });
+  }
+
+  private getAccessoryTextureFrameKey(accessory: PokemonAccessory): string {
+    return `pokemon_accessory_${accessory.id}`;
+  }
+
+  private ensureAccessoryTextureFrame(accessory: PokemonAccessory): string {
+    const frameKey = this.getAccessoryTextureFrameKey(accessory);
+    const texture = globalScene.textures.get("pokemon_accessories");
+    if (this.accessoryTextureFrameKeys.has(frameKey) && texture.has(frameKey)) {
+      return frameKey;
+    }
+
+    if (!texture.has(frameKey)) {
+      texture.add(frameKey, 0, accessory.rect.x, accessory.rect.y, accessory.rect.w, accessory.rect.h);
+    }
+    this.accessoryTextureFrameKeys.add(frameKey);
+    return frameKey;
+  }
+
+  private updateAccessoryPreview(): void {
+    const species = this.lastSpecies;
+    if (!species || this.statsMode || !this.pokemonSprite.visible) {
+      this.clearAccessoryPreview();
+      return;
+    }
+
+    const outfit = this.starterPreferences[species.speciesId]?.accessoryOutfit ?? [];
+    const formIndex = this.starterPreferences[species.speciesId]?.form;
+    const formKey = formIndex !== undefined ? species.forms[formIndex]?.formKey || undefined : undefined;
+    const currentTarget: AceDressTarget = {
+      speciesId: species.speciesId,
+      ...(formIndex !== undefined ? { formIndex } : {}),
+      ...(formKey !== undefined ? { formKey } : {}),
+      label: species.getName(formIndex),
+    };
+    const previewTarget = this.accessoryPreviewTarget ?? currentTarget;
+    const previewSide = this.accessoryPreviewTarget ? this.accessoryPreviewSide : "front";
+    const sideOutfit = outfit.filter(item =>
+      (item.speciesId ?? species.speciesId) === previewTarget.speciesId
+      && (item.formKey ?? "") === (previewTarget.formKey ?? "")
+      && (item.side ?? "front") === previewSide,
+    );
+    this.updateAccessoryPreviewLayer(
+      this.accessoryPreviewBackSprites,
+      sideOutfit.filter(item => item.layer === "back"),
+      previewTarget.speciesId,
+      previewSide,
+      previewTarget.formKey,
+    );
+    this.updateAccessoryPreviewLayer(
+      this.accessoryPreviewFrontSprites,
+      sideOutfit.filter(item => item.layer !== "back"),
+      previewTarget.speciesId,
+      previewSide,
+      previewTarget.formKey,
+    );
+  }
+
+  private updateAccessoryPreviewLayer(
+    sprites: Phaser.GameObjects.Image[],
+    outfit: PokemonAccessoryOutfitItem[],
+    speciesId: SpeciesId,
+    side: PokemonAccessorySide,
+    formKey?: string,
+  ): void {
+    const frameSize = getPokemonAccessoryFrameSize(speciesId, formKey);
+    const frameName = `${this.pokemonSprite.frame.name}`;
+    if (!frameSize) {
+      sprites.forEach(sprite => sprite.setVisible(false));
+      return;
+    }
+
+    sprites.forEach((sprite, index) => {
+      const item = outfit[index];
+      const accessory = item ? getPokemonAccessory(item.accessoryId) : undefined;
+      const anchor = item ? getPokemonAccessoryAnchor(speciesId, item.slot, frameName, side, formKey) : undefined;
+      if (!item || !accessory || !anchor) {
+        sprite.setVisible(false);
+        return;
+      }
+
+      const scaleX = item.scaleX ?? item.scale ?? 1;
+      const scaleY = item.scaleY ?? item.scale ?? 1;
+      const frameKey = this.ensureAccessoryTextureFrame(accessory);
+      sprite
+        .setTexture("pokemon_accessories", frameKey)
+        .setCrop()
+        .setScale(scaleX, scaleY)
+        .setOrigin(
+          accessory.rect.w ? accessory.pivot.x / accessory.rect.w : 0.5,
+          accessory.rect.h ? accessory.pivot.y / accessory.rect.h : 0.5,
+        )
+        .setPosition(
+          this.pokemonSprite.x - frameSize.w / 2 + anchor.x + (item.offsetX ?? 0),
+          this.pokemonSprite.y - frameSize.h / 2 + anchor.y + (item.offsetY ?? 0),
+        )
+        .setRotation(Phaser.Math.DegToRad(item.rotation ?? 0))
+        .setVisible(true);
+    });
+  }
+
   addToParty(
     species: PokemonSpecies,
     dexAttr: bigint,
@@ -3044,6 +3950,10 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     );
 
     const { dexEntry, starterDataEntry } = this.getSpeciesData(species.speciesId);
+    const starterAttributes = this.starterPreferences[species.speciesId];
+    const accessoryOutfit = starterAttributes?.ace && starterAttributes.accessoryOutfit?.length
+      ? starterAttributes.accessoryOutfit.map(item => ({ ...item }))
+      : undefined;
 
     const starter: Starter = {
       speciesId: species.speciesId,
@@ -3059,9 +3969,11 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       nature,
       moveset,
       pokerus: this.pokerusSpecies.includes(species),
-      nickname: this.starterPreferences[species.speciesId]?.nickname,
+      nickname: starterAttributes?.nickname,
       teraType,
       ivs: dexEntry.ivs,
+      ace: starterAttributes?.ace,
+      accessoryOutfit,
     };
     if (spindaPid !== undefined) {
       starter.spindaPid = spindaPid;
@@ -3333,6 +4245,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     this.validStarterContainers = [];
 
     this.pokerusCursorObjs.forEach(cursor => cursor.setVisible(false));
+    this.aceCursorObj.setVisible(false);
     this.starterCursorObjs.forEach(cursor => cursor.setVisible(false));
 
     this.filterBar.updateFilterLabels();
@@ -3641,6 +4554,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     this.starterSelectScrollBar.setScrollCursor(this.scrollCursor);
 
     let pokerusCursorIndex = 0;
+    let aceCursorVisible = false;
     this.filteredStarterContainers.forEach((container, i) => {
       const { dexEntry, starterDataEntry } = this.getSpeciesData(container.species.speciesId);
 
@@ -3652,6 +4566,10 @@ export class StarterSelectUiHandler extends MessageUiHandler {
         if (this.pokerusSpecies.includes(container.species)) {
           this.pokerusCursorObjs[pokerusCursorIndex].setPosition(pos.x - 1, pos.y + 1).setVisible(false);
           pokerusCursorIndex++;
+        }
+
+        if (this.starterPreferences[container.species.speciesId]?.ace) {
+          this.aceCursorObj.setPosition(pos.x - 1, pos.y + 1).setVisible(false);
         }
 
         if (this.starterSpecies.includes(container.species)) {
@@ -3666,6 +4584,11 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       if (this.pokerusSpecies.includes(container.species)) {
         this.pokerusCursorObjs[pokerusCursorIndex].setPosition(pos.x - 1, pos.y + 1).setVisible(true);
         pokerusCursorIndex++;
+      }
+
+      if (this.starterPreferences[container.species.speciesId]?.ace) {
+        this.aceCursorObj.setPosition(pos.x - 1, pos.y + 1).setVisible(true);
+        aceCursorVisible = true;
       }
 
       if (this.starterSpecies.includes(container.species)) {
@@ -3718,6 +4641,9 @@ export class StarterSelectUiHandler extends MessageUiHandler {
         container.candyUpgradeOverlayIcon.setVisible(false);
       }
     });
+    if (!aceCursorVisible) {
+      this.aceCursorObj.setVisible(false);
+    }
   };
 
   setCursor(cursor: number): boolean {
@@ -4137,6 +5063,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   setSpeciesDetails(species: PokemonSpecies, options: SpeciesDetails = {}, save = true): void {
     let { shiny, formIndex, female, variant, abilityIndex, passiveIndex, natureIndex, teraType, spindaPid } = options;
     const forSeen: boolean = options.forSeen ?? false;
+    this.accessoryPreviewSpriteLoadId++;
     const oldProps = species ? globalScene.gameData.getSpeciesDexAttrProps(species, this.dexAttrCursor) : null;
     const oldAbilityIndex =
       this.abilityCursor > -1 ? this.abilityCursor : globalScene.gameData.getStarterSpeciesDefaultAbilityIndex(species);
@@ -4225,6 +5152,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     }
 
     this.pokemonSprite.setVisible(false);
+    this.clearAccessoryPreview();
     this.pokemonPassiveLabelText.setVisible(false);
     this.pokemonPassiveText.setVisible(false);
     this.pokemonPassiveDisabledIcon.setVisible(false);
@@ -4335,10 +5263,12 @@ export class StarterSelectUiHandler extends MessageUiHandler {
                 .setPipelineData("variant", variant)
                 .setPipelineData("spriteKey", spriteKey)
                 .setVisible(!this.statsMode);
+              this.updateAccessoryPreview();
             });
           });
         } else {
           this.pokemonSprite.setVisible(!this.statsMode);
+          this.updateAccessoryPreview();
         }
 
         const currentFilteredContainer = this.filteredStarterContainers.find(
@@ -4988,6 +5918,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       this.showStats(this.statsViewMode);
       this.statsMode = true;
       this.pokemonSprite.setVisible(false);
+      this.clearAccessoryPreview();
       this.teraIcon.setVisible(false);
       this.canCycleTera = false;
       this.updateInstructions();
@@ -4995,6 +5926,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       this.statsMode = false;
       this.statsContainer.setVisible(false);
       this.pokemonSprite.setVisible(!!this.speciesStarterDexEntry?.caughtAttr);
+      this.updateAccessoryPreview();
       this.statsContainer.updateIvs(null);
       this.teraIcon.setVisible(this.allowTera);
       const props = globalScene.gameData.getSpeciesDexAttrProps(

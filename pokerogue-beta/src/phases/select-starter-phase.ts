@@ -188,6 +188,10 @@ export class SelectStarterPhase extends Phase {
       if (starter.speciesId === SpeciesId.SPINDA && starter.spindaPid != null) {
         starterPokemon.id = starter.spindaPid >>> 0;
       }
+      starterPokemon.ace = !!starter.ace;
+      starterPokemon.accessoryOutfit = starter.ace && starter.accessoryOutfit?.length
+        ? starter.accessoryOutfit.map(item => ({ ...item }))
+        : [];
       if (globalScene.isComputerPartnerPlayer(playerIndex)) {
         const computerPartnerProfile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
         starterPokemon.computerPartnerAce = isComputerPartnerStarterAce(computerPartnerProfile, starter, i);

@@ -85,6 +85,7 @@ export class EonFluteSummonPhase extends FieldPhase {
     globalScene.updateFieldScale();
     pokemon.showInfo();
     pokemon.playAnim();
+    pokemon.refreshAccessoryOutfitSprites();
     pokemon.untint(250, "Sine.easeIn");
 
     globalScene.tweens.add({

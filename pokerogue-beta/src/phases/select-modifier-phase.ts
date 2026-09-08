@@ -15,6 +15,7 @@ import {
 import type { FusionOptions } from "#data/fusion-options";
 import {
   getVsEnemyTokenDefinitionForModifierTypeId,
+  getVsEnemyTokenModeCostMultiplier,
   getVsEnemyTokenModifierTypeOptionsForWave,
   isVsEnemyTokenAtStackLimit,
 } from "#data/vs-enemy-tokens";
@@ -254,6 +255,7 @@ export class SelectModifierPhase extends BattlePhase {
       globalScene.getWaveMoneyAmount(1),
       [],
       targetModifierGroups,
+      getVsEnemyTokenModeCostMultiplier(globalScene.multiplayerPlayerCount),
     );
   }
 
