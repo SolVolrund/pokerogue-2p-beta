@@ -15,7 +15,10 @@ export class ToggleDoublePositionPhase extends BattlePhase {
   start() {
     super.start();
 
-    if (globalScene.twoPlayerMode) {
+    if (
+      globalScene.twoPlayerMode
+      && !(globalScene.twoPlayerEnemyPlayerMode && globalScene.multiplayerPlayerCount === 1)
+    ) {
       this.end();
       return;
     }

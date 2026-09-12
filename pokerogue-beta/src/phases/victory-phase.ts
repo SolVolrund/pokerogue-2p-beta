@@ -83,6 +83,9 @@ export class VictoryPhase extends PokemonPhase {
 
       if (gameMode.isEndless || !isFinalWave || shouldContinueToUnownCrystalGauntlet) {
         globalScene.phaseManager.pushNew("EggLapsePhase");
+        if (this.shouldQueueEnemyPlayerTokenReward(currentWaveIndex)) {
+          globalScene.phaseManager.pushNew("EnemyPlayerTokenRewardPhase");
+        }
         if (gameMode.isClassic) {
           switch (currentWaveIndex) {
             case ClassicFixedBossWaves.RIVAL_1:
@@ -175,5 +178,9 @@ export class VictoryPhase extends PokemonPhase {
     }
 
     globalScene.phaseManager.pushNew("ModifierRewardPhase", modifierTypeFunc);
+  }
+
+  private shouldQueueEnemyPlayerTokenReward(waveIndex: number): boolean {
+    return globalScene.twoPlayerEnemyPlayerMode && [3, 6, 9].includes(waveIndex % 10);
   }
 }

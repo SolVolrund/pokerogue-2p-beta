@@ -270,7 +270,8 @@ export class AttemptCapturePhase extends PokemonPhase {
 
     const speciesForm = pokemon.fusionSpecies ? pokemon.getFusionSpeciesForm() : pokemon.getSpeciesForm();
 
-    if (!globalScene.isComputerPartnerPlayer(this.playerIndex)) {
+    const isComputerPartnerCapture = globalScene.isComputerPartnerPlayer(this.playerIndex);
+    if (!isComputerPartnerCapture) {
       if (
         speciesForm.abilityHidden
         && (pokemon.fusionSpecies ? pokemon.fusionAbilityIndex : pokemon.abilityIndex)
@@ -294,10 +295,12 @@ export class AttemptCapturePhase extends PokemonPhase {
 
     globalScene.pokemonInfoContainer.show(pokemon, true);
 
-    const capturingPlayerGameData = globalScene.getPlayerGameData(this.playerIndex);
-    capturingPlayerGameData.updateSpeciesDexIvs(pokemon.species.getRootSpeciesId(true), pokemon.ivs, this.playerIndex);
+    if (!isComputerPartnerCapture) {
+      const capturingPlayerGameData = globalScene.getPlayerGameData(this.playerIndex);
+      capturingPlayerGameData.updateSpeciesDexIvs(pokemon.species.getRootSpeciesId(true), pokemon.ivs, this.playerIndex);
+    }
     const recordComputerPartnerCatch = () => {
-      if (!globalScene.isComputerPartnerPlayer(this.playerIndex)) {
+      if (!isComputerPartnerCapture || globalScene.isCpuPlayersVsEnemyPlayerMode()) {
         return;
       }
 
@@ -402,9 +405,14 @@ export class AttemptCapturePhase extends PokemonPhase {
             true,
           );
         };
-        Promise.all([pokemon.hideInfo(), capturingPlayerGameData.setPokemonCaught(pokemon)]).then(() => {
+        const recordCatchPromise = isComputerPartnerCapture
+          ? Promise.resolve(false)
+          : globalScene.getPlayerGameData(this.playerIndex).setPokemonCaught(pokemon);
+        Promise.all([pokemon.hideInfo(), recordCatchPromise]).then(() => {
           recordComputerPartnerCatch();
-          void globalScene.savePlayerSystemSave(this.playerIndex);
+          if (!isComputerPartnerCapture) {
+            void globalScene.savePlayerSystemSave(this.playerIndex);
+          }
           if (!addStatus.value) {
             removePokemon();
             end();

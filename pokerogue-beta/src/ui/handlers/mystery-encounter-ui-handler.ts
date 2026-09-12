@@ -43,6 +43,8 @@ export class MysteryEncounterUiHandler extends UiHandler {
   private overrideSettings?: OptionSelectSettings | undefined;
   private encounterOptions: MysteryEncounterOption[] = [];
   private optionsMeetsReqs: boolean[];
+  private computerPartnerAutoSelectTimeout: ReturnType<typeof setTimeout> | undefined;
+  private computerPartnerAutoSelectToken = 0;
 
   protected viewPartyIndex = 0;
   protected viewPartyXPosition = 0;
@@ -121,6 +123,7 @@ export class MysteryEncounterUiHandler extends UiHandler {
       }, 1000);
     }
     this.displayOptionTooltip();
+    this.queueComputerPartnerAutoSelection();
 
     return true;
   }
@@ -133,33 +136,8 @@ export class MysteryEncounterUiHandler extends UiHandler {
     const cursor = this.getCursor();
     if (button === Button.CANCEL || button === Button.ACTION) {
       if (button === Button.ACTION) {
-        const selected = this.encounterOptions[cursor];
-        if (cursor === this.viewPartyIndex) {
-          // Handle view party
-          success = true;
-          const overrideSettings: OptionSelectSettings = {
-            ...this.overrideSettings,
-            slideInDescription: false,
-          };
-          globalScene.ui.setMode(UiMode.PARTY, PartyUiMode.CHECK, -1, () => {
-            globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, overrideSettings);
-            setTimeout(() => {
-              this.setCursor(this.viewPartyIndex);
-              this.unblockInput();
-            }, 300);
-          });
-        } else if (
-          this.blockInput
-          || (!this.optionsMeetsReqs[cursor]
-            && (selected.optionMode === MysteryEncounterOptionMode.DISABLED_OR_DEFAULT
-              || selected.optionMode === MysteryEncounterOptionMode.DISABLED_OR_SPECIAL))
-        ) {
-          success = false;
-        } else if (
-          (globalScene.phaseManager.getCurrentPhase() as MysteryEncounterPhase).handleOptionSelect(selected, cursor)
-        ) {
-          success = true;
-        } else {
+        success = this.selectEncounterOption(cursor);
+        if (!success) {
           ui.playError();
         }
       } else {
@@ -191,6 +169,86 @@ export class MysteryEncounterUiHandler extends UiHandler {
     }
 
     return success;
+  }
+
+  private selectEncounterOption(cursor: number, ignoreBlockInput = false): boolean {
+    const selected = this.encounterOptions[cursor];
+    if (cursor === this.viewPartyIndex) {
+      const overrideSettings: OptionSelectSettings = {
+        ...this.overrideSettings,
+        slideInDescription: false,
+      };
+      globalScene.ui.setMode(UiMode.PARTY, PartyUiMode.CHECK, -1, () => {
+        globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, overrideSettings);
+        setTimeout(() => {
+          this.setCursor(this.viewPartyIndex);
+          this.unblockInput();
+        }, 300);
+      });
+      return true;
+    }
+
+    if (
+      (!ignoreBlockInput && this.blockInput)
+      || (!this.optionsMeetsReqs[cursor]
+        && (selected.optionMode === MysteryEncounterOptionMode.DISABLED_OR_DEFAULT
+          || selected.optionMode === MysteryEncounterOptionMode.DISABLED_OR_SPECIAL))
+    ) {
+      return false;
+    }
+
+    return (globalScene.phaseManager.getCurrentPhase() as MysteryEncounterPhase).handleOptionSelect(selected, cursor);
+  }
+
+  private queueComputerPartnerAutoSelection(): void {
+    this.computerPartnerAutoSelectToken++;
+    if (this.computerPartnerAutoSelectTimeout) {
+      clearTimeout(this.computerPartnerAutoSelectTimeout);
+      this.computerPartnerAutoSelectTimeout = undefined;
+    }
+
+    const phase = globalScene.phaseManager.getCurrentPhase() as MysteryEncounterPhase;
+    if (!phase.shouldAutoSelectComputerPartnerOption?.() || this.isPrivateChoiceRedacted()) {
+      return;
+    }
+
+    const optionIndex = this.getFirstSelectableEncounterOptionIndex();
+    if (optionIndex == null) {
+      return;
+    }
+
+    const token = this.computerPartnerAutoSelectToken;
+    this.computerPartnerAutoSelectTimeout = setTimeout(() => {
+      this.computerPartnerAutoSelectTimeout = undefined;
+      if (token !== this.computerPartnerAutoSelectToken) {
+        return;
+      }
+
+      const currentPhase = globalScene.phaseManager.getCurrentPhase() as MysteryEncounterPhase;
+      if (!currentPhase.shouldAutoSelectComputerPartnerOption?.()) {
+        return;
+      }
+
+      this.setCursor(optionIndex);
+      this.unblockInput();
+      if (this.selectEncounterOption(optionIndex, true) && !this.isPrivateChoiceRedacted()) {
+        this.getUi().playSelect();
+      }
+    }, 1100);
+  }
+
+  private getFirstSelectableEncounterOptionIndex(): number | undefined {
+    for (let i = 0; i < this.encounterOptions.length; i++) {
+      const option = this.encounterOptions[i];
+      if (
+        this.optionsMeetsReqs[i]
+        || (option.optionMode !== MysteryEncounterOptionMode.DISABLED_OR_DEFAULT
+          && option.optionMode !== MysteryEncounterOptionMode.DISABLED_OR_SPECIAL)
+      ) {
+        return i;
+      }
+    }
+    return undefined;
   }
 
   private handleTwoOptionMoveInput(button: Button): boolean {
@@ -756,6 +814,11 @@ export class MysteryEncounterUiHandler extends UiHandler {
 
   override clear(): void {
     super.clear();
+    this.computerPartnerAutoSelectToken++;
+    if (this.computerPartnerAutoSelectTimeout) {
+      clearTimeout(this.computerPartnerAutoSelectTimeout);
+      this.computerPartnerAutoSelectTimeout = undefined;
+    }
     this.overrideSettings = undefined;
     this.optionsContainer.setVisible(false);
     this.optionsContainer.removeAll(true);

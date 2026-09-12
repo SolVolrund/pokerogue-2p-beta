@@ -1,7 +1,7 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import type { InputsController } from "#app/inputs-controller";
-import type { PlayerIndex, TwoPlayerDebugStateCheckpoint } from "#app/battle-scene";
+import type { InputSeat, PlayerIndex, TwoPlayerDebugStateCheckpoint } from "#app/battle-scene";
 import { isDev } from "#constants/app-constants";
 import { Button } from "#enums/buttons";
 import { UiMode } from "#enums/ui-mode";
@@ -52,7 +52,12 @@ type RemoteDebugPlayer =
   | "guest"
   | "guest2"
   | "guest-2"
-  | "guest_2";
+  | "guest_2"
+  | "ep"
+  | "enemy"
+  | "enemyplayer"
+  | "enemy-player"
+  | "enemy_player";
 
 declare global {
   interface Window {
@@ -173,15 +178,15 @@ export class UiInputs {
     );
   }
 
-  public processRemoteInput(playerIndex: PlayerIndex, button: Button, pressed = true): boolean {
-    if (!globalScene.canAcceptRemoteInput(playerIndex)) {
+  public processRemoteInput(inputSeat: InputSeat, button: Button, pressed = true): boolean {
+    if (!globalScene.canAcceptRemoteInput(inputSeat)) {
       this.recordInputDebugEvent({
         action: "rejected",
         source: "remote",
         reason: "remote-owner-mismatch",
         localSeat: globalScene.twoPlayerLocalInputSeat,
         inputOwner: globalScene.inputOwner,
-        playerIndex,
+        playerIndex: inputSeat,
         button,
         buttonName: Button[button] as keyof typeof Button,
         pressed,
@@ -189,8 +194,8 @@ export class UiInputs {
       return false;
     }
 
-    if (globalScene.inputOwner === playerIndex) {
-      globalScene.setActivePlayerIndex(playerIndex);
+    if (typeof inputSeat === "number" && globalScene.inputOwner === inputSeat) {
+      globalScene.setActivePlayerIndex(inputSeat);
     }
 
     const processed = this.processButtonInput(button, pressed);
@@ -200,7 +205,7 @@ export class UiInputs {
       ...(processed ? {} : { reason: "unknown-button" }),
       localSeat: globalScene.twoPlayerLocalInputSeat,
       inputOwner: globalScene.inputOwner,
-      playerIndex,
+      playerIndex: inputSeat,
       button,
       buttonName: Button[button] as keyof typeof Button,
       pressed,
@@ -260,7 +265,7 @@ export class UiInputs {
 
   private processLocalButtonInput(button: Button, pressed: boolean): boolean {
     const inputCheckpoint = this.getInputCheckpoint();
-    const inputPlayerIndex = globalScene.getLocalInputPlayerIndex();
+    const inputSeat = globalScene.getLocalInputSeatForInput();
     const inputReadinessBlockReason = this.twoPlayerInputTransport?.getInputReadinessBlockReason(inputCheckpoint);
     if (inputReadinessBlockReason) {
       this.recordInputDebugEvent({
@@ -297,8 +302,8 @@ export class UiInputs {
       return requested;
     }
 
-    if (globalScene.inputOwner === inputPlayerIndex) {
-      globalScene.setActivePlayerIndex(inputPlayerIndex);
+    if (typeof inputSeat === "number" && globalScene.inputOwner === inputSeat) {
+      globalScene.setActivePlayerIndex(inputSeat);
     }
 
     const processed = this.processButtonInput(button, pressed);
@@ -308,14 +313,14 @@ export class UiInputs {
       ...(processed ? {} : { reason: "unknown-button" }),
       localSeat: globalScene.twoPlayerLocalInputSeat,
       inputOwner: globalScene.inputOwner,
-      playerIndex: inputPlayerIndex,
+      playerIndex: inputSeat,
       button,
       buttonName: Button[button] as keyof typeof Button,
       pressed,
     });
 
     if (processed) {
-      this.twoPlayerInputTransport?.send(button, pressed, inputCheckpoint, inputPlayerIndex);
+      this.twoPlayerInputTransport?.send(button, pressed, inputCheckpoint, inputSeat);
     }
 
     return processed;
@@ -427,12 +432,12 @@ export class UiInputs {
     const playerIndex = this.parseDebugRemotePlayer(player);
     const parsedButton = this.parseRemoteButton(button);
 
-    return playerIndex !== undefined && parsedButton !== undefined
+    return typeof playerIndex === "number" && parsedButton !== undefined
       ? this.forceLocalTwoPlayerInput(playerIndex, parsedButton, pressed)
       : false;
   }
 
-  private parseDebugRemotePlayer(player: RemoteDebugPlayer): PlayerIndex | undefined {
+  private parseDebugRemotePlayer(player: RemoteDebugPlayer): InputSeat | undefined {
     const normalizedPlayer = `${player}`.toLowerCase();
     switch (normalizedPlayer) {
       case "1":
@@ -452,6 +457,12 @@ export class UiInputs {
       case "guest-2":
       case "guest_2":
         return 2;
+      case "ep":
+      case "enemy":
+      case "enemyplayer":
+      case "enemy-player":
+      case "enemy_player":
+        return "ep";
       default:
         return undefined;
     }
@@ -809,7 +820,8 @@ export class UiInputs {
 
     return events
       .map(event => {
-        const player = event.playerIndex === undefined ? "-" : `P${event.playerIndex + 1}`;
+        const player =
+          event.playerIndex === undefined ? "-" : event.playerIndex === "ep" ? "EP" : `P${event.playerIndex + 1}`;
         const button = event.buttonName ?? (event.button !== undefined ? Button[event.button] : "-");
         const reason = event.reason ? ` (${event.reason})` : "";
         return `${event.at.slice(11, 19)} ${event.action} ${event.source} ${player} ${button}${reason}`;

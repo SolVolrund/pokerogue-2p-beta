@@ -235,6 +235,13 @@ export class Battle {
       return this.mysteryEncounterBattlerCount;
     }
 
+    if (
+      globalScene.twoPlayerEnemyPlayerMode
+      && globalScene.multiplayerPlayerCount === 1
+    ) {
+      return 2;
+    }
+
     return globalScene.twoPlayerMode ? globalScene.getBattleFieldSlotCount() : 2;
   }
 
@@ -272,7 +279,7 @@ export class Battle {
 
   pickUpScatteredMoney(): void {
     const rewardPlayerIndexes = globalScene.twoPlayerMode
-      ? globalScene.getPlayerFieldOwners()
+      ? [...new Set(globalScene.getPlayerFieldOwners())]
       : ([globalScene.activePlayerIndex] as PlayerIndex[]);
     const payouts = rewardPlayerIndexes.map(playerIndex => {
       const moneyAmount = new NumberHolder(globalScene.currentBattle.moneyScattered);
@@ -692,9 +699,12 @@ export function getRandomTrainerFunc(
       TrainerType.STAR_GRUNT,
     ];
     const isEvilTeamGrunt = evilTeamGrunts.includes(choice);
+    const shouldUseMultiplayerTrainerPartners =
+      globalScene.twoPlayerMode
+      && (!globalScene.twoPlayerEnemyPlayerMode || globalScene.multiplayerPlayerCount > 1);
 
     if (
-      globalScene.twoPlayerMode
+      shouldUseMultiplayerTrainerPartners
       && globalScene.twoPlayerPartySize === 6
       && trainerConfigs[choice].hasDouble
       && trainerConfigs[choice].trainerTypeDouble

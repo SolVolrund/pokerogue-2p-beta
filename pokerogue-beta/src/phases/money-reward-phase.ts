@@ -18,7 +18,7 @@ export class MoneyRewardPhase extends BattlePhase {
   start() {
     if (globalScene.twoPlayerMode) {
       const previousPlayerIndex = globalScene.activePlayerIndex;
-      const rewardPlayerIndexes = globalScene.getPlayerFieldOwners();
+      const rewardPlayerIndexes = [...new Set(globalScene.getPlayerFieldOwners())];
       const payouts = rewardPlayerIndexes.map(playerIndex => {
         const playerMoneyAmount = this.getMoneyAmount(playerIndex);
         globalScene.addMoneyForPlayer(playerMoneyAmount.value, playerIndex, false);

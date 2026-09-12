@@ -45,6 +45,7 @@ export class TargetSelectUiHandler extends UiHandler {
       callback: TargetSelectCallback,
       defaultTargets?: BattlerIndex[],
       explicitTargets?: BattlerIndex[],
+      explicitUser?: Pokemon,
     ],
   ): boolean {
     if (args.length < 3) {
@@ -54,7 +55,7 @@ export class TargetSelectUiHandler extends UiHandler {
     super.show(args);
 
     [this.fieldIndex, this.move, this.targetSelectCallback] = args;
-    const user = globalScene.getPlayerPokemonForFieldSlot(this.fieldIndex);
+    const user = args[5] ?? globalScene.getPlayerPokemonForFieldSlot(this.fieldIndex);
     if (!user) {
       return false;
     }
@@ -99,11 +100,12 @@ export class TargetSelectUiHandler extends UiHandler {
    * @param user the Pokemon using the move
    */
   resetCursor(cursorN: number, user: Pokemon): void {
+    const cursorTarget = globalScene.getField()[cursorN];
     if (
       cursorN != null
-      && (isPlayerBattlerIndex(cursorN) || user.tempSummonData.waveTurnCount === 1)
+      && ((cursorTarget && user.isAlly(cursorTarget)) || user.tempSummonData.waveTurnCount === 1)
     ) {
-      // Reset cursor on the first turn of a fight or if an ally was targeted last turn
+      // Reset cursor on the first turn of a fight or if an ally was targeted last turn.
       cursorN = -1;
     }
     this.setCursor(this.targets.includes(cursorN) ? cursorN : this.targets[0]);

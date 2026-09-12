@@ -22,7 +22,7 @@ import { getStatKey, PERMANENT_STATS, Stat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
-import type { PlayerPokemon } from "#field/pokemon";
+import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import { modifierSortFunc, PokemonHeldItemModifier } from "#modifiers/modifier";
 import type { Move } from "#moves/move";
 import type { PokemonMove } from "#moves/pokemon-move";
@@ -129,7 +129,7 @@ export class SummaryUiHandler extends UiHandler {
   private descriptionScrollTween: Phaser.Tweens.Tween | null;
   private moveCursorBlinkTimer: Phaser.Time.TimerEvent | null;
 
-  private pokemon: PlayerPokemon | null;
+  private pokemon: Pokemon | null;
   private playerParty: boolean;
   /**This is set to false when checking the summary of a freshly caught Pokemon as it is not part of a player's party yet but still needs to display its items*/
   private newMove: Move | null;
@@ -346,7 +346,7 @@ export class SummaryUiHandler extends UiHandler {
 
   show(
     args: [
-      pokemon: PlayerPokemon,
+      pokemon: Pokemon,
       uiMode?: SummaryUiMode.DEFAULT,
       startPage?: Page,
       selectCallback?: (cursor: number) => void,
@@ -355,7 +355,7 @@ export class SummaryUiHandler extends UiHandler {
   ): boolean;
   show(
     args: [
-      pokemon: PlayerPokemon,
+      pokemon: Pokemon,
       uiMode: SummaryUiMode.LEARN_MOVE,
       move?: Move,
       moveSelectCallback?: (cursor: number) => void,
@@ -364,7 +364,7 @@ export class SummaryUiHandler extends UiHandler {
   ): boolean;
   show(
     args: [
-      pokemon: PlayerPokemon,
+      pokemon: Pokemon,
       uiMode?: SummaryUiMode,
       startPage?: Page | Move,
       callback?: (cursor: number) => void,
@@ -380,7 +380,7 @@ export class SummaryUiHandler extends UiHandler {
      * args[3] : contains the function executed when the user exits out of Summary UI
      * args[4] : optional boolean used to determine if the Pokemon is part of the player's party or not (defaults to true, necessary for PR #2921 to display all relevant information)
      */
-    this.pokemon = args[0] as PlayerPokemon;
+    this.pokemon = args[0] as Pokemon;
     this.playerIndex = globalScene.getPlayerIndexForPokemon(this.pokemon) ?? globalScene.activePlayerIndex;
     this.summaryUiMode = (args[1] as SummaryUiMode) ?? SummaryUiMode.DEFAULT;
     this.playerParty = args[4] ?? true;
@@ -563,7 +563,9 @@ export class SummaryUiHandler extends UiHandler {
     if (this.moveSelect) {
       if (button === Button.ACTION) {
         if (this.pokemon && this.moveCursor < this.pokemon.moveset.length) {
-          if (this.summaryUiMode === SummaryUiMode.LEARN_MOVE) {
+          if (!this.pokemon.isPlayer() && this.summaryUiMode !== SummaryUiMode.LEARN_MOVE) {
+            error = true;
+          } else if (this.summaryUiMode === SummaryUiMode.LEARN_MOVE) {
             this.moveSelectFunction?.(this.moveCursor);
           } else if (this.selectedMoveIndex === -1) {
             this.selectedMoveIndex = this.moveCursor;
@@ -672,6 +674,9 @@ export class SummaryUiHandler extends UiHandler {
           if (!fromPartyMode) {
             break;
           }
+          if (!this.pokemon?.isPlayer()) {
+            break;
+          }
           const isDown = button === Button.DOWN;
           const party = globalScene.getPlayerParty(this.playerIndex);
           const partyMemberIndex = this.pokemon ? party.indexOf(this.pokemon) : -1;
@@ -716,7 +721,7 @@ export class SummaryUiHandler extends UiHandler {
     return success || error;
   }
 
-  private playSummaryPokemonSprite(pokemon: PlayerPokemon): void {
+  private playSummaryPokemonSprite(pokemon: Pokemon): void {
     const playSprite = () => {
       if (this.pokemon !== pokemon || !this.summaryContainer.visible) {
         return;

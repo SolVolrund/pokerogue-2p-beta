@@ -66,7 +66,7 @@ export async function showMysteryEncounterPlayerMenu({
     return computerPartnerOption.onOptionChosen(optionIndex, playerIndex);
   }
 
-  globalScene.waitForPlayerInput(playerIndex);
+  globalScene.waitForPlayerSideProgressionInput(playerIndex);
   updateWindowType(playerIndex + 1);
 
   globalScene.ui.setMode(UiMode.MESSAGE).then(() => {

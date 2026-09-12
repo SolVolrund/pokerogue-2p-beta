@@ -118,6 +118,7 @@ export interface SessionSaveData {
   twoPlayerPartySize?: 3 | 6;
   twoPlayerComputerPartner?: boolean;
   twoPlayerVsMode?: boolean;
+  twoPlayerEnemyPlayerMode?: boolean;
   computerPartnerPlayerIndexes?: PlayerIndex[];
   computerPartnerKey?: ComputerPartnerKey;
   computerPartnerKeys?: Partial<Record<PlayerIndex, ComputerPartnerKey>>;

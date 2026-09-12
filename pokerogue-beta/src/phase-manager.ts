@@ -33,6 +33,7 @@ import { EncounterPhase } from "#phases/encounter-phase";
 import { EndCardPhase } from "#phases/end-card-phase";
 import { EndEvolutionPhase } from "#phases/end-evolution-phase";
 import { EnemyCommandPhase } from "#phases/enemy-command-phase";
+import { EnemyPlayerTokenRewardPhase } from "#phases/enemy-player-token-reward-phase";
 import { EonFluteDismissPhase } from "#phases/eon-flute-dismiss-phase";
 import { EonFluteSummonPhase } from "#phases/eon-flute-summon-phase";
 import { EvolutionPhase } from "#phases/evolution-phase";
@@ -171,6 +172,7 @@ const PHASES = Object.freeze({
   EndCardPhase,
   EndEvolutionPhase,
   EnemyCommandPhase,
+  EnemyPlayerTokenRewardPhase,
   EonFluteDismissPhase,
   EonFluteSummonPhase,
   EvolutionPhase,

@@ -8,12 +8,13 @@ import { PartyUiMode } from "#enums/party-ui-mode";
 import { PokemonType } from "#enums/pokemon-type";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
-import type { PlayerPokemon } from "#field/pokemon";
+import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
 import type { CommandPhase } from "#phases/command-phase";
+import type { EnemyCommandPhase } from "#phases/enemy-command-phase";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { PartyUiHandler } from "#ui/party-ui-handler";
 import { shouldRedactCombatInputOwner } from "#ui/private-input-display";
-import { addTextObject } from "#ui/text";
+import { addTextObject, getTextColor } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { canTerastallize } from "#utils/pokemon-utils";
 import { getZMoveForPokemonMove } from "#utils/z-move-utils";
@@ -21,6 +22,7 @@ import i18next from "i18next";
 
 export class CommandUiHandler extends UiHandler {
   private commandsContainer: Phaser.GameObjects.Container;
+  private commandTexts = new Map<Command, Phaser.GameObjects.Text>();
   private cursorObj: Phaser.GameObjects.Image | null;
 
   private teraButton: Phaser.GameObjects.Sprite;
@@ -35,13 +37,20 @@ export class CommandUiHandler extends UiHandler {
     super(UiMode.COMMAND);
   }
 
-  private getCommandPhase(): CommandPhase {
+  private getCommandPhase(): CommandPhase | EnemyCommandPhase {
     const currentPhase = globalScene.phaseManager.getCurrentPhase();
     if (currentPhase.is("CommandPhase")) {
       return currentPhase;
     }
+    if (currentPhase.is("EnemyCommandPhase")) {
+      return currentPhase as EnemyCommandPhase;
+    }
 
-    return globalScene.phaseManager.getStandbyPhase() as CommandPhase;
+    return globalScene.phaseManager.getStandbyPhase() as CommandPhase | EnemyCommandPhase;
+  }
+
+  private isEnemyCommandPhase(commandPhase = this.getCommandPhase()): commandPhase is EnemyCommandPhase {
+    return commandPhase.is("EnemyCommandPhase");
   }
 
   setup() {
@@ -91,11 +100,17 @@ export class CommandUiHandler extends UiHandler {
         TextStyle.WINDOW_BATTLE_COMMAND,
       );
       commandText.setName(commands[c]);
+      this.commandTexts.set(c as Command, commandText);
       this.commandsContainer.add(commandText);
     }
   }
 
-  private getActivePokemon(): PlayerPokemon | undefined {
+  private getActivePokemon(): Pokemon | undefined {
+    const commandPhase = this.getCommandPhase();
+    if (this.isEnemyCommandPhase(commandPhase)) {
+      return commandPhase.getPokemon();
+    }
+
     const fieldPokemon = globalScene.getPlayerPokemonForFieldSlot(this.fieldIndex);
     if (fieldPokemon) {
       return fieldPokemon;
@@ -124,6 +139,7 @@ export class CommandUiHandler extends UiHandler {
 
     const canTera = this.canTera();
     const canZMove = this.canZMove();
+    this.refreshCommandTextStates(commandPhase);
 
     if (canTera) {
       this.teraButton.setVisible(true);
@@ -150,7 +166,9 @@ export class CommandUiHandler extends UiHandler {
     const pokemonName = (
       this.getActivePokemon()
       ?? commandPhase.getPokemon()
-      ?? globalScene.getPlayerParty(globalScene.getPlayerIndexForFieldSlot(this.fieldIndex))[0]
+      ?? (!this.isEnemyCommandPhase(commandPhase)
+        ? globalScene.getPlayerParty(globalScene.getPlayerIndexForFieldSlot(this.fieldIndex))[0]
+        : undefined)
     )?.getNameToRender({ prependFormName: false }) ?? i18next.t("battle:pokemon");
     const messageHandler = this.getUi().getMessageHandler();
     messageHandler.bg.setVisible(true);
@@ -178,6 +196,10 @@ export class CommandUiHandler extends UiHandler {
     if (button === Button.CANCEL || button === Button.ACTION) {
       if (button === Button.ACTION) {
         const commandPhase = this.getCommandPhase();
+        if (!this.canUseCommand(commandPhase, cursor)) {
+          ui.playError();
+          return true;
+        }
         switch (cursor) {
           // Fight
           case Command.FIGHT:
@@ -191,7 +213,11 @@ export class CommandUiHandler extends UiHandler {
             break;
           // Pokemon
           case Command.POKEMON:
-            this.openPokemonCommandMenu(commandPhase);
+            if (this.isEnemyCommandPhase(commandPhase)) {
+              commandPhase.handleCommand(Command.POKEMON, 0);
+            } else {
+              this.openPokemonCommandMenu(commandPhase);
+            }
             success = true;
             break;
           // Run
@@ -217,7 +243,10 @@ export class CommandUiHandler extends UiHandler {
             break;
         }
       } else {
-        (globalScene.phaseManager.getCurrentPhase() as CommandPhase).cancel();
+        const commandPhase = this.getCommandPhase();
+        if (!this.isEnemyCommandPhase(commandPhase)) {
+          commandPhase.cancel();
+        }
       }
     } else {
       switch (button) {
@@ -349,9 +378,35 @@ export class CommandUiHandler extends UiHandler {
     globalScene.ui.setModeWithoutClear(UiMode.OPTION_SELECT, config, null, true);
   }
 
+  private refreshCommandTextStates(commandPhase: CommandPhase | EnemyCommandPhase): void {
+    for (const command of [Command.FIGHT, Command.BALL, Command.POKEMON, Command.RUN]) {
+      const commandText = this.commandTexts.get(command);
+      if (!commandText) {
+        continue;
+      }
+
+      const enabled = this.canUseCommand(commandPhase, command);
+      commandText
+        .setColor(enabled ? getTextColor(TextStyle.WINDOW_BATTLE_COMMAND, false) : "#808080")
+        .setAlpha(enabled ? 1 : 0.6);
+    }
+  }
+
+  private canUseCommand(commandPhase: CommandPhase | EnemyCommandPhase, command: Command): boolean {
+    if (!this.isEnemyCommandPhase(commandPhase)) {
+      return true;
+    }
+
+    return commandPhase.canUseCommand(command);
+  }
+
   canTera(): boolean {
+    if (this.isEnemyCommandPhase()) {
+      return false;
+    }
+
     const activePokemon = this.getActivePokemon();
-    if (!activePokemon) {
+    if (!activePokemon?.isPlayer()) {
       return false;
     }
 
@@ -370,8 +425,12 @@ export class CommandUiHandler extends UiHandler {
   }
 
   canZMove(): boolean {
+    if (this.isEnemyCommandPhase()) {
+      return false;
+    }
+
     const activePokemon = this.getActivePokemon();
-    if (!activePokemon) {
+    if (!activePokemon?.isPlayer()) {
       return false;
     }
 

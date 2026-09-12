@@ -6787,9 +6787,16 @@ export class PlayerPokemon extends Pokemon {
     if (globalScene.twoPlayerMode) {
       const playerIndex = globalScene.getPlayerIndexForPokemon(this);
       if (playerIndex !== undefined) {
-        const fieldIndex = globalScene.getPlayerFieldOwners().indexOf(playerIndex);
-        if (fieldIndex !== -1) {
-          return fieldIndex;
+        const fieldOwners = globalScene.getPlayerFieldOwners();
+        for (const [fieldIndex, ownerIndex] of fieldOwners.entries()) {
+          if (ownerIndex === playerIndex && globalScene.getPlayerPokemonForFieldSlot(fieldIndex) === this) {
+            return fieldIndex;
+          }
+        }
+
+        const firstOwnedFieldIndex = fieldOwners.indexOf(playerIndex);
+        if (firstOwnedFieldIndex !== -1) {
+          return firstOwnedFieldIndex;
         }
       }
     }

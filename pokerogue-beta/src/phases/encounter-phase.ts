@@ -733,7 +733,7 @@ export class EncounterPhase extends BattlePhase {
         globalScene.getEnemyField(),
         undefined,
         globalScene.getComputerPartnerRolePreferences(playerIndex),
-        { partyLimit: globalScene.getPlayerPartyLimit(playerIndex) },
+        { partyLimit: globalScene.getPlayerPartyLimit(playerIndex), playerIndex },
       );
       globalScene.currentBattle.computerPartnerCaptureInterests.push({ playerIndex, interests });
 
@@ -743,7 +743,7 @@ export class EncounterPhase extends BattlePhase {
         globalScene.getEnemyField(),
         globalScene.getPlayerPokeballCounts(playerIndex),
         undefined,
-        { partyLimit: globalScene.getPlayerPartyLimit(playerIndex) },
+        { partyLimit: globalScene.getPlayerPartyLimit(playerIndex), playerIndex },
       );
 
       if (captureDecisions.length === 0) {
@@ -778,6 +778,11 @@ export class EncounterPhase extends BattlePhase {
       this.showComputerPartnerCaptureClaimMessage(partnerClaims, announcement.callouts, onComplete);
       return true;
     };
+    if (globalScene.isCpuPlayersVsEnemyPlayerMode()) {
+      setCaptureClaims();
+      return;
+    }
+
     const options: OptionSelectItem[] = announcement.decisions.map(decision => {
       const targetName = decision.target.getNameToRender();
       const sideLabel = this.getEnemyCapturePositionLabel(decision.targetIndex, enemyField);
@@ -813,7 +818,7 @@ export class EncounterPhase extends BattlePhase {
       options,
     };
 
-    globalScene.waitForPlayerInput(0);
+    globalScene.waitForPlayerSideProgressionInput();
     globalScene.ui.showText(
       announcement.message,
       null,

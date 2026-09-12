@@ -75,6 +75,11 @@ export const PartyUiMode = {
    * This type of selection can be cancelled.
    */
   DISCARD: 13,
+  /**
+   * Indicates that the party UI is open for the enemy-player controller to switch a trainer Pokemon.
+   * This type of selection can be cancelled.
+   */
+  ENEMY_SWITCH: 14,
 } as const;
 
 export type PartyUiMode = ObjectValues<typeof PartyUiMode>;

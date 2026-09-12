@@ -239,7 +239,7 @@ export class SelectBiomePhase extends BattlePhase {
   }
 
   private setNextBiomeAndEndForTwoPlayer(nextBiome: BiomeId): void {
-    globalScene.waitForPlayerInput(0);
+    globalScene.waitForPlayerSideProgressionInput();
     this.setNextBiomeAndEnd(nextBiome);
   }
 

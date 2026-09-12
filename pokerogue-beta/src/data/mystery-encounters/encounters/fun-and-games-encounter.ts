@@ -24,6 +24,11 @@ import {
   transitionMysteryEncounterIntroVisuals,
   updatePlayerMoney,
 } from "#mystery-encounters/encounter-phase-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getMysteryEncounterPlayerTitle,
+  getNextMysteryEncounterPlayerIndex,
+} from "#mystery-encounters/encounter-player-utils";
 import { isPokemonValidForEncounterOptionSelection } from "#mystery-encounters/encounter-pokemon-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
@@ -62,7 +67,9 @@ class TwoPlayerAnyPlayerFunAndGamesMoneyRequirement extends MoneyRequirement {
       this.requiredMoney = globalScene.getWaveMoneyAmount(this.scalingMultiplier);
     }
 
-    return ([0, 1] as PlayerIndex[]).some(playerIndex => globalScene.getPlayerMoney(playerIndex) >= this.requiredMoney);
+    return getMysteryEncounterPlayerIndexes().some(
+      playerIndex => globalScene.getPlayerMoney(playerIndex) >= this.requiredMoney,
+    );
   }
 }
 
@@ -154,25 +161,27 @@ function storeFunAndGamesChoice(choice: FunAndGamesChoice, startingCursorIndex: 
   data.choices = data.choices.filter(existing => existing.playerIndex !== choice.playerIndex);
   data.choices.push(choice);
 
-  if (choice.playerIndex === 0) {
-    showFunAndGamesPlayerMenu(1, startingCursorIndex);
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(choice.playerIndex);
+  if (nextPlayerIndex != null) {
+    showFunAndGamesPlayerMenu(nextPlayerIndex, startingCursorIndex);
     return false;
   }
 
+  const firstPlayerIndex = getMysteryEncounterPlayerIndexes()[0] ?? 0;
   data.skipSelectedDialogueOnce = true;
-  globalScene.setActivePlayerIndex(0);
-  updateWindowType(1);
+  globalScene.setActivePlayerIndex(firstPlayerIndex);
+  updateWindowType(firstPlayerIndex + 1);
   return true;
 }
 
 function showFunAndGamesPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
+  globalScene.waitForPlayerSideProgressionInput(playerIndex);
   updateWindowType(playerIndex + 1);
 
   globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
     globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
       slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
+      overrideTitle: getMysteryEncounterPlayerTitle(playerIndex),
       overrideQuery: i18next.t(`${namespace}:query`),
       overrideOptions: buildFunAndGamesPlayerOptions(playerIndex),
       startingCursorIndex,
@@ -187,7 +196,7 @@ async function showFunAndGamesSelectedDialogue(choice: FunAndGamesChoice): Promi
 }
 
 function getFunAndGamesTrainerSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
-  return playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+  return globalScene.getPlayerTrainerBackSprite(playerIndex);
 }
 
 async function hideFunAndGamesNonPlayingTrainers(battlePlayers: PlayerIndex[]): Promise<void> {
@@ -197,7 +206,7 @@ async function hideFunAndGamesNonPlayingTrainers(battlePlayers: PlayerIndex[]): 
 
   const battlePlayerSet = new Set(battlePlayers);
   await Promise.all(
-    ([0, 1] as PlayerIndex[])
+    getMysteryEncounterPlayerIndexes()
       .filter(playerIndex => !battlePlayerSet.has(playerIndex))
       .map(
         playerIndex =>
@@ -445,7 +454,7 @@ async function summonFunAndGamesPlayerPokemon(
         }),
       );
 
-      const trainerSprite = choice.playerIndex === 1 ? globalScene.trainerPartner : globalScene.trainer;
+      const trainerSprite = getFunAndGamesTrainerSprite(choice.playerIndex);
       globalScene.pbTray.hide();
       trainerSprite.setTexture(globalScene.getTrainerBackTextureKey(choice.playerIndex, true));
       globalScene.time.delayedCall(562, () => {

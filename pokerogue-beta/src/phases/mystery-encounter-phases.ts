@@ -76,11 +76,15 @@ export class MysteryEncounterPhase extends Phase {
     }
 
     if (globalScene.twoPlayerMode && !this.optionSelectSettings) {
-      globalScene.waitForPlayerInput(0);
+      globalScene.waitForPlayerSideProgressionInput();
     }
 
     // Initiates encounter dialogue window and option select
     globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, this.optionSelectSettings);
+  }
+
+  shouldAutoSelectComputerPartnerOption(): boolean {
+    return globalScene.twoPlayerMode && globalScene.isComputerPartnerPlayer(globalScene.activePlayerIndex);
   }
 
   private normalizeTwoPlayerTrainerSprites(): void {
@@ -122,7 +126,7 @@ export class MysteryEncounterPhase extends Phase {
 
       const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(currentPlayerIndex, playerIndexes);
       if (nextPlayerIndex != null) {
-        globalScene.waitForPlayerInput(nextPlayerIndex);
+        globalScene.waitForPlayerSideProgressionInput(nextPlayerIndex);
         globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
           slideInDescription: false,
           overrideTitle: getMysteryEncounterPlayerTitle(nextPlayerIndex),
@@ -149,7 +153,7 @@ export class MysteryEncounterPhase extends Phase {
     }
 
     if (globalScene.twoPlayerMode) {
-      globalScene.waitForPlayerInput(0);
+      globalScene.waitForPlayerSideProgressionInput();
     } else {
       globalScene.setActivePlayerIndex(0);
     }

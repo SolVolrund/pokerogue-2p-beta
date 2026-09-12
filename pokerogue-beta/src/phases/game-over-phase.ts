@@ -89,7 +89,7 @@ export class GameOverPhase extends BattlePhase {
       this.handleGameOver();
     } else {
       if (globalScene.twoPlayerMode) {
-        globalScene.waitForPlayerInput(0);
+        globalScene.waitForPlayerSideProgressionInput();
       }
 
       globalScene.ui.showText(i18next.t("battle:retryBattle"), null, () => {

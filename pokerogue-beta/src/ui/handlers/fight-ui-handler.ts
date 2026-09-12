@@ -12,6 +12,7 @@ import { UiMode } from "#enums/ui-mode";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
 import { PokemonMove } from "#moves/pokemon-move";
 import type { CommandPhase } from "#phases/command-phase";
+import type { EnemyCommandPhase } from "#phases/enemy-command-phase";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
 import { shouldRedactCombatInputOwner } from "#ui/private-input-display";
 import { addTextObject, getTextColor } from "#ui/text";
@@ -45,13 +46,16 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
     super(UiMode.FIGHT);
   }
 
-  private getCommandPhase(): CommandPhase {
+  private getCommandPhase(): CommandPhase | EnemyCommandPhase {
     const currentPhase = globalScene.phaseManager.getCurrentPhase();
     if (currentPhase.is("CommandPhase")) {
       return currentPhase;
     }
+    if (currentPhase.is("EnemyCommandPhase")) {
+      return currentPhase as EnemyCommandPhase;
+    }
 
-    return globalScene.phaseManager.getStandbyPhase() as CommandPhase;
+    return globalScene.phaseManager.getStandbyPhase() as CommandPhase | EnemyCommandPhase;
   }
 
   /**
@@ -288,7 +292,9 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
       this.setInfoVis(false);
       this.moveInfoOverlay.clear();
       pokemon.getOpponents().forEach(opponent => {
-        (opponent as EnemyPokemon).updateEffectiveness();
+        if (opponent.isEnemy()) {
+          opponent.updateEffectiveness();
+        }
       });
       return;
     }
@@ -325,11 +331,13 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
     this.moveInfoOverlay.show(displayMove);
 
     pokemon.getOpponents().forEach(opponent => {
-      (opponent as EnemyPokemon).updateEffectiveness(this.getEffectivenessText(pokemon, opponent, displayPokemonMove));
+      if (opponent.isEnemy()) {
+        opponent.updateEffectiveness(this.getEffectivenessText(pokemon, opponent, displayPokemonMove));
+      }
     });
   }
 
-  private getDisplayPokemonMove(pokemon: PlayerPokemon, pokemonMove: PokemonMove): PokemonMove | undefined {
+  private getDisplayPokemonMove(pokemon: Pokemon, pokemonMove: PokemonMove): PokemonMove | undefined {
     if (this.fromCommand !== Command.Z_MOVE) {
       return pokemonMove;
     }
@@ -487,7 +495,9 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
 
     const opponents = this.getCommandPhase().getPokemon().getOpponents();
     opponents.forEach(opponent => {
-      (opponent as EnemyPokemon).updateEffectiveness();
+      if (opponent.isEnemy()) {
+        opponent.updateEffectiveness();
+      }
     });
   }
 

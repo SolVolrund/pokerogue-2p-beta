@@ -20,7 +20,13 @@ export class SummonPhase extends PartyMemberPokemonPhase {
   protected inheritedFieldPosition?: FieldPosition;
 
   constructor(fieldIndex: number, player = true, loaded = false) {
-    super(player && globalScene.twoPlayerMode ? 0 : fieldIndex, player);
+    const partyMemberIndex =
+      player && globalScene.twoPlayerMode
+        ? globalScene.twoPlayerEnemyPlayerMode && globalScene.multiplayerPlayerCount === 1
+          ? fieldIndex
+          : 0
+        : fieldIndex;
+    super(partyMemberIndex, player);
 
     this.fieldIndex = fieldIndex;
     this.loaded = loaded;
@@ -61,6 +67,10 @@ export class SummonPhase extends PartyMemberPokemonPhase {
   }
 
   override getParty(): Pokemon[] {
+    if (this.player && globalScene.twoPlayerEnemyPlayerMode && globalScene.multiplayerPlayerCount === 1) {
+      return globalScene.getPlayerParty(0);
+    }
+
     if (this.player && globalScene.twoPlayerMode) {
       return globalScene.getPlayerParty(globalScene.getPlayerIndexForFieldSlot(this.fieldIndex));
     }
@@ -73,7 +83,10 @@ export class SummonPhase extends PartyMemberPokemonPhase {
       return;
     }
 
-    const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
+    const playerIndex =
+      globalScene.twoPlayerEnemyPlayerMode && globalScene.multiplayerPlayerCount === 1
+        ? 0
+        : globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
     globalScene.waitForPlayerInput(playerIndex);
   }
 

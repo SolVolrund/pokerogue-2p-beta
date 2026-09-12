@@ -1,4 +1,4 @@
-import type { InputOwner, LocalInputSeat, PlayerIndex } from "#app/battle-scene";
+import type { InputOwner, InputSeat, LocalInputSeat, PlayerIndex } from "#app/battle-scene";
 import { Button } from "#enums/buttons";
 import type { ComputerPartnerKey, ComputerPartnerRolePreferences } from "#utils/computer-partner-profile";
 
@@ -40,8 +40,9 @@ export interface TwoPlayerTitleStart {
   action: "new-run" | "load-session";
   gameMode?: number;
   partySize?: 3 | 6;
-  playerCount?: 2 | 3;
+  playerCount?: 1 | 2 | 3;
   vsMode?: boolean;
+  enemyPlayerMode?: boolean;
   computerPartnerPlayerIndexes?: PlayerIndex[];
   computerPartnerKeys?: Partial<Record<PlayerIndex, ComputerPartnerKey>>;
   computerPartnerRolePreferences?: Partial<Record<PlayerIndex, ComputerPartnerRolePreferences>>;
@@ -68,7 +69,7 @@ interface TwoPlayerInputMessage {
   senderRole?: TwoPlayerNetworkRole;
   sequence: number;
   authoritySequence?: number;
-  playerIndex: PlayerIndex;
+  playerIndex: InputSeat;
   button: Button;
   pressed: boolean;
   runBootstrap?: TwoPlayerRunBootstrap;
@@ -92,7 +93,7 @@ export interface TwoPlayerInputTransportStatus {
   authoritySequence: number;
 }
 
-export type RemoteInputHandler = (playerIndex: PlayerIndex, button: Button, pressed: boolean) => boolean;
+export type RemoteInputHandler = (inputSeat: InputSeat, button: Button, pressed: boolean) => boolean;
 export type TwoPlayerRunBootstrapHandler = (bootstrap: TwoPlayerRunBootstrap) => void;
 export type TwoPlayerTitleStartHandler = (titleStart: TwoPlayerTitleStart) => void;
 export type TwoPlayerSettingsSnapshotHandler = (settingsSnapshot: TwoPlayerSettingsSnapshot) => boolean;
@@ -128,7 +129,7 @@ export interface TwoPlayerInputDebugEvent {
   messageKind?: TwoPlayerInputMessageKind;
   localSeat?: LocalInputSeat;
   inputOwner?: InputOwner;
-  playerIndex?: PlayerIndex;
+  playerIndex?: InputSeat;
   button?: Button;
   buttonName?: keyof typeof Button;
   pressed?: boolean;
@@ -145,7 +146,7 @@ export interface TwoPlayerInputDebugEvent {
 export type TwoPlayerInputDebugLogger = (event: Omit<TwoPlayerInputDebugEvent, "at">) => void;
 
 interface RemoteCheckpointEntry {
-  playerIndex: PlayerIndex;
+  playerIndex: InputSeat;
   label: string;
   sequence: number;
   checkpoint: TwoPlayerStateCheckpoint;
@@ -213,6 +214,14 @@ function isValidPlayerIndex(playerIndex: unknown): playerIndex is PlayerIndex {
   return playerIndex === 0 || playerIndex === 1 || playerIndex === 2;
 }
 
+function isValidInputSeat(inputSeat: unknown): inputSeat is InputSeat {
+  return isValidPlayerIndex(inputSeat) || inputSeat === "ep";
+}
+
+function getInputSeatLabel(inputSeat: InputSeat): string {
+  return inputSeat === "ep" ? "EP" : `P${inputSeat + 1}`;
+}
+
 function isValidButton(button: unknown): button is Button {
   return typeof button === "number" && Button[button] !== undefined;
 }
@@ -249,8 +258,9 @@ function isValidTitleStart(titleStart: unknown): titleStart is TwoPlayerTitleSta
   return (data.action === "new-run" || data.action === "load-session")
     && (data.gameMode === undefined || typeof data.gameMode === "number")
     && (data.partySize === undefined || data.partySize === 3 || data.partySize === 6)
-    && (data.playerCount === undefined || data.playerCount === 2 || data.playerCount === 3)
+    && (data.playerCount === undefined || data.playerCount === 1 || data.playerCount === 2 || data.playerCount === 3)
     && (data.vsMode === undefined || typeof data.vsMode === "boolean")
+    && (data.enemyPlayerMode === undefined || typeof data.enemyPlayerMode === "boolean")
     && (data.slotId === undefined || typeof data.slotId === "number")
     && (data.seed === undefined || (typeof data.seed === "string" && data.seed.length > 0));
 }
@@ -326,7 +336,7 @@ function parseTwoPlayerInputMessage(value: unknown): TwoPlayerInputMessage | und
     || !isValidNetworkRole(message.senderRole)
     || typeof message.sequence !== "number"
     || (message.authoritySequence !== undefined && typeof message.authoritySequence !== "number")
-    || !isValidPlayerIndex(message.playerIndex)
+    || !isValidInputSeat(message.playerIndex)
     || !isValidButton(message.button)
     || typeof message.pressed !== "boolean"
     || (kind === "run-bootstrap" && !isValidRunBootstrap(message.runBootstrap))
@@ -371,7 +381,7 @@ export class TwoPlayerInputTransport {
   private authoritySequence = 0;
   private latestRemoteCheckpoint: TwoPlayerStateCheckpoint | undefined;
   private latestHostCheckpoint: TwoPlayerStateCheckpoint | undefined;
-  private readonly latestRemoteCheckpointsByPlayerIndex = new Map<PlayerIndex, RemoteCheckpointEntry>();
+  private readonly latestRemoteCheckpointsByPlayerIndex = new Map<InputSeat, RemoteCheckpointEntry>();
   private latestHostCheckpointEntry: RemoteCheckpointEntry | undefined;
   private localInputContextId: string | undefined;
   private localInputContextEnteredAt = 0;
@@ -383,7 +393,7 @@ export class TwoPlayerInputTransport {
 
   private constructor(
     mode: "local" | "websocket",
-    private readonly localSeat: PlayerIndex,
+    private readonly localSeat: InputSeat,
     private readonly onRemoteInput: RemoteInputHandler,
     private readonly onRunBootstrap?: TwoPlayerRunBootstrapHandler,
     private readonly onTitleStart?: TwoPlayerTitleStartHandler,
@@ -518,18 +528,18 @@ export class TwoPlayerInputTransport {
       return this.latestHostCheckpointEntry ? [this.latestHostCheckpointEntry] : "remote-checkpoint-unavailable";
     }
 
-    const remotePlayerIndexes = this.getRemotePlayerIndexesForCheckpoint(localCheckpoint);
-    if (remotePlayerIndexes.length === 0) {
+    const remoteInputSeats = this.getRemoteInputSeatsForCheckpoint(localCheckpoint);
+    if (remoteInputSeats.length === 0) {
       return this.latestRemoteCheckpoint
         ? [...this.latestRemoteCheckpointsByPlayerIndex.values()].slice(-1)
         : "remote-checkpoint-unavailable";
     }
 
     const entries: RemoteCheckpointEntry[] = [];
-    for (const playerIndex of remotePlayerIndexes) {
-      const entry = this.latestRemoteCheckpointsByPlayerIndex.get(playerIndex);
+    for (const inputSeat of remoteInputSeats) {
+      const entry = this.latestRemoteCheckpointsByPlayerIndex.get(inputSeat);
       if (!entry) {
-        return `remote-p${playerIndex + 1}-checkpoint-unavailable`;
+        return `remote-${getInputSeatLabel(inputSeat).toLowerCase()}-checkpoint-unavailable`;
       }
       entries.push(entry);
     }
@@ -537,13 +547,13 @@ export class TwoPlayerInputTransport {
     return entries;
   }
 
-  private getRemotePlayerIndexesForCheckpoint(checkpoint: TwoPlayerStateCheckpoint): PlayerIndex[] {
+  private getRemoteInputSeatsForCheckpoint(checkpoint: TwoPlayerStateCheckpoint): InputSeat[] {
     const players = checkpoint.summary.players;
     if (!Array.isArray(players)) {
       return [];
     }
 
-    return players
+    const remoteInputSeats: InputSeat[] = players
       .map(player => {
         if (!player || typeof player !== "object") {
           return undefined;
@@ -558,6 +568,12 @@ export class TwoPlayerInputTransport {
       })
       .filter(isValidPlayerIndex)
       .filter(playerIndex => playerIndex !== this.localSeat);
+
+    if (checkpoint.summary.twoPlayerEnemyPlayerMode === true && this.localSeat !== "ep") {
+      remoteInputSeats.push("ep");
+    }
+
+    return remoteInputSeats;
   }
 
   private getLocalInputContextGraceBlockReason(checkpoint: TwoPlayerStateCheckpoint): string | undefined {
@@ -612,7 +628,7 @@ export class TwoPlayerInputTransport {
   }
 
   private createRemoteCheckpointEntry(
-    playerIndex: PlayerIndex,
+    playerIndex: InputSeat,
     label: string,
     sequence: number,
     checkpoint: TwoPlayerStateCheckpoint,
@@ -778,7 +794,7 @@ export class TwoPlayerInputTransport {
     button: Button,
     pressed: boolean,
     checkpoint = this.getInputCheckpoint(),
-    playerIndex: PlayerIndex = this.localSeat,
+    playerIndex: InputSeat = this.localSeat,
   ): void {
     const message = this.createMessage(
       this.networkRole === "host" ? "input-accepted" : "input",
@@ -797,7 +813,7 @@ export class TwoPlayerInputTransport {
 
   private createMessage(
     kind: TwoPlayerInputMessageKind,
-    playerIndex: PlayerIndex,
+    playerIndex: InputSeat,
     button: Button,
     pressed: boolean,
     checkpoint?: TwoPlayerStateCheckpoint,
@@ -1061,7 +1077,7 @@ export class TwoPlayerInputTransport {
           message.playerIndex,
           this.createRemoteCheckpointEntry(
             message.playerIndex,
-            `remote-p${message.playerIndex + 1}`,
+            `remote-${getInputSeatLabel(message.playerIndex).toLowerCase()}`,
             message.sequence,
             message.checkpoint,
             receivedAt,
@@ -1184,6 +1200,8 @@ export class TwoPlayerInputTransport {
       return;
     }
 
+    this.noteRemoteCheckpointFromMessage(message);
+
     const inputReadinessBlockReason = this.getInputReadinessBlockReason(acceptedCheckpoint);
     if (inputReadinessBlockReason) {
       this.logIgnoredMessage(message, inputReadinessBlockReason);
@@ -1238,6 +1256,31 @@ export class TwoPlayerInputTransport {
         this.sendCheckpointForMessageAfterStateSettles(acceptedMessage);
       }
     }
+  }
+
+  private noteRemoteCheckpointFromMessage(message: TwoPlayerInputMessage): void {
+    if (!message.checkpoint || this.isStaleRemoteTitleCheckpoint(message.checkpoint)) {
+      return;
+    }
+
+    const receivedAt = Date.now();
+    const previousEntry = this.latestRemoteCheckpointsByPlayerIndex.get(message.playerIndex);
+    if (previousEntry && message.sequence < previousEntry.sequence) {
+      return;
+    }
+
+    this.latestRemoteCheckpoint = message.checkpoint;
+    this.latestRemoteCheckpointsByPlayerIndex.set(
+      message.playerIndex,
+      this.createRemoteCheckpointEntry(
+        message.playerIndex,
+        `remote-${getInputSeatLabel(message.playerIndex).toLowerCase()}`,
+        message.sequence,
+        message.checkpoint,
+        receivedAt,
+        previousEntry,
+      ),
+    );
   }
 
   private shouldIgnoreDuplicateHostAcceptedInput(message: TwoPlayerInputMessage): boolean {

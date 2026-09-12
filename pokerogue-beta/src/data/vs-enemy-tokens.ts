@@ -6,6 +6,7 @@ import {
   type ModifierType,
   type ModifierTypeKeys,
 } from "#modifiers/modifier-type";
+import { randSeedInt } from "#utils/common";
 
 export type VsEnemyTokenKey =
   | "damage"
@@ -158,6 +159,26 @@ export function getVsEnemyTokenModifierTypeOptionsForWave(
   });
 }
 
+export function getEnemyPlayerTokenRewardOptions(
+  count: number,
+  existingModifiers: readonly PersistentModifier[] = [],
+): ModifierTypeOption[] {
+  const options: ModifierTypeOption[] = [];
+  const retryLimit = Math.max(VS_ENEMY_TOKEN_DEFINITIONS.length * 2, count * 8);
+
+  for (let i = 0; i < count; i++) {
+    for (let retry = 0; retry < retryLimit; retry++) {
+      const option = getRandomEnemyPlayerTokenRewardOption(existingModifiers, options);
+      if (option) {
+        options.push(option);
+        break;
+      }
+    }
+  }
+
+  return options;
+}
+
 export function isVsEnemyTokenAtStackLimit(
   existingModifiers: readonly PersistentModifier[],
   modifier: PersistentModifier,
@@ -166,4 +187,47 @@ export function isVsEnemyTokenAtStackLimit(
   const maxStacks = Math.min(modifier.getMaxStackCount(), definition?.maxStacks ?? modifier.getMaxStackCount());
   const existingModifier = existingModifiers.find(existing => existing.match(modifier));
   return !!existingModifier && existingModifier.getStackCount() >= maxStacks;
+}
+
+function getRandomEnemyPlayerTokenRewardOption(
+  existingModifiers: readonly PersistentModifier[],
+  existingOptions: readonly ModifierTypeOption[],
+): ModifierTypeOption | undefined {
+  let tier = rollRewardTier();
+  while (tier >= ModifierTier.COMMON) {
+    const definitions = getVsEnemyTokenDefinitionsForTier(tier)
+      .filter(definition => !existingOptions.some(option => option.type.id === definition.modifierTypeId));
+    const startIndex = definitions.length > 0 ? randSeedInt(definitions.length) : 0;
+
+    for (let i = 0; i < definitions.length; i++) {
+      const definition = definitions[(startIndex + i) % definitions.length];
+      const modifierTypeFunc = getModifierTypeFuncById(definition.modifierTypeId);
+      const modifierType = modifierTypeFunc().withIdFromFunc(modifierTypeFunc);
+      modifierType.setTier(definition.tier);
+
+      const modifier = modifierType.newModifier() as PersistentModifier | null;
+      if (modifier && !isVsEnemyTokenAtStackLimit(existingModifiers, modifier, definition)) {
+        return new ModifierTypeOption(modifierType, 0);
+      }
+    }
+
+    tier--;
+  }
+}
+
+function rollRewardTier(): ModifierTier {
+  const tierValue = randSeedInt(1024);
+  if (tierValue > 255) {
+    return ModifierTier.COMMON;
+  }
+  if (tierValue > 60) {
+    return ModifierTier.GREAT;
+  }
+  if (tierValue > 12) {
+    return ModifierTier.ULTRA;
+  }
+  if (tierValue) {
+    return ModifierTier.ROGUE;
+  }
+  return ModifierTier.MASTER;
 }

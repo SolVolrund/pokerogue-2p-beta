@@ -28,7 +28,14 @@ export class SelectStarterPhase extends Phase {
     super.start();
 
     audioManager.playBgm("menu");
-    this.waitForTwoPlayerProfilesBeforeAction(() => this.selectStartersForPlayer(0));
+    this.waitForTwoPlayerProfilesBeforeAction(() => {
+      if (this.shouldAutoSelectComputerPartnerStarters(0)) {
+        this.initComputerPartnerStarters(0).then(() => this.advanceAfterStarterSelection(0));
+        return;
+      }
+
+      this.selectStartersForPlayer(0);
+    });
   }
 
   private selectStartersForPlayer(playerIndex: PlayerIndex): void {
@@ -42,13 +49,7 @@ export class SelectStarterPhase extends Phase {
           const nextPlayerIndex = playerIndexes[currentPlayerOffset + 1];
           if (nextPlayerIndex !== undefined) {
             this.waitForTwoPlayerProfilesBeforeAction(() => {
-              const computerPartnerProfile = getComputerPartnerProfile(
-                globalScene.getComputerPartnerKey(nextPlayerIndex),
-              );
-              if (
-                globalScene.isComputerPartnerPlayer(nextPlayerIndex)
-                && !computerPartnerProfile.usesPlayerSelectedStarters
-              ) {
+              if (this.shouldAutoSelectComputerPartnerStarters(nextPlayerIndex)) {
                 this.initComputerPartnerStarters(nextPlayerIndex).then(() =>
                   this.advanceAfterStarterSelection(nextPlayerIndex),
                 );
@@ -95,11 +96,7 @@ export class SelectStarterPhase extends Phase {
     const nextPlayerIndex = playerIndexes[currentPlayerOffset + 1];
     if (nextPlayerIndex !== undefined) {
       this.waitForTwoPlayerProfilesBeforeAction(() => {
-        const computerPartnerProfile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(nextPlayerIndex));
-        if (
-          globalScene.isComputerPartnerPlayer(nextPlayerIndex)
-          && !computerPartnerProfile.usesPlayerSelectedStarters
-        ) {
+        if (this.shouldAutoSelectComputerPartnerStarters(nextPlayerIndex)) {
           this.initComputerPartnerStarters(nextPlayerIndex).then(() =>
             this.advanceAfterStarterSelection(nextPlayerIndex),
           );
@@ -121,6 +118,15 @@ export class SelectStarterPhase extends Phase {
     globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("starters-selected");
     globalScene.waitForSharedInput();
     this.selectSaveSlot(() => this.beginBattle());
+  }
+
+  private shouldAutoSelectComputerPartnerStarters(playerIndex: PlayerIndex): boolean {
+    if (!globalScene.isComputerPartnerPlayer(playerIndex)) {
+      return false;
+    }
+
+    const computerPartnerProfile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+    return !computerPartnerProfile.usesPlayerSelectedStarters;
   }
 
   private selectSaveSlot(onSlotSelected: () => void): void {
@@ -314,7 +320,7 @@ export class SelectStarterPhase extends Phase {
     }
 
     if (globalScene.twoPlayerMode) {
-      globalScene.waitForPlayerInput(0);
+      globalScene.waitForPlayerSideProgressionInput();
     } else {
       globalScene.setActivePlayerIndex(0);
     }

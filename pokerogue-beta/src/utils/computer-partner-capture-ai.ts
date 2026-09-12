@@ -1,4 +1,4 @@
-import type { PokeballCounts } from "#app/battle-scene";
+import type { PlayerIndex, PokeballCounts } from "#app/battle-scene";
 import { timedEventManager } from "#app/global-event-manager";
 import type { Move } from "#data/moves/move";
 import { getCriticalCaptureChance, getPokeballCatchMultiplier } from "#data/pokeball";
@@ -40,6 +40,7 @@ export interface ComputerPartnerCaptureDecisionOptions {
   partyLimit?: number;
   plannedDamageRatios?: ReadonlyMap<number, number>;
   preferredTargetIds?: number | readonly number[];
+  playerIndex?: PlayerIndex;
 }
 
 const PREFERRED_CATCH_CHANCE = 0.4;
@@ -197,6 +198,7 @@ export function getComputerPartnerCaptureDecisionsFromInterests(
         target,
         pokeballCounts,
         forceThrowTargetIdSet.has(target.id),
+        options.playerIndex,
       );
       if (ballChoice.ballType === undefined) {
         return undefined;
@@ -283,7 +285,11 @@ function getForcedComputerPartnerCaptureSlotScore(
   };
 }
 
-export function getComputerPartnerCaptureChance(pokemon: EnemyPokemon, pokeballType: PokeballType): number {
+export function getComputerPartnerCaptureChance(
+  pokemon: EnemyPokemon,
+  pokeballType: PokeballType,
+  playerIndex: PlayerIndex = 0,
+): number {
   const pokeballMultiplier = getPokeballCatchMultiplier(pokeballType);
   if (pokeballMultiplier === -1) {
     return 1;
@@ -300,7 +306,7 @@ export function getComputerPartnerCaptureChance(pokemon: EnemyPokemon, pokeballT
 
   const shakeProbability = Math.round(65536 / Math.pow(255 / modifiedCatchRate, 0.1875));
   const shakeChance = Math.min(Math.max(shakeProbability / 65536, 0), 1);
-  const criticalCaptureChance = Math.min(Math.max(getCriticalCaptureChance(modifiedCatchRate, 1) / 256, 0), 1);
+  const criticalCaptureChance = Math.min(Math.max(getCriticalCaptureChance(modifiedCatchRate, playerIndex) / 256, 0), 1);
 
   return criticalCaptureChance * shakeChance + (1 - criticalCaptureChance) * Math.pow(shakeChance, 3);
 }
@@ -309,6 +315,7 @@ function chooseComputerPartnerPokeball(
   pokemon: EnemyPokemon,
   pokeballCounts: PokeballCounts,
   preferBestBall = false,
+  playerIndex: PlayerIndex = 0,
 ): { ballType?: PokeballType; chance: number } {
   const usableBalls = CAPTURE_BALL_ORDER.filter(ballType => (pokeballCounts[ballType] ?? 0) > 0);
   if (!usableBalls.length) {
@@ -317,7 +324,7 @@ function chooseComputerPartnerPokeball(
 
   const ballScores = usableBalls.map(ballType => ({
     ballType,
-    chance: getComputerPartnerCaptureChance(pokemon, ballType),
+    chance: getComputerPartnerCaptureChance(pokemon, ballType, playerIndex),
   }));
 
   if (preferBestBall) {

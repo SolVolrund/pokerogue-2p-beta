@@ -45,6 +45,8 @@ function syncTwoPlayerInputOwner(windowTypeIndex: number): void {
     globalScene.inputOwner = 0;
   } else if (windowTypeIndex === 2) {
     globalScene.inputOwner = 1;
+  } else if (windowTypeIndex === 4) {
+    globalScene.inputOwner = "ep";
   } else if (windowTypeIndex === 5) {
     globalScene.inputOwner = "both";
   }

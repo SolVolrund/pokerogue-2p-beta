@@ -541,7 +541,7 @@ export class SelectModifierPhase extends BattlePhase {
     if (messages.length === 0) {
       return;
     }
-    globalScene.waitForPlayerInput(0);
+    globalScene.waitForPlayerSideProgressionInput();
     messages.forEach(message => globalScene.phaseManager.queueMessage(message, null, true));
   }
 

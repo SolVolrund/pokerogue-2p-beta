@@ -232,10 +232,13 @@ export class Trainer extends Phaser.GameObjects.Container {
       && globalScene.twoPlayerVsMode
       && globalScene.twoPlayerPartySize === 6
       && !this.config.doubleOnly;
+    const shouldUseMultiplayerTrainerPartners =
+      globalScene.twoPlayerMode
+      && (!globalScene.twoPlayerEnemyPlayerMode || globalScene.multiplayerPlayerCount > 1);
     const twoPlayerPartnerTrainerCount = globalScene.multiplayerPlayerCount > 2 ? 2 : 1;
     const lookupPartnerTrainerTypes =
       !trainerConfigOverride
-      && globalScene.twoPlayerMode
+      && shouldUseMultiplayerTrainerPartners
       && globalScene.twoPlayerPartySize === 6
       && !this.config.doubleOnly
         ? shouldUseVsMirroredTrainerPartners
@@ -253,7 +256,7 @@ export class Trainer extends Phaser.GameObjects.Container {
       partnerTrainerType2
       ?? partnerTrainerConfigOverride2?.trainerType
       ?? lookupPartnerTrainerTypes[1]
-      ?? (globalScene.twoPlayerMode && globalScene.multiplayerPlayerCount > 2
+      ?? (shouldUseMultiplayerTrainerPartners && globalScene.multiplayerPlayerCount > 2
         ? lookupPartnerTrainerTypes[0]
         : undefined);
     this.partnerConfig =

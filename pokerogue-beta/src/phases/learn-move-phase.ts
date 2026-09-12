@@ -77,7 +77,7 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
       return false;
     }
 
-    globalScene.waitForPlayerInput(0);
+    globalScene.waitForPlayerSideProgressionInput();
     const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(this.playerIndex));
     const role = isComputerPartnerAcePokemon(pokemon, profile)
       ? "ace"
@@ -304,7 +304,7 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
 
   private setLearnMoveInputOwner(): void {
     if (globalScene.isComputerPartnerPlayer(this.playerIndex)) {
-      globalScene.waitForPlayerInput(0);
+      globalScene.waitForPlayerSideProgressionInput();
       return;
     }
 

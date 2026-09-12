@@ -147,18 +147,21 @@ export class EnemyBattleInfo extends BattleInfo {
     }
 
     const enemyPokemon = pokemon as EnemyPokemon;
-    const p1Visible = this.refreshOwnedIconForPlayer(this.ownedIcon, enemyPokemon, 0);
-    const p2Visible = globalScene.twoPlayerMode
+    const activePlayerIndexes = globalScene.getActivePlayerIndexes();
+    const p1Visible = activePlayerIndexes.includes(0)
+      ? this.refreshOwnedIconForPlayer(this.ownedIcon, enemyPokemon, 0)
+      : false;
+    const p2Visible = activePlayerIndexes.includes(1)
       ? this.refreshOwnedIconForPlayer(this.guestOwnedIcon, enemyPokemon, 1)
       : false;
-    const p3Visible = globalScene.getActivePlayerIndexes().includes(2)
+    const p3Visible = activePlayerIndexes.includes(2)
       ? this.refreshOwnedIconForPlayer(this.guest2OwnedIcon, enemyPokemon, 2)
       : false;
 
-    if (!globalScene.twoPlayerMode) {
+    if (!activePlayerIndexes.includes(1)) {
       this.guestOwnedIcon.setVisible(false);
     }
-    if (!globalScene.getActivePlayerIndexes().includes(2)) {
+    if (!activePlayerIndexes.includes(2)) {
       this.guest2OwnedIcon.setVisible(false);
     }
 
@@ -186,6 +189,11 @@ export class EnemyBattleInfo extends BattleInfo {
   ): boolean {
     const gameData = globalScene.twoPlayerMode ? globalScene.getPlayerGameData(playerIndex) : globalScene.gameData;
     const dexEntry = gameData.dexData[enemyPokemon.species.speciesId];
+    if (!dexEntry) {
+      icon.setVisible(false);
+      return false;
+    }
+
     const caughtAttr = BigInt(dexEntry.caughtAttr);
 
     icon.clearTint();
@@ -195,7 +203,8 @@ export class EnemyBattleInfo extends BattleInfo {
       const rootStarterData = gameData.starterData[enemyPokemon.species.getRootSpeciesId()];
       const opponentPokemonDexAttr = enemyPokemon.getDexAttr();
       const missingDexAttrs = (caughtAttr & opponentPokemonDexAttr) < opponentPokemonDexAttr;
-      const playerOwnsThisAbility = enemyPokemon.checkIfPlayerHasAbilityOfStarter(rootStarterData.abilityAttr);
+      const playerOwnsThisAbility = !!rootStarterData
+        && enemyPokemon.checkIfPlayerHasAbilityOfStarter(rootStarterData.abilityAttr);
 
       if (missingDexAttrs || !playerOwnsThisAbility) {
         icon.setTint(0x808080);

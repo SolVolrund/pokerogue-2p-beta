@@ -1444,6 +1444,7 @@ export class GameData {
       twoPlayerPartySize: globalScene.twoPlayerPartySize,
       twoPlayerComputerPartner: globalScene.twoPlayerComputerPartner,
       twoPlayerVsMode: globalScene.twoPlayerMode ? globalScene.twoPlayerVsMode : undefined,
+      twoPlayerEnemyPlayerMode: globalScene.twoPlayerMode ? globalScene.twoPlayerEnemyPlayerMode : undefined,
       computerPartnerPlayerIndexes: globalScene.twoPlayerComputerPartner
         ? globalScene.getComputerPartnerPlayerIndexes()
         : undefined,
@@ -1844,7 +1845,11 @@ export class GameData {
       || this.getSessionComputerPartnerPlayerIndexes(fromSession, playerCount).length > 0
       || Object.values(computerPartnerKeys).some(Boolean)
       || !!computerPartnerKey;
-    const isTwoPlayerSession = !!fromSession.twoPlayerMode || hasTwoPlayerSessionData || isComputerPartnerSession;
+    const isTwoPlayerSession =
+      !!fromSession.twoPlayerMode
+      || !!fromSession.twoPlayerEnemyPlayerMode
+      || hasTwoPlayerSessionData
+      || isComputerPartnerSession;
     const computerPartnerPlayerIndexes = this.getSessionComputerPartnerPlayerIndexes(
       fromSession,
       playerCount,
@@ -1859,6 +1864,7 @@ export class GameData {
       playerCount,
       computerPartnerPlayerIndexes,
       !!fromSession.twoPlayerVsMode,
+      !!fromSession.twoPlayerEnemyPlayerMode,
     );
 
     if (isComputerPartnerSession) {

@@ -57,6 +57,10 @@ export class TitleUiHandler extends OptionSelectUiHandler {
     }
 
     if (globalScene.twoPlayerLocalInputSeat === "both") {
+      if (globalScene.twoPlayerEnemyPlayerMode) {
+        return globalScene.multiplayerPlayerCount === 1 ? "Local Player vs EP" : "Local Players vs EP";
+      }
+
       if (globalScene.twoPlayerComputerPartner) {
         const humanPlayerIndexes = globalScene
           .getActivePlayerIndexes()
@@ -65,6 +69,10 @@ export class TitleUiHandler extends OptionSelectUiHandler {
       }
 
       return globalScene.multiplayerPlayerCount === 3 ? "Local Players 1-3" : "Local Players 1-2";
+    }
+
+    if (globalScene.twoPlayerLocalInputSeat === "ep") {
+      return "Enemy Player";
     }
 
     return globalScene.twoPlayerLocalInputSeat === 0

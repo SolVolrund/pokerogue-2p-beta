@@ -105,7 +105,8 @@ export function getCriticalCaptureChance(
   if (globalScene.gameMode.isFreshStartChallenge()) {
     return 0;
   }
-  const dexCount = globalScene.getPlayerGameData(playerIndex).getSpeciesCount(d => !!d.caughtAttr);
+  const gameData = globalScene.getPlayerGameData(playerIndex);
+  const dexCount = gameData?.getSpeciesCount(d => !!d.caughtAttr) ?? 0;
   const catchingCharmMultiplier = new NumberHolder(1);
   globalScene
     .findModifierForPlayer(m => m.is("CriticalCatchChanceBoosterModifier"), playerIndex)

@@ -31,6 +31,7 @@ enum MenuOptions {
   MANAGE_DATA,
   COMMUNITY,
   SAVE_AND_QUIT,
+  END_RUN,
   LOG_OUT,
 }
 
@@ -84,6 +85,13 @@ export class MenuUiHandler extends MessageUiHandler {
     });
   }
 
+  private isEnemyPlayerMenu(): boolean {
+    return (
+      globalScene.twoPlayerEnemyPlayerMode
+      && (globalScene.twoPlayerLocalInputSeat === "ep" || globalScene.inputOwner === "ep")
+    );
+  }
+
   setup(): void {
     const ui = this.getUi();
     // wiki url directs based on languges available on wiki
@@ -131,6 +139,20 @@ export class MenuUiHandler extends MessageUiHandler {
       },
       { condition: bypassLogin, options: [MenuOptions.LOG_OUT] },
       { condition: !globalScene.currentBattle, options: [MenuOptions.SAVE_AND_QUIT] },
+      {
+        condition: this.isEnemyPlayerMenu(),
+        options: [
+          MenuOptions.ACHIEVEMENTS,
+          MenuOptions.STATS,
+          MenuOptions.EGG_LIST,
+          MenuOptions.EGG_GACHA,
+          MenuOptions.MANAGE_DATA,
+          MenuOptions.COMMUNITY,
+          MenuOptions.SAVE_AND_QUIT,
+          MenuOptions.LOG_OUT,
+        ],
+      },
+      { condition: !this.isEnemyPlayerMenu(), options: [MenuOptions.END_RUN] },
     ];
 
     this.menuOptions = getEnumValues(MenuOptions).filter(m => {
@@ -541,178 +563,201 @@ export class MenuUiHandler extends MessageUiHandler {
     let error = false;
 
     if (button === Button.ACTION) {
-      let adjustedCursor = this.cursor;
-      const excludedMenu = this.excludedMenus().find(e => e.condition);
-      if (excludedMenu !== undefined && excludedMenu.options !== undefined && excludedMenu.options.length > 0) {
-        const sortedOptions = excludedMenu.options.sort();
-        for (const imo of sortedOptions) {
-          if (adjustedCursor >= imo) {
-            adjustedCursor++;
-          } else {
+      const selectedOption = this.menuOptions[this.cursor];
+      if (selectedOption === undefined) {
+        error = true;
+      } else {
+        this.showText("", 0);
+        switch (selectedOption) {
+          case MenuOptions.GAME_SETTINGS:
+            ui.setOverlayMode(UiMode.SETTINGS);
+            success = true;
+            break;
+          case MenuOptions.ACHIEVEMENTS:
+            ui.setOverlayMode(UiMode.ACHIEVEMENTS);
+            success = true;
+            break;
+          case MenuOptions.STATS:
+            ui.setOverlayMode(UiMode.GAME_STATS);
+            success = true;
+            break;
+          case MenuOptions.EGG_LIST:
+            if (globalScene.gameData.eggs.length > 0) {
+              ui.revertMode();
+              ui.setOverlayMode(UiMode.EGG_LIST);
+              success = true;
+            } else {
+              ui.showText(i18next.t("menuUiHandler:noEggs"), null, () => ui.showText(""), fixedInt(1500));
+              error = true;
+            }
+            break;
+          case MenuOptions.EGG_GACHA:
+            ui.revertMode();
+            ui.setOverlayMode(UiMode.EGG_GACHA);
+            success = true;
+            break;
+          case MenuOptions.POKEDEX:
+            ui.revertMode();
+            ui.setOverlayMode(UiMode.POKEDEX);
+            success = true;
+            break;
+          case MenuOptions.MANAGE_DATA:
+            if (
+              !bypassLogin
+              && !this.manageDataConfig.options.some(
+                o =>
+                  o.label === i18next.t("menuUiHandler:linkDiscord")
+                  || o.label === i18next.t("menuUiHandler:unlinkDiscord"),
+              )
+            ) {
+              this.manageDataConfig.options.splice(
+                this.manageDataConfig.options.length - 1,
+                0,
+                {
+                  label:
+                    loggedInUser?.discordId === ""
+                      ? i18next.t("menuUiHandler:linkDiscord")
+                      : i18next.t("menuUiHandler:unlinkDiscord"),
+                  handler: () => {
+                    if (loggedInUser?.discordId === "") {
+                      const token = getCookie(sessionIdKey);
+                      const redirectUri = encodeURIComponent(`${import.meta.env.VITE_SERVER_URL}/auth/discord/callback`);
+                      const discordId = import.meta.env.VITE_DISCORD_CLIENT_ID;
+                      const discordUrl = `https://discord.com/api/oauth2/authorize?client_id=${discordId}&redirect_uri=${redirectUri}&response_type=code&scope=identify&state=${token}&prompt=none`;
+                      window.open(discordUrl, "_self");
+                      return true;
+                    }
+                    pokerogueApi.unlinkDiscord().then(_isSuccess => {
+                      updateUserInfo().then(() => globalScene.reset(true, true));
+                    });
+                    return true;
+                  },
+                },
+                {
+                  label:
+                    loggedInUser?.googleId === ""
+                      ? i18next.t("menuUiHandler:linkGoogle")
+                      : i18next.t("menuUiHandler:unlinkGoogle"),
+                  handler: () => {
+                    if (loggedInUser?.googleId === "") {
+                      const token = getCookie(sessionIdKey);
+                      const redirectUri = encodeURIComponent(`${import.meta.env.VITE_SERVER_URL}/auth/google/callback`);
+                      const googleId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+                      const googleUrl = `https://accounts.google.com/o/oauth2/auth?client_id=${googleId}&response_type=code&redirect_uri=${redirectUri}&scope=openid&state=${token}`;
+                      window.open(googleUrl, "_self");
+                      return true;
+                    }
+                    pokerogueApi.unlinkGoogle().then(_isSuccess => {
+                      updateUserInfo().then(() => globalScene.reset(true, true));
+                    });
+                    return true;
+                  },
+                },
+              );
+            }
+            ui.setOverlayMode(UiMode.MENU_OPTION_SELECT, this.manageDataConfig);
+            success = true;
+            break;
+          case MenuOptions.COMMUNITY:
+            ui.setOverlayMode(UiMode.MENU_OPTION_SELECT, this.communityConfig);
+            success = true;
+            break;
+          case MenuOptions.SAVE_AND_QUIT: {
+            success = true;
+            const doSaveQuit = () => {
+              ui.setMode(UiMode.LOADING, {
+                buttonActions: [],
+                fadeOut: () =>
+                  globalScene.gameData.saveAll(true, true, true).then(() => {
+                    globalScene.reset(true);
+                  }),
+              });
+            };
+            if (globalScene.currentBattle.turn > 1) {
+              ui.showText(i18next.t("menuUiHandler:losingProgressionWarning"), null, () => {
+                if (!this.active) {
+                  this.showText("", 0);
+                  return;
+                }
+                ui.setOverlayMode(
+                  UiMode.CONFIRM,
+                  doSaveQuit,
+                  () => {
+                    ui.revertMode();
+                    this.showText("", 0);
+                  },
+                  false,
+                  -98,
+                );
+              });
+            } else {
+              doSaveQuit();
+            }
             break;
           }
-        }
-      }
-      this.showText("", 0);
-      switch (adjustedCursor) {
-        case MenuOptions.GAME_SETTINGS:
-          ui.setOverlayMode(UiMode.SETTINGS);
-          success = true;
-          break;
-        case MenuOptions.ACHIEVEMENTS:
-          ui.setOverlayMode(UiMode.ACHIEVEMENTS);
-          success = true;
-          break;
-        case MenuOptions.STATS:
-          ui.setOverlayMode(UiMode.GAME_STATS);
-          success = true;
-          break;
-        case MenuOptions.EGG_LIST:
-          if (globalScene.gameData.eggs.length > 0) {
-            ui.revertMode();
-            ui.setOverlayMode(UiMode.EGG_LIST);
+          case MenuOptions.END_RUN: {
             success = true;
-          } else {
-            ui.showText(i18next.t("menuUiHandler:noEggs"), null, () => ui.showText(""), fixedInt(1500));
-            error = true;
-          }
-          break;
-        case MenuOptions.EGG_GACHA:
-          ui.revertMode();
-          ui.setOverlayMode(UiMode.EGG_GACHA);
-          success = true;
-          break;
-        case MenuOptions.POKEDEX:
-          ui.revertMode();
-          ui.setOverlayMode(UiMode.POKEDEX);
-          success = true;
-          break;
-        case MenuOptions.MANAGE_DATA:
-          if (
-            !bypassLogin
-            && !this.manageDataConfig.options.some(
-              o =>
-                o.label === i18next.t("menuUiHandler:linkDiscord")
-                || o.label === i18next.t("menuUiHandler:unlinkDiscord"),
-            )
-          ) {
-            this.manageDataConfig.options.splice(
-              this.manageDataConfig.options.length - 1,
-              0,
-              {
-                label:
-                  loggedInUser?.discordId === ""
-                    ? i18next.t("menuUiHandler:linkDiscord")
-                    : i18next.t("menuUiHandler:unlinkDiscord"),
-                handler: () => {
-                  if (loggedInUser?.discordId === "") {
-                    const token = getCookie(sessionIdKey);
-                    const redirectUri = encodeURIComponent(`${import.meta.env.VITE_SERVER_URL}/auth/discord/callback`);
-                    const discordId = import.meta.env.VITE_DISCORD_CLIENT_ID;
-                    const discordUrl = `https://discord.com/api/oauth2/authorize?client_id=${discordId}&redirect_uri=${redirectUri}&response_type=code&scope=identify&state=${token}&prompt=none`;
-                    window.open(discordUrl, "_self");
-                    return true;
-                  }
-                  pokerogueApi.unlinkDiscord().then(_isSuccess => {
-                    updateUserInfo().then(() => globalScene.reset(true, true));
-                  });
-                  return true;
-                },
-              },
-              {
-                label:
-                  loggedInUser?.googleId === ""
-                    ? i18next.t("menuUiHandler:linkGoogle")
-                    : i18next.t("menuUiHandler:unlinkGoogle"),
-                handler: () => {
-                  if (loggedInUser?.googleId === "") {
-                    const token = getCookie(sessionIdKey);
-                    const redirectUri = encodeURIComponent(`${import.meta.env.VITE_SERVER_URL}/auth/google/callback`);
-                    const googleId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-                    const googleUrl = `https://accounts.google.com/o/oauth2/auth?client_id=${googleId}&response_type=code&redirect_uri=${redirectUri}&scope=openid&state=${token}`;
-                    window.open(googleUrl, "_self");
-                    return true;
-                  }
-                  pokerogueApi.unlinkGoogle().then(_isSuccess => {
-                    updateUserInfo().then(() => globalScene.reset(true, true));
-                  });
-                  return true;
-                },
-              },
-            );
-          }
-          ui.setOverlayMode(UiMode.MENU_OPTION_SELECT, this.manageDataConfig);
-          success = true;
-          break;
-        case MenuOptions.COMMUNITY:
-          ui.setOverlayMode(UiMode.MENU_OPTION_SELECT, this.communityConfig);
-          success = true;
-          break;
-        case MenuOptions.SAVE_AND_QUIT: {
-          success = true;
-          const doSaveQuit = () => {
-            ui.setMode(UiMode.LOADING, {
-              buttonActions: [],
-              fadeOut: () =>
-                globalScene.gameData.saveAll(true, true, true).then(() => {
-                  globalScene.reset(true);
-                }),
-            });
-          };
-          if (globalScene.currentBattle.turn > 1) {
-            ui.showText(i18next.t("menuUiHandler:losingProgressionWarning"), null, () => {
-              if (!this.active) {
-                this.showText("", 0);
-                return;
-              }
-              ui.setOverlayMode(
-                UiMode.CONFIRM,
-                doSaveQuit,
-                () => {
-                  ui.revertMode();
+            const doEndRun = () => {
+              ui.setMode(UiMode.LOADING, {
+                buttonActions: [],
+                fadeOut: () => Promise.resolve(globalScene.reset(true)),
+              });
+            };
+            if (globalScene.currentBattle) {
+              ui.showText(i18next.t("menuUiHandler:losingProgressionWarning"), null, () => {
+                if (!this.active) {
                   this.showText("", 0);
-                },
-                false,
-                -98,
-              );
-            });
-          } else {
-            doSaveQuit();
+                  return;
+                }
+                ui.setOverlayMode(
+                  UiMode.CONFIRM,
+                  doEndRun,
+                  () => {
+                    ui.revertMode();
+                    this.showText("", 0);
+                  },
+                  false,
+                  -98,
+                );
+              });
+            } else {
+              doEndRun();
+            }
+            break;
           }
-          break;
-        }
-        case MenuOptions.LOG_OUT: {
-          success = true;
-          const doLogout = () => {
-            ui.setMode(UiMode.LOADING, {
-              buttonActions: [],
-              fadeOut: () =>
-                pokerogueApi.account.logout().then(() => {
-                  updateUserInfo().then(() => globalScene.reset(true, true));
-                }),
-            });
-          };
-          if (globalScene.currentBattle) {
-            ui.showText(i18next.t("menuUiHandler:losingProgressionWarning"), null, () => {
-              if (!this.active) {
-                this.showText("", 0);
-                return;
-              }
-              ui.setOverlayMode(
-                UiMode.CONFIRM,
-                doLogout,
-                () => {
-                  ui.revertMode();
+          case MenuOptions.LOG_OUT: {
+            success = true;
+            const doLogout = () => {
+              ui.setMode(UiMode.LOADING, {
+                buttonActions: [],
+                fadeOut: () =>
+                  pokerogueApi.account.logout().then(() => {
+                    updateUserInfo().then(() => globalScene.reset(true, true));
+                  }),
+              });
+            };
+            if (globalScene.currentBattle) {
+              ui.showText(i18next.t("menuUiHandler:losingProgressionWarning"), null, () => {
+                if (!this.active) {
                   this.showText("", 0);
-                },
-                false,
-                -98,
-              );
-            });
-          } else {
-            doLogout();
+                  return;
+                }
+                ui.setOverlayMode(
+                  UiMode.CONFIRM,
+                  doLogout,
+                  () => {
+                    ui.revertMode();
+                    this.showText("", 0);
+                  },
+                  false,
+                  -98,
+                );
+              });
+            } else {
+              doLogout();
+            }
+            break;
           }
-          break;
         }
       }
     } else if (button === Button.CANCEL) {

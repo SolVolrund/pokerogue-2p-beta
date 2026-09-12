@@ -10,10 +10,12 @@ import { ArenaTagSide } from "#enums/arena-tag-side";
 import { Command } from "#enums/command";
 import { SwitchType } from "#enums/switch-type";
 import { getTrainerSlotForFieldIndex } from "#enums/trainer-slot";
+import { UiMode } from "#enums/ui-mode";
 import type { EnemyPokemon, Pokemon } from "#field/pokemon";
 import { SwitchEffectTransferModifier } from "#modifiers/modifier";
 import { SummonPhase } from "#phases/summon-phase";
 import type { MoveAttrString } from "#types/move-types";
+import { PartyOption, PartyUiMode } from "#ui/party-ui-handler";
 import { isMysteryEncounterSwitchProtectedPokemon } from "#utils/mystery-encounter-switch-protection";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import i18next from "i18next";
@@ -27,7 +29,7 @@ const SELF_SWITCH_MOVE_ATTRS = ["ForceSwitchOutAttr", "PartingShotAttr"] as cons
 export class SwitchSummonPhase extends SummonPhase {
   public readonly phaseName: "SwitchSummonPhase" | "ReturnPhase" = "SwitchSummonPhase";
   private readonly switchType: SwitchType;
-  private readonly slotIndex: number;
+  private slotIndex: number;
   private readonly doReturn: boolean;
 
   private lastPokemon: Pokemon;
@@ -70,13 +72,19 @@ export class SwitchSummonPhase extends SummonPhase {
   }
 
   preSummon(): void {
-    if (isMysteryEncounterSwitchProtectedPokemon(this.getPokemon())) {
+    const currentPokemon = this.getPokemon();
+    if (!currentPokemon || isMysteryEncounterSwitchProtectedPokemon(currentPokemon)) {
       this.end();
       return;
     }
 
     if (!this.player) {
       if (this.slotIndex === -1) {
+        if (globalScene.twoPlayerEnemyPlayerMode && globalScene.currentBattle.trainer) {
+          this.promptEnemyPlayerReplacement();
+          return;
+        }
+
         const referencePokemon = globalScene.getEnemyField()[this.fieldIndex] as EnemyPokemon | undefined;
         //@ts-expect-error
         this.slotIndex = globalScene.currentBattle.trainer?.getNextSummonIndex(
@@ -107,7 +115,7 @@ export class SwitchSummonPhase extends SummonPhase {
       return;
     }
 
-    const pokemon = this.getPokemon();
+    const pokemon = currentPokemon;
     for (const enemyPokemon of inSpeedOrder(this.player ? ArenaTagSide.ENEMY : ArenaTagSide.PLAYER)) {
       enemyPokemon.removeTagsBySourceId(pokemon.id);
     }
@@ -149,6 +157,24 @@ export class SwitchSummonPhase extends SummonPhase {
         pokemon.leaveField(this.switchType === SwitchType.SWITCH, false);
       },
     });
+  }
+
+  private promptEnemyPlayerReplacement(): void {
+    globalScene.waitForEnemyPlayerInput();
+    globalScene.ui.setMode(
+      UiMode.PARTY,
+      PartyUiMode.ENEMY_SWITCH,
+      this.fieldIndex,
+      (partyIndex: number, option: PartyOption) => {
+        if (option !== PartyOption.SEND_OUT || partyIndex < 0) {
+          this.promptEnemyPlayerReplacement();
+          return;
+        }
+
+        this.slotIndex = partyIndex;
+        globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.preSummon());
+      },
+    );
   }
 
   switchAndSummon() {
