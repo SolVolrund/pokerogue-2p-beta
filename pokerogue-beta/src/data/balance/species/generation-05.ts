@@ -57,7 +57,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 6,
     evolutions: [],
     eggTier: EggTier.EPIC,
-    passives: AbilityId.SERENE_GRACE,
+    passives: [AbilityId.SERENE_GRACE, AbilityId.FIRE_MANE],
     levelMoves: [
       [1, MoveId.CONFUSION],
       [1, MoveId.QUICK_ATTACK],
@@ -347,7 +347,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.SNIVY,
     evolutions: [],
-    passives: AbilityId.MULTISCALE,
+    passives: [AbilityId.MULTISCALE, AbilityId.SUPREME_OVERLORD],
     levelMoves: [
       [RELEARN_MOVE, MoveId.MAGICAL_LEAF],
       [1, MoveId.VINE_WHIP],
@@ -412,7 +412,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.PIGNITE, level: 17 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.GLUTTONY,
+    passives: [AbilityId.GLUTTONY, AbilityId.ANGER_POINT],
     levelMoves: [
       [1, MoveId.TACKLE],
       [3, MoveId.TAIL_WHIP],
@@ -520,7 +520,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.TEPIG,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.EMBOAR, level: 36 })],
-    passives: AbilityId.ROCK_HEAD,
+    passives: [AbilityId.ROCK_HEAD, AbilityId.SCRAPPY],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.ARM_THRUST],
       [1, MoveId.TACKLE],
@@ -650,8 +650,8 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       }),
     ],
     passives: {
-      0: AbilityId.ROCK_HEAD,
-      1: AbilityId.MAGIC_GUARD,
+      0: [AbilityId.ROCK_HEAD, AbilityId.SCRAPPY],
+      1: [AbilityId.MAGIC_GUARD, AbilityId.FIRE_MANE],
     },
     levelMoves: [
       [RELEARN_MOVE, MoveId.HAMMER_ARM],
@@ -718,7 +718,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.DEWOTT, level: 17 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.MOLD_BREAKER,
+    passives: [AbilityId.MOLD_BREAKER, AbilityId.TECHNICIAN],
     levelMoves: [
       [1, MoveId.TACKLE],
       [5, MoveId.TAIL_WHIP],
@@ -848,7 +848,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
         },
       }),
     ],
-    passives: AbilityId.MOLD_BREAKER,
+    passives: [AbilityId.MOLD_BREAKER, AbilityId.TECHNICIAN],
     levelMoves: [
       [1, MoveId.TACKLE],
       [5, MoveId.TAIL_WHIP],
@@ -898,7 +898,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.OSHAWOTT,
     evolutions: [],
-    passives: AbilityId.LIGHTNING_ROD,
+    passives: [AbilityId.LIGHTNING_ROD, AbilityId.ANGER_SHELL],
     levelMoves: [
       [RELEARN_MOVE, MoveId.MEGAHORN],
       [EVOLVE_MOVE, MoveId.SLASH],
@@ -967,7 +967,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 1,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.WATCHOG, level: 20 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.NO_GUARD,
+    passives: [AbilityId.NO_GUARD, AbilityId.ARENA_TRAP],
     levelMoves: [
       [1, MoveId.TACKLE],
       [3, MoveId.LEER],
@@ -1065,7 +1065,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.PATRAT,
     evolutions: [],
-    passives: AbilityId.NO_GUARD,
+    passives: [AbilityId.NO_GUARD, AbilityId.ARENA_TRAP],
     levelMoves: [
       [RELEARN_MOVE, MoveId.IRON_TAIL],
       [EVOLVE_MOVE, MoveId.CONFUSE_RAY],
@@ -1146,7 +1146,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.HERDIER, level: 16 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.BALL_FETCH,
+    passives: [AbilityId.BALL_FETCH, AbilityId.STRONG_JAW],
     levelMoves: [
       [1, MoveId.TACKLE],
       [1, MoveId.LEER],
@@ -1243,7 +1243,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.LILLIPUP,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.STOUTLAND, level: 32 })],
-    passives: AbilityId.FUR_COAT,
+    passives: [AbilityId.FUR_COAT, AbilityId.STRONG_JAW],
     levelMoves: [
       [1, MoveId.TACKLE],
       [1, MoveId.LEER],
@@ -1291,7 +1291,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.LILLIPUP,
     evolutions: [],
-    passives: AbilityId.FUR_COAT,
+    passives: [AbilityId.FUR_COAT, AbilityId.STRONG_JAW],
     levelMoves: [
       [RELEARN_MOVE, MoveId.THUNDER_FANG],
       [RELEARN_MOVE, MoveId.ICE_FANG],
@@ -1344,7 +1344,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 2,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.LIEPARD, level: 20 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.PICKUP,
+    passives: [AbilityId.PICKUP, AbilityId.OPPORTUNIST],
     levelMoves: [
       [1, MoveId.SCRATCH],
       [1, MoveId.SAND_ATTACK],
@@ -1454,7 +1454,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.PURRLOIN,
     evolutions: [],
-    passives: AbilityId.PICKUP,
+    passives: [AbilityId.PICKUP, AbilityId.OPPORTUNIST],
     levelMoves: [
       [1, MoveId.SCRATCH],
       [1, MoveId.SAND_ATTACK],
@@ -1529,7 +1529,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       }),
     ],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.WELL_BAKED_BODY,
+    passives: [AbilityId.WELL_BAKED_BODY, AbilityId.GRASSY_SURGE],
     levelMoves: [
       [1, MoveId.SCRATCH],
       [1, MoveId.LEECH_SEED],
@@ -1641,7 +1641,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.PANSAGE,
     evolutions: [],
-    passives: AbilityId.WELL_BAKED_BODY,
+    passives: [AbilityId.WELL_BAKED_BODY, AbilityId.GRASSY_SURGE],
     levelMoves: [
       [1, MoveId.SCRATCH],
       [1, MoveId.LEECH_SEED],
@@ -1712,7 +1712,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       }),
     ],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.WATER_ABSORB,
+    passives: [AbilityId.WATER_ABSORB, AbilityId.DROUGHT],
     levelMoves: [
       [1, MoveId.SCRATCH],
       [1, MoveId.FIRE_SPIN],
@@ -1824,7 +1824,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.PANSEAR,
     evolutions: [],
-    passives: AbilityId.WATER_ABSORB,
+    passives: [AbilityId.WATER_ABSORB, AbilityId.DROUGHT],
     levelMoves: [
       [1, MoveId.SCRATCH],
       [1, MoveId.FIRE_SPIN],
@@ -1896,7 +1896,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       }),
     ],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.SAP_SIPPER,
+    passives: [AbilityId.SAP_SIPPER, AbilityId.DRIZZLE],
     levelMoves: [
       [1, MoveId.SCRATCH],
       [1, MoveId.WATER_SPORT],
@@ -2012,7 +2012,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.PANPOUR,
     evolutions: [],
-    passives: AbilityId.SAP_SIPPER,
+    passives: [AbilityId.SAP_SIPPER, AbilityId.DRIZZLE],
     levelMoves: [
       [1, MoveId.SCRATCH],
       [1, MoveId.WATER_SPORT],
@@ -2084,7 +2084,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       }),
     ],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.NEUTRALIZING_GAS,
+    passives: [AbilityId.NEUTRALIZING_GAS, AbilityId.CUTE_CHARM],
     levelMoves: [
       [1, MoveId.DEFENSE_CURL],
       [1, MoveId.PSYWAVE],
@@ -2202,7 +2202,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.MUNNA,
     evolutions: [],
-    passives: AbilityId.NEUTRALIZING_GAS,
+    passives: [AbilityId.NEUTRALIZING_GAS, AbilityId.COMATOSE],
     levelMoves: [
       [1, MoveId.DEFENSE_CURL],
       [1, MoveId.PSYWAVE],
@@ -2259,7 +2259,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 1,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.TRANQUILL, level: 21 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.SNIPER,
+    passives: [AbilityId.SNIPER, AbilityId.SERENE_GRACE],
     levelMoves: [
       [1, MoveId.GUST],
       [1, MoveId.GROWL],
@@ -2347,7 +2347,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.PIDOVE,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.UNFEZANT, level: 32 })],
-    passives: AbilityId.SNIPER,
+    passives: [AbilityId.SNIPER, AbilityId.SERENE_GRACE],
     levelMoves: [
       [1, MoveId.GUST],
       [1, MoveId.GROWL],
@@ -2395,7 +2395,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.PIDOVE,
     evolutions: [],
-    passives: AbilityId.SNIPER,
+    passives: [AbilityId.SNIPER, AbilityId.SERENE_GRACE],
     levelMoves: [
       [1, MoveId.GUST],
       [1, MoveId.GROWL],
@@ -2445,7 +2445,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 2,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.ZEBSTRIKA, level: 27 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.ELECTRIC_SURGE,
+    passives: [AbilityId.ELECTRIC_SURGE, AbilityId.RECKLESS],
     levelMoves: [
       [1, MoveId.QUICK_ATTACK],
       [4, MoveId.TAIL_WHIP],
@@ -2542,7 +2542,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.BLITZLE,
     evolutions: [],
-    passives: AbilityId.ELECTRIC_SURGE,
+    passives: [AbilityId.ELECTRIC_SURGE, AbilityId.RECKLESS],
     levelMoves: [
       [1, MoveId.QUICK_ATTACK],
       [4, MoveId.TAIL_WHIP],
@@ -2601,7 +2601,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.BOLDORE, level: 25 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.SOLID_ROCK,
+    passives: [AbilityId.SOLID_ROCK, AbilityId.SHIELD_DUST],
     levelMoves: [
       [1, MoveId.SAND_ATTACK],
       [1, MoveId.TACKLE],
@@ -2697,7 +2697,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
         evoDelay: [35, 40, 45],
       }),
     ],
-    passives: AbilityId.SOLID_ROCK,
+    passives: [AbilityId.SOLID_ROCK, AbilityId.SHIELD_DUST],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.POWER_GEM],
       [1, MoveId.SAND_ATTACK],
@@ -2744,7 +2744,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.ROGGENROLA,
     evolutions: [],
-    passives: AbilityId.SOLID_ROCK,
+    passives: [AbilityId.SOLID_ROCK, AbilityId.SHIELD_DUST],
     levelMoves: [
       [1, MoveId.SAND_ATTACK],
       [1, MoveId.TACKLE],
@@ -2984,7 +2984,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 4,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.EXCADRILL, level: 31 })],
     eggTier: EggTier.RARE,
-    passives: AbilityId.STURDY,
+    passives: [AbilityId.STURDY, AbilityId.STEELWORKER],
     levelMoves: [
       [1, MoveId.SCRATCH],
       [1, MoveId.MUD_SLAP],
@@ -3145,8 +3145,8 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       }),
     ],
     passives: {
-      0: AbilityId.STURDY,
-      1: AbilityId.MOLD_BREAKER,
+      0: [AbilityId.STURDY, AbilityId.UNBURDEN],
+      1: [AbilityId.MOLD_BREAKER, AbilityId.UNBURDEN],
     },
     levelMoves: [
       [RELEARN_MOVE, MoveId.ROTOTILLER],
@@ -3270,8 +3270,8 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     ],
     eggTier: EggTier.RARE,
     passives: {
-      0: AbilityId.FRIEND_GUARD,
-      1: AbilityId.FAIRY_AURA,
+      0: [AbilityId.FRIEND_GUARD, AbilityId.HOSPITALITY],
+      1: [AbilityId.FAIRY_AURA, AbilityId.FUR_COAT],
     },
     levelMoves: [
       [1, MoveId.POUND],
@@ -3414,7 +3414,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 4,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.GURDURR, level: 25 })],
     eggTier: EggTier.RARE,
-    passives: AbilityId.ROCKY_PAYLOAD,
+    passives: [AbilityId.ROCKY_PAYLOAD, AbilityId.SCRAPPY],
     levelMoves: [
       [RELEARN_MOVE, MoveId.SLAM],
       [1, MoveId.POUND],
@@ -3534,7 +3534,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
         evoDelay: [35, 40, 45],
       }),
     ],
-    passives: AbilityId.ROCKY_PAYLOAD,
+    passives: [AbilityId.ROCKY_PAYLOAD, AbilityId.SCRAPPY],
     levelMoves: [
       [RELEARN_MOVE, MoveId.SLAM],
       [1, MoveId.POUND],
@@ -3584,7 +3584,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.TIMBURR,
     evolutions: [],
-    passives: AbilityId.ROCKY_PAYLOAD,
+    passives: [AbilityId.ROCKY_PAYLOAD, AbilityId.SCRAPPY],
     levelMoves: [
       [RELEARN_MOVE, MoveId.SLAM],
       [1, MoveId.POUND],
@@ -3646,7 +3646,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.PALPITOAD, level: 25 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.POISON_HEAL,
+    passives: [AbilityId.POISON_HEAL, AbilityId.LIQUID_VOICE],
     levelMoves: [
       [1, MoveId.GROWL],
       [1, MoveId.BUBBLE],
@@ -3734,7 +3734,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.TYMPOLE,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.SEISMITOAD, level: 36 })],
-    passives: AbilityId.POISON_HEAL,
+    passives: [AbilityId.POISON_HEAL, AbilityId.LIQUID_VOICE],
     levelMoves: [
       [1, MoveId.GROWL],
       [1, MoveId.SUPERSONIC],
@@ -3789,7 +3789,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.TYMPOLE,
     evolutions: [],
-    passives: AbilityId.POISON_HEAL,
+    passives: [AbilityId.POISON_HEAL, AbilityId.LIQUID_VOICE],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.DRAIN_PUNCH],
       [1, MoveId.GROWL],
@@ -3866,7 +3866,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 4,
     evolutions: [],
     eggTier: EggTier.RARE,
-    passives: AbilityId.STAMINA,
+    passives: [AbilityId.STAMINA, AbilityId.TECHNICIAN],
     levelMoves: [
       [1, MoveId.BIND],
       [1, MoveId.LEER],
@@ -4096,7 +4096,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 2,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.SWADLOON, level: 20 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.SHIELD_DUST,
+    passives: [AbilityId.SHIELD_DUST, AbilityId.TINTED_LENS],
     levelMoves: [
       [1, MoveId.TACKLE],
       [1, MoveId.STRING_SHOT],
@@ -4199,7 +4199,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
         evoDelay: [30, 35, 35],
       }),
     ],
-    passives: AbilityId.SHIELD_DUST,
+    passives: [AbilityId.SHIELD_DUST, AbilityId.TINTED_LENS],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.PROTECT],
       [1, MoveId.TACKLE],
@@ -4243,7 +4243,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.SEWADDLE,
     evolutions: [],
-    passives: AbilityId.SHARPNESS,
+    passives: [AbilityId.SHARPNESS, AbilityId.TINTED_LENS],
     levelMoves: [
       [RELEARN_MOVE, MoveId.BUG_BITE],
       [EVOLVE_MOVE, MoveId.SLASH],
@@ -4315,7 +4315,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.WHIRLIPEDE, level: 22 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.STAMINA,
+    passives: [AbilityId.STAMINA, AbilityId.TOUGH_CLAWS],
     levelMoves: [
       [1, MoveId.DEFENSE_CURL],
       [1, MoveId.ROLLOUT],
@@ -4410,7 +4410,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.VENIPEDE,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.SCOLIPEDE, level: 30 })],
-    passives: AbilityId.STAMINA,
+    passives: [AbilityId.STAMINA, AbilityId.TOUGH_CLAWS],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.IRON_DEFENSE],
       [1, MoveId.DEFENSE_CURL],
@@ -4518,8 +4518,8 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       }),
     ],
     passives: {
-      0: AbilityId.STAMINA,
-      1: AbilityId.SPEED_BOOST,
+      0: [AbilityId.STAMINA, AbilityId.TOUGH_CLAWS],
+      1: [AbilityId.SPEED_BOOST, AbilityId.TOUGH_CLAWS],
     },
     levelMoves: [
       [EVOLVE_MOVE, MoveId.BATON_PASS],
@@ -4609,7 +4609,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       }),
     ],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.FLUFFY,
+    passives: [AbilityId.FLUFFY, AbilityId.WIND_RIDER],
     levelMoves: [
       [1, MoveId.ABSORB],
       [1, MoveId.GROWTH],
@@ -4704,7 +4704,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.COTTONEE,
     evolutions: [],
-    passives: AbilityId.FLUFFY,
+    passives: [AbilityId.FLUFFY, AbilityId.WIND_RIDER],
     levelMoves: [
       [RELEARN_MOVE, MoveId.SOLAR_BEAM],
       [RELEARN_MOVE, MoveId.STUN_SPORE],
@@ -4786,7 +4786,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       }),
     ],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.FLOWER_VEIL,
+    passives: [AbilityId.FLOWER_VEIL, AbilityId.SUPERSWEET_SYRUP],
     levelMoves: [
       [1, MoveId.ABSORB],
       [1, MoveId.GROWTH],
@@ -4877,7 +4877,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.PETILIL,
     evolutions: [],
-    passives: AbilityId.GRASSY_SURGE,
+    passives: [AbilityId.GRASSY_SURGE, AbilityId.SUPERSWEET_SYRUP],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.PETAL_DANCE],
       [1, MoveId.ABSORB],
@@ -5110,7 +5110,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 4,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.KROKOROK, level: 29 })],
     eggTier: EggTier.RARE,
-    passives: AbilityId.TOUGH_CLAWS,
+    passives: [AbilityId.TOUGH_CLAWS, AbilityId.TINTED_LENS],
     levelMoves: [
       [1, MoveId.LEER],
       [1, MoveId.RAGE],
@@ -5231,7 +5231,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.SANDILE,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.KROOKODILE, level: 40 })],
-    passives: AbilityId.TOUGH_CLAWS,
+    passives: [AbilityId.TOUGH_CLAWS, AbilityId.TINTED_LENS],
     levelMoves: [
       [1, MoveId.LEER],
       [1, MoveId.RAGE],
@@ -5301,7 +5301,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.SANDILE,
     evolutions: [],
-    passives: AbilityId.TOUGH_CLAWS,
+    passives: [AbilityId.TOUGH_CLAWS, AbilityId.TINTED_LENS],
     levelMoves: [
       [1, MoveId.LEER],
       [1, MoveId.RAGE],
@@ -5371,7 +5371,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 4,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.DARMANITAN, level: 35 })],
     eggTier: EggTier.RARE,
-    passives: AbilityId.GORILLA_TACTICS,
+    passives: [AbilityId.GORILLA_TACTICS, AbilityId.TURBOBLAZE],
     levelMoves: [
       [1, MoveId.TACKLE],
       [1, MoveId.EMBER],
@@ -5545,8 +5545,8 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       }),
     ],
     passives: {
-      0: AbilityId.GORILLA_TACTICS,
-      1: AbilityId.PSYCHIC_SURGE,
+      0: [AbilityId.GORILLA_TACTICS, AbilityId.TURBOBLAZE],
+      1: [AbilityId.PSYCHIC_SURGE, AbilityId.TURBOBLAZE],
     },
     levelMoves: [
       [EVOLVE_MOVE, MoveId.HAMMER_ARM],
@@ -5627,7 +5627,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 2,
     evolutions: [],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.WELL_BAKED_BODY,
+    passives: [AbilityId.WELL_BAKED_BODY, AbilityId.DANCER],
     levelMoves: [
       [RELEARN_MOVE, MoveId.AFTER_YOU],
       [1, MoveId.PECK],
@@ -5733,7 +5733,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.CRUSTLE, level: 34 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.ROCKY_PAYLOAD,
+    passives: [AbilityId.ROCKY_PAYLOAD, AbilityId.UNBURDEN],
     levelMoves: [
       [1, MoveId.SAND_ATTACK],
       [1, MoveId.FURY_CUTTER],
@@ -5829,7 +5829,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.DWEBBLE,
     evolutions: [],
-    passives: AbilityId.ROCKY_PAYLOAD,
+    passives: [AbilityId.ROCKY_PAYLOAD, AbilityId.UNBURDEN],
     levelMoves: [
       [1, MoveId.SAND_ATTACK],
       [1, MoveId.FURY_CUTTER],
@@ -6150,7 +6150,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 4,
     evolutions: [],
     eggTier: EggTier.RARE,
-    passives: AbilityId.FLARE_BOOST,
+    passives: [AbilityId.FLARE_BOOST, AbilityId.MAGICIAN],
     levelMoves: [
       [1, MoveId.GUST],
       [1, MoveId.PSYWAVE],
@@ -6276,7 +6276,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.COFAGRIGUS, level: 34 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.PURIFYING_SALT,
+    passives: [AbilityId.PURIFYING_SALT, AbilityId.VESSEL_OF_RUIN],
     levelMoves: [
       [1, MoveId.CONFUSION],
       [1, MoveId.PROTECT],
@@ -6384,7 +6384,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.YAMASK,
     evolutions: [],
-    passives: AbilityId.PURIFYING_SALT,
+    passives: [AbilityId.PURIFYING_SALT, AbilityId.VESSEL_OF_RUIN],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.SCARY_FACE],
       [EVOLVE_MOVE, MoveId.SHADOW_CLAW],
@@ -6454,7 +6454,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.CARRACOSTA, level: 37 })],
     eggTier: EggTier.RARE,
-    passives: AbilityId.WATER_ABSORB,
+    passives: [AbilityId.WATER_ABSORB, AbilityId.ANGER_SHELL],
     levelMoves: [
       [1, MoveId.WATER_GUN],
       [1, MoveId.WITHDRAW],
@@ -6564,7 +6564,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.TIRTOUGA,
     evolutions: [],
-    passives: AbilityId.WATER_ABSORB,
+    passives: [AbilityId.WATER_ABSORB, AbilityId.ANGER_SHELL],
     levelMoves: [
       [1, MoveId.WATER_GUN],
       [1, MoveId.WITHDRAW],
@@ -6626,7 +6626,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.ARCHEOPS, level: 37 })],
     eggTier: EggTier.RARE,
-    passives: AbilityId.MULTISCALE,
+    passives: [AbilityId.MULTISCALE, AbilityId.PROTOSYNTHESIS],
     levelMoves: [
       [1, MoveId.LEER],
       [1, MoveId.QUICK_ATTACK],
@@ -6743,7 +6743,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.ARCHEN,
     evolutions: [],
-    passives: AbilityId.MULTISCALE,
+    passives: [AbilityId.MULTISCALE, AbilityId.PROTOSYNTHESIS],
     levelMoves: [
       [1, MoveId.LEER],
       [1, MoveId.QUICK_ATTACK],
@@ -6805,7 +6805,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 2,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.GARBODOR, level: 36 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.NEUTRALIZING_GAS,
+    passives: [AbilityId.NEUTRALIZING_GAS, AbilityId.FILTER],
     levelMoves: [
       [1, MoveId.POUND],
       [1, MoveId.POISON_GAS],
@@ -6963,8 +6963,8 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       }),
     ],
     passives: {
-      0: AbilityId.NEUTRALIZING_GAS,
-      1: AbilityId.NEUTRALIZING_GAS,
+      0: [AbilityId.NEUTRALIZING_GAS, AbilityId.FILTER],
+      1: [AbilityId.NEUTRALIZING_GAS, AbilityId.FILTER],
     },
     levelMoves: [
       [RELEARN_MOVE, MoveId.HARD_PRESS],
@@ -7038,7 +7038,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.ZOROARK, level: 30 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.ADAPTABILITY,
+    passives: [AbilityId.ADAPTABILITY, AbilityId.MAGICIAN],
     levelMoves: [
       [1, MoveId.SCRATCH],
       [1, MoveId.LEER],
@@ -7158,7 +7158,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.ZORUA,
     evolutions: [],
-    passives: AbilityId.ADAPTABILITY,
+    passives: [AbilityId.ADAPTABILITY, AbilityId.MAGICIAN],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.NIGHT_SLASH],
       [1, MoveId.SCRATCH],
@@ -7645,7 +7645,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.DUOSION, level: 32 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.PSYCHIC_SURGE,
+    passives: [AbilityId.PSYCHIC_SURGE, AbilityId.CLEAR_BODY],
     levelMoves: [
       [1, MoveId.CONFUSION],
       [1, MoveId.PSYWAVE],
@@ -7765,7 +7765,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.SOLOSIS,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.REUNICLUS, level: 41 })],
-    passives: AbilityId.PSYCHIC_SURGE,
+    passives: [AbilityId.PSYCHIC_SURGE, AbilityId.CLEAR_BODY],
     levelMoves: [
       [1, MoveId.CONFUSION],
       [1, MoveId.PSYWAVE],
@@ -7818,7 +7818,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.SOLOSIS,
     evolutions: [],
-    passives: AbilityId.PSYCHIC_SURGE,
+    passives: [AbilityId.PSYCHIC_SURGE, AbilityId.CLEAR_BODY],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.HAMMER_ARM],
       [1, MoveId.CONFUSION],
@@ -7894,7 +7894,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 2,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.SWANNA, level: 35 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.DRIZZLE,
+    passives: [AbilityId.DRIZZLE, AbilityId.SWIFT_SWIM],
     levelMoves: [
       [1, MoveId.WATER_GUN],
       [3, MoveId.WATER_SPORT],
@@ -7991,7 +7991,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.DUCKLETT,
     evolutions: [],
-    passives: AbilityId.DRIZZLE,
+    passives: [AbilityId.DRIZZLE, AbilityId.SWIFT_SWIM],
     levelMoves: [
       [1, MoveId.WATER_GUN],
       [3, MoveId.WATER_SPORT],
@@ -8050,7 +8050,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.VANILLISH, level: 35 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.REFRIGERATE,
+    passives: [AbilityId.REFRIGERATE, AbilityId.STURDY],
     levelMoves: [
       [1, MoveId.HARDEN],
       [1, MoveId.POWDER_SNOW],
@@ -8138,7 +8138,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.VANILLITE,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.VANILLUXE, level: 47 })],
-    passives: AbilityId.REFRIGERATE,
+    passives: [AbilityId.REFRIGERATE, AbilityId.STURDY],
     levelMoves: [
       [1, MoveId.HARDEN],
       [1, MoveId.POWDER_SNOW],
@@ -8187,7 +8187,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.VANILLITE,
     evolutions: [],
-    passives: AbilityId.SLUSH_RUSH,
+    passives: [AbilityId.SLUSH_RUSH, AbilityId.SNOW_CLOAK],
     levelMoves: [
       [1, MoveId.HARDEN],
       [1, MoveId.POWDER_SNOW],
@@ -8622,7 +8622,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 2,
     evolutions: [],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.SERENE_GRACE,
+    passives: [AbilityId.SERENE_GRACE, AbilityId.WIND_POWER],
     levelMoves: [
       [1, MoveId.THUNDER_SHOCK],
       [4, MoveId.QUICK_ATTACK],
@@ -8740,7 +8740,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       }),
     ],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.QUICK_DRAW,
+    passives: [AbilityId.QUICK_DRAW, AbilityId.SHIELD_DUST],
     levelMoves: [
       [1, MoveId.LEER],
       [1, MoveId.PECK],
@@ -8831,7 +8831,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.KARRABLAST,
     evolutions: [],
-    passives: AbilityId.QUICK_DRAW,
+    passives: [AbilityId.QUICK_DRAW, AbilityId.SHIELD_DUST],
     levelMoves: [
       [RELEARN_MOVE, MoveId.FELL_STINGER],
       [1, MoveId.LEER],
@@ -9040,7 +9040,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.JELLICENT, level: 40 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.POISON_HEAL,
+    passives: [AbilityId.POISON_HEAL, AbilityId.SHADOW_SHIELD],
     levelMoves: [
       [1, MoveId.ABSORB],
       [1, MoveId.BUBBLE],
@@ -9147,7 +9147,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.FRILLISH,
     evolutions: [],
-    passives: AbilityId.POISON_HEAL,
+    passives: [AbilityId.POISON_HEAL, AbilityId.SHADOW_SHIELD],
     levelMoves: [
       [1, MoveId.ABSORB],
       [1, MoveId.BUBBLE],
@@ -9639,7 +9639,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.KLANG, level: 38 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.STEELY_SPIRIT,
+    passives: [AbilityId.STEELY_SPIRIT, AbilityId.TRANSISTOR],
     levelMoves: [
       [1, MoveId.VISE_GRIP],
       [1, MoveId.THUNDER_SHOCK],
@@ -9729,7 +9729,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.KLINK,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.KLINKLANG, level: 49 })],
-    passives: AbilityId.STEELY_SPIRIT,
+    passives: [AbilityId.STEELY_SPIRIT, AbilityId.HADRON_ENGINE],
     levelMoves: [
       [1, MoveId.VISE_GRIP],
       [1, MoveId.THUNDER_SHOCK],
@@ -9777,7 +9777,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.KLINK,
     evolutions: [],
-    passives: AbilityId.STEELY_SPIRIT,
+    passives: [AbilityId.STEELY_SPIRIT, AbilityId.HADRON_ENGINE],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.MAGNETIC_FLUX],
       [1, MoveId.VISE_GRIP],
@@ -10293,7 +10293,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.LAMPENT, level: 41 })],
     eggTier: EggTier.RARE,
-    passives: AbilityId.SHADOW_TAG,
+    passives: [AbilityId.SHADOW_TAG, AbilityId.ILLUMINATE],
     levelMoves: [
       [1, MoveId.EMBER],
       [1, MoveId.ASTONISH],
@@ -10410,7 +10410,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
         evoDelay: [51, 56, 56],
       }),
     ],
-    passives: AbilityId.SHADOW_TAG,
+    passives: [AbilityId.SHADOW_TAG, AbilityId.LEVITATE],
     levelMoves: [
       [1, MoveId.EMBER],
       [1, MoveId.ASTONISH],
@@ -10518,8 +10518,8 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       }),
     ],
     passives: {
-      0: AbilityId.SHADOW_TAG,
-      1: AbilityId.SHADOW_TAG,
+      0: [AbilityId.SHADOW_TAG, AbilityId.LEVITATE],
+      1: [AbilityId.SHADOW_TAG, AbilityId.LEVITATE],
     },
     levelMoves: [
       [1, MoveId.EMBER],
@@ -10573,7 +10573,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 4,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.FRAXURE, level: 38 })],
     eggTier: EggTier.RARE,
-    passives: AbilityId.SHARPNESS,
+    passives: [AbilityId.SHARPNESS, AbilityId.HYPER_CUTTER],
     levelMoves: [
       [RELEARN_MOVE, MoveId.FOCUS_ENERGY],
       [RELEARN_MOVE, MoveId.LASER_FOCUS],
@@ -10694,7 +10694,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.AXEW,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.HAXORUS, level: 48 })],
-    passives: AbilityId.SHARPNESS,
+    passives: [AbilityId.SHARPNESS, AbilityId.ARMOR_TAIL],
     levelMoves: [
       [RELEARN_MOVE, MoveId.FOCUS_ENERGY],
       [RELEARN_MOVE, MoveId.LASER_FOCUS],
@@ -10748,7 +10748,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.AXEW,
     evolutions: [],
-    passives: AbilityId.SHARPNESS,
+    passives: [AbilityId.SHARPNESS, AbilityId.ARMOR_TAIL],
     levelMoves: [
       [RELEARN_MOVE, MoveId.FOCUS_ENERGY],
       [RELEARN_MOVE, MoveId.LASER_FOCUS],
@@ -10815,7 +10815,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 2,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.BEARTIC, level: 37 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.FUR_COAT,
+    passives: [AbilityId.FUR_COAT, AbilityId.THICK_FAT],
     levelMoves: [
       [1, MoveId.GROWL],
       [1, MoveId.BIDE],
@@ -10936,7 +10936,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.CUBCHOO,
     evolutions: [],
-    passives: AbilityId.FUR_COAT,
+    passives: [AbilityId.FUR_COAT, AbilityId.THICK_FAT],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.ICICLE_CRASH],
       [1, MoveId.GROWL],
@@ -11009,7 +11009,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 4,
     evolutions: [],
     eggTier: EggTier.RARE,
-    passives: AbilityId.SNOW_WARNING,
+    passives: [AbilityId.SNOW_WARNING, AbilityId.ICE_FACE],
     levelMoves: [
       [1, MoveId.BIND],
       [1, MoveId.SHARPEN],
@@ -11284,7 +11284,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.WATER_ABSORB,
+    passives: [AbilityId.WATER_ABSORB, AbilityId.ELECTROMORPHOSIS],
     levelMoves: [
       [1, MoveId.TACKLE],
       [1, MoveId.WATER_GUN],
@@ -11581,7 +11581,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 4,
     evolutions: [],
     eggTier: EggTier.RARE,
-    passives: AbilityId.DRAGONIZE,
+    passives: [AbilityId.DRAGONIZE, AbilityId.INTIMIDATE],
     levelMoves: [
       [1, MoveId.SCRATCH],
       [1, MoveId.LEER],
@@ -12152,7 +12152,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 4,
     evolutions: [],
     eggTier: EggTier.RARE,
-    passives: AbilityId.ROCK_HEAD,
+    passives: [AbilityId.ROCK_HEAD, AbilityId.FLUFFY],
     levelMoves: [
       [1, MoveId.TACKLE],
       [1, MoveId.LEER],
@@ -12441,7 +12441,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.MANDIBUZZ, level: 54 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.THICK_FAT,
+    passives: [AbilityId.THICK_FAT, AbilityId.STAMINA],
     levelMoves: [
       [1, MoveId.GUST],
       [1, MoveId.LEER],
@@ -12554,7 +12554,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.VULLABY,
     evolutions: [],
-    passives: AbilityId.THICK_FAT,
+    passives: [AbilityId.THICK_FAT, AbilityId.STAMINA],
     levelMoves: [
       [RELEARN_MOVE, MoveId.SKY_ATTACK],
       [EVOLVE_MOVE, MoveId.BONE_RUSH],
@@ -12611,7 +12611,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [],
     eggTier: EggTier.RARE,
-    passives: AbilityId.SPICY_SPRAY,
+    passives: [AbilityId.SPICY_SPRAY, AbilityId.MOLD_BREAKER],
     levelMoves: [
       [1, MoveId.BIND],
       [1, MoveId.TACKLE],
@@ -12726,7 +12726,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 4,
     evolutions: [],
     eggTier: EggTier.RARE,
-    passives: AbilityId.COMPOUND_EYES,
+    passives: [AbilityId.COMPOUND_EYES, AbilityId.HEATPROOF],
     levelMoves: [
       [1, MoveId.SAND_ATTACK],
       [1, MoveId.FURY_CUTTER],
@@ -12832,7 +12832,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 4,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.ZWEILOUS, level: 50 })],
     eggTier: EggTier.RARE,
-    passives: AbilityId.NO_GUARD,
+    passives: [AbilityId.NO_GUARD, AbilityId.STRONG_JAW],
     levelMoves: [
       [1, MoveId.TACKLE],
       [1, MoveId.FOCUS_ENERGY],
@@ -12939,7 +12939,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.DEINO,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.HYDREIGON, level: 64 })],
-    passives: AbilityId.NO_GUARD,
+    passives: [AbilityId.NO_GUARD, AbilityId.STRONG_JAW],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.DOUBLE_HIT],
       [1, MoveId.TACKLE],
@@ -12991,7 +12991,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.DEINO,
     evolutions: [],
-    passives: AbilityId.PARENTAL_BOND,
+    passives: [AbilityId.PARENTAL_BOND, AbilityId.DARK_AURA],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.TRI_ATTACK],
       [1, MoveId.TACKLE],
@@ -13084,7 +13084,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 4,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.VOLCARONA, level: 59 })],
     eggTier: EggTier.RARE,
-    passives: AbilityId.FLASH_FIRE,
+    passives: [AbilityId.FLASH_FIRE, AbilityId.COMPOUND_EYES],
     levelMoves: [
       [1, MoveId.EMBER],
       [1, MoveId.STRING_SHOT],
@@ -13184,7 +13184,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.LARVESTA,
     evolutions: [],
-    passives: AbilityId.FLASH_FIRE,
+    passives: [AbilityId.FLASH_FIRE, AbilityId.COMPOUND_EYES],
     levelMoves: [
       [RELEARN_MOVE, MoveId.RAGE_POWDER],
       [RELEARN_MOVE, MoveId.HURRICANE],
@@ -13874,7 +13874,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     eggTier: EggTier.EPIC,
     passives: {
       0: AbilityId.DRIZZLE,
-      1: AbilityId.DRIZZLE,
+      1: [AbilityId.DRIZZLE, AbilityId.SPEED_BOOST],
     },
     levelMoves: [
       [RELEARN_MOVE, MoveId.SWAGGER],
@@ -14012,7 +14012,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 8,
     evolutions: [],
     eggTier: EggTier.LEGENDARY,
-    passives: AbilityId.ORICHALCUM_PULSE,
+    passives: [AbilityId.ORICHALCUM_PULSE, AbilityId.DRAGONS_MAW],
     levelMoves: [
       [1, MoveId.FIRE_FANG],
       [1, MoveId.NOBLE_ROAR],
@@ -14146,7 +14146,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 8,
     evolutions: [],
     eggTier: EggTier.LEGENDARY,
-    passives: AbilityId.HADRON_ENGINE,
+    passives: [AbilityId.HADRON_ENGINE, AbilityId.DRAGONS_MAW],
     levelMoves: [
       [1, MoveId.THUNDER_FANG],
       [1, MoveId.NOBLE_ROAR],
@@ -14344,8 +14344,8 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     ],
     eggTier: EggTier.EPIC,
     passives: {
-      0: AbilityId.STORM_DRAIN,
-      1: AbilityId.STORM_DRAIN,
+      0: [AbilityId.STORM_DRAIN, AbilityId.HARVEST],
+      1: [AbilityId.STORM_DRAIN, AbilityId.HARVEST],
     },
     levelMoves: [
       [RELEARN_MOVE, MoveId.BLOCK],
@@ -14559,9 +14559,9 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     ],
     eggTier: EggTier.LEGENDARY,
     passives: {
-      0: AbilityId.SNOW_WARNING,
-      1: AbilityId.HADRON_ENGINE,
-      2: AbilityId.ORICHALCUM_PULSE,
+      0: [AbilityId.SNOW_WARNING, AbilityId.ICE_BODY],
+      1: [AbilityId.TRANSISTOR, AbilityId.SNOW_WARNING],
+      2: [AbilityId.FIRE_MANE, AbilityId.SNOW_WARNING],
     },
     levelMoves: [
       [RELEARN_MOVE, MoveId.FREEZE_DRY],
@@ -14769,8 +14769,8 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     ],
     eggTier: EggTier.EPIC,
     passives: {
-      0: AbilityId.GRIM_NEIGH,
-      1: AbilityId.GRIM_NEIGH,
+      0: [AbilityId.GRIM_NEIGH, AbilityId.SERENE_GRACE],
+      1: [AbilityId.GRIM_NEIGH, AbilityId.SHEER_FORCE],
     },
     levelMoves: [
       [1, MoveId.DOUBLE_KICK],
@@ -14966,8 +14966,8 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     ],
     eggTier: EggTier.EPIC,
     passives: {
-      0: AbilityId.PUNK_ROCK,
-      1: AbilityId.SCRAPPY,
+      0: [AbilityId.PUNK_ROCK, AbilityId.DANCER],
+      1: [AbilityId.SCRAPPY, AbilityId.DANCER],
     },
     levelMoves: [
       [1, MoveId.SING],
@@ -15255,11 +15255,11 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     ],
     eggTier: EggTier.EPIC,
     passives: {
-      0: AbilityId.HEATPROOF,
-      1: AbilityId.HEATPROOF,
-      2: AbilityId.HEATPROOF,
-      3: AbilityId.HEATPROOF,
-      4: AbilityId.HEATPROOF,
+      0: [AbilityId.HEATPROOF, AbilityId.PROTEAN],
+      1: [AbilityId.HEATPROOF, AbilityId.PROTEAN],
+      2: [AbilityId.HEATPROOF, AbilityId.PROTEAN],
+      3: [AbilityId.HEATPROOF, AbilityId.PROTEAN],
+      4: [AbilityId.HEATPROOF, AbilityId.PROTEAN],
     },
     levelMoves: [
       [RELEARN_MOVE, MoveId.FELL_STINGER],

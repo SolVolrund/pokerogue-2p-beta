@@ -40,4 +40,5 @@ export enum MysteryEncounterType {
   DEJA_VU,
   MINING,
   CHEFS_ON_VACATION,
+  LIFE_IS_WONDERFUL,
 }

@@ -443,6 +443,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
     if (formIndex !== undefined) {
       this.formIndex = formIndex;
+      if (this.species.forms.length > 0 && !this.species.forms[this.formIndex]) {
+        this.formIndex = 0;
+      }
     }
     if (gender !== undefined) {
       this.gender = gender;
@@ -826,6 +829,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
         pokeball: pokemon.pokeball,
         hp: pokemon.hp,
         maxHp: pokemon.getMaxHp(),
+        moveset: pokemon.getMoveset().map(move => move.moveId),
         fusionFormIndex: pokemon.fusionFormIndex,
         fusionSpecies: pokemon.fusionSpecies || undefined,
         fusionGender: pokemon.fusionGender,

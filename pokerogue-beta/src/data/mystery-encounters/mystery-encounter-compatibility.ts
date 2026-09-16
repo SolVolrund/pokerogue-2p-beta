@@ -67,6 +67,7 @@ export const MULTI_BOSS_BATTLE_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType
   MysteryEncounterType.CLOWNING_AROUND,
   MysteryEncounterType.DANCING_LESSONS,
   MysteryEncounterType.TELEPORTING_HIJINKS,
+  MysteryEncounterType.LIFE_IS_WONDERFUL,
 ];
 
 // These battles use special field ownership or mixed-alliance targeting rules.
@@ -117,6 +118,7 @@ export const VS_DISABLED_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
   MysteryEncounterType.SAFARI_ZONE,
   MysteryEncounterType.CHEFS_ON_VACATION,
   MysteryEncounterType.IT_IS_DANGEROUS_TO_GO_ALONE,
+  MysteryEncounterType.LIFE_IS_WONDERFUL,
 ];
 
 export const VS_OWNER_SCOPED_NON_BATTLE_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
@@ -245,6 +247,7 @@ export const TWO_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryE
   MysteryEncounterType.CONTEST_HALL,
   MysteryEncounterType.DEJA_VU,
   MysteryEncounterType.MINING,
+  MysteryEncounterType.LIFE_IS_WONDERFUL,
 ];
 
 export const THREE_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] = [
@@ -285,6 +288,7 @@ export const THREE_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST: readonly Myster
   MysteryEncounterType.CONTEST_HALL,
   MysteryEncounterType.DEJA_VU,
   MysteryEncounterType.MINING,
+  MysteryEncounterType.LIFE_IS_WONDERFUL,
 ];
 
 // Limited-party and Vs allowlists intentionally start by mirroring full co-op.

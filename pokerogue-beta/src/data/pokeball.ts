@@ -23,6 +23,8 @@ export function getPokeballAtlasKey(type: PokeballType): string {
       return "lb";
     case PokeballType.GLASS_BALL:
       return "glass_ball";
+    case PokeballType.CLONE_BALL:
+      return "cb";
   }
 }
 
@@ -50,6 +52,9 @@ export function getPokeballName(type: PokeballType): string {
     case PokeballType.GLASS_BALL:
       ret = i18next.t("pokeball:glassBall", { defaultValue: "Glass Ball" });
       break;
+    case PokeballType.CLONE_BALL:
+      ret = i18next.t("pokeball:cloneBall", { defaultValue: "Clone Ball" });
+      break;
   }
   return ret;
 }
@@ -70,6 +75,8 @@ export function getPokeballCatchMultiplier(type: PokeballType): number {
       return 1;
     case PokeballType.GLASS_BALL:
       return 1;
+    case PokeballType.CLONE_BALL:
+      return -1;
   }
 }
 
@@ -89,6 +96,8 @@ export function getPokeballTintColor(type: PokeballType): number {
       return 0xffde6a;
     case PokeballType.GLASS_BALL:
       return 0x85cfff;
+    case PokeballType.CLONE_BALL:
+      return 0x69d7ff;
   }
 }
 

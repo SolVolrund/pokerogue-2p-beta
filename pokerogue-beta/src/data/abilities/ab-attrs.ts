@@ -5654,7 +5654,8 @@ function isIllusionSpecies(pokemon: Pokemon): boolean {
 
 function getIllusionParty(pokemon: Pokemon): Pokemon[] {
   if (!pokemon.isPlayer()) {
-    return globalScene.getEnemyParty().filter(p => p.isAllowedInBattle());
+    const trainerSlot = (pokemon as EnemyPokemon).trainerSlot;
+    return globalScene.getEnemyParty().filter(p => p.isAllowedInBattle() && p.trainerSlot === trainerSlot);
   }
 
   const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon);

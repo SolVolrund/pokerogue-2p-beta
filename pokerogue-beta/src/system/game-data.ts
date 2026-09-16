@@ -42,6 +42,7 @@ import { Nature } from "#enums/nature";
 import { PlayerGender } from "#enums/player-gender";
 import { SpeciesId } from "#enums/species-id";
 import { StatusEffect } from "#enums/status-effect";
+import { getTrainerSlotForFieldIndex } from "#enums/trainer-slot";
 import { TrainerVariant } from "#enums/trainer-variant";
 import { UiMode } from "#enums/ui-mode";
 import { Unlockables } from "#enums/unlockables";
@@ -105,6 +106,7 @@ import {
 } from "#utils/computer-partner-profile";
 import { decrypt, encrypt } from "#utils/data";
 import { getEnumKeys } from "#utils/enums";
+import type { MewtwoFinalBossState } from "#utils/classic-final-boss-utils";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import { toCamelCase } from "#utils/strings";
 import { AES, enc } from "crypto-js";
@@ -1437,6 +1439,7 @@ export class GameData {
       alphTiles: globalScene.getPlayerAlphTiles(0),
       alphLegendaryHelpersUsed: globalScene.getPlayerAlphLegendaryHelpersUsed(0),
       unownCrystalMollyAppeared: globalScene.unownCrystalMollyAppeared,
+      mewtwoFinalBossState: globalScene.currentBattle.mewtwoFinalBossState,
       unownFinalBossState: globalScene.currentBattle.unownFinalBossState,
       players: playerSessionData,
       twoPlayerMode: globalScene.twoPlayerMode,
@@ -1480,6 +1483,52 @@ export class GameData {
       mysteryEncounterSaveData: globalScene.mysteryEncounterSaveData,
       playerFaints: globalScene.arena.playerFaints,
     } as SessionSaveData;
+  }
+
+  private recoverMewtwoFinalBossStateFromLoadedBattle(): MewtwoFinalBossState | undefined {
+    const battle = globalScene.currentBattle;
+    if (!battle?.isClassicFinalBoss || battle.unownFinalBossState) {
+      return;
+    }
+
+    const enemyParty = globalScene.getEnemyParty();
+    const mewtwoBosses = enemyParty.filter(pokemon => pokemon.isBoss() && pokemon.species.speciesId === SpeciesId.MEWTWO);
+    const nonBossEnemies = enemyParty.filter(pokemon => !pokemon.isBoss());
+    if (mewtwoBosses.length === 0 && nonBossEnemies.length === 0) {
+      return;
+    }
+    if (mewtwoBosses.length === 0 && enemyParty.some(pokemon => pokemon.isBoss())) {
+      return;
+    }
+
+    const stage = mewtwoBosses.length > 0
+      ? mewtwoBosses.some(pokemon => pokemon.formIndex > 0)
+        ? 3
+        : 2
+      : 1;
+
+    const lanes = globalScene.getPlayerFieldOwners().map((playerIndex, fieldIndex) => {
+      const trainerSlot = getTrainerSlotForFieldIndex(fieldIndex);
+      const laneBoss = mewtwoBosses.find(pokemon => pokemon.trainerSlot === trainerSlot);
+      const clonePokemonIds = nonBossEnemies
+        .filter(pokemon => pokemon.trainerSlot === trainerSlot)
+        .map(pokemon => pokemon.id);
+
+      return {
+        fieldIndex,
+        playerIndex,
+        trainerSlot,
+        clonePokemonIds,
+        ...(laneBoss ? { bossPokemonId: laneBoss.id } : {}),
+      };
+    });
+
+    if (lanes.every(lane => lane.clonePokemonIds.length === 0 && lane.bossPokemonId === undefined)) {
+      return;
+    }
+
+    battle.classicFinalBossSpeciesId = SpeciesId.MEWTWO;
+    return { stage, lanes };
   }
 
   async getSession(slotId: number): Promise<SessionSaveData | undefined> {
@@ -1694,6 +1743,8 @@ export class GameData {
 
       loadPokemonAssets.push(enemyPokemon.loadAssets());
     });
+    battle.mewtwoFinalBossState =
+      fromSession.mewtwoFinalBossState ?? this.recoverMewtwoFinalBossStateFromLoadedBattle();
 
     // #region Arena stuff
     const {

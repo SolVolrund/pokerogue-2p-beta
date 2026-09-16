@@ -1,7 +1,5 @@
 import { SpeciesId } from "#enums/species-id";
 import { cachedFetch } from "#utils/fetch-utils";
-import accessoryCatalogData from "../../assets/images/pokemon/accessories/accessories.json";
-import accessoryAnchorManifestData from "../../assets/images/pokemon/accessory-anchors/_manifest.json";
 
 export type PokemonAccessoryLayer = "front" | "back";
 export type PokemonAccessorySide = "front" | "back";
@@ -73,8 +71,8 @@ interface PokemonAccessoryAnchorManifestData {
   files?: string[];
 }
 
-const accessoryCatalog = accessoryCatalogData as PokemonAccessoryCatalogData;
-const accessoryAnchorManifest = accessoryAnchorManifestData as PokemonAccessoryAnchorManifestData;
+const accessoryCatalog: PokemonAccessoryCatalogData = { accessories: [] };
+const accessoryAnchorManifest: PokemonAccessoryAnchorManifestData = { files: [] };
 const anchorDataBySpeciesId = new Map<SpeciesId, PokemonAccessoryAnchorData>();
 const anchorDataBySpeciesFormKey = new Map<string, PokemonAccessoryAnchorData>();
 let anchorDataLoading: Promise<void> | undefined;
@@ -108,9 +106,30 @@ function getAnchorData(speciesId: SpeciesId, formKey?: string): PokemonAccessory
   return formKey ? anchorDataBySpeciesFormKey.get(getAnchorDataKey(speciesId, formKey)) : anchorDataBySpeciesId.get(speciesId);
 }
 
+async function loadJsonAsset<T>(path: string, fallback: T): Promise<T> {
+  try {
+    const response = await cachedFetch(path);
+    if (!response.ok) {
+      console.warn(`Failed to load accessory JSON ${path}: ${response.status}`);
+      return fallback;
+    }
+    return await response.json() as T;
+  } catch (error) {
+    console.warn(`Failed to load accessory JSON ${path}.`, error);
+    return fallback;
+  }
+}
+
 export function loadPokemonAccessoryAnchors(): Promise<void> {
-  anchorDataLoading ??= Promise.all(
-    (accessoryAnchorManifest.files ?? []).map(async fileName => {
+  anchorDataLoading ??= Promise.all([
+    loadJsonAsset<PokemonAccessoryCatalogData>("./images/pokemon/accessories/accessories.json", { accessories: [] }),
+    loadJsonAsset<PokemonAccessoryAnchorManifestData>("./images/pokemon/accessory-anchors/_manifest.json", { files: [] }),
+  ]).then(async ([catalogData, manifestData]) => {
+    accessoryCatalog.slots = catalogData.slots ?? [];
+    accessoryCatalog.accessories = catalogData.accessories ?? [];
+    accessoryAnchorManifest.files = manifestData.files ?? [];
+
+    await Promise.all((accessoryAnchorManifest.files ?? []).map(async fileName => {
       try {
         const response = await cachedFetch(`./images/pokemon/accessory-anchors/${fileName}`);
         if (!response.ok) {
@@ -121,8 +140,8 @@ export function loadPokemonAccessoryAnchors(): Promise<void> {
       } catch (error) {
         console.warn(`Failed to load accessory anchor JSON ${fileName}.`, error);
       }
-    }),
-  ).then(() => undefined);
+    }));
+  }).then(() => undefined);
 
   return anchorDataLoading;
 }

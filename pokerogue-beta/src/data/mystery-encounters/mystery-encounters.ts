@@ -22,6 +22,7 @@ import { GlobalTradeSystemEncounter } from "#mystery-encounters/global-trade-sys
 import { GtsMalfunctionEncounter } from "#mystery-encounters/gts-malfunction-encounter";
 import { ItIsDangerousToGoAloneEncounter } from "#mystery-encounters/it-is-dangerous-to-go-alone-encounter";
 import { LegendaryConflictEncounter } from "#mystery-encounters/legendary-conflict-encounter";
+import { LifeIsWonderfulEncounter } from "#mystery-encounters/life-is-wonderful-encounter";
 import { LostAtSeaEncounter } from "#mystery-encounters/lost-at-sea-encounter";
 import { MiningEncounter } from "#mystery-encounters/mining-encounter";
 import { MysteriousChallengersEncounter } from "#mystery-encounters/mysterious-challengers-encounter";
@@ -200,6 +201,7 @@ const anyBiomeEncounters: MysteryEncounterType[] = [
   MysteryEncounterType.LEGENDARY_CONFLICT,
   MysteryEncounterType.POKE_POACHERS,
   MysteryEncounterType.CONTEST_HALL,
+  MysteryEncounterType.LIFE_IS_WONDERFUL,
 ];
 
 /**
@@ -291,6 +293,7 @@ export function initMysteryEncounters() {
   allMysteryEncounters[MysteryEncounterType.CONTEST_HALL] = ContestHallEncounter;
   allMysteryEncounters[MysteryEncounterType.DEJA_VU] = DejaVuEncounter;
   allMysteryEncounters[MysteryEncounterType.MINING] = MiningEncounter;
+  allMysteryEncounters[MysteryEncounterType.LIFE_IS_WONDERFUL] = LifeIsWonderfulEncounter;
 
   // Add extreme encounters to biome map
   extremeBiomeEncounters.forEach(encounter => {

@@ -5780,6 +5780,22 @@ export const trainerConfigs: TrainerConfigs = {
       }),
     ),
 
+  [TrainerType.AMBER_TWO]: new TrainerConfig(TrainerType.AMBER_TWO)
+    .setName("Amber-Two")
+    .setSpriteKey("amber_two")
+    .setHasCharSprite()
+    .setPartyTemplates(trainerPartyTemplates.SIX_STRONG)
+    .setBattleBgm("battle_trainer")
+    .setMixedBattleBgm("battle_trainer"),
+
+  [TrainerType.AMBERS_JOY]: new TrainerConfig(TrainerType.AMBERS_JOY)
+    .setName("Nurse Joy")
+    .setSpriteKey("ambers_joy")
+    .setHasCharSprite()
+    .setPartyTemplates(new TrainerPartyTemplate(4, PartyMemberStrength.STRONG))
+    .setBattleBgm("battle_trainer")
+    .setMixedBattleBgm("battle_trainer"),
+
   [TrainerType.DUPLICA_DITTO]: new TrainerConfig(TrainerType.DUPLICA_DITTO)
     .setName("Duplica")
     .setPartyTemplates(trainerPartyTemplates.SIX_STRONG)

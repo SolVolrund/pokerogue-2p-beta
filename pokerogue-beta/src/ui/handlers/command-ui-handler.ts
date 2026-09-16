@@ -203,7 +203,9 @@ export class CommandUiHandler extends UiHandler {
         switch (cursor) {
           // Fight
           case Command.FIGHT:
-            ui.setMode(UiMode.FIGHT, commandPhase.getFieldIndex());
+            if (this.isEnemyCommandPhase(commandPhase) || !commandPhase.handleBerserkGeneFightCommand()) {
+              ui.setMode(UiMode.FIGHT, commandPhase.getFieldIndex());
+            }
             success = true;
             break;
           // Ball

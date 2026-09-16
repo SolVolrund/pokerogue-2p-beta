@@ -116,6 +116,7 @@ import { TurnStartPhase } from "#phases/turn-start-phase";
 import { UnavailablePhase } from "#phases/unavailable-phase";
 import { UnlockPhase } from "#phases/unlock-phase";
 import { VictoryPhase } from "#phases/victory-phase";
+import { VsModeSuddenDeathPhase } from "#phases/vs-mode-sudden-death-phase";
 import { VsModeVictoryPhase } from "#phases/vs-mode-victory-phase";
 import { WeatherEffectPhase } from "#phases/weather-effect-phase";
 import { ZMovePhase } from "#phases/z-move-phase";
@@ -253,6 +254,7 @@ const PHASES = Object.freeze({
   UnavailablePhase,
   UnlockPhase,
   VictoryPhase,
+  VsModeSuddenDeathPhase,
   VsModeVictoryPhase,
   WeatherEffectPhase,
   ZMovePhase,

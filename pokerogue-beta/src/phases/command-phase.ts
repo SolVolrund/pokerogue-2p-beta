@@ -22,8 +22,10 @@ import { MoveId } from "#enums/move-id";
 import { isIgnorePP, isVirtual, MoveUseMode } from "#enums/move-use-mode";
 import { MysteryEncounterMode } from "#enums/mystery-encounter-mode";
 import { PokeballType } from "#enums/pokeball";
+import { TrainerType } from "#enums/trainer-type";
 import { UiMode } from "#enums/ui-mode";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
+import { BerserkGeneModifier } from "#modifiers/modifier";
 import { getMoveTargets } from "#moves/move-utils";
 import { FieldPhase } from "#phases/field-phase";
 import type { MoveTargetSet } from "#types/move-target-set";
@@ -417,7 +419,11 @@ export class CommandPhase extends FieldPhase {
   private canComputerPartnerCaptureInCurrentBattle(): boolean {
     const battle = globalScene.currentBattle;
     if (battle.battleType === BattleType.WILD) {
-      return true;
+      return (
+        !battle.isClassicFinalBoss
+        && !isUnownCrystalGauntletWave(battle.waveIndex, globalScene.gameMode.modeId)
+        && globalScene.arena.biomeId !== BiomeId.END
+      );
     }
 
     return (
@@ -780,6 +786,35 @@ export class CommandPhase extends FieldPhase {
     });
   }
 
+  private hasBerserkGene(playerPokemon = this.getPokemon()): boolean {
+    return playerPokemon.getHeldItems().some(item => item instanceof BerserkGeneModifier);
+  }
+
+  private getBerserkGeneAiMove(playerPokemon: PlayerPokemon): TurnMove {
+    const previousAiType = playerPokemon.aiType;
+    const previousAiCommandInProgress = globalScene.aiCommandInProgress;
+
+    playerPokemon.aiType = globalScene.plannerAiEnabled ? AiType.PLANNER : AiType.SMART;
+    globalScene.aiCommandInProgress = true;
+    try {
+      return playerPokemon.getNextMove();
+    } finally {
+      playerPokemon.aiType = previousAiType;
+      globalScene.aiCommandInProgress = previousAiCommandInProgress;
+    }
+  }
+
+  public handleBerserkGeneFightCommand(): boolean {
+    const playerPokemon = this.getPokemon();
+    if (!this.hasBerserkGene(playerPokemon)) {
+      return false;
+    }
+
+    this.queueComputerPartnerFightCommand(this.getBerserkGeneAiMove(playerPokemon));
+    this.end();
+    return true;
+  }
+
   private getQueuedCaptureDamageRatios(excludedBattlerIndex: number): Map<number, number> {
     const plannedDamageRatios = new Map<number, number>();
     const enemyTargetsByBattlerIndex = new Map<number, EnemyPokemon>(
@@ -1133,6 +1168,9 @@ export class CommandPhase extends FieldPhase {
       globalScene.currentBattle.isBattleMysteryEncounter()
       && globalScene.currentBattle.mysteryEncounter?.skipToFightInput
     ) {
+      if (this.handleBerserkGeneFightCommand()) {
+        return;
+      }
       globalScene.ui.clearText();
       globalScene.ui.setMode(UiMode.FIGHT, this.fieldIndex);
     } else {
@@ -1388,6 +1426,24 @@ export class CommandPhase extends FieldPhase {
     return false;
   }
 
+  private isRivalTrainerBattle(): boolean {
+    return globalScene.currentBattle.trainer?.config.getDerivedType() === TrainerType.RIVAL;
+  }
+
+  private checkCanUseCloneBall(): boolean {
+    if (globalScene.currentBattle.isClassicFinalBoss) {
+      this.queueShowText("battle:noCloneBallFinalBoss");
+      return false;
+    }
+
+    if (this.isRivalTrainerBattle()) {
+      this.queueShowText("battle:noCloneBallRival");
+      return false;
+    }
+
+    return true;
+  }
+
   /**
    * Checks whether the selected ball can be thrown at a specific target.
    * @param targetPokemon - The Pokemon being targeted by the ball
@@ -1395,6 +1451,10 @@ export class CommandPhase extends FieldPhase {
    * @returns The locale key for the denial message, or `undefined` when the target is valid
    */
   private getBallTargetBlockMessage(targetPokemon: EnemyPokemon, pokeballType: PokeballType): string | undefined {
+    if (pokeballType === PokeballType.CLONE_BALL) {
+      return;
+    }
+
     const isChallengeActive = globalScene.gameMode.hasAnyChallenges();
     const isFinalBoss = globalScene.gameMode.isBattleClassicFinalBoss(globalScene.currentBattle.waveIndex);
     const isCatchableDailyBoss = isDailyFinalBoss() && (getDailyEventSeedBoss()?.catchable ?? false);
@@ -1431,13 +1491,14 @@ export class CommandPhase extends FieldPhase {
    * @returns Whether the command was successfully initiated
    */
   private handleBallCommand(cursor: number): boolean {
+    const isCloneBall = cursor === PokeballType.CLONE_BALL;
     const targets = globalScene
       .getEnemyField()
       .filter(p => p.isActive(true))
       .filter(p => !globalScene.twoPlayerVsMode || p.getFieldIndex() === this.fieldIndex)
       .map(p => p.getBattlerIndex());
 
-    if (!this.checkCanUseBall()) {
+    if (isCloneBall ? !this.checkCanUseCloneBall() : !this.checkCanUseBall()) {
       return false;
     }
 
@@ -1446,8 +1507,7 @@ export class CommandPhase extends FieldPhase {
       return false;
     }
 
-    const numBallTypes = 5;
-    if (cursor < numBallTypes) {
+    if (cursor in globalScene.getPlayerPokeballCounts(globalScene.getPlayerIndexForFieldSlot(this.fieldIndex))) {
       const validTargets = targets.filter(target => {
         const targetPokemon = globalScene.getField()[target] as EnemyPokemon | undefined;
         return targetPokemon && !this.getBallTargetBlockMessage(targetPokemon, cursor);

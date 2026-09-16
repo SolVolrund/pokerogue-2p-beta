@@ -44,6 +44,7 @@ import {
   BerryPotModifier,
   BaseStatModifier,
   BerryModifier,
+  BerserkGeneModifier,
   BoostBugSpawnModifier,
   BypassSpeedChanceModifier,
   ContactHeldItemTransferChanceModifier,
@@ -402,6 +403,13 @@ export class AddPokeballModifierType extends ModifierType {
   }
 
   getDescription(): string {
+    if (this.pokeballType === PokeballType.CLONE_BALL) {
+      return i18next.t("modifierType:ModifierType.AddPokeballModifierType.cloneDescription", {
+        modifierCount: this.count,
+        pokeballName: getPokeballName(this.pokeballType),
+        pokeballAmount: `${globalScene.pokeballCounts[this.pokeballType] ?? 0}`,
+      });
+    }
     return i18next.t("modifierType:ModifierType.AddPokeballModifierType.description", {
       modifierCount: this.count,
       pokeballName: getPokeballName(this.pokeballType),
@@ -409,7 +417,7 @@ export class AddPokeballModifierType extends ModifierType {
         getPokeballCatchMultiplier(this.pokeballType) > -1
           ? `${getPokeballCatchMultiplier(this.pokeballType)}x`
           : "100%",
-      pokeballAmount: `${globalScene.pokeballCounts[this.pokeballType]}`,
+      pokeballAmount: `${globalScene.pokeballCounts[this.pokeballType] ?? 0}`,
     });
   }
 }
@@ -2356,6 +2364,7 @@ const modifierTypeInitObj = Object.freeze({
   ULTRA_BALL: () => new AddPokeballModifierType("ub", PokeballType.ULTRA_BALL, 5),
   ROGUE_BALL: () => new AddPokeballModifierType("rb", PokeballType.ROGUE_BALL, 5),
   MASTER_BALL: () => new AddPokeballModifierType("mb", PokeballType.MASTER_BALL, 1),
+  CLONE_BALL: () => new AddPokeballModifierType("cb", PokeballType.CLONE_BALL, 1),
 
   RARE_CANDY: () => new PokemonLevelIncrementModifierType("modifierType:ModifierType.RARE_CANDY", "rare_candy"),
   RARER_CANDY: () => new AllPokemonLevelIncrementModifierType("modifierType:ModifierType.RARER_CANDY", "rarer_candy"),
@@ -2948,6 +2957,13 @@ const modifierTypeInitObj = Object.freeze({
       "modifierType:ModifierType.GAMMA_RAY_BURST",
       "gamma_ray_burst",
       (type, args) => new GammaRayBurstModifier(type, (args[0] as Pokemon).id),
+    ),
+
+  BERSERK_GENE: () =>
+    new PokemonHeldItemModifierType(
+      "modifierType:ModifierType.BERSERK_GENE",
+      "berserk_gene",
+      (type, args) => new BerserkGeneModifier(type, (args[0] as Pokemon).id),
     ),
 
   VOUCHER: () => new AddVoucherModifierType(VoucherType.REGULAR, 1),

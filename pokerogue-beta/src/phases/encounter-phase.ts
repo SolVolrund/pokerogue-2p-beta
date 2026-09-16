@@ -10,6 +10,7 @@ import { initEncounterAnims, loadEncounterAnimAssets } from "#data/battle-anims"
 import { modifierTypes } from "#data/data-lists";
 import { getCharVariantFromDialogue, getClassicFinalBossDialogue, getUnownRealFinalBossDialogue } from "#data/dialogue";
 import { getNatureName } from "#data/nature";
+import { PokemonBattleData, PokemonSummonData } from "#data/pokemon-data";
 import { getTypeDamageMultiplier } from "#data/type";
 import { BattleType } from "#enums/battle-type";
 import { BattlerTagType } from "#enums/battler-tag-type";
@@ -23,16 +24,17 @@ import { PlayerGender } from "#enums/player-gender";
 import { getPlayerTrainerSpriteName } from "#enums/player-trainer-sprite";
 import type { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
-import { TrainerSlot } from "#enums/trainer-slot";
+import { getTrainerSlotForFieldIndex, TrainerSlot } from "#enums/trainer-slot";
 import { UiMode } from "#enums/ui-mode";
 import { EncounterPhaseEvent } from "#events/battle-scene";
-import { DEFAULT_CRYSTAL_COLOR, type Pokemon } from "#field/pokemon";
+import { DEFAULT_CRYSTAL_COLOR, type EnemyPokemon, type PlayerPokemon, type Pokemon } from "#field/pokemon";
 import {
   BaseStatModifier,
   BoostBugSpawnModifier,
   IvScannerModifier,
   overrideHeldItems,
   overrideModifiers,
+  PokemonHeldItemModifier,
   TurnHeldItemTransferModifier,
 } from "#modifiers/modifier";
 import { ModifierTypeGenerator, regenerateModifierPoolThresholds } from "#modifiers/modifier-type";
@@ -41,6 +43,7 @@ import { doTrainerExclamation } from "#mystery-encounters/encounter-phase-utils"
 import { getGoldenBugNetSpecies } from "#mystery-encounters/encounter-pokemon-utils";
 import { BattlePhase } from "#phases/battle-phase";
 import { achvs } from "#system/achv";
+import { PokemonData } from "#system/pokemon-data";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import {
   CLASSIC_FINAL_BOSS_MULTIPLAYER_SCALING_STATS,
@@ -162,6 +165,103 @@ export class EncounterPhase extends BattlePhase {
     enemyPokemon.hp = enemyPokemon.getMaxHp();
   }
 
+  private copyHeldItemsToEnemyClone(sourcePokemon: PlayerPokemon, targetPokemon: EnemyPokemon): void {
+    for (const item of sourcePokemon.getHeldItems()) {
+      const clonedItem = item.clone();
+      if (clonedItem instanceof PokemonHeldItemModifier) {
+        clonedItem.pokemonId = targetPokemon.id;
+        clonedItem.isTransferable = false;
+        void globalScene.addEnemyModifier(clonedItem, true, true);
+      }
+    }
+  }
+
+  private createMewtwoFinalBossClone(sourcePokemon: PlayerPokemon, trainerSlot: TrainerSlot): EnemyPokemon {
+    const dataSource = new PokemonData(sourcePokemon);
+    dataSource.id = randSeedInt(4294967296);
+    dataSource.player = false;
+    dataSource.level = sourcePokemon.level;
+    dataSource.exp = sourcePokemon.exp;
+    dataSource.levelExp = sourcePokemon.levelExp;
+    dataSource.hp = sourcePokemon.getMaxHp();
+    dataSource.stats = sourcePokemon.stats.slice();
+    dataSource.ivs = sourcePokemon.ivs.slice();
+    dataSource.status = null;
+    dataSource.boss = false;
+    dataSource.bossSegments = 0;
+    dataSource.trainerSlot = trainerSlot;
+    dataSource.summonData = new PokemonSummonData();
+    dataSource.battleData = new PokemonBattleData();
+    dataSource.summonDataSpeciesFormIndex = 0;
+
+    const clone = globalScene.addEnemyPokemon(
+      getPokemonSpecies(dataSource.species),
+      sourcePokemon.level,
+      trainerSlot,
+      false,
+      false,
+      dataSource,
+      undefined,
+      false,
+      true,
+    );
+    clone.bossSegments = 0;
+    clone.bossSegmentIndex = 0;
+    clone.level = sourcePokemon.level;
+    clone.exp = sourcePokemon.exp;
+    clone.stats = sourcePokemon.stats.slice();
+    clone.ivs = sourcePokemon.ivs.slice();
+    clone.hp = clone.getMaxHp();
+    clone.status = null;
+    this.copyHeldItemsToEnemyClone(sourcePokemon, clone);
+    return clone;
+  }
+
+  private initMewtwoFinalBossCloneParty(): void {
+    const battle = globalScene.currentBattle;
+    if (battle.mewtwoFinalBossState) {
+      return;
+    }
+
+    const playerIndexes = globalScene.twoPlayerMode ? globalScene.getActivePlayerIndexes() : [globalScene.activePlayerIndex];
+    const reserveClones: EnemyPokemon[] = [];
+    if (globalScene.twoPlayerMode && playerIndexes.length > 1) {
+      battle.playerFieldOwners = playerIndexes;
+      battle.double = true;
+      battle.enemyLevels = new Array(playerIndexes.length).fill(battle.getLevelForWave());
+    }
+    battle.enemyParty = [];
+    battle.mewtwoFinalBossState = {
+      stage: 1,
+      lanes: playerIndexes.map((playerIndex, fieldIndex) => ({
+        fieldIndex,
+        playerIndex,
+        trainerSlot: getTrainerSlotForFieldIndex(fieldIndex),
+        clonePokemonIds: [],
+      })),
+    };
+    battle.classicFinalBossSpeciesId = SpeciesId.MEWTWO;
+
+    for (const lane of battle.mewtwoFinalBossState.lanes) {
+      const playerParty = globalScene.getPlayerParty(lane.playerIndex);
+      const sourceParty = playerParty.filter(pokemon => pokemon.isAllowedInBattle());
+      const fallbackParty = sourceParty.length > 0 ? sourceParty : playerParty.filter(pokemon => !pokemon.isFainted());
+      const clones = fallbackParty.length > 0 ? fallbackParty : playerParty.slice(0, 1);
+
+      clones.forEach((sourcePokemon, partyIndex) => {
+        const clone = this.createMewtwoFinalBossClone(sourcePokemon, lane.trainerSlot);
+        lane.clonePokemonIds.push(clone.id);
+        if (partyIndex === 0) {
+          battle.enemyParty[lane.fieldIndex] = clone;
+        } else {
+          reserveClones.push(clone);
+        }
+      });
+    }
+
+    battle.enemyParty.push(...reserveClones);
+  }
+
   private getLivingPlayerSidePokemon(): Pokemon[] {
     const playerIndexes: PlayerIndex[] = globalScene.twoPlayerMode
       ? globalScene.getActivePlayerIndexes()
@@ -267,7 +367,7 @@ export class EncounterPhase extends BattlePhase {
       if (!this.loaded) {
         if (battle.battleType === BattleType.TRAINER) {
           battle.enemyParty[e] = battle.trainer?.genPartyMember(e)!; // TODO:: is the bang correct here?
-        } else {
+        } else if (!battle.enemyParty[e]) {
           const helperSpeciesId = unownFinalBossHelperSlot
             ? getNextUnownFinalBossHelperSpeciesId(unownFinalBossHelperSlot)
             : undefined;
@@ -287,16 +387,31 @@ export class EncounterPhase extends BattlePhase {
           ) {
             enemySpecies = getGoldenBugNetSpecies(level);
           }
-          battle.enemyParty[e] = globalScene.addEnemyPokemon(
-            enemySpecies,
-            level,
-            TrainerSlot.NONE,
-            !unownFinalBossHelperSlot && !!globalScene.getEncounterBossSegments(battle.waveIndex, level, enemySpecies),
-          );
+          if (
+            battle.isClassicFinalBoss
+            && activeOverrides.ENEMY_SPECIES_OVERRIDE
+            && !unownFinalBossHelperSlot
+          ) {
+            enemySpecies = getPokemonSpecies(activeOverrides.ENEMY_SPECIES_OVERRIDE);
+          }
+          if (
+            battle.isClassicFinalBoss
+            && enemySpecies.speciesId === SpeciesId.MEWTWO
+            && !unownFinalBossHelperSlot
+          ) {
+            this.initMewtwoFinalBossCloneParty();
+          } else {
+            battle.enemyParty[e] = globalScene.addEnemyPokemon(
+              enemySpecies,
+              level,
+              TrainerSlot.NONE,
+              !unownFinalBossHelperSlot && !!globalScene.getEncounterBossSegments(battle.waveIndex, level, enemySpecies),
+            );
+          }
           if (unownFinalBossHelperSlot) {
             unownFinalBossHelperSlot.pokemonId = battle.enemyParty[e].id;
           }
-          if (globalScene.currentBattle.isClassicFinalBoss) {
+          if (globalScene.currentBattle.isClassicFinalBoss && !battle.mewtwoFinalBossState) {
             battle.enemyParty[e].ivs.fill(31);
           }
           const playerPokemonForEncounterSync = globalScene.twoPlayerMode
@@ -436,6 +551,19 @@ export class EncounterPhase extends BattlePhase {
       console.log("Moveset:", moveset);
       return true;
     });
+
+    if (!this.loaded && battle.mewtwoFinalBossState) {
+      for (let e = 1; e < battle.getBattlerCount(); e++) {
+        const enemyPokemon = battle.enemyParty[e];
+        if (!enemyPokemon) {
+          continue;
+        }
+
+        enemyPokemon.setX(-66 + enemyPokemon.getFieldPositionOffset()[0]);
+        enemyPokemon.fieldSetup(true);
+        loadEnemyAssets.push(enemyPokemon.loadAssets());
+      }
+    }
 
     if (isUnownRealFinalBoss && battle.unownFinalBossState?.bossPokemonId !== undefined) {
       for (const helperSlot of battle.unownFinalBossState.helperSlots) {
@@ -668,7 +796,9 @@ export class EncounterPhase extends BattlePhase {
 
     if (globalScene.currentBattle.isClassicFinalBoss) {
       return i18next.t("battle:bossAppeared", {
-        bossName: getPokemonNameWithAffix(enemyField[0]),
+        bossName: globalScene.currentBattle.mewtwoFinalBossState
+          ? getPokemonSpecies(SpeciesId.MEWTWO).name
+          : getPokemonNameWithAffix(enemyField[0]),
       });
     }
 
@@ -1248,7 +1378,9 @@ export class EncounterPhase extends BattlePhase {
     const battle = globalScene.currentBattle;
     const isUnownRealFinalBoss = isUnownRealFinalBossWave(battle.waveIndex, globalScene.gameMode.modeId);
     const enemy =
-      isUnownRealFinalBoss && battle.unownFinalBossState?.bossPokemonId !== undefined
+      battle.mewtwoFinalBossState
+        ? undefined
+        : isUnownRealFinalBoss && battle.unownFinalBossState?.bossPokemonId !== undefined
         ? (globalScene.getPokemonById(battle.unownFinalBossState.bossPokemonId) ?? globalScene.getEnemyPokemon())
         : globalScene.getEnemyPokemon();
 
@@ -1257,7 +1389,9 @@ export class EncounterPhase extends BattlePhase {
       null,
       () => {
         const localizationKey = (
-          isUnownRealFinalBoss && enemy?.species.speciesId === SpeciesId.UNOWN
+          battle.mewtwoFinalBossState
+            ? getClassicFinalBossDialogue(SpeciesId.MEWTWO)
+            : isUnownRealFinalBoss && enemy?.species.speciesId === SpeciesId.UNOWN
             ? getUnownRealFinalBossDialogue()
             : getClassicFinalBossDialogue(enemy?.species.speciesId)
         ).encounter;
@@ -1288,9 +1422,14 @@ export class EncounterPhase extends BattlePhase {
           if (!gameData.getSeenDialogues()[localizationKey]) {
             gameData.saveSeenDialogue(localizationKey);
           }
-          ui.showDialogue(encounterDialogue, enemy?.species.name, null, () => {
-            this.doEncounterCommon(false);
-          });
+          ui.showDialogue(
+            encounterDialogue,
+            battle.mewtwoFinalBossState ? getPokemonSpecies(SpeciesId.MEWTWO).name : enemy?.species.name,
+            null,
+            () => {
+              this.doEncounterCommon(false);
+            },
+          );
         }
       },
       1500,

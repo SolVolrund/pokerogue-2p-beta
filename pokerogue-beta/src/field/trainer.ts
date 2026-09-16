@@ -65,6 +65,8 @@ const TRAINER_PARTNER_SEED_OFFSET = 0x7fff;
 const TRAINER_PARTNER_2_SEED_OFFSET = 0x3fff;
 
 const TRAINER_ANIMATION_FRAME_SEQUENCES: Partial<Record<string, number[]>> = {
+  amber_two: Array.from({ length: 32 }, (_, i) => i + 1),
+  ambers_joy: [1],
   molly_hale: [1, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13],
 };
 

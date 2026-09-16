@@ -1,5 +1,6 @@
 import type { Gender } from "#data/gender";
 import type { PokemonSpecies } from "#data/pokemon-species";
+import type { MoveId } from "#enums/move-id";
 import type { PokeballType } from "#enums/pokeball";
 import type { SpeciesId } from "#enums/species-id";
 import type { Variant } from "#sprites/variant";
@@ -28,6 +29,8 @@ export interface IllusionData {
   hp: number;
   /** The maximum HP shown while the illusion is active */
   maxHp: number;
+  /** The moves shown to battle planning logic while the illusion is active */
+  moveset?: MoveId[] | undefined;
   /** The fusion species of the illusion if it's a fusion */
   fusionSpecies?: PokemonSpecies | undefined;
   /** The fusionFormIndex of the illusion */

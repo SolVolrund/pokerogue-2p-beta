@@ -201,6 +201,9 @@ export class PokemonData {
           this.boss,
           false,
           this,
+          undefined,
+          false,
+          true,
         );
 
     // when loading from saved session, recover summonData.speciesFrom and form index species object

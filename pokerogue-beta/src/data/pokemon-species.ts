@@ -933,6 +933,9 @@ export class PokemonSpecies extends PokemonSpeciesForm implements Localizable {
   getName(formIndex?: number): string {
     if (formIndex !== undefined && this.forms.length > 0) {
       const form = this.forms[formIndex];
+      if (!form) {
+        return this.name;
+      }
       let key: string | undefined;
       switch (form.formKey) {
         case SpeciesFormKey.MEGA:
@@ -992,7 +995,7 @@ export class PokemonSpecies extends PokemonSpeciesForm implements Localizable {
   }
 
   getFormKey(formIndex = this.formIndex): string {
-    return this.forms[formIndex].formKey ?? "";
+    return this.forms[formIndex]?.formKey ?? "";
   }
 
   /**

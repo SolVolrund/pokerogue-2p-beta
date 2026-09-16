@@ -3,16 +3,19 @@ import type { TurnCommand } from "#app/battle";
 import { globalScene } from "#app/global-scene";
 import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { allMoves } from "#data/data-lists";
+import { AiType } from "#enums/ai-type";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import type { BattlerIndex } from "#enums/battler-index";
 import { Command } from "#enums/command";
 import type { FieldPosition } from "#enums/field-position";
 import { MoveTarget } from "#enums/move-target";
+import { MoveId } from "#enums/move-id";
+import { MovePhaseTimingModifier } from "#enums/move-phase-timing-modifier";
 import { MoveUseMode } from "#enums/move-use-mode";
 import { SpeciesId } from "#enums/species-id";
 import { SwitchType } from "#enums/switch-type";
-import type { Pokemon } from "#field/pokemon";
-import { BypassSpeedChanceModifier } from "#modifiers/modifier";
+import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
+import { BerserkGeneModifier, BypassSpeedChanceModifier } from "#modifiers/modifier";
 import { PokemonMove } from "#moves/pokemon-move";
 import { FieldPhase } from "#phases/field-phase";
 import { areBattlerIndexesAllies, isEnemyBattlerIndex, isPlayerBattlerIndex } from "#utils/battler-index-utils";
@@ -123,7 +126,7 @@ export class TurnStartPhase extends FieldPhase {
       if (turnCommand.command === Command.FIGHT) {
         pokemon.turnData.order = index;
       }
-      this.handleTurnCommand(turnCommand, pokemon);
+      this.handleTurnCommand(turnCommand, pokemon, initialPositions, finalPositions);
     });
 
     // Queue various effects for the end of the turn.
@@ -143,10 +146,15 @@ export class TurnStartPhase extends FieldPhase {
     this.end();
   }
 
-  private handleTurnCommand(turnCommand: TurnCommand, pokemon: Pokemon) {
+  private handleTurnCommand(
+    turnCommand: TurnCommand,
+    pokemon: Pokemon,
+    initialPositions: FieldPositionSnapshot,
+    finalPositions: FieldPositionSnapshot,
+  ) {
     switch (turnCommand?.command) {
       case Command.FIGHT:
-        this.handleFightCommand(turnCommand, pokemon);
+        this.handleFightCommand(turnCommand, pokemon, initialPositions, finalPositions);
         break;
       case Command.BALL:
         globalScene.phaseManager.unshiftNew(
@@ -179,7 +187,12 @@ export class TurnStartPhase extends FieldPhase {
     }
   }
 
-  private handleFightCommand(turnCommand: TurnCommand, pokemon: Pokemon) {
+  private handleFightCommand(
+    turnCommand: TurnCommand,
+    pokemon: Pokemon,
+    initialPositions: FieldPositionSnapshot,
+    finalPositions: FieldPositionSnapshot,
+  ) {
     const queuedMove = turnCommand.move;
     if (!queuedMove) {
       return;
@@ -206,7 +219,67 @@ export class TurnStartPhase extends FieldPhase {
       move,
       queuedMove.useMode,
     );
+    this.queueBerserkGeneBonusAction(pokemon, initialPositions, finalPositions);
     this.queueClassicFinalBossBonusActions(turnCommand, pokemon, move);
+  }
+
+  private queueBerserkGeneBonusAction(
+    pokemon: Pokemon,
+    initialPositions: FieldPositionSnapshot,
+    finalPositions: FieldPositionSnapshot,
+  ): void {
+    if (!pokemon.getHeldItems().some(item => item instanceof BerserkGeneModifier)) {
+      return;
+    }
+
+    const bonusMove = this.getBerserkGeneBonusMove(pokemon);
+    if (bonusMove.move === MoveId.NONE || bonusMove.targets.length === 0) {
+      return;
+    }
+
+    const move = new PokemonMove(bonusMove.move);
+    const moveData = allMoves[bonusMove.move];
+    const targets = moveData
+      ? this.remapTargetsToFinalPositions(
+          bonusMove.targets,
+          pokemon.getBattlerIndex(),
+          moveData.moveTarget,
+          initialPositions,
+          finalPositions,
+        )
+      : bonusMove.targets;
+    if (targets.length === 0) {
+      return;
+    }
+
+    globalScene.phaseManager.pushNew(
+      "MovePhase",
+      pokemon,
+      targets,
+      move,
+      bonusMove.useMode,
+      MovePhaseTimingModifier.LAST,
+    );
+  }
+
+  private getBerserkGeneBonusMove(pokemon: Pokemon) {
+    const aiPokemon = pokemon as (EnemyPokemon | PlayerPokemon) & { aiType: AiType };
+    const previousAiType = aiPokemon.aiType;
+    const previousAiCommandInProgress = globalScene.aiCommandInProgress;
+    const shouldUseBattleAi = pokemon.isPlayer();
+
+    if (shouldUseBattleAi) {
+      aiPokemon.aiType = globalScene.plannerAiEnabled ? AiType.PLANNER : AiType.SMART;
+    }
+    globalScene.aiCommandInProgress = true;
+    try {
+      return aiPokemon.getNextMove();
+    } finally {
+      if (shouldUseBattleAi) {
+        aiPokemon.aiType = previousAiType;
+      }
+      globalScene.aiCommandInProgress = previousAiCommandInProgress;
+    }
   }
 
   private queueClassicFinalBossBonusActions(turnCommand: TurnCommand, pokemon: Pokemon, move: PokemonMove): void {

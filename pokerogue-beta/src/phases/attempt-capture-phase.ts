@@ -6,6 +6,7 @@ import { globalScene } from "#app/global-scene";
 import { IS_TEST, isBeta, isDev } from "#constants/app-constants";
 import { SubstituteTag } from "#data/battler-tags";
 import { Gender } from "#data/gender";
+import { PokemonData } from "#system/pokemon-data";
 import {
   doPokeballBounceAnim,
   getCriticalCaptureChance,
@@ -16,8 +17,9 @@ import {
 import { getStatusEffectCatchRateMultiplier } from "#data/status-effect";
 import { BattleType } from "#enums/battle-type";
 import { ChallengeType } from "#enums/challenge-type";
-import type { PokeballType } from "#enums/pokeball";
+import { PokeballType } from "#enums/pokeball";
 import { StatusEffect } from "#enums/status-effect";
+import { TrainerSlot } from "#enums/trainer-slot";
 import { UiMode } from "#enums/ui-mode";
 import type { EnemyPokemon } from "#field/pokemon";
 import { PokemonHeldItemModifier } from "#modifiers/modifier";
@@ -27,8 +29,10 @@ import type { PartyOption } from "#ui/party-ui-handler";
 import { PartyUiMode } from "#ui/party-ui-handler";
 import { SummaryUiMode } from "#ui/summary-ui-handler";
 import { applyChallenges } from "#utils/challenge-utils";
+import { isUnownCrystalGauntletWave } from "#utils/classic-final-boss-utils";
 import { BooleanHolder } from "#utils/common";
 import { getBestComputerPartnerReplacementSlot, getComputerPartnerProfile } from "#utils/computer-partner-profile";
+import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
 // TODO: Refactor and split up to allow for overriding capture chance
@@ -56,6 +60,10 @@ export class AttemptCapturePhase extends PokemonPhase {
     }
 
     if (globalScene.twoPlayerVsMode && pokemon.getFieldIndex() !== this.getCapturingPlayerFieldIndex()) {
+      return this.end();
+    }
+
+    if (this.isCaptureBlockedInCurrentBattle()) {
       return this.end();
     }
 
@@ -97,7 +105,8 @@ export class AttemptCapturePhase extends PokemonPhase {
       );
     }
 
-    const isCritical = pokemon.randBattleSeedInt(256) < criticalCaptureChance;
+    const isCloneBall = this.pokeballType === PokeballType.CLONE_BALL;
+    const isCritical = !isCloneBall && pokemon.randBattleSeedInt(256) < criticalCaptureChance;
     const fpOffset = pokemon.getFieldPositionOffset();
 
     const pokeballAtlasKey = getPokeballAtlasKey(this.pokeballType);
@@ -204,7 +213,11 @@ export class AttemptCapturePhase extends PokemonPhase {
                   }
                 },
                 onComplete: () => {
-                  this.catch();
+                  if (isCloneBall) {
+                    this.clone();
+                  } else {
+                    this.catch();
+                  }
                 },
               });
             };
@@ -221,6 +234,14 @@ export class AttemptCapturePhase extends PokemonPhase {
 
   private canSpendPokeball(): boolean {
     return !!globalScene.getPlayerPokeballCounts(this.playerIndex)[this.pokeballType];
+  }
+
+  private isCaptureBlockedInCurrentBattle(): boolean {
+    const battle = globalScene.currentBattle;
+    return (
+      battle.isClassicFinalBoss
+      || isUnownCrystalGauntletWave(battle.waveIndex, globalScene.gameMode.modeId)
+    );
   }
 
   private getCapturingPlayerFieldIndex(): number {
@@ -259,6 +280,155 @@ export class AttemptCapturePhase extends PokemonPhase {
     globalScene.currentBattle.lastUsedPokeball = this.pokeballType;
     this.removePb();
     this.end();
+  }
+
+  private restoreClonedTarget(pokemon: EnemyPokemon): void {
+    pokemon.setY(this.originalY);
+    pokemon.setScale(1);
+    pokemon.setVisible(true);
+    pokemon.untint(250, "Sine.easeOut");
+
+    const substitute = pokemon.getTag(SubstituteTag);
+    if (substitute) {
+      substitute.sprite.setVisible(true);
+    }
+  }
+
+  private cloneHeldItemsToPokemon(sourcePokemon: EnemyPokemon, newPokemonId: number): void {
+    const heldItems = globalScene.findModifiers(
+      modifier => modifier instanceof PokemonHeldItemModifier && modifier.pokemonId === sourcePokemon.id,
+      false,
+    ) as PokemonHeldItemModifier[];
+
+    for (const item of heldItems) {
+      const clonedItem = item.clone() as PokemonHeldItemModifier;
+      clonedItem.pokemonId = newPokemonId;
+      clonedItem.isTransferable = true;
+      globalScene.addModifier(clonedItem, true, false, false, true, undefined, this.playerIndex);
+    }
+
+    globalScene.updateModifiers(true, undefined, this.playerIndex);
+  }
+
+  private async addCloneToParty(pokemon: EnemyPokemon, slotIndex?: number): Promise<void> {
+    const dataSource = new PokemonData(pokemon);
+    dataSource.player = true;
+    dataSource.boss = false;
+    dataSource.bossSegments = 0;
+    dataSource.trainerSlot = TrainerSlot.NONE;
+    dataSource.pokeball = PokeballType.CLONE_BALL;
+
+    const newPokemon = globalScene.addPlayerPokemon(
+      getPokemonSpecies(dataSource.species),
+      dataSource.level,
+      dataSource.abilityIndex,
+      dataSource.formIndex,
+      dataSource.gender,
+      dataSource.shiny,
+      dataSource.variant,
+      dataSource.ivs,
+      dataSource.nature,
+      dataSource,
+      playerPokemon => {
+        playerPokemon.pokeball = PokeballType.CLONE_BALL;
+        if (dataSource.nickname) {
+          playerPokemon.nickname = dataSource.nickname;
+        }
+      },
+    );
+
+    const party = globalScene.getPlayerParty(this.playerIndex);
+    if (slotIndex != null && slotIndex <= party.length) {
+      party.splice(slotIndex, 0, newPokemon);
+    } else {
+      party.push(newPokemon);
+    }
+    newPokemon.setVisible(false);
+
+    this.cloneHeldItemsToPokemon(pokemon, newPokemon.id);
+
+    if (
+      !globalScene.isComputerPartnerPlayer(this.playerIndex)
+      && globalScene.getPlayerParty(this.playerIndex).filter(p => p.isShiny()).length === PLAYER_PARTY_MAX_SIZE
+    ) {
+      globalScene.validateAchvForPlayer(achvs.SHINY_PARTY, this.playerIndex);
+    }
+
+    const gameData = globalScene.getPlayerGameData(this.playerIndex);
+    gameData.updateSpeciesDexIvs(newPokemon.species.getRootSpeciesId(true), newPokemon.ivs, this.playerIndex);
+    await Promise.all([newPokemon.loadAssets(), gameData.setPokemonCaught(newPokemon, true, false, false)]);
+  }
+
+  clone() {
+    const pokemon = this.getPokemon() as EnemyPokemon;
+    globalScene.currentBattle.capturedBattlerIndexesThisTurn.add(this.battlerIndex);
+    if (globalScene.twoPlayerMode) {
+      globalScene.waitForPlayerInput(this.playerIndex);
+    }
+
+    this.restoreClonedTarget(pokemon);
+    globalScene.pokemonInfoContainer.show(pokemon, true);
+
+    globalScene.ui.showText(
+      i18next.t("battle:pokemonCloned", {
+        pokemonName: pokemon.name,
+      }),
+      null,
+      () => {
+        const end = () => {
+          globalScene.pokemonInfoContainer.hide();
+          this.removePb();
+          this.end();
+        };
+
+        const addToParty = (slotIndex?: number) => {
+          this.addCloneToParty(pokemon, slotIndex).then(() => {
+            void globalScene.savePlayerSystemSave(this.playerIndex);
+            end();
+          });
+        };
+
+        const promptRelease = () => {
+          if (globalScene.twoPlayerMode) {
+            globalScene.waitForPlayerInput(this.playerIndex);
+          }
+          globalScene.ui.showText(
+            i18next.t("battle:partyFull", {
+              pokemonName: pokemon.getNameToRender(),
+            }),
+            null,
+            () => {
+              globalScene.ui.setMode(
+                UiMode.PARTY,
+                PartyUiMode.RELEASE,
+                this.getCapturingPlayerFieldIndex(),
+                (slotIndex: number, _option: PartyOption) => {
+                  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+                    if (slotIndex < PLAYER_PARTY_MAX_SIZE) {
+                      addToParty(slotIndex);
+                    } else {
+                      promptRelease();
+                    }
+                  });
+                },
+              );
+            },
+            0,
+            true,
+          );
+        };
+
+        pokemon.hideInfo().then(() => {
+          if (globalScene.isPlayerPartyFull(this.playerIndex)) {
+            promptRelease();
+          } else {
+            addToParty();
+          }
+        });
+      },
+      0,
+      true,
+    );
   }
 
   catch() {

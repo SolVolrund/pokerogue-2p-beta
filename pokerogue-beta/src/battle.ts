@@ -27,6 +27,7 @@ import type { TurnMove } from "#types/turn-move";
 import {
   isUnownCrystalBossRushWave,
   isUnownRealFinalBossWave,
+  type MewtwoFinalBossState,
   type UnownFinalBossState,
 } from "#utils/classic-final-boss-utils";
 import {
@@ -134,6 +135,7 @@ export class Battle {
     formKeys: string[];
     glyphIndex: number;
   };
+  public mewtwoFinalBossState: MewtwoFinalBossState | undefined;
   public unownFinalBossState: UnownFinalBossState | undefined;
 
   public hasEnemyTrainerSlotUsedTera(trainerSlot: TrainerSlot): boolean {

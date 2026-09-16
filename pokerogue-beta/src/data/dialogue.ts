@@ -1950,6 +1950,12 @@ export const mewFinalBossDialogue = {
   secondStageWin: "battleSpecDialogue:mewSecondStageWin",
 };
 
+export const mewtwoFinalBossDialogue = {
+  encounter: "battleSpecDialogue:mewtwoEncounter",
+  firstStageWin: "battleSpecDialogue:mewtwoFirstStageWin",
+  secondStageWin: "battleSpecDialogue:mewtwoSecondStageWin",
+};
+
 export const unownteaserFinalBossDialogue = {
   encounter: "battleSpecDialogue:unownteaserEncounter",
   firstStageWin: "battleSpecDialogue:unownteaserFirstStageWin",
@@ -1970,6 +1976,8 @@ export function getClassicFinalBossDialogue(speciesId?: SpeciesId) {
       return arceusFinalBossDialogue;
     case SpeciesId.MEW:
      return mewFinalBossDialogue;
+    case SpeciesId.MEWTWO:
+      return mewtwoFinalBossDialogue;
     case SpeciesId.UNOWN:
      return unownteaserFinalBossDialogue;
     default:

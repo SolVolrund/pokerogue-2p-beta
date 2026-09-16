@@ -190,6 +190,9 @@ export class Animation {
       case PokeballType.GLASS_BALL:
         this.doDefaultPbOpenParticles(x, y, 96);
         break;
+      case PokeballType.CLONE_BALL:
+        this.doDefaultPbOpenParticles(x, y, 96);
+        break;
     }
   }
 

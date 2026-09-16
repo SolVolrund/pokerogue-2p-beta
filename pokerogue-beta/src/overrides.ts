@@ -57,16 +57,16 @@ const overrides: Partial<InstanceType<OverridesType>> = {
 //  WAVE_ITEM_REWARD_OVERRIDE: {
 //    1: [{ name: "DNA_SPLICERS" }],
 //  },
-//  STARTING_WAVE_OVERRIDE: 103,
-//  STARTING_BIOME_OVERRIDE: BiomeId.TOWN,
+  STARTING_WAVE_OVERRIDE: 200,
+  STARTING_BIOME_OVERRIDE: BiomeId.END,
 //  BATTLE_TYPE_OVERRIDE: BattleType.TRAINER,
 //  RANDOM_TRAINER_OVERRIDE: {trainerType: TrainerType.MOLLY_HALE},
-//  ENEMY_SPECIES_OVERRIDE: SpeciesId.SPINDA,
-//  ENEMY_LEVEL_OVERRIDE: 1,
+  ENEMY_SPECIES_OVERRIDE: SpeciesId.MEWTWO,
+  ENEMY_LEVEL_OVERRIDE: 1,
 //  ENEMY_SHINY_OVERRIDE: true,
 //  ENEMY_VARIANT_OVERRIDE: 2,
 //  MYSTERY_ENCOUNTER_RATE_OVERRIDE: 256,
-//  MYSTERY_ENCOUNTER_OVERRIDE: MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
+//  MYSTERY_ENCOUNTER_OVERRIDE: MysteryEncounterType.LIFE_IS_WONDERFUL,
 //  ENEMY_HELD_ITEMS_OVERRIDE: [
 //    { name: "BERRY", type: BerryType.OCCA },
 //    { name: "BERRY", type: BerryType.PASSHO },
@@ -183,6 +183,7 @@ class DefaultOverrides {
       [PokeballType.ULTRA_BALL]: 0,
       [PokeballType.ROGUE_BALL]: 0,
       [PokeballType.MASTER_BALL]: 0,
+      [PokeballType.CLONE_BALL]: 0,
     },
   };
   /** Forces an item to be UNLOCKED */

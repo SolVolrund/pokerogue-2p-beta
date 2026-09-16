@@ -1,6 +1,8 @@
+import type { PlayerIndex } from "#app/battle-scene";
 import { GameModes } from "#enums/game-modes";
 import { SpeciesId } from "#enums/species-id";
 import { type PermanentStat, Stat } from "#enums/stat";
+import type { TrainerSlot } from "#enums/trainer-slot";
 import type { Pokemon } from "#field/pokemon";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { randSeedItem } from "#utils/common";
@@ -30,6 +32,34 @@ export interface UnownFinalBossHelperSlotState {
 export interface UnownFinalBossState {
   bossPokemonId?: number;
   helperSlots: UnownFinalBossHelperSlotState[];
+}
+
+export interface MewtwoFinalBossLaneState {
+  fieldIndex: number;
+  playerIndex: PlayerIndex;
+  trainerSlot: TrainerSlot;
+  clonePokemonIds: number[];
+  bossPokemonId?: number;
+}
+
+export interface MewtwoFinalBossState {
+  stage: 1 | 2 | 3;
+  lanes: MewtwoFinalBossLaneState[];
+}
+
+export function getMewtwoFinalBossLaneByPokemonId(
+  state: MewtwoFinalBossState | undefined,
+  pokemonId: number,
+): MewtwoFinalBossLaneState | undefined {
+  return state?.lanes.find(lane => lane.bossPokemonId === pokemonId || lane.clonePokemonIds.includes(pokemonId));
+}
+
+export function isMewtwoFinalBossClone(state: MewtwoFinalBossState | undefined, pokemon: Pokemon): boolean {
+  return !!getMewtwoFinalBossLaneByPokemonId(state, pokemon.id)?.clonePokemonIds.includes(pokemon.id);
+}
+
+export function isMewtwoFinalBossBoss(state: MewtwoFinalBossState | undefined, pokemon: Pokemon): boolean {
+  return !!state?.lanes.some(lane => lane.bossPokemonId === pokemon.id);
 }
 
 export function isClassicOrChallengeMode(modeId: GameModes): boolean {

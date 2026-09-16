@@ -75,6 +75,10 @@ const vsLaneScopedArenaTags = new Set<ArenaTagType>([
   ArenaTagType.STICKY_WEB,
 ]);
 
+const vsModeIncompatibleFinalBossSpecies = new Set<SpeciesId>([
+  SpeciesId.UNOWN,
+]);
+
 export class Arena {
   public readonly biomeId: BiomeId;
 
@@ -717,7 +721,11 @@ export class Arena {
     if (tierPool.length === 0) {
       species = globalScene.randomSpecies(waveIndex, level);
     } else {
-      species = getPokemonSpecies(randSeedItem(tierPool));
+      const filteredTierPool =
+        globalScene.twoPlayerVsMode && globalScene.gameMode.isWaveFinal(waveIndex)
+          ? tierPool.filter(speciesId => !vsModeIncompatibleFinalBossSpecies.has(speciesId))
+          : tierPool;
+      species = getPokemonSpecies(filteredTierPool.length > 0 ? randSeedItem(filteredTierPool) : SpeciesId.ETERNATUS);
     }
 
     const regen = this.checkLegendBST(species, globalScene.gameMode.getWaveForDifficulty(waveIndex, true));

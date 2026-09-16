@@ -22,7 +22,7 @@ import type { ModifierData } from "#system/modifier-data";
 import type { PokemonData } from "#system/pokemon-data";
 import type { TrainerData } from "#system/trainer-data";
 import type { ComputerPartnerKey, ComputerPartnerRolePreferences } from "#utils/computer-partner-profile";
-import type { UnownFinalBossState } from "#utils/classic-final-boss-utils";
+import type { MewtwoFinalBossState, UnownFinalBossState } from "#utils/classic-final-boss-utils";
 import type { SerializedDailyRunConfig } from "./daily-run";
 import type { DexData } from "./dex-data";
 
@@ -111,6 +111,7 @@ export interface SessionSaveData {
   alphTiles?: AlphTileCounts;
   alphLegendaryHelpersUsed?: AlphLegendaryHelperId[];
   unownCrystalMollyAppeared?: boolean;
+  mewtwoFinalBossState?: MewtwoFinalBossState;
   unownFinalBossState?: UnownFinalBossState;
   players?: PlayerSessionSaveData[];
   twoPlayerMode?: boolean;

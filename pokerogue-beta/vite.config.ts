@@ -83,6 +83,13 @@ export default defineConfig(async config => {
     publicDir: command === "serve" ? "assets" : false,
     server: {
       port: Number.isNaN(envPort) ? 8000 : envPort,
+      watch: {
+        ignored: [
+          "**/assets/**",
+          "**/desktop-release/**",
+          "**/desktop-stage/**",
+        ],
+      },
     },
   } satisfies UserConfig;
 });

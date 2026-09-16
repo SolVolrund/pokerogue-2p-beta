@@ -3220,20 +3220,22 @@ export class BattleScene extends SceneBase {
     dataSource?: PokemonData,
     postProcess?: (enemyPokemon: EnemyPokemon) => void,
     forRival = false,
+    ignoreSpeciesOverride = false,
   ): EnemyPokemon {
     if (activeOverrides.ENEMY_LEVEL_OVERRIDE > 0) {
       level = activeOverrides.ENEMY_LEVEL_OVERRIDE;
     }
     const firstWildEncounterSpeciesOverride = activeOverrides.FIRST_WILD_ENCOUNTER_SPECIES_OVERRIDE;
     const shouldUseFirstWildEncounterSpeciesOverride =
-      firstWildEncounterSpeciesOverride
+      !ignoreSpeciesOverride
+      && firstWildEncounterSpeciesOverride
       && this.currentBattle?.battleType === BattleType.WILD
       && this.currentBattle.waveIndex === (activeOverrides.STARTING_WAVE_OVERRIDE ?? STARTING_WAVE);
     if (shouldUseFirstWildEncounterSpeciesOverride) {
       species = getPokemonSpecies(firstWildEncounterSpeciesOverride);
       // The fact that a Pokemon is a boss or not can change based on its Species and level
       boss = this.getEncounterBossSegments(this.currentBattle.waveIndex, level, species) > 1;
-    } else if (activeOverrides.ENEMY_SPECIES_OVERRIDE) {
+    } else if (!ignoreSpeciesOverride && activeOverrides.ENEMY_SPECIES_OVERRIDE) {
       species = getPokemonSpecies(activeOverrides.ENEMY_SPECIES_OVERRIDE);
       // The fact that a Pokemon is a boss or not can change based on its Species and level
       boss = this.getEncounterBossSegments(this.currentBattle.waveIndex, level, species) > 1;
@@ -6291,6 +6293,11 @@ export class BattleScene extends SceneBase {
     }
 
     if (isUnownRealFinalBossWave(this.currentBattle.waveIndex, this.gameMode.modeId)) {
+      this.phaseManager.shiftPhase();
+      return;
+    }
+
+    if (this.currentBattle.mewtwoFinalBossState) {
       this.phaseManager.shiftPhase();
       return;
     }

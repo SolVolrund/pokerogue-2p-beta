@@ -352,8 +352,9 @@ export class AddPokeballModifier extends ConsumableModifier {
    */
   override apply(_scene?: unknown, playerIndex: PlayerIndex = globalScene.activePlayerIndex): boolean {
     const pokeballCounts = globalScene.getPlayerPokeballCounts(playerIndex);
+    const currentCount = pokeballCounts[this.pokeballType] ?? 0;
     pokeballCounts[this.pokeballType] = Math.min(
-      pokeballCounts[this.pokeballType] + this.count,
+      currentCount + this.count,
       MAX_PER_TYPE_POKEBALLS,
     );
 
@@ -3594,6 +3595,26 @@ export class ShinyBadgeModifier extends PokemonHeldItemModifier {
       case "crit":
         return this.applyCritStage(pokemon, value);
     }
+  }
+
+  getMaxHeldItemCount(_pokemon?: Pokemon): number {
+    return 1;
+  }
+}
+
+export class BerserkGeneModifier extends PokemonHeldItemModifier {
+  public isTransferable = false;
+
+  matchType(modifier: Modifier): boolean {
+    return modifier instanceof BerserkGeneModifier;
+  }
+
+  clone(): PersistentModifier {
+    return new BerserkGeneModifier(this.type, this.pokemonId, this.stackCount);
+  }
+
+  override apply(_pokemon: Pokemon, ..._args: unknown[]): boolean {
+    return true;
   }
 
   getMaxHeldItemCount(_pokemon?: Pokemon): number {

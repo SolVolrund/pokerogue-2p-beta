@@ -57,6 +57,7 @@ export class VictoryPhase extends PokemonPhase {
     const defeatedUnownFinalBoss =
       isUnownRealFinalBossWave(globalScene.currentBattle.waveIndex, globalScene.gameMode.modeId)
       && defeatedPokemon.id === globalScene.currentBattle.unownFinalBossState?.bossPokemonId;
+    const pendingMewtwoFinalBoss = this.hasPendingMewtwoFinalBoss(defeatedPokemon.id);
 
     // TODO: clean this up a bit - this shouldn't use `.find`; invert conditional and use early return
     if (
@@ -66,6 +67,7 @@ export class VictoryPhase extends PokemonPhase {
           .getEnemyParty()
           .find(p => (globalScene.currentBattle.battleType === BattleType.WILD ? p.isOnField() : !p?.isFainted()))
       )
+      && !pendingMewtwoFinalBoss
       && !globalScene.phaseManager.hasPhaseOfType("TrainerVictoryPhase") // temporary hotfix
     ) {
       globalScene.phaseManager.pushNew("BattleEndPhase", true);
@@ -159,6 +161,24 @@ export class VictoryPhase extends PokemonPhase {
         globalScene.phaseManager.pushNew("NewBattlePhase");
       } else {
         globalScene.currentBattle.classicFinalBossSpeciesId = defeatedFinalBoss?.species.speciesId;
+        if (globalScene.twoPlayerVsMode) {
+          const survivingPlayerIndexes = globalScene.getVsModeSurvivingPlayerIndexes();
+          const winnerPlayerIndex =
+            survivingPlayerIndexes.length === 1
+              ? survivingPlayerIndexes[0]
+              : survivingPlayerIndexes.length === 0
+                ? globalScene.resolvePlayerTieBreak(globalScene.getActivePlayerIndexes())
+                : undefined;
+
+          if (winnerPlayerIndex !== undefined) {
+            globalScene.phaseManager.pushNew("VsModeVictoryPhase", winnerPlayerIndex);
+          } else {
+            globalScene.phaseManager.pushNew("VsModeSuddenDeathPhase", survivingPlayerIndexes);
+          }
+          this.end();
+          return;
+        }
+
         globalScene.currentBattle.battleType = BattleType.CLEAR;
         globalScene.score += gameMode.getClearScoreBonus();
         globalScene.updateScoreText();
@@ -182,5 +202,23 @@ export class VictoryPhase extends PokemonPhase {
 
   private shouldQueueEnemyPlayerTokenReward(waveIndex: number): boolean {
     return globalScene.twoPlayerEnemyPlayerMode && [3, 6, 9].includes(waveIndex % 10);
+  }
+
+  private hasPendingMewtwoFinalBoss(defeatedPokemonId: number): boolean {
+    const state = globalScene.currentBattle.mewtwoFinalBossState;
+    if (!state) {
+      return false;
+    }
+
+    if (state.stage < 3) {
+      return true;
+    }
+
+    return state.lanes.some(lane => {
+      if (lane.bossPokemonId === undefined || lane.bossPokemonId === defeatedPokemonId) {
+        return false;
+      }
+      return !globalScene.getPokemonById(lane.bossPokemonId)?.isFainted();
+    });
   }
 }

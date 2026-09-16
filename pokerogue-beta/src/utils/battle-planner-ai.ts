@@ -1,5 +1,6 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { globalScene } from "#app/global-scene";
+import { allMoves } from "#data/data-lists";
 import { TerrainType } from "#data/terrain";
 import { getEffectiveWeatherForMove } from "#data/weather";
 import { AbilityId } from "#enums/ability-id";
@@ -1383,6 +1384,18 @@ function shouldUsePlannerIllusion(viewer: Pokemon | undefined, target: Pokemon):
   return !!viewer && viewer.isOpponent(target) && !!target.summonData.illusion;
 }
 
+function getPlannerVisibleMoves(viewer: Pokemon | undefined, target: Pokemon): Move[] {
+  const illusionMoveset = shouldUsePlannerIllusion(viewer, target) ? target.summonData.illusion?.moveset : undefined;
+  if (illusionMoveset?.length) {
+    return illusionMoveset.map(moveId => allMoves[moveId]).filter((move): move is Move => !!move);
+  }
+
+  return target
+    .getMoveset()
+    .map(pokemonMove => pokemonMove.getMove())
+    .filter((move): move is Move => !!move);
+}
+
 function getPlannerHp(pokemon: Pokemon, viewer?: Pokemon): number {
   return shouldUsePlannerIllusion(viewer, pokemon) ? pokemon.getHp(true) : pokemon.hp;
 }
@@ -1549,12 +1562,12 @@ function createPlannerSearchState(user: Pokemon): PlannerSearchState {
   const friendlyField = globalScene
     .getField(true)
     .filter(pokemon => pokemon.isAllowedInBattle() && !user.isOpponent(pokemon))
-    .map(createPlannerSearchPokemon);
+    .map(pokemon => createPlannerSearchPokemon(pokemon, user));
   const opponents = user
     .getOpponents()
     .filter(pokemon => pokemon.isAllowedInBattle())
-    .map(createPlannerSearchPokemon);
-  const userSnapshot = friendlyField.find(pokemon => pokemon.pokemon === user) ?? createPlannerSearchPokemon(user);
+    .map(pokemon => createPlannerSearchPokemon(pokemon, user));
+  const userSnapshot = friendlyField.find(pokemon => pokemon.pokemon === user) ?? createPlannerSearchPokemon(user, user);
 
   return {
     user: userSnapshot,
@@ -1563,14 +1576,14 @@ function createPlannerSearchState(user: Pokemon): PlannerSearchState {
   };
 }
 
-function createPlannerSearchPokemon(pokemon: Pokemon): PlannerSearchPokemon {
+function createPlannerSearchPokemon(pokemon: Pokemon, viewer?: Pokemon): PlannerSearchPokemon {
   return {
     pokemon,
     battlerIndex: pokemon.getBattlerIndex(),
     hp: pokemon.hp,
     maxHp: pokemon.getMaxHp(),
     speed: pokemon.getEffectiveStat(Stat.SPD),
-    bestPriority: getBestMovePriority(pokemon),
+    bestPriority: getBestMovePriority(pokemon, viewer),
   };
 }
 
@@ -1583,8 +1596,8 @@ function createPlannerSearchAction(user: Pokemon, choice: PlannerMoveChoice, mov
     .map(target => {
       const damage = move.category === MoveCategory.STATUS ? 0 : estimateDamage(user, target, move).damage;
       const moveActsBeforeTarget =
-        actionPriority > getBestMovePriority(target)
-        || (actionPriority === getBestMovePriority(target)
+        actionPriority > getBestMovePriority(target, user)
+        || (actionPriority === getBestMovePriority(target, user)
           && user.getEffectiveStat(Stat.SPD, { opponent: target })
             >= target.getEffectiveStat(Stat.SPD, { opponent: user }));
 
@@ -2020,11 +2033,8 @@ function getAverageAllyMaxHp(state: PlannerSearchState): number {
   return state.allies.reduce((total, ally) => total + ally.maxHp, 0) / state.allies.length;
 }
 
-function getBestMovePriority(pokemon: Pokemon): number {
-  return pokemon
-    .getMoveset()
-    .map(pokemonMove => pokemonMove.getMove())
-    .filter(move => !!move)
+function getBestMovePriority(pokemon: Pokemon, viewer?: Pokemon): number {
+  return getPlannerVisibleMoves(viewer, pokemon)
     .reduce((highestPriority, move) => Math.max(highestPriority, move.priority), 0);
 }
 
@@ -2500,7 +2510,7 @@ function canHealBeforeLikelyKo(
 }
 
 function doesMoveActBeforeOpponent(user: Pokemon, opponent: Pokemon, move: Move): boolean {
-  const opponentPriority = getBestMovePriority(opponent);
+  const opponentPriority = getBestMovePriority(opponent, user);
   const movePriority = move.getPriority(user);
   return (
     movePriority > opponentPriority
@@ -3019,9 +3029,7 @@ function estimateDamage(user: Pokemon, target: Pokemon, move: Move) {
 }
 
 function estimateBestDamage(attacker: Pokemon, defender: Pokemon): { damage: number } {
-  const bestDamage = attacker
-    .getMoveset()
-    .map(pokemonMove => pokemonMove.getMove())
+  const bestDamage = getPlannerVisibleMoves(defender, attacker)
     .filter(move => !!move && move.category !== MoveCategory.STATUS)
     .filter(move => !!move && canMoveReachTarget(attacker, defender, move.id))
     .map(move => estimateDamage(attacker, defender, move).damage)
@@ -3035,9 +3043,7 @@ function estimateBestDamageByCategory(
   defender: Pokemon,
   category: MoveCategory.PHYSICAL | MoveCategory.SPECIAL,
 ): number {
-  return attacker
-    .getMoveset()
-    .map(pokemonMove => pokemonMove.getMove())
+  return getPlannerVisibleMoves(defender, attacker)
     .filter(move => !!move && move.category === category)
     .filter(move => !!move && canMoveReachTarget(attacker, defender, move.id))
     .map(move => estimateDamage(attacker, defender, move).damage)
@@ -3053,9 +3059,7 @@ function estimateIncomingDamageDetailed(user: Pokemon): PlannerIncomingDamageEst
   const threats = getAiRelevantOpponents(user)
     .map(
       opponent =>
-        opponent
-          .getMoveset()
-          .map(pokemonMove => pokemonMove.getMove())
+        getPlannerVisibleMoves(user, opponent)
           .filter(move => !!move && move.category !== MoveCategory.STATUS)
           .filter(move => !!move && canMoveReachTarget(opponent, user, move.id))
           .map(move => ({
@@ -3255,9 +3259,7 @@ function estimateLikelySwitchInDamage(
   activeSlotTarget: Pokemon,
   switchTarget: Pokemon,
 ): { label: string; moveName: string; damage: number; activeSlotDamage: number } | undefined {
-  const likelyMove = attacker
-    .getMoveset()
-    .map(pokemonMove => pokemonMove.getMove())
+  const likelyMove = getPlannerVisibleMoves(activeSlotTarget, attacker)
     .filter(move => !!move && move.category !== MoveCategory.STATUS)
     .filter(move => !!move && canMoveReachTarget(attacker, activeSlotTarget, move.id))
     .map(move => ({
@@ -3501,9 +3503,7 @@ function getTargetPressureAgainstEnemyPartyMember(
 }
 
 function hasSpreadDamagePressure(attacker: Pokemon, defender: Pokemon): boolean {
-  return attacker
-    .getMoveset()
-    .map(pokemonMove => pokemonMove.getMove())
+  return getPlannerVisibleMoves(defender, attacker)
     .filter(move => !!move && move.category !== MoveCategory.STATUS)
     .some(move => {
       const moveTargets = getMoveTargets(attacker, move.id);
