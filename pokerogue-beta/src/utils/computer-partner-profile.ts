@@ -11,6 +11,13 @@ import {
 } from "#balance/rates";
 import { getPassiveCandyCount, getSameSpeciesEggCandyCounts, getValueReductionCandyCounts } from "#balance/starters";
 import { MAX_STARTER_CANDY_COUNT } from "#constants/game-constants";
+import {
+  ACE_EV_PURCHASE_AMOUNT,
+  ACE_EV_TOTAL_CAP,
+  getAceEvCandyCost,
+  normalizeAceEvState,
+  normalizeAceEvTotal,
+} from "#data/ace-evs";
 import { allMoves } from "#data/data-lists";
 import type { PokemonSpecies } from "#data/pokemon-species";
 import { getTypeDamageMultiplier } from "#data/type";
@@ -25,6 +32,7 @@ import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { type PermanentStat, Stat } from "#enums/stat";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
+import { isSettingEnabled, SettingKeys } from "#system/settings";
 import type {
   ComputerPartnerDexProgressEntry,
   ComputerPartnerProgressData,
@@ -169,6 +177,8 @@ const RARE_EVOLUTION_ITEM_COST = 12;
 const EVOLUTION_CONDITION_COST = 5;
 const PROJECT_GROWTH_COST_THRESHOLD = 8;
 const PROJECT_OVERLOAD_COST = 4;
+const COMPUTER_PARTNER_EGG_EV_RHYTHM_LENGTH = 3;
+const COMPUTER_PARTNER_EV_RHYTHM_INDEX = 2;
 
 const REGULAR_TYPES = [
   PokemonType.NORMAL,
@@ -815,8 +825,8 @@ function spendComputerPartnerStarterProgress(
     spendComputerPartnerCostReductionCandy(starter, progress);
   }
 
-  for (const starter of starters) {
-    spendComputerPartnerEggCandy(starter, progress);
+  for (const [starterIndex, starter] of starters.entries()) {
+    spendComputerPartnerPostCoreCandy(profile, starter, starterIndex, progress);
   }
 }
 
@@ -890,25 +900,85 @@ function spendComputerPartnerCostReductionCandy(
   }
 }
 
-function spendComputerPartnerEggCandy(
+function spendComputerPartnerPostCoreCandy(
+  profile: ComputerPartnerProfile,
   starter: ComputerPartnerStarterConfig,
+  starterIndex: number,
   progress: ComputerPartnerProgressData,
 ): void {
   const progressSpeciesId = getComputerPartnerProgressSpeciesId(starter.speciesId);
   const starterEntry = ensureComputerPartnerStarterProgressEntry(progress, progressSpeciesId);
   const dexEntry = ensureComputerPartnerDexProgressEntry(progress, progressSpeciesId);
+  const isAceStarter = isComputerPartnerStarterAce(profile, starter, starterIndex);
+  const eggProgressComplete = isComputerPartnerEggProgressComplete(progressSpeciesId, dexEntry, starterEntry);
+  const rhythmIndex = (starterEntry.upgradePurchases ?? 0) % COMPUTER_PARTNER_EGG_EV_RHYTHM_LENGTH;
+  const preferEv = eggProgressComplete || rhythmIndex === COMPUTER_PARTNER_EV_RHYTHM_INDEX;
+  const spent = preferEv
+    ? trySpendComputerPartnerAceEvCandy(starterEntry, isAceStarter)
+      || (!eggProgressComplete && trySpendComputerPartnerEggCandy(progress, progressSpeciesId, starter))
+    : trySpendComputerPartnerEggCandy(progress, progressSpeciesId, starter)
+      || trySpendComputerPartnerAceEvCandy(starterEntry, isAceStarter);
+
+  if (spent) {
+    starterEntry.upgradePurchases = (starterEntry.upgradePurchases ?? 0) + 1;
+  }
+}
+
+function trySpendComputerPartnerAceEvCandy(
+  starterEntry: ComputerPartnerStarterProgressEntry,
+  isAceStarter: boolean,
+): boolean {
+  if (!isAceStarter || !isSettingEnabled(SettingKeys.Ace_Mechanics)) {
+    return false;
+  }
+
+  const state = normalizeAceEvState(starterEntry.aceEvTotal, starterEntry.aceEvs);
+  if (state.total >= ACE_EV_TOTAL_CAP) {
+    return false;
+  }
+
+  const evCost = getAceEvCandyCost(state.total);
+  if (starterEntry.candyCount < evCost) {
+    return false;
+  }
+
+  starterEntry.candyCount -= evCost;
+  starterEntry.aceEvTotal = normalizeAceEvTotal(state.total + ACE_EV_PURCHASE_AMOUNT);
+  starterEntry.aceEvs = state.spread;
+  return true;
+}
+
+function trySpendComputerPartnerEggCandy(
+  progress: ComputerPartnerProgressData,
+  progressSpeciesId: SpeciesId,
+  starter: ComputerPartnerStarterConfig,
+): boolean {
+  const starterEntry = ensureComputerPartnerStarterProgressEntry(progress, progressSpeciesId);
+  const dexEntry = ensureComputerPartnerDexProgressEntry(progress, progressSpeciesId);
   const basePoints = getComputerPartnerStarterBasePoints(starter);
   if (basePoints <= 0) {
-    return;
+    return false;
   }
 
   const eggCost = getSameSpeciesEggCandyCounts(basePoints, dexEntry.hatchedCount);
   if (starterEntry.candyCount < eggCost) {
-    return;
+    return false;
   }
 
   starterEntry.candyCount -= eggCost;
   hatchComputerPartnerInstantEgg(progress, progressSpeciesId);
+  return true;
+}
+
+function isComputerPartnerEggProgressComplete(
+  speciesId: SpeciesId,
+  dexEntry: ComputerPartnerDexProgressEntry,
+  starterEntry: ComputerPartnerStarterProgressEntry,
+): boolean {
+  const ivsComplete = dexEntry.ivs.length >= 6 && dexEntry.ivs.every(iv => iv >= 31);
+  const eggMoves = speciesEggMoves[speciesId];
+  const eggMovesComplete = !eggMoves?.length || eggMoves.every((_move, index) => !!(starterEntry.eggMoves & (1 << index)));
+  return ivsComplete && eggMovesComplete;
 }
 
 function hatchComputerPartnerInstantEgg(progress: ComputerPartnerProgressData, speciesId: SpeciesId): void {

@@ -293,7 +293,8 @@ const EON_FLUTE_BERRY_LOADOUT = [
   BerryType.LUM,
   BerryType.PETAYA,
 ] as const;
-const EON_FLUTE_ROGUE_LOADOUT = [modifierTypes.LEFTOVERS, modifierTypes.SHELL_BELL, modifierTypes.LEFTOVERS] as const;
+// Modifier factories are registered after module loading, so resolve these keys when summoning.
+const EON_FLUTE_ROGUE_LOADOUT = ["LEFTOVERS", "SHELL_BELL", "LEFTOVERS"] as const;
 export interface PlayerRunState {
   party: PlayerPokemon[];
   money: number;
@@ -2039,12 +2040,30 @@ export class BattleScene extends SceneBase {
       return;
     }
 
+    const phaseWithFieldIndex = currentPhase as (Phase & { getFieldIndex?: () => number }) | undefined;
+    if ((uiMode === UiMode.MESSAGE || uiMode === UiMode.EVOLUTION_SCENE) && messageInputContextKey) {
+      const messagePromptKey = {
+        waveIndex: this.currentBattle?.waveIndex ?? null,
+        battleType: this.currentBattle?.battleType ?? null,
+        phase: currentPhase?.phaseName ?? null,
+        phaseFieldIndex: phaseWithFieldIndex?.getFieldIndex?.() ?? null,
+        uiMode,
+        uiModeName: UiMode[uiMode],
+        message: messageInputContextKey,
+      };
+      return {
+        id: getTwoPlayerDebugHash(JSON.stringify(messagePromptKey)),
+        promptId: getTwoPlayerDebugHash(JSON.stringify(messagePromptKey)),
+        strict: true,
+        key: messagePromptKey,
+      };
+    }
+
     const handlerInputContextState = (handler as { getTwoPlayerInputContextState?: () => Record<string, unknown> })
       ?.getTwoPlayerInputContextState?.() ?? null;
     const handlerInputContextPromptState =
       (handler as { getTwoPlayerInputContextPromptState?: () => Record<string, unknown> })
         ?.getTwoPlayerInputContextPromptState?.() ?? null;
-    const phaseWithFieldIndex = currentPhase as (Phase & { getFieldIndex?: () => number }) | undefined;
     const promptKey = {
       waveIndex: this.currentBattle?.waveIndex ?? null,
       battleType: this.currentBattle?.battleType ?? null,
@@ -2521,7 +2540,8 @@ export class BattleScene extends SceneBase {
     );
 
     let rogueItems = 0;
-    for (const modifierTypeFunc of EON_FLUTE_ROGUE_LOADOUT) {
+    for (const modifierTypeId of EON_FLUTE_ROGUE_LOADOUT) {
+      const modifierTypeFunc = modifierTypes[modifierTypeId];
       if (
         rogueItems >= EON_FLUTE_MAX_ROGUE_ITEMS
         || !spend(EON_FLUTE_ROGUE_ITEM_COST, () =>
@@ -3030,6 +3050,9 @@ export class BattleScene extends SceneBase {
     }
 
     const party = this.getPlayerParty();
+    if (!party) {
+      return [];
+    }
     return party
       .slice(0, Math.min(party.length, this.currentBattle?.double ? 2 : 1))
       .filter(p => !active || p.isActive());

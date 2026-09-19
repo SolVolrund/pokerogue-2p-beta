@@ -2,6 +2,7 @@ import { withRivalRollContext } from "#app/ai/rival-team-gen";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { signatureSpecies } from "#balance/signature-species";
+import { assignAceEvSpread } from "#data/ace-evs";
 import { EntryHazardTag } from "#data/arena-tag";
 import type { PokemonSpecies } from "#data/pokemon-species";
 import { ArenaTagSide } from "#enums/arena-tag-side";
@@ -14,8 +15,7 @@ import { TrainerType } from "#enums/trainer-type";
 import { TrainerVariant } from "#enums/trainer-variant";
 import type { EnemyPokemon } from "#field/pokemon";
 import type { PersistentModifier } from "#modifiers/modifier";
-import type { TrainerConfig } from "#trainers/trainer-config";
-import { trainerConfigs } from "#trainers/trainer-config";
+import { TrainerAceEvCategory, trainerConfigs, type TrainerConfig } from "#trainers/trainer-config";
 import { TrainerPartyCompoundTemplate, type TrainerPartyTemplate } from "#trainers/trainer-party-template";
 import { getRandomTwoPlayerTrainerPartners } from "#trainers/two-player-trainer-partners";
 import { randSeedInt, randSeedItem } from "#utils/common";
@@ -63,6 +63,41 @@ const TATE_LIZA_STRONG_PAIRS: TateLizaPair[] = [
 // `shiftCharCodes` uses `String.fromCharCode`, so offsets that differ by 2^16 produce identical seeds.
 const TRAINER_PARTNER_SEED_OFFSET = 0x7fff;
 const TRAINER_PARTNER_2_SEED_OFFSET = 0x3fff;
+
+const UNCATEGORIZED_BOSS_TRAINER_ACE_EVS = 252;
+
+const TRAINER_ACE_EV_TOTALS: Record<TrainerAceEvCategory, number> = {
+  [TrainerAceEvCategory.REGULAR]: 80,
+  [TrainerAceEvCategory.EVIL_ADMIN]: 200,
+  [TrainerAceEvCategory.EVIL_LEADER]: 360,
+  [TrainerAceEvCategory.STAT_TRAINER]: 360,
+  [TrainerAceEvCategory.GYM_LEADER]: 252,
+  [TrainerAceEvCategory.ELITE_FOUR]: 420,
+  [TrainerAceEvCategory.CHAMPION]: 508,
+};
+
+const RIVAL_ACE_EV_TOTALS: Partial<Record<TrainerType, number>> = {
+  [TrainerType.RIVAL]: 80,
+  [TrainerType.RIVAL_2]: 120,
+  [TrainerType.RIVAL_3]: 200,
+  [TrainerType.RIVAL_4]: 320,
+  [TrainerType.RIVAL_5]: 420,
+  [TrainerType.RIVAL_6]: 508,
+};
+
+function getTrainerAceEvTotal(config: TrainerConfig): number {
+  const rivalTotal = RIVAL_ACE_EV_TOTALS[config.trainerType];
+  if (rivalTotal !== undefined) {
+    return rivalTotal;
+  }
+
+  const categoryTotal = TRAINER_ACE_EV_TOTALS[config.aceEvCategory];
+  if (config.aceEvCategory !== TrainerAceEvCategory.REGULAR) {
+    return categoryTotal;
+  }
+
+  return config.isBoss ? UNCATEGORIZED_BOSS_TRAINER_ACE_EVS : categoryTotal;
+}
 
 const TRAINER_ANIMATION_FRAME_SEQUENCES: Partial<Record<string, number[]>> = {
   amber_two: Array.from({ length: 32 }, (_, i) => i + 1),
@@ -566,6 +601,56 @@ export class Trainer extends Phaser.GameObjects.Container {
       .sort((a, b) => b.strength - a.strength || a.index - b.index)
       .slice(0, Math.min(template.size, limit))
       .map(entry => entry.index);
+  }
+
+  private applyAceEvsToGeneratedPartyMember(pokemon: EnemyPokemon, config: TrainerConfig, partyIndex: number): void {
+    const aceEvTotal = getTrainerAceEvTotal(config);
+    if (aceEvTotal <= 0) {
+      return;
+    }
+
+    const acePartyIndex = this.getStrongestPartyMemberIndexForTrainerSlot(
+      this.getPartyTemplate(config),
+      pokemon.trainerSlot,
+      this.shouldSplitSharedConfigAcesByTrainerSlot(),
+    );
+    if (acePartyIndex === undefined || partyIndex !== acePartyIndex) {
+      return;
+    }
+
+    pokemon.ace = true;
+    pokemon.aceEvs = assignAceEvSpread(aceEvTotal, pokemon.stats);
+    pokemon.calculateStats();
+  }
+
+  private shouldSplitSharedConfigAcesByTrainerSlot(): boolean {
+    return !this.limitedPartyMemberSlots
+      && this.isDouble()
+      && !this.shouldUseTwoPlayerNamedPartnerParty()
+      && !this.shouldUseTateLizaPairParty();
+  }
+
+  private getStrongestPartyMemberIndexForTrainerSlot(
+    template: TrainerPartyTemplate,
+    trainerSlot: TrainerSlot,
+    splitByTrainerSlot: boolean,
+  ): number | undefined {
+    if (!splitByTrainerSlot) {
+      return this.getStrongestPartyMemberIndexes(template, 1)[0];
+    }
+
+    const candidates = Array.from({ length: template.size }, (_, index) => ({
+      index,
+      strength: template.getStrength(index),
+    })).filter(entry =>
+      getTrainerSlotForFieldIndex(entry.index % globalScene.currentBattle.getBattlerCount()) === trainerSlot
+    );
+
+    if (!candidates.length) {
+      return this.getStrongestPartyMemberIndexes(template, 1)[0];
+    }
+
+    return candidates.sort((a, b) => b.strength - a.strength || a.index - b.index)[0].index;
   }
 
   private getTeraPartyIndexForPokemon(pokemon: EnemyPokemon): number {
@@ -1123,6 +1208,8 @@ export class Trainer extends Phaser.GameObjects.Container {
             + ((this.getPartyMemberSeedIndex(index) + 1) << 8),
     );
 
+    this.applyAceEvsToGeneratedPartyMember(ret!, this.config, index);
+
     return ret!; // TODO: is this bang correct?
   }
 
@@ -1192,6 +1279,8 @@ export class Trainer extends Phaser.GameObjects.Container {
             + (((config.useSameSeedForAllMembers ? 0 : index) + 1) << 8)
             + getTrainerSlotSeedOffset(trainerSlot),
     );
+
+    this.applyAceEvsToGeneratedPartyMember(ret!, config, index);
 
     return ret!;
   }

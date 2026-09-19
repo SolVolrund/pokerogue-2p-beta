@@ -776,6 +776,9 @@ export class PostMysteryEncounterPhase extends Phase {
         }
 
         i++;
+        if (globalScene.twoPlayerMode) {
+          globalScene.waitForPlayerSideProgressionInput();
+        }
         globalScene.ui.setMode(UiMode.MESSAGE);
         if (title) {
           globalScene.ui.showDialogue(
@@ -793,6 +796,9 @@ export class PostMysteryEncounterPhase extends Phase {
 
       showNextDialogue();
     } else {
+      if (globalScene.twoPlayerMode) {
+        globalScene.waitForPlayerSideProgressionInput();
+      }
       endPhase();
     }
   }

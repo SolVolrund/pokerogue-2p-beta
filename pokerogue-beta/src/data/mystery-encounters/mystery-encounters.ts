@@ -18,6 +18,7 @@ import { FieldTripEncounter } from "#mystery-encounters/field-trip-encounter";
 import { FieryFalloutEncounter } from "#mystery-encounters/fiery-fallout-encounter";
 import { FightOrFlightEncounter } from "#mystery-encounters/fight-or-flight-encounter";
 import { FunAndGamesEncounter } from "#mystery-encounters/fun-and-games-encounter";
+import { GameCornerEncounter } from "#mystery-encounters/game-corner-encounter";
 import { GlobalTradeSystemEncounter } from "#mystery-encounters/global-trade-system-encounter";
 import { GtsMalfunctionEncounter } from "#mystery-encounters/gts-malfunction-encounter";
 import { ItIsDangerousToGoAloneEncounter } from "#mystery-encounters/it-is-dangerous-to-go-alone-encounter";
@@ -175,6 +176,7 @@ const civilizationBiomeEncounters: MysteryEncounterType[] = [
   MysteryEncounterType.DEPARTMENT_STORE_SALE,
   MysteryEncounterType.PART_TIMER,
   MysteryEncounterType.FUN_AND_GAMES,
+  MysteryEncounterType.GAME_CORNER,
   MysteryEncounterType.GLOBAL_TRADE_SYSTEM,
   MysteryEncounterType.CONTEST_HALL,
 ];
@@ -280,6 +282,7 @@ export function initMysteryEncounters() {
   allMysteryEncounters[MysteryEncounterType.TELEPORTING_HIJINKS] = TeleportingHijinksEncounter;
   allMysteryEncounters[MysteryEncounterType.BUG_TYPE_SUPERFAN] = BugTypeSuperfanEncounter;
   allMysteryEncounters[MysteryEncounterType.FUN_AND_GAMES] = FunAndGamesEncounter;
+  allMysteryEncounters[MysteryEncounterType.GAME_CORNER] = GameCornerEncounter;
   allMysteryEncounters[MysteryEncounterType.UNCOMMON_BREED] = UncommonBreedEncounter;
   allMysteryEncounters[MysteryEncounterType.GLOBAL_TRADE_SYSTEM] = GlobalTradeSystemEncounter;
   allMysteryEncounters[MysteryEncounterType.GTS_MALFUNCTION] = GtsMalfunctionEncounter;

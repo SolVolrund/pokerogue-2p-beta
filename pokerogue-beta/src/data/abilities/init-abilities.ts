@@ -2215,6 +2215,14 @@ export function initAbilities() {
       .attr(PostDefendApplyStatusEffectAbAttr, 100, false, StatusEffect.BURN)
       .bypassFaint()
       .build(),
+    new AbBuilder(AbilityId.AURA_GUARD, 9) //
+      .attr(
+        ReceivedMoveDamageMultiplierAbAttr,
+        (target, user, move) => move.doesFlagEffectApply({ flag: MoveFlags.MAKES_CONTACT, user, target }),
+        0.5,
+      )
+      .ignorable()
+      .build(),
   );
 }
 

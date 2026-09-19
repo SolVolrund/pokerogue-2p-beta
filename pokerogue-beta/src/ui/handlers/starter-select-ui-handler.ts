@@ -14,6 +14,19 @@ import {
   POKERUS_STARTER_COUNT,
 } from "#balance/starters";
 import { getContestSpectacularMove } from "#data/contests/contest-spectacular-moves";
+import {
+  ACE_EV_PURCHASE_AMOUNT,
+  ACE_EV_STAT_CAP,
+  ACE_EV_TOTAL_CAP,
+  getAceEvAssignedTotal,
+  getAceEvCandyCost,
+  getAceEvDivisorForSpecies,
+  getAceEvUnassignedTotal,
+  normalizeAceEvState,
+  normalizeAceEvTotal,
+  PERMANENT_STAT_ORDER,
+  type AceEvSpread,
+} from "#data/ace-evs";
 import { allAbilities, allMoves } from "#data/data-lists";
 import { Egg } from "#data/egg";
 import { GrowthRate, getGrowthRateColor } from "#data/exp";
@@ -55,6 +68,7 @@ import {
 } from "#enums/passive";
 import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
+import { getShortenedStatKey, type PermanentStat } from "#enums/stat";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import { UiTheme } from "#enums/ui-theme";
@@ -67,6 +81,7 @@ import { ensureSpindaSpotTexture } from "#sprites/spinda-spots";
 import { achvs } from "#system/achv";
 import { GameData } from "#system/game-data";
 import { RibbonData } from "#system/ribbons/ribbon-data";
+import { isSettingEnabled, SettingKeys } from "#system/settings";
 import { SettingKeyboard } from "#system/settings-keyboard";
 import type { Pokemon } from "#field/pokemon";
 import type { DexEntry } from "#types/dex-data";
@@ -3072,6 +3087,9 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     const hasAnchors = this.getAceDressTargets().some(target => hasPokemonAccessoryAnchors(target.speciesId, target.formKey));
     const isAce = starterAttributes.ace ?? false;
     const hasOutfit = !!starterAttributes.accessoryOutfit?.length;
+    const aceMechanicsEnabled = isSettingEnabled(SettingKeys.Ace_Mechanics);
+    const aceEvState = normalizeAceEvState(starterAttributes.aceEvTotal, starterAttributes.aceEvs);
+    const assignedEvs = getAceEvAssignedTotal(aceEvState.spread);
 
     this.blockInput = true;
     ui.setMode(UiMode.STARTER_SELECT).then(() => {
@@ -3094,6 +3112,18 @@ export class StarterSelectUiHandler extends MessageUiHandler {
               style: hasAnchors ? TextStyle.WINDOW : TextStyle.SETTINGS_LOCKED,
               handler: () => {
                 this.showAceDressSlotOptions(starterAttributes, originalStarterAttributes);
+                return true;
+              },
+            },
+            {
+              label: aceMechanicsEnabled ? `EVs ${assignedEvs}/${aceEvState.total}` : "EVs Off",
+              disabled: !aceMechanicsEnabled,
+              style: aceMechanicsEnabled ? TextStyle.WINDOW : TextStyle.SETTINGS_LOCKED,
+              handler: () => {
+                if (!aceMechanicsEnabled) {
+                  return false;
+                }
+                this.showAceEvOptions(starterAttributes, originalStarterAttributes);
                 return true;
               },
             },
@@ -3126,6 +3156,204 @@ export class StarterSelectUiHandler extends MessageUiHandler {
         this.blockInput = false;
       });
     });
+  }
+
+  private showAceEvOptions(
+    starterAttributes: StarterAttributes,
+    originalStarterAttributes: StarterAttributes,
+  ): void {
+    const ui = this.getUi();
+    const state = normalizeAceEvState(starterAttributes.aceEvTotal, starterAttributes.aceEvs);
+    const assigned = getAceEvAssignedTotal(state.spread);
+    const unassigned = getAceEvUnassignedTotal(state.total, state.spread);
+    const evDivisor = getAceEvDivisorForSpecies(this.lastSpecies.speciesId);
+    const { starterDataEntry: starterData } = this.getSpeciesData(this.lastSpecies.speciesId);
+    const persistentStarterData = globalScene.gameData.starterData[this.lastSpecies.speciesId];
+    const purchaseCost = getAceEvCandyCost(state.total);
+    const canBuy = state.total < ACE_EV_TOTAL_CAP
+      && (activeOverrides.FREE_CANDY_UPGRADE_OVERRIDE || starterData.candyCount >= purchaseCost);
+
+    this.blockInput = true;
+    ui.setMode(UiMode.STARTER_SELECT).then(() => {
+      ui.showText("Choose ace EVs.", null, () => {
+        const blankOption = (): OptionSelectItem => ({
+          label: "",
+          disabled: true,
+          handler: () => false,
+        });
+        const purchaseOption: OptionSelectItem = {
+          label: `×${purchaseCost} Purchase +${ACE_EV_PURCHASE_AMOUNT} EV`,
+          disabled: !canBuy,
+          style: canBuy ? TextStyle.WINDOW : TextStyle.SETTINGS_LOCKED,
+          item: "candy",
+          itemArgs: starterColors[this.lastSpecies.speciesId],
+          handler: () => {
+            if (!canBuy) {
+              return false;
+            }
+
+            const nextTotal = normalizeAceEvTotal(state.total + ACE_EV_PURCHASE_AMOUNT);
+            this.saveAceEvState(starterAttributes, originalStarterAttributes, nextTotal, state.spread);
+            if (!activeOverrides.FREE_CANDY_UPGRADE_OVERRIDE) {
+              persistentStarterData.candyCount -= purchaseCost;
+              starterData.candyCount = persistentStarterData.candyCount;
+            }
+            this.pokemonCandyCountText.setText(`×${starterData.candyCount}`);
+            updateCandyCountTextStyle(this.pokemonCandyCountText, starterData.candyCount);
+            globalScene.gameData.saveSystem().then(success => {
+              if (!success) {
+                return globalScene.reset(true);
+              }
+            });
+            audioManager.playSound("se/buy");
+            this.showAceEvOptions(starterAttributes, originalStarterAttributes);
+            return true;
+          },
+        };
+        const statOptions: OptionSelectItem[] = PERMANENT_STAT_ORDER.map(stat => ({
+          label: `${this.getAceEvStatLabel(stat)}: ${state.spread[stat]}/${ACE_EV_STAT_CAP}`,
+          handler: () => {
+            this.showAceEvStatOptions(stat, starterAttributes, originalStarterAttributes);
+            return true;
+          },
+        }));
+        const options: OptionSelectItem[] = [
+          {
+            label: `Ratio: ${evDivisor}`,
+            disabled: true,
+            style: TextStyle.SETTINGS_LOCKED,
+            handler: () => false,
+          },
+          {
+            label: `Unassigned: ${unassigned}`,
+            disabled: true,
+            style: TextStyle.SETTINGS_LOCKED,
+            handler: () => false,
+          },
+          {
+            label: `Assigned: ${assigned}/${state.total}`,
+            disabled: true,
+            style: TextStyle.SETTINGS_LOCKED,
+            handler: () => false,
+          },
+          blankOption(),
+          blankOption(),
+          purchaseOption,
+          ...statOptions,
+          {
+            label: i18next.t("menu:cancel"),
+            handler: () => {
+              this.showAceOptions(starterAttributes, originalStarterAttributes);
+              return true;
+            },
+          },
+        ];
+
+        ui.setModeWithoutClear(UiMode.OPTION_SELECT, {
+          options,
+          gridLayout: {
+            rows: 6,
+            columns: 2,
+            slotCount: 12,
+            minColumnWidth: 16,
+            columnGap: 5,
+            centerLastOption: true,
+          },
+          yOffset: 19,
+        });
+        this.blockInput = false;
+      });
+    });
+  }
+
+  private showAceEvStatOptions(
+    stat: PermanentStat,
+    starterAttributes: StarterAttributes,
+    originalStarterAttributes: StarterAttributes,
+  ): void {
+    const ui = this.getUi();
+    const state = normalizeAceEvState(starterAttributes.aceEvTotal, starterAttributes.aceEvs);
+    const current = state.spread[stat];
+    const unassigned = getAceEvUnassignedTotal(state.total, state.spread);
+
+    const makeDeltaOption = (delta: number): OptionSelectItem => {
+      const amount = Math.abs(delta);
+      const canUse = delta > 0
+        ? current + amount <= ACE_EV_STAT_CAP && unassigned >= amount
+        : current >= amount;
+
+      return {
+        label: `${delta > 0 ? "+" : "-"}${amount}`,
+        disabled: !canUse,
+        style: canUse ? TextStyle.WINDOW : TextStyle.SETTINGS_LOCKED,
+        handler: () => {
+          if (!canUse) {
+            return false;
+          }
+          const nextSpread = [...state.spread] as AceEvSpread;
+          nextSpread[stat] = current + delta;
+          this.saveAceEvState(starterAttributes, originalStarterAttributes, state.total, nextSpread);
+          this.showAceEvStatOptions(stat, starterAttributes, originalStarterAttributes);
+          return true;
+        },
+      };
+    };
+
+    this.blockInput = true;
+    ui.setMode(UiMode.STARTER_SELECT).then(() => {
+      ui.showText(`Adjust ${this.getAceEvStatLabel(stat)} EVs.`, null, () => {
+        ui.setModeWithoutClear(UiMode.OPTION_SELECT, {
+          options: [
+            {
+              label: `Unassigned: ${unassigned}`,
+              disabled: true,
+              style: TextStyle.SETTINGS_LOCKED,
+              handler: () => false,
+            },
+            {
+              label: `Current: ${current}/${ACE_EV_STAT_CAP}`,
+              disabled: true,
+              style: TextStyle.SETTINGS_LOCKED,
+              handler: () => false,
+            },
+            makeDeltaOption(4),
+            makeDeltaOption(8),
+            makeDeltaOption(16),
+            makeDeltaOption(-4),
+            makeDeltaOption(-8),
+            makeDeltaOption(-16),
+            {
+              label: i18next.t("menu:cancel"),
+              handler: () => {
+                this.showAceEvOptions(starterAttributes, originalStarterAttributes);
+                return true;
+              },
+            },
+          ],
+          maxOptions: 10,
+          yOffset: 19,
+        });
+        this.blockInput = false;
+      });
+    });
+  }
+
+  private saveAceEvState(
+    starterAttributes: StarterAttributes,
+    originalStarterAttributes: StarterAttributes,
+    total: number,
+    spread: AceEvSpread,
+  ): void {
+    const state = normalizeAceEvState(total, spread);
+    starterAttributes.aceEvTotal = state.total;
+    starterAttributes.aceEvs = state.spread;
+    originalStarterAttributes.aceEvTotal = state.total;
+    originalStarterAttributes.aceEvs = [...state.spread] as AceEvSpread;
+    globalScene.savePlayerStarterPreferences(this.originalStarterPreferences, globalScene.activePlayerIndex);
+  }
+
+  private getAceEvStatLabel(stat: PermanentStat): string {
+    return i18next.t(getShortenedStatKey(stat));
   }
 
   private getAceDressTargets(): AceDressTarget[] {
@@ -3954,6 +4182,9 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     const accessoryOutfit = starterAttributes?.ace && starterAttributes.accessoryOutfit?.length
       ? starterAttributes.accessoryOutfit.map(item => ({ ...item }))
       : undefined;
+    const aceEvState = starterAttributes?.ace
+      ? normalizeAceEvState(starterAttributes.aceEvTotal, starterAttributes.aceEvs)
+      : undefined;
 
     const starter: Starter = {
       speciesId: species.speciesId,
@@ -3974,6 +4205,8 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       ivs: dexEntry.ivs,
       ace: starterAttributes?.ace,
       accessoryOutfit,
+      aceEvTotal: aceEvState?.total,
+      aceEvs: aceEvState?.spread,
     };
     if (spindaPid !== undefined) {
       starter.spindaPid = spindaPid;

@@ -527,10 +527,10 @@ export class TitlePhase extends Phase {
     enemyPlayerMode = false,
   ): void {
     const lobbyCode = this.generateLobbyCode();
-    const lobbyUrl = this.getMultiplayerLobbyUrl(
+    const hostLaunchUrl = this.getMultiplayerLobbyUrl(
       lobbyCode,
       "host",
-      lanAddress,
+      undefined,
       playerCount,
       partySize,
       undefined,
@@ -594,7 +594,7 @@ export class TitlePhase extends Phase {
           if (enemyPlayerUrl) {
             console.info(`[PokeRogue 2P] Enemy Player lobby link: ${enemyPlayerUrl}`);
           }
-          void globalScene.ui.setMode(UiMode.MESSAGE).then(() => window.location.assign(lobbyUrl));
+          void globalScene.ui.setMode(UiMode.MESSAGE).then(() => window.location.assign(hostLaunchUrl));
         },
         () => {
           void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showMultiplayerSelect());

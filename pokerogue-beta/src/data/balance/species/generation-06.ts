@@ -6994,7 +6994,7 @@ export function initGenerationSix(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.EEVEE,
     evolutions: [],
-    passives: AbilityId.COMPETITIVE,
+    passives: [AbilityId.COMPETITIVE, AbilityId.AURA_GUARD],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.DISARMING_VOICE],
       [1, MoveId.TACKLE],

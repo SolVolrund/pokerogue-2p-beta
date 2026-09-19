@@ -23,6 +23,7 @@ import type { PokemonData } from "#system/pokemon-data";
 import type { TrainerData } from "#system/trainer-data";
 import type { ComputerPartnerKey, ComputerPartnerRolePreferences } from "#utils/computer-partner-profile";
 import type { MewtwoFinalBossState, UnownFinalBossState } from "#utils/classic-final-boss-utils";
+import type { AceEvSpread } from "#data/ace-evs";
 import type { SerializedDailyRunConfig } from "./daily-run";
 import type { DexData } from "./dex-data";
 
@@ -63,6 +64,9 @@ export interface ComputerPartnerStarterProgressEntry {
   abilityAttr: number;
   passiveAttr: number;
   valueReduction: number;
+  aceEvTotal?: number | undefined;
+  aceEvs?: AceEvSpread | undefined;
+  upgradePurchases?: number | undefined;
 }
 
 export interface ComputerPartnerProgressData {
@@ -183,6 +187,8 @@ export interface StarterAttributes {
   favorite?: boolean | undefined;
   ace?: boolean | undefined;
   accessoryOutfit?: PokemonAccessoryOutfitItem[] | undefined;
+  aceEvTotal?: number | undefined;
+  aceEvs?: AceEvSpread | undefined;
   nickname?: string | undefined;
   tera?: PokemonType | undefined;
   spindaPid?: number | undefined;
@@ -212,6 +218,8 @@ export interface Starter {
   spindaPid?: number | undefined;
   ace?: boolean | undefined;
   accessoryOutfit?: PokemonAccessoryOutfitItem[] | undefined;
+  aceEvTotal?: number | undefined;
+  aceEvs?: AceEvSpread | undefined;
   ivs: number[];
 }
 

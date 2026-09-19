@@ -213,6 +213,7 @@ export const SettingKeys = {
   Skip_Seen_Dialogues: "SKIP_SEEN_DIALOGUES",
   Egg_Skip: "EGG_SKIP",
   Battle_Style: "BATTLE_STYLE",
+  Ace_Mechanics: "ACE_MECHANICS",
   Planner_AI_Enable: "PLANNER_AI_ENABLE",
   Two_Player_Input_Lockout: "TWO_PLAYER_INPUT_LOCKOUT",
   Enable_Retries: "ENABLE_RETRIES",
@@ -416,6 +417,13 @@ export const Setting: Setting[] = [
         label: i18next.t("settings:set"),
       },
     ],
+    default: 0,
+    type: SettingType.GENERAL,
+  },
+  {
+    key: SettingKeys.Ace_Mechanics,
+    label: i18next.t("settings:aceMechanics"),
+    options: OFF_ON,
     default: 0,
     type: SettingType.GENERAL,
   },
@@ -1038,6 +1046,21 @@ export function setSetting(setting: string, value: number): boolean {
       break;
     case SettingKeys.Battle_Style:
       globalScene.battleStyle = value;
+      break;
+    case SettingKeys.Ace_Mechanics:
+      if (globalScene?.getActivePlayerIndexes && globalScene?.getPlayerParty && globalScene?.getEnemyParty) {
+        const playerIndexes = globalScene.getActivePlayerIndexes();
+        for (const playerIndex of Array.isArray(playerIndexes) ? playerIndexes : []) {
+          const party = globalScene.getPlayerParty(playerIndex);
+          for (const pokemon of Array.isArray(party) ? party : []) {
+            pokemon.calculateStats();
+          }
+        }
+        const enemyParty = globalScene.getEnemyParty();
+        for (const pokemon of Array.isArray(enemyParty) ? enemyParty : []) {
+          pokemon.calculateStats();
+        }
+      }
       break;
     case SettingKeys.Planner_AI_Enable:
       globalScene.plannerAiEnabled = Setting[index].options[value].value === "On";

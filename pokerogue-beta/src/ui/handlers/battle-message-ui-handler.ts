@@ -16,7 +16,10 @@ export class BattleMessageUiHandler extends MessageUiHandler {
   private levelUpStatsValuesContent: BBCodeText;
   private messageContainer: Phaser.GameObjects.Container;
   private nameBox: Phaser.GameObjects.NineSlice;
-  private nameText: Phaser.GameObjects.Text;
+  private nameIcon: Phaser.GameObjects.Sprite;
+  private nameExtraIcon: Phaser.GameObjects.Sprite;
+  private nameExtraText: BBCodeText;
+  private nameText: BBCodeText;
 
   public bg: Phaser.GameObjects.Sprite;
   public commandWindow: Phaser.GameObjects.NineSlice;
@@ -81,12 +84,28 @@ export class BattleMessageUiHandler extends MessageUiHandler {
     this.nameBox = globalScene.add.nineslice(0, 0, "namebox", globalScene.windowType, 72, 16, 8, 8, 5, 5);
     this.nameBox.setOrigin(0, 0);
 
-    this.nameText = addTextObject(8, 0, "Rival", TextStyle.MESSAGE, {
+    this.nameIcon = globalScene.add.sprite(8, 0, "items", "");
+    this.nameIcon.setOrigin(0, 0);
+    this.nameIcon.setVisible(false);
+
+    this.nameText = addBBCodeTextObject(8, 0, "Rival", TextStyle.MESSAGE, {
       maxLines: 1,
     });
 
+    this.nameExtraIcon = globalScene.add.sprite(8, 0, "items", "");
+    this.nameExtraIcon.setOrigin(0, 0);
+    this.nameExtraIcon.setVisible(false);
+
+    this.nameExtraText = addBBCodeTextObject(8, 0, "", TextStyle.MESSAGE, {
+      maxLines: 1,
+    });
+    this.nameExtraText.setVisible(false);
+
     this.nameBoxContainer.add(this.nameBox);
+    this.nameBoxContainer.add(this.nameIcon);
     this.nameBoxContainer.add(this.nameText);
+    this.nameBoxContainer.add(this.nameExtraIcon);
+    this.nameBoxContainer.add(this.nameExtraText);
     messageContainer.add(this.nameBoxContainer);
 
     this.initPromptSprite(messageContainer);
@@ -150,9 +169,21 @@ export class BattleMessageUiHandler extends MessageUiHandler {
     ui.bringToTop(this.messageContainer);
   }
 
+  public setMessageWindowVisible(visible: boolean): void {
+    this.bg.setVisible(visible);
+    this.messageContainer.setVisible(visible);
+    if (!visible) {
+      this.commandWindow.setVisible(false);
+      this.movesWindowContainer.setVisible(false);
+      this.hideNameText();
+      this.prompt?.setVisible(false);
+    }
+  }
+
   show(args: any[]): boolean {
     super.show(args);
 
+    this.setMessageWindowVisible(true);
     this.commandWindow.setVisible(false);
     this.movesWindowContainer.setVisible(false);
     this.message.setWordWrapWidth(this.wordWrapWidth);
@@ -293,10 +324,52 @@ export class BattleMessageUiHandler extends MessageUiHandler {
     return coloredText(i18next.t("battleMessageUiHandler:ivNoGood"), value > starterIvs[typeIv], value);
   }
 
-  showNameText(name: string): void {
+  showNameText(name: string, iconFrame?: string): void {
     this.nameBoxContainer.setVisible(true);
     this.nameText.setText(name);
-    this.nameBox.width = this.nameText.displayWidth + 16;
+    this.nameText.setVisible(true);
+    this.nameExtraIcon.setVisible(false);
+    this.nameExtraText.setVisible(false);
+
+    if (iconFrame) {
+      this.nameIcon.setTexture("items", iconFrame);
+      this.nameIcon.setVisible(true);
+      this.nameIcon.setScale(0.5);
+      this.nameText.x = this.nameIcon.x + this.nameIcon.displayWidth + 4;
+    } else {
+      this.nameIcon.setVisible(false);
+      this.nameText.x = 8;
+    }
+
+    this.nameBox.width = this.nameText.displayWidth + (this.nameIcon.visible ? this.nameIcon.displayWidth + 4 : 0) + 16;
+  }
+
+  showNameTextWithIconPair(
+    leftText: string,
+    leftIconFrame: string,
+    rightText: string,
+    rightIconFrame: string,
+  ): void {
+    this.nameBoxContainer.setVisible(true);
+
+    this.nameIcon.setTexture("items", leftIconFrame);
+    this.nameIcon.setVisible(true);
+    this.nameIcon.setScale(0.5);
+
+    this.nameText.setText(leftText);
+    this.nameText.setVisible(true);
+    this.nameText.x = this.nameIcon.x + this.nameIcon.displayWidth + 4;
+
+    this.nameExtraIcon.setTexture("items", rightIconFrame);
+    this.nameExtraIcon.setVisible(true);
+    this.nameExtraIcon.setScale(0.5);
+    this.nameExtraIcon.x = this.nameText.x + this.nameText.displayWidth + 4;
+
+    this.nameExtraText.setText(rightText);
+    this.nameExtraText.setVisible(true);
+    this.nameExtraText.x = this.nameExtraIcon.x + this.nameExtraIcon.displayWidth + 4;
+
+    this.nameBox.width = this.nameExtraText.x + this.nameExtraText.displayWidth + 8;
   }
 
   hideNameText(): void {

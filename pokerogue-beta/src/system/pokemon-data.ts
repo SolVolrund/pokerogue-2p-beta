@@ -1,5 +1,6 @@
 import { globalScene } from "#app/global-scene";
 import type { PlayerIndex } from "#app/battle-scene";
+import { normalizeAceEvSpread, type AceEvSpread } from "#data/ace-evs";
 import type { Gender } from "#data/gender";
 import type { PokemonAccessoryOutfitItem } from "#data/pokemon-accessory-anchors";
 import { CustomPokemonData, PokemonBattleData, PokemonSummonData } from "#data/pokemon-data";
@@ -50,6 +51,7 @@ export class PokemonData {
   public pokerus: boolean;
   public ace: boolean;
   public accessoryOutfit: PokemonAccessoryOutfitItem[];
+  public aceEvs: AceEvSpread;
   public usedTMs: MoveId[];
   public teraType: PokemonType;
   public isTerastallized: boolean;
@@ -130,6 +132,7 @@ export class PokemonData {
     this.pokerus = !!source.pokerus;
     this.ace = !!source.ace;
     this.accessoryOutfit = source.accessoryOutfit?.map((item: PokemonAccessoryOutfitItem) => ({ ...item })) ?? [];
+    this.aceEvs = normalizeAceEvSpread(source.aceEvs);
     this.usedTMs = source.usedTMs ?? [];
     this.teraType = source.teraType as PokemonType;
     this.isTerastallized = !!source.isTerastallized;

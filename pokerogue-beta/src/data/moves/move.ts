@@ -10539,7 +10539,7 @@ export function initMoves() {
       .attr(MultiStatusEffectAttr, [StatusEffect.BURN, StatusEffect.FREEZE, StatusEffect.PARALYSIS]),
     new AttackMove(MoveId.SUPER_FANG, PokemonType.NORMAL, MoveCategory.PHYSICAL, -1, 90, 10, -1, 0, 1) //
       .attr(TargetHalfHpDamageAttr),
-    new AttackMove(MoveId.SLASH, PokemonType.NORMAL, MoveCategory.PHYSICAL, 70, 100, 20, -1, 0, 1)
+    new AttackMove(MoveId.SLASH, PokemonType.NORMAL, MoveCategory.PHYSICAL, 80, 100, 20, -1, 0, 1)
       .attr(HighCritAttr)
       .slicingMove(),
     new SelfStatusMove(MoveId.SUBSTITUTE, PokemonType.NORMAL, -1, 10, -1, 0, 1) //
@@ -10716,9 +10716,10 @@ export function initMoves() {
       .attr(StatStageChangeAttr, [Stat.ATK], 2)
       .attr(ConfuseAttr)
       .reflectable(),
-    new SelfStatusMove(MoveId.MILK_DRINK, PokemonType.NORMAL, -1, 5, -1, 0, 2) //
+    new StatusMove(MoveId.MILK_DRINK, PokemonType.NORMAL, -1, 5, -1, 0, 2) //
       .attr(HealAttr, 0.5)
-      .triageMove(),
+      .triageMove()
+      .target(MoveTarget.USER_OR_NEAR_ALLY),
     new AttackMove(MoveId.SPARK, PokemonType.ELECTRIC, MoveCategory.PHYSICAL, 65, 100, 20, 30, 0, 2) //
       .attr(StatusEffectAttr, StatusEffect.PARALYSIS),
     new AttackMove(MoveId.FURY_CUTTER, PokemonType.BUG, MoveCategory.PHYSICAL, 40, 95, 20, -1, 0, 2)
@@ -10972,7 +10973,7 @@ export function initMoves() {
       // TODO: Enable / remove once balance reaches a consensus on ability overrides during boss fights
       // .condition(failAgainstFinalBossCondition, 3)
       .attr(AbilityCopyAttr),
-    new SelfStatusMove(MoveId.WISH, PokemonType.NORMAL, -1, 10, -1, 0, 3) //
+    new SelfStatusMove(MoveId.WISH, PokemonType.NORMAL, -1, 5, -1, 0, 3) //
       .attr(WishAttr)
       .triageMove(),
     new SelfStatusMove(MoveId.ASSIST, PokemonType.NORMAL, -1, 20, -1, 0, 3) //
@@ -11863,7 +11864,8 @@ export function initMoves() {
     new AttackMove(MoveId.DRILL_RUN, PokemonType.GROUND, MoveCategory.PHYSICAL, 80, 95, 10, -1, 0, 5) //
       .attr(HighCritAttr),
     new AttackMove(MoveId.DUAL_CHOP, PokemonType.DRAGON, MoveCategory.PHYSICAL, 40, 90, 15, -1, 0, 5) //
-      .attr(MultiHitAttr, MultiHitType.TWO),
+      .attr(MultiHitAttr, MultiHitType.TWO)
+      .slicingMove(),
     new AttackMove(MoveId.HEART_STAMP, PokemonType.PSYCHIC, MoveCategory.PHYSICAL, 60, 100, 25, 30, 0, 5) //
       .attr(FlinchAttr),
     new AttackMove(MoveId.HORN_LEECH, PokemonType.GRASS, MoveCategory.PHYSICAL, 75, 100, 10, -1, 0, 5)
@@ -12301,7 +12303,7 @@ export function initMoves() {
       .triageMove()
       .reflectable(),
     new AttackMove(MoveId.HIGH_HORSEPOWER, PokemonType.GROUND, MoveCategory.PHYSICAL, 95, 95, 10, -1, 0, 7),
-    new StatusMove(MoveId.STRENGTH_SAP, PokemonType.GRASS, 100, 10, -1, 0, 7)
+    new StatusMove(MoveId.STRENGTH_SAP, PokemonType.GRASS, 100, 5, -1, 0, 7)
       .attr(HitHealAttr, null, Stat.ATK)
       .attr(StatStageChangeAttr, [Stat.ATK], -1)
       .condition((_user, target, _move) => target.getStatStage(Stat.ATK) > -6)
@@ -12346,6 +12348,7 @@ export function initMoves() {
     new AttackMove(MoveId.POLLEN_PUFF, PokemonType.BUG, MoveCategory.SPECIAL, 90, 100, 15, -1, 0, 7)
       .attr(HealOnAllyAttr, 0.5, true, false)
       .ballBombMove()
+      .triageMove()
       // Fail if used against an ally that is affected by heal block, during the second failure check
       // TODO: Make into a target-based move restriction
       .condition(
@@ -12760,7 +12763,7 @@ export function initMoves() {
       .attr(ProtectAttr, BattlerTagType.OBSTRUCT)
       .condition(failIfLastCondition, 3),
     new AttackMove(MoveId.FALSE_SURRENDER, PokemonType.DARK, MoveCategory.PHYSICAL, 80, -1, 10, -1, 0, 8),
-    new AttackMove(MoveId.METEOR_ASSAULT, PokemonType.FIGHTING, MoveCategory.PHYSICAL, 150, 100, 5, -1, 0, 8)
+    new AttackMove(MoveId.METEOR_ASSAULT, PokemonType.FIGHTING, MoveCategory.PHYSICAL, 170, 100, 5, -1, 0, 8)
       .attr(RechargeAttr)
       .makesContact(false),
     new AttackMove(MoveId.ETERNABEAM, PokemonType.DRAGON, MoveCategory.SPECIAL, 160, 90, 5, -1, 0, 8) //
@@ -13230,7 +13233,8 @@ export function initMoves() {
         globalScene.phaseManager.queueMessage(
           i18next.t("moveTriggers:usedUpAllElectricity", { pokemonName: getPokemonNameWithAffix(user) }),
         );
-      }),
+      })
+      .punchingMove(),
     new AttackMove(MoveId.GIGATON_HAMMER, PokemonType.STEEL, MoveCategory.PHYSICAL, 160, 100, 5, -1, 0, 9)
       .makesContact(false)
       .restriction(consecutiveUseRestriction),

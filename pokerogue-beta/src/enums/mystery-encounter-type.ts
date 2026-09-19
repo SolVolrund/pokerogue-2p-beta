@@ -41,4 +41,5 @@ export enum MysteryEncounterType {
   MINING,
   CHEFS_ON_VACATION,
   LIFE_IS_WONDERFUL,
+  GAME_CORNER,
 }

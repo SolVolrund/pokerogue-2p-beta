@@ -63,6 +63,16 @@ const ELITE_FOUR_MINIMUM_BST = 460;
 /** The wave at which (non-Paldean) Gym Leaders start having Tera mons*/
 const GYM_LEADER_TERA_WAVE = 100;
 
+export enum TrainerAceEvCategory {
+  REGULAR,
+  EVIL_ADMIN,
+  EVIL_LEADER,
+  STAT_TRAINER,
+  GYM_LEADER,
+  ELITE_FOUR,
+  CHAMPION,
+}
+
 /**
  * Stores data and helper functions about a trainers AI options.
  */
@@ -168,6 +178,7 @@ export class TrainerConfig {
   public specialtyType: PokemonType;
   public hasVoucher = false;
   public trainerAI: TrainerAI;
+  public aceEvCategory = TrainerAceEvCategory.REGULAR;
 
   /**
    * Whether this trainer's Pokémon are allowed to generate with egg moves
@@ -439,6 +450,11 @@ export class TrainerConfig {
     return this;
   }
 
+  setAceEvCategory(aceEvCategory: TrainerAceEvCategory): TrainerConfig {
+    this.aceEvCategory = aceEvCategory;
+    return this;
+  }
+
   /**
    * Allow this trainer's Pokémon to have egg moves when generating their movesets.
    *
@@ -614,6 +630,7 @@ export class TrainerConfig {
     this.setHasVoucher(false);
     this.setTitle(title);
     this.setMoneyMultiplier(1.5);
+    this.setAceEvCategory(TrainerAceEvCategory.EVIL_ADMIN);
     this.setBoss();
     this.setStaticParty();
     this.setBattleBgm("battle_plasma_boss");
@@ -633,6 +650,7 @@ export class TrainerConfig {
     const nameForCall = toCamelCase(this.name);
     this.name = i18next.t(`trainerNames:${nameForCall}`);
     this.setMoneyMultiplier(2);
+    this.setAceEvCategory(TrainerAceEvCategory.STAT_TRAINER);
     this.setBoss();
     this.setStaticParty();
 
@@ -666,6 +684,7 @@ export class TrainerConfig {
     this.name = i18next.t(`trainerNames:${nameForCall}`);
     this.setTitle(title);
     this.setMoneyMultiplier(2.5);
+    this.setAceEvCategory(TrainerAceEvCategory.EVIL_LEADER);
     this.setBoss();
     this.setStaticParty();
     this.setHasVoucher(true);
@@ -716,6 +735,7 @@ export class TrainerConfig {
 
     // Configure various properties for the Gym Leader.
     this.setMoneyMultiplier(2.5);
+    this.setAceEvCategory(TrainerAceEvCategory.GYM_LEADER);
     this.setBoss();
     this.setStaticParty();
     this.setHasVoucher(true);
@@ -772,6 +792,7 @@ export class TrainerConfig {
 
     // Configure various properties for the Elite Four member.
     this.setMoneyMultiplier(3.25);
+    this.setAceEvCategory(TrainerAceEvCategory.ELITE_FOUR);
     this.setBoss();
     this.setStaticParty();
     this.setHasVoucher(true);
@@ -804,6 +825,7 @@ export class TrainerConfig {
 
     // Configure various properties for the Champion.
     this.setMoneyMultiplier(10);
+    this.setAceEvCategory(TrainerAceEvCategory.CHAMPION);
     this.setBoss();
     this.setStaticParty();
     this.setHasVoucher(true);
@@ -928,6 +950,7 @@ export class TrainerConfig {
     clone = this.doubleOnly ? clone.setDoubleOnly() : clone;
     clone = this.moneyMultiplier ? clone.setMoneyMultiplier(this.moneyMultiplier) : clone;
     clone = this.isBoss ? clone.setBoss() : clone;
+    clone = clone.setAceEvCategory(this.aceEvCategory);
     clone = this.hasStaticParty ? clone.setStaticParty() : clone;
     clone = this.useSameSeedForAllMembers ? clone.setUseSameSeedForAllMembers() : clone;
     clone = this.battleBgm ? clone.setBattleBgm(this.battleBgm) : clone;

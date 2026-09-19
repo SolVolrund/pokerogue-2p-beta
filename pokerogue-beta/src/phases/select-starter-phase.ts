@@ -4,6 +4,7 @@ import { globalScene } from "#app/global-scene";
 import { activeOverrides } from "#app/overrides";
 import { Phase } from "#app/phase";
 import { modifierTypes } from "#data/data-lists";
+import { assignAceEvSpread, normalizeAceEvState } from "#data/ace-evs";
 import { SpeciesFormChangeMoveLearnedTrigger } from "#data/form-change-triggers";
 import { Gender } from "#data/gender";
 import { ChallengeType } from "#enums/challenge-type";
@@ -19,6 +20,7 @@ import {
   getComputerPartnerProfile,
   isComputerPartnerStarterAce,
 } from "#utils/computer-partner-profile";
+import type { PlayerPokemon } from "#field/pokemon";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -198,6 +200,9 @@ export class SelectStarterPhase extends Phase {
       starterPokemon.accessoryOutfit = starter.ace && starter.accessoryOutfit?.length
         ? starter.accessoryOutfit.map(item => ({ ...item }))
         : [];
+      starterPokemon.aceEvs = starter.ace && starter.aceEvs?.length
+        ? [...starter.aceEvs]
+        : [0, 0, 0, 0, 0, 0];
       if (globalScene.isComputerPartnerPlayer(playerIndex)) {
         const computerPartnerProfile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
         starterPokemon.computerPartnerAce = isComputerPartnerStarterAce(computerPartnerProfile, starter, i);
@@ -235,6 +240,10 @@ export class SelectStarterPhase extends Phase {
       }
       starterPokemon.setVisible(false);
       const chalApplied = applyChallenges(ChallengeType.STARTER_MODIFY, starterPokemon);
+      starterPokemon.calculateStats();
+      if (starterPokemon.computerPartnerAce) {
+        this.applyComputerPartnerAceEvs(starterPokemon, starter, playerIndex);
+      }
       party.push(starterPokemon);
       if (chalApplied) {
         // If any challenges modified the starter, it should update
@@ -246,6 +255,33 @@ export class SelectStarterPhase extends Phase {
     this.applyMultiplayerExpCharmBonus(playerIndex);
     overrideHeldItems(party[0]);
     return Promise.all(loadPokemonAssets).then(() => undefined);
+  }
+
+  private applyComputerPartnerAceEvs(
+    starterPokemon: PlayerPokemon,
+    starter: Starter,
+    playerIndex: PlayerIndex,
+  ): void {
+    if (!globalScene.isComputerPartnerPlayer(playerIndex)) {
+      return;
+    }
+
+    const partnerKey = globalScene.getComputerPartnerKey(playerIndex);
+    const progressSpeciesId = getPokemonSpecies(starter.speciesId).getRootSpeciesId(true);
+    const starterEntry = globalScene
+      .getPlayerGameData(0)
+      .getComputerPartnerStarterProgressEntry(partnerKey, progressSpeciesId);
+    const state = normalizeAceEvState(starterEntry.aceEvTotal, starterEntry.aceEvs);
+    if (state.total <= 0) {
+      return;
+    }
+
+    const spread = assignAceEvSpread(state.total, starterPokemon.stats);
+    const nextState = normalizeAceEvState(state.total, spread);
+    starterEntry.aceEvTotal = nextState.total;
+    starterEntry.aceEvs = [...nextState.spread];
+    starterPokemon.aceEvs = [...nextState.spread];
+    starterPokemon.calculateStats();
   }
 
   private applyMultiplayerExpCharmBonus(playerIndex: PlayerIndex): void {
@@ -271,8 +307,9 @@ export class SelectStarterPhase extends Phase {
       hostGameData.getComputerPartnerProgress(partnerKey),
       globalScene.getPlayerPartyLimit(playerIndex),
     );
-    globalScene.savePlayerSystemSaveLocal(0);
-    return this.initPlayerStarters(starters, playerIndex);
+    return this.initPlayerStarters(starters, playerIndex).then(() => {
+      globalScene.savePlayerSystemSaveLocal(0);
+    });
   }
 
   private waitForTwoPlayerProfilesBeforeAction(onReady: () => void): void {

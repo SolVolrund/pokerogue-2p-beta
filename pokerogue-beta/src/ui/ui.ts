@@ -26,6 +26,7 @@ import { EvolutionSceneUiHandler } from "#ui/evolution-scene-ui-handler";
 import { FightUiHandler } from "#ui/fight-ui-handler";
 import { FusionSummaryUiHandler } from "#ui/fusion-summary-ui-handler";
 import { GameStatsUiHandler } from "#ui/game-stats-ui-handler";
+import { GameCornerRewardUiHandler } from "#ui/game-corner-reward-ui-handler";
 import { GamepadBindingUiHandler } from "#ui/gamepad-binding-ui-handler";
 import { KeyboardBindingUiHandler } from "#ui/keyboard-binding-ui-handler";
 import { LoadingModalUiHandler } from "#ui/loading-modal-ui-handler";
@@ -73,6 +74,7 @@ import { AdminUiHandler } from "./handlers/admin-ui-handler";
 import { AlphWallUiHandler } from "./handlers/alph-wall-ui-handler";
 import { MiningInputUiHandler } from "./handlers/mining-input-ui-handler";
 import { RenameRunFormUiHandler } from "./handlers/rename-run-ui-handler";
+import { VoltorbFlipInputUiHandler } from "./handlers/voltorb-flip-input-ui-handler";
 
 const transitionModes = [
   UiMode.SAVE_SLOT,
@@ -126,6 +128,8 @@ const noTransitionModes = [
   UiMode.CHANGE_PASSWORD_FORM,
   UiMode.CONTEST_INPUT,
   UiMode.MINING_INPUT,
+  UiMode.VOLTORB_FLIP_INPUT,
+  UiMode.GAME_CORNER_REWARD,
 ];
 
 // biome-ignore lint/style/useNamingConvention: a unique case (only 2 letters)
@@ -206,6 +210,8 @@ export class UI extends Phaser.GameObjects.Container {
       new SettingsEventsUiHandler(),
       new ContestInputUiHandler(),
       new MiningInputUiHandler(),
+      new VoltorbFlipInputUiHandler(),
+      new GameCornerRewardUiHandler(),
       new AlphWallUiHandler(),
       new FusionSummaryUiHandler(),
       new SettingsItemsUiHandler(),

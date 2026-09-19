@@ -805,16 +805,17 @@ async function handleSwapAbility(playerIndex: PlayerIndex) {
     return handleComputerPartnerSwapAbility(playerIndex);
   }
 
-  // biome-ignore lint/suspicious/noAsyncPromiseExecutor: TODO: Consider refactoring to avoid async promise executor
-  return new Promise<boolean>(async resolve => {
-    globalScene.waitForPlayerInput(playerIndex);
-    await showEncounterDialogue(`${namespace}:option.1.applyAbilityDialogue`, `${namespace}:speaker`);
-    await showEncounterText(`${namespace}:option.1.applyAbilityMessage`);
-
-    globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-      displayYesNoOptions(resolve, playerIndex);
-    });
+  return new Promise<boolean>(resolve => {
+    void showSwapAbilityPrompt(resolve, playerIndex);
   });
+}
+
+async function showSwapAbilityPrompt(resolve: (value: boolean) => void, playerIndex: PlayerIndex): Promise<void> {
+  globalScene.waitForPlayerInput(playerIndex);
+  await globalScene.ui.setMode(UiMode.MESSAGE);
+  await showEncounterDialogue(`${namespace}:option.1.applyAbilityDialogue`, `${namespace}:speaker`);
+  await showEncounterText(`${namespace}:option.1.applyAbilityMessage`);
+  await displayYesNoOptions(resolve, playerIndex);
 }
 
 async function handleComputerPartnerSwapAbility(playerIndex: PlayerIndex): Promise<boolean> {
@@ -833,9 +834,10 @@ async function handleComputerPartnerSwapAbility(playerIndex: PlayerIndex): Promi
   return true;
 }
 
-function displayYesNoOptions(resolve: (value: boolean) => void, playerIndex: PlayerIndex) {
+async function displayYesNoOptions(resolve: (value: boolean) => void, playerIndex: PlayerIndex): Promise<void> {
   globalScene.waitForPlayerInput(playerIndex);
-  showEncounterText(`${namespace}:option.1.abilityPrompt`, null, 500, false);
+  await globalScene.ui.setMode(UiMode.MESSAGE);
+  void showEncounterText(`${namespace}:option.1.abilityPrompt`, null, 500, false);
   const fullOptions = [
     {
       label: i18next.t("menu:yes"),
@@ -847,7 +849,7 @@ function displayYesNoOptions(resolve: (value: boolean) => void, playerIndex: Pla
     {
       label: i18next.t("menu:no"),
       handler: () => {
-        resolve(false);
+        void globalScene.ui.setMode(UiMode.MESSAGE).then(() => resolve(false));
         return true;
       },
     },
@@ -858,7 +860,7 @@ function displayYesNoOptions(resolve: (value: boolean) => void, playerIndex: Pla
     maxOptions: 7,
     yOffset: 0,
   };
-  globalScene.ui.setModeWithoutClear(UiMode.OPTION_SELECT, config, null, true);
+  await globalScene.ui.setModeWithoutClear(UiMode.OPTION_SELECT, config, null, true);
 }
 
 function onYesAbilitySwap(resolve: (value: boolean) => void, playerIndex: PlayerIndex) {
@@ -873,7 +875,7 @@ function onYesAbilitySwap(resolve: (value: boolean) => void, playerIndex: Player
 
   const onPokemonNotSelected = () => {
     globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-      displayYesNoOptions(resolve, playerIndex);
+      void displayYesNoOptions(resolve, playerIndex);
     });
   };
 

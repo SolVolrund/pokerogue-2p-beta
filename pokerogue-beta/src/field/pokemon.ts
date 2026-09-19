@@ -39,6 +39,13 @@ import {
   TypeImmuneTag,
 } from "#data/battler-tags";
 import { COSPLAY_PIKACHU_FORM_MOVES, COSPLAY_PIKACHU_MOVE_IDS } from "#data/cosplay-pikachu";
+import {
+  createEmptyAceEvSpread,
+  getAceEvDivisorForSpecies,
+  getAceEvStatBonus,
+  normalizeAceEvSpread,
+  type AceEvSpread,
+} from "#data/ace-evs";
 import { getDailyEventSeedBoss, isDailyForcedWaveHiddenAbility } from "#data/daily-seed/daily-run";
 import { isDailyEventSeed, isDailyFinalBoss } from "#data/daily-seed/daily-seed-utils";
 import { allAbilities, allMoves } from "#data/data-lists";
@@ -81,6 +88,7 @@ import { getTypeDamageMultiplier, getTypeRgb } from "#data/type";
 import { getEffectiveWeatherForMove, getWeatherMultiplierForMove } from "#data/weather";
 import { AbilityId } from "#enums/ability-id";
 import { AiType } from "#enums/ai-type";
+import { isSettingEnabled, SettingKeys } from "#system/settings";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import { ArenaTagType } from "#enums/arena-tag-type";
 import { BattlerIndex } from "#enums/battler-index";
@@ -334,6 +342,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   public pokerus: boolean;
   public ace: boolean;
   public accessoryOutfit: PokemonAccessoryOutfitItem[];
+  public aceEvs: AceEvSpread;
   /**
    * Indicates whether this Pokémon has left or is about to leave the field
    * @remarks
@@ -482,6 +491,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       this.pokerus = !!dataSource.pokerus;
       this.ace = !!dataSource.ace;
       this.accessoryOutfit = dataSource.accessoryOutfit?.map(item => ({ ...item })) ?? [];
+      this.aceEvs = normalizeAceEvSpread(dataSource.aceEvs);
       this.fusionSpecies =
         dataSource.fusionSpecies instanceof PokemonSpecies
           ? dataSource.fusionSpecies
@@ -546,6 +556,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       this.pokerus = false;
       this.ace = false;
       this.accessoryOutfit = [];
+      this.aceEvs = createEmptyAceEvSpread();
 
       if (level > 1) {
         const fused = new BooleanHolder(globalScene.gameMode.isSplicedOnly);
@@ -2103,9 +2114,15 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
     // Get and manipulate base stats
     const baseStats = this.calculateBaseStats();
+    const hasAceMechanics = isSettingEnabled(SettingKeys.Ace_Mechanics)
+      && (this.ace || !!(this as Pokemon & { computerPartnerAce?: boolean }).computerPartnerAce);
+    const aceEvDivisor = hasAceMechanics ? getAceEvDivisorForSpecies(this.species.speciesId) : 0;
     // Using base stats, calculate and store stats one by one
     for (const s of PERMANENT_STATS) {
       const statHolder = new NumberHolder(Math.floor((2 * baseStats[s] + this.ivs[s]) * this.level * 0.01));
+      if (aceEvDivisor) {
+        statHolder.value += getAceEvStatBonus(this.aceEvs[s], this.level, aceEvDivisor);
+      }
       if (s === Stat.HP) {
         statHolder.value = statHolder.value + this.level + 10;
         globalScene.applyModifierForPokemon(PokemonIncrementingStatModifier, this, this, s, statHolder);
@@ -3108,7 +3125,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       return true;
     }
 
-    if (this.isOfType(PokemonType.GHOST)) {
+    if (this.isOfType(PokemonType.GHOST) || this.hasAbility(AbilityId.RUN_AWAY)) {
       return false;
     }
 

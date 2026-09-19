@@ -24,6 +24,7 @@ import {
   normalizeContestStats,
   type PartialContestStats,
 } from "#data/contests/contest-stats";
+import { createEmptyAceEvSpread, normalizeAceEvState } from "#data/ace-evs";
 import { CONTEST_TYPES, type ContestType } from "#data/contests/contest-type";
 import { getSerializedDailyRunConfig, parseDailySeed } from "#data/daily-seed/daily-seed-utils";
 import { allMoves } from "#data/data-lists";
@@ -151,6 +152,9 @@ const systemShortKeys = {
   abilityAttr: "$a",
   passiveAttr: "$pa",
   valueReduction: "$vr",
+  aceEvTotal: "$aet",
+  aceEvs: "$ae",
+  upgradePurchases: "$up",
   classicWinCount: "$wc",
 };
 
@@ -913,6 +917,9 @@ export class GameData {
       abilityAttr: AbilityAttr.ABILITY_1,
       passiveAttr: 0,
       valueReduction: 0,
+      aceEvTotal: 0,
+      aceEvs: createEmptyAceEvSpread(),
+      upgradePurchases: 0,
     };
   }
 
@@ -967,6 +974,9 @@ export class GameData {
         abilityAttr: sourceEntry.abilityAttr ?? AbilityAttr.ABILITY_1,
         passiveAttr: sourceEntry.passiveAttr ?? 0,
         valueReduction: sourceEntry.valueReduction ?? 0,
+        aceEvTotal: normalizeAceEvState(sourceEntry.aceEvTotal, sourceEntry.aceEvs).total,
+        aceEvs: normalizeAceEvState(sourceEntry.aceEvTotal, sourceEntry.aceEvs).spread,
+        upgradePurchases: sourceEntry.upgradePurchases ?? 0,
       };
     }
 
@@ -1044,6 +1054,13 @@ export class GameData {
       targetEntry.abilityAttr |= sourceEntry.abilityAttr ?? 0;
       targetEntry.passiveAttr |= sourceEntry.passiveAttr ?? 0;
       targetEntry.valueReduction = Math.max(targetEntry.valueReduction ?? 0, sourceEntry.valueReduction ?? 0);
+      const targetAceEvState = normalizeAceEvState(targetEntry.aceEvTotal, targetEntry.aceEvs);
+      const sourceAceEvState = normalizeAceEvState(sourceEntry.aceEvTotal, sourceEntry.aceEvs);
+      const mergedAceEvState =
+        sourceAceEvState.total > targetAceEvState.total ? sourceAceEvState : targetAceEvState;
+      targetEntry.aceEvTotal = mergedAceEvState.total;
+      targetEntry.aceEvs = mergedAceEvState.spread;
+      targetEntry.upgradePurchases = Math.max(targetEntry.upgradePurchases ?? 0, sourceEntry.upgradePurchases ?? 0);
     }
   }
 

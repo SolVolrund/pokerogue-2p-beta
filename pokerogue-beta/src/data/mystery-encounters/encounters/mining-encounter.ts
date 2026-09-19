@@ -146,12 +146,10 @@ export const MiningEncounter: MysteryEncounter = MysteryEncounterBuilder.withEnc
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withIntroSpriteConfigs([
     {
-      spriteKey: "relic_gold",
-      fileRoot: "items",
-      isItem: true,
+      spriteKey: "worker_f",
+      fileRoot: "trainer",
       hasShadow: true,
-      y: 8,
-      yShadow: 6,
+      y: 4,
       alpha: 1,
     },
   ])

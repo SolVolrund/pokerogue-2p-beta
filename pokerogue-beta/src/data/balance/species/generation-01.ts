@@ -13627,6 +13627,7 @@ export function initGenerationOne(): SpeciesDataMapConfig {
     },
     levelMoves: [
       [1, MoveId.TACKLE],
+      [1, MoveId.CELEBRATE],
       [1, MoveId.TAIL_WHIP],
       [1, MoveId.GROWL],
       [1, MoveId.HELPING_HAND],

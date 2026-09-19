@@ -224,7 +224,7 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
     const minColumnWidth = gridLayout.minColumnWidth ?? 20;
     const columnGap = gridLayout.columnGap ?? 8;
     const columnWidths = new Array(columnCount).fill(minColumnWidth);
-    const slotEntries: Array<{ optionIndex: number; text: BBCodeText; column: number; row: number }> = [];
+    const slotEntries: Array<{ optionIndex: number; option: OptionSelectItem; text: BBCodeText; column: number; row: number }> = [];
 
     for (let optionIndex = 0; optionIndex < slotCount; optionIndex++) {
       const option = options[optionIndex];
@@ -238,7 +238,7 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
       optionText.setPosition(0, row * lineSpacing);
       this.optionSelectGridTexts.push(optionText);
       this.optionSelectTextContainer.add(optionText);
-      slotEntries.push({ optionIndex, text: optionText, column, row });
+      slotEntries.push({ optionIndex, option, text: optionText, column, row });
       columnWidths[column] = Math.max(columnWidths[column], optionText.displayWidth + columnGap);
     }
 
@@ -251,6 +251,7 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
       const x = columnXPositions[entry.column];
       const y = entry.row * lineSpacing;
       entry.text.setPosition(x, y);
+      this.createGridOptionIcons(entry.option, x, y);
       this.optionSelectGridPositions.set(entry.optionIndex, { x, y });
     });
 
@@ -264,6 +265,7 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
         optionText.setPosition(x, y);
         this.optionSelectGridTexts.push(optionText);
         this.optionSelectTextContainer.add(optionText);
+        this.createGridOptionIcons(option, x, y);
         this.optionSelectGridPositions.set(optionIndex, { x, y });
       }
     }
@@ -282,16 +284,42 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
 
   private createOptionText(option: OptionSelectItem): BBCodeText {
     const style = option.style ?? this.defaultTextStyle;
+    const label = option.item ? `    ${option.label}` : option.label;
     const optionText = addBBCodeTextObject(
       0,
       0,
-      `[shadow=${getTextColor(style, true)}][color=${getTextColor(style, false)}]${option.label}[/color][/shadow]`,
+      `[shadow=${getTextColor(style, true)}][color=${getTextColor(style, false)}]${label}[/color][/shadow]`,
       TextStyle.WINDOW,
       { maxLines: 1, lineSpacing: 12 },
     );
     optionText.setOrigin(0, 0);
     optionText.setName("text-option-select-grid");
     return optionText;
+  }
+
+  private createGridOptionIcons(option: OptionSelectItem, x: number, y: number): void {
+    if (!option.item) {
+      return;
+    }
+
+    const itemIcon = globalScene.add.sprite(x + 36 * this.scale, y + 7, "items", option.item);
+    itemIcon.setScale(3 * this.scale);
+    this.optionSelectIcons.push(itemIcon);
+    this.optionSelectTextContainer.add(itemIcon);
+
+    if (option.item !== "candy") {
+      return;
+    }
+
+    const itemOverlayIcon = globalScene.add.sprite(x + 36 * this.scale, y + 7, "items", "candy_overlay");
+    itemOverlayIcon.setScale(3 * this.scale);
+    this.optionSelectIcons.push(itemOverlayIcon);
+    this.optionSelectTextContainer.add(itemOverlayIcon);
+
+    if (option.itemArgs) {
+      itemIcon.setTint(argbFromRgba(rgbHexToRgba(option.itemArgs[0])));
+      itemOverlayIcon.setTint(argbFromRgba(rgbHexToRgba(option.itemArgs[1])));
+    }
   }
 
   public override show(args: any[]): boolean {

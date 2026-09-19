@@ -22,7 +22,7 @@ import type { AlphTileRewardOption, ModifierSelectCallback } from "#phases/selec
 import { AwaitableUiHandler } from "#ui/awaitable-ui-handler";
 import { addModifierIconSprite } from "#ui/modifier-icon";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
-import { addTextObject, getModifierTierTextTint, getTextColor } from "#ui/text";
+import { addTextObject, getModifierTierTextTint, getTextColor, getTextWithColors } from "#ui/text";
 import { formatMoney, NumberHolder } from "#utils/common";
 import i18next from "i18next";
 import Phaser from "phaser";
@@ -67,6 +67,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
   private canUseTokenShop = false;
   private healingShopTypeOptions: ModifierTypeOption[] = [];
   private tokenShopTypeOptions: ModifierTypeOption[] = [];
+  private playerIndex: PlayerIndex = 0;
 
   public options: ModifierOption[];
   public alphTileOptions: AlphTileOption[];
@@ -235,6 +236,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
 
     this.player = args[0];
     const playerIndex = (args[5] ?? globalScene.activePlayerIndex) as PlayerIndex;
+    this.playerIndex = playerIndex;
 
     const partyHasHeldItem =
       this.player
@@ -723,10 +725,25 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       }
 
       const type = selectedOption.modifierTypeOption.type;
-      type && ui.showText(type.getDescription());
-      if (type instanceof TmModifierType) {
-        // prepare the move overlay to be shown with the toggle
-        this.moveInfoOverlay.show(allMoves[type.moveId]);
+      if (type) {
+        const messageHandler = ui.getMessageHandler();
+        ui.showText(type.getDescription());
+
+        const cost = selectedOption.modifierTypeOption.cost ?? 0;
+        if (cost > 0) {
+          const formattedMoney = formatMoney(globalScene.moneyFormat, cost);
+          const costStyleName = cost <= globalScene.getPlayerMoney(this.playerIndex) ? "MONEY" : "PARTY_RED";
+          const costText = i18next.t("modifierSelectUiHandler:itemCost", { formattedMoney });
+          const nameWithCost = `${type.name}\u00A0\u00A0\u00A0@[${costStyleName}]{${costText}}`;
+          messageHandler.showNameText(getTextWithColors(nameWithCost, TextStyle.MESSAGE, true), type.iconImage);
+        } else {
+          messageHandler.showNameText(type.name, type.iconImage);
+        }
+
+        if (type instanceof TmModifierType) {
+          // prepare the move overlay to be shown with the toggle
+          this.moveInfoOverlay.show(allMoves[type.moveId]);
+        }
       }
     } else if (cursor === 0) {
       this.cursorObj.setPosition(

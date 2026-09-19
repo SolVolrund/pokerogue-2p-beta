@@ -40,6 +40,7 @@ import { EvolutionPhase } from "#phases/evolution-phase";
 import { ExpPhase } from "#phases/exp-phase";
 import { FaintPhase } from "#phases/faint-phase";
 import { FormChangePhase } from "#phases/form-change-phase";
+import { GameCornerRewardPhase } from "#phases/game-corner-reward-phase";
 import { GameOverModifierRewardPhase } from "#phases/game-over-modifier-reward-phase";
 import { GameOverPhase } from "#phases/game-over-phase";
 import { HideAbilityPhase } from "#phases/hide-ability-phase";
@@ -118,6 +119,7 @@ import { UnlockPhase } from "#phases/unlock-phase";
 import { VictoryPhase } from "#phases/victory-phase";
 import { VsModeSuddenDeathPhase } from "#phases/vs-mode-sudden-death-phase";
 import { VsModeVictoryPhase } from "#phases/vs-mode-victory-phase";
+import { VoltorbFlipPhase } from "#phases/voltorb-flip-phase";
 import { WeatherEffectPhase } from "#phases/weather-effect-phase";
 import { ZMovePhase } from "#phases/z-move-phase";
 import type { PhaseConditionFunc, PhaseMap, PhaseString } from "#types/phase-types";
@@ -180,6 +182,7 @@ const PHASES = Object.freeze({
   ExpPhase,
   FaintPhase,
   FormChangePhase,
+  GameCornerRewardPhase,
   GameOverPhase,
   GameOverModifierRewardPhase,
   HideAbilityPhase,
@@ -256,6 +259,7 @@ const PHASES = Object.freeze({
   VictoryPhase,
   VsModeSuddenDeathPhase,
   VsModeVictoryPhase,
+  VoltorbFlipPhase,
   WeatherEffectPhase,
   ZMovePhase,
 });
