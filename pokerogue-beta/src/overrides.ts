@@ -54,8 +54,7 @@ import type { IntClosedRange, TupleOf } from "type-fest";
 //const overrides = {} satisfies Partial<InstanceType<OverridesType>>;
 
 const overrides: Partial<InstanceType<OverridesType>> = {
-  STARTING_WAVE_OVERRIDE: 34,
-  STARTING_BIOME_OVERRIDE: BiomeId.METROPOLIS,
+//  STARTING_WAVE_OVERRIDE: 2,
   MYSTERY_ENCOUNTER_RATE_OVERRIDE: 256,
   MYSTERY_ENCOUNTER_OVERRIDE: MysteryEncounterType.GAME_CORNER,
 //  WAVE_ITEM_REWARD_OVERRIDE: {
@@ -323,7 +322,8 @@ class DefaultOverrides {
   /**
    * `1` (almost never) to `256` (always), set to `null` to disable the override
    *
-   * Note: Make sure `STARTING_WAVE_OVERRIDE > 10`, otherwise MEs won't trigger
+   * Note: Random MEs still require legal ME waves, but an explicit `MYSTERY_ENCOUNTER_OVERRIDE`
+   * can be forced on early non-boss wild waves for local testing.
    */
   readonly MYSTERY_ENCOUNTER_RATE_OVERRIDE: number | null = null;
   readonly MYSTERY_ENCOUNTER_TIER_OVERRIDE: MysteryEncounterTier | null = null;

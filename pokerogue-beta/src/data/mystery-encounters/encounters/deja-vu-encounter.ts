@@ -479,7 +479,7 @@ async function addGhostPokemonReward(playerIndex: PlayerIndex, entry: DejaVuGhos
 function reviveGhostPokemon(pokemon: PlayerPokemon): void {
   pokemon.hp = pokemon.getMaxHp();
   pokemon.resetStatus(true, false, false, true);
-  for (const move of pokemon.moveset) {
+  for (const move of pokemon.getMovesetForPpRestore()) {
     move.ppUsed = 0;
   }
   pokemon.updateInfo(true);

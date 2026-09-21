@@ -1,9 +1,14 @@
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { Gender } from "#data/gender";
+import { allMoves } from "#data/data-lists";
+import { LearnMoveType } from "#enums/learn-move-type";
 import type { PlayerPokemon } from "#field/pokemon";
 import type { Starter } from "#types/save-data";
+import { chooseComputerPartnerMoveLearningDecision } from "#utils/computer-partner-move-ai";
+import { checkSpeciesValidForChallenge } from "#utils/challenge-utils";
 import {
+  type ComputerPartnerProfile,
   type ComputerPartnerStarter,
   type ComputerPartnerKey,
   createComputerPartnerStarter,
@@ -35,7 +40,7 @@ export async function inviteComputerPartnerToRun(key: ComputerPartnerKey): Promi
 
   const profile = getComputerPartnerProfile(key);
   const hostGameData = globalScene.getPlayerGameData(0);
-  const starters = createComputerPartnerStarter(profile, hostGameData.getComputerPartnerProgress(key));
+  const starters = createComputerPartnerStarter(profile, hostGameData.getComputerPartnerProgress(key), 6, playerIndex);
 
   if (starters.length === 0) {
     return;
@@ -50,7 +55,13 @@ export async function inviteComputerPartnerToRun(key: ComputerPartnerKey): Promi
   party.splice(0, party.length);
 
   const loadPokemonAssets = starters.map((starter, index) => {
-    const starterPokemon = createPartnerPokemon(starter, isComputerPartnerStarterAce(profile, starter, index));
+    const starterPokemon = createPartnerPokemon(
+      starter,
+      isComputerPartnerStarterAce(profile, starter, index),
+      profile,
+      index,
+      playerIndex,
+    );
     party.push(starterPokemon);
     return starterPokemon.loadAssets();
   });
@@ -92,11 +103,22 @@ function applyComputerPartnerIdentity(
   globalScene.setComputerPartnerKey(playerIndex, profile.key);
 }
 
-function createPartnerPokemon(starter: ComputerPartnerStarter, isAce: boolean): PlayerPokemon {
+function createPartnerPokemon(
+  starter: ComputerPartnerStarter,
+  isAce: boolean,
+  profile: ComputerPartnerProfile,
+  partyIndex: number,
+  playerIndex: PlayerIndex,
+): PlayerPokemon {
   const level = getComputerPartnerJoinLevel();
-  const species = starter.evolveAtJoin
+  let species = starter.evolveAtJoin
     ? getPokemonSpecies(getPokemonSpecies(starter.speciesId).getTrainerSpeciesForLevel(level, true))
     : getPokemonSpecies(starter.speciesId);
+  if (!checkSpeciesValidForChallenge(species, {
+    shiny: starter.shiny, female: !!starter.female, variant: starter.variant, formIndex: starter.formIndex,
+  }, false, playerIndex)) {
+    species = getPokemonSpecies(starter.speciesId);
+  }
   const pokemon = globalScene.addPlayerPokemon(
     species,
     level,
@@ -110,6 +132,7 @@ function createPartnerPokemon(starter: ComputerPartnerStarter, isAce: boolean): 
   );
 
   pokemon.computerPartnerAce = isAce;
+  pokemon.moveset = [];
   if (starter.moveset) {
     pokemon.tryPopulateMoveset(starter.moveset, true);
   }
@@ -123,6 +146,25 @@ function createPartnerPokemon(starter: ComputerPartnerStarter, isAce: boolean): 
     pokemon.nickname = starter.nickname;
   }
   pokemon.teraType = starter.teraType ?? pokemon.species.type1;
+
+  // Catch up on missed level-up/evolution moves without opening learning prompts.
+  const context = { profile, role: isAce ? ("ace" as const) : (profile.roles[partyIndex] ?? "balanced") };
+  for (const [, moveId] of pokemon.getLevelMoves(1, true, true)) {
+    const currentMoves = pokemon.moveset.map(move => move.moveId);
+    if (currentMoves.includes(moveId)) {
+      continue;
+    }
+    const decision = chooseComputerPartnerMoveLearningDecision(
+      pokemon,
+      currentMoves,
+      allMoves[moveId],
+      LearnMoveType.LEARN_MOVE,
+      context,
+    );
+    if (decision.shouldLearn) {
+      pokemon.setMove(decision.replaceIndex, moveId);
+    }
+  }
   pokemon.setVisible(false);
 
   return pokemon;

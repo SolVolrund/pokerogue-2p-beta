@@ -2,7 +2,8 @@ import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { modifierTypes } from "#data/data-lists";
-import { Challenges } from "#enums/challenges";
+import { Challenges, isSingleTypeChallenge } from "#enums/challenges";
+import { getChallengesForPlayer } from "#utils/challenge-utils";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
@@ -308,8 +309,8 @@ function acceptDarkDealForPlayer(playerIndex: PlayerIndex): DarkDealAcceptedPlay
 
 function getDarkDealBossConfig(deal: DarkDealAcceptedPlayer): EnemyPokemonConfig {
   let bossTypes: PokemonType[] = deal.removedTypes;
-  const singleTypeChallenges = globalScene.gameMode.challenges.filter(
-    c => c.value && c.id === Challenges.SINGLE_TYPE,
+  const singleTypeChallenges = getChallengesForPlayer(deal.playerIndex).filter(
+    c => c.value && isSingleTypeChallenge(c.id),
   );
   if (globalScene.gameMode.isChallenge && singleTypeChallenges.length > 0) {
     bossTypes = singleTypeChallenges.map(c => (c.value - 1) as PokemonType);
@@ -498,7 +499,7 @@ async function runOnePlayerDarkDeal(): Promise<void> {
   // Start encounter with random legendary (7-10 starter strength) that has level additive
   // If this is a mono-type challenge, always ensure the required type is filtered for
   let bossTypes: PokemonType[] = encounter.misc.removedTypes;
-  const singleTypeChallenges = globalScene.gameMode.challenges.filter(c => c.value && c.id === Challenges.SINGLE_TYPE);
+  const singleTypeChallenges = getChallengesForPlayer(0).filter(c => c.value && isSingleTypeChallenge(c.id));
   if (globalScene.gameMode.isChallenge && singleTypeChallenges.length > 0) {
     bossTypes = singleTypeChallenges.map(c => (c.value - 1) as PokemonType);
   }

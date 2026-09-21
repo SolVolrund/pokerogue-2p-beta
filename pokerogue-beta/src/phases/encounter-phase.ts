@@ -1339,29 +1339,26 @@ export class EncounterPhase extends BattlePhase {
           globalScene.phaseManager.pushNew("SummonPhase", 0);
         }
 
-        if (globalScene.currentBattle.double) {
-          if (availablePartyMembers.length > 1) {
-            globalScene.phaseManager.pushNew("ToggleDoublePositionPhase", true);
-            if (!availablePartyMembers[1].isOnField()) {
-              globalScene.phaseManager.pushNew("SummonPhase", 1);
-            }
+        const battlerCount = globalScene.currentBattle.getBattlerCount();
+        globalScene.phaseManager.pushNew("ToggleDoublePositionPhase", globalScene.currentBattle.double);
+        for (let fieldIndex = 1; fieldIndex < Math.min(availablePartyMembers.length, battlerCount); fieldIndex++) {
+          if (!availablePartyMembers[fieldIndex].isOnField()) {
+            globalScene.phaseManager.pushNew("SummonPhase", fieldIndex);
           }
-        } else {
-          if (availablePartyMembers.length > 1 && availablePartyMembers[1].isOnField()) {
-            globalScene.phaseManager.pushNew("ReturnPhase", 1);
+        }
+        for (let fieldIndex = battlerCount; fieldIndex < availablePartyMembers.length; fieldIndex++) {
+          if (availablePartyMembers[fieldIndex].isOnField()) {
+            globalScene.phaseManager.pushNew("ReturnPhase", fieldIndex);
           }
-          globalScene.phaseManager.pushNew("ToggleDoublePositionPhase", false);
         }
 
         if (
           globalScene.currentBattle.battleType !== BattleType.TRAINER
           && (globalScene.currentBattle.waveIndex > 1 || !globalScene.gameMode.isDaily)
         ) {
-          const minPartySize = globalScene.currentBattle.double ? 2 : 1;
-          if (availablePartyMembers.length > minPartySize) {
-            globalScene.phaseManager.pushNew("CheckSwitchPhase", 0, globalScene.currentBattle.double);
-            if (globalScene.currentBattle.double) {
-              globalScene.phaseManager.pushNew("CheckSwitchPhase", 1, globalScene.currentBattle.double);
+          if (availablePartyMembers.length > battlerCount) {
+            for (let fieldIndex = 0; fieldIndex < battlerCount; fieldIndex++) {
+              globalScene.phaseManager.pushNew("CheckSwitchPhase", fieldIndex, globalScene.currentBattle.double);
             }
           }
         }

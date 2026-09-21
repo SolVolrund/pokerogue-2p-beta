@@ -91,6 +91,7 @@ export const NON_BATTLE_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
   MysteryEncounterType.FARAWAY_ISLAND_TREASURE,
   MysteryEncounterType.CONTEST_HALL,
   MysteryEncounterType.MINING,
+  MysteryEncounterType.GAME_CORNER,
 ];
 
 export const MYSTERY_ENCOUNTER_BATTLE_GROUPS = {
@@ -131,6 +132,7 @@ export const VS_OWNER_SCOPED_NON_BATTLE_MYSTERY_ENCOUNTERS: readonly MysteryEnco
   MysteryEncounterType.PART_TIMER,
   MysteryEncounterType.GLOBAL_TRADE_SYSTEM,
   MysteryEncounterType.MINING,
+  MysteryEncounterType.GAME_CORNER,
 ];
 
 export const VS_NATIVE_LANE_TRAINER_BATTLE_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
@@ -248,6 +250,7 @@ export const TWO_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryE
   MysteryEncounterType.DEJA_VU,
   MysteryEncounterType.MINING,
   MysteryEncounterType.LIFE_IS_WONDERFUL,
+  MysteryEncounterType.GAME_CORNER,
 ];
 
 export const THREE_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] = [
@@ -289,6 +292,7 @@ export const THREE_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST: readonly Myster
   MysteryEncounterType.DEJA_VU,
   MysteryEncounterType.MINING,
   MysteryEncounterType.LIFE_IS_WONDERFUL,
+  MysteryEncounterType.GAME_CORNER,
 ];
 
 // Limited-party and Vs allowlists intentionally start by mirroring full co-op.
@@ -342,9 +346,7 @@ export function getMysteryEncounterCompatibilityAllowlist(
   }
 }
 
-export function isLimitedPartyMysteryEncounterCompatibilityMode(
-  mode: MysteryEncounterCompatibilityMode,
-): boolean {
+export function isLimitedPartyMysteryEncounterCompatibilityMode(mode: MysteryEncounterCompatibilityMode): boolean {
   return mode === "two-player-limited-coop" || mode === "three-player-limited-coop";
 }
 

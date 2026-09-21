@@ -790,7 +790,11 @@ export class CommandPhase extends FieldPhase {
     return playerPokemon.getHeldItems().some(item => item instanceof BerserkGeneModifier);
   }
 
-  private getBerserkGeneAiMove(playerPokemon: PlayerPokemon): TurnMove {
+  private shouldAutoSelectFightMove(playerPokemon = this.getPokemon()): boolean {
+    return playerPokemon.isShadowPokemon() || this.hasBerserkGene(playerPokemon);
+  }
+
+  private getAutoSelectedFightMove(playerPokemon: PlayerPokemon): TurnMove {
     const previousAiType = playerPokemon.aiType;
     const previousAiCommandInProgress = globalScene.aiCommandInProgress;
 
@@ -804,13 +808,13 @@ export class CommandPhase extends FieldPhase {
     }
   }
 
-  public handleBerserkGeneFightCommand(): boolean {
+  public handleAutoSelectedFightCommand(): boolean {
     const playerPokemon = this.getPokemon();
-    if (!this.hasBerserkGene(playerPokemon)) {
+    if (!this.shouldAutoSelectFightMove(playerPokemon)) {
       return false;
     }
 
-    this.queueComputerPartnerFightCommand(this.getBerserkGeneAiMove(playerPokemon));
+    this.queueComputerPartnerFightCommand(this.getAutoSelectedFightMove(playerPokemon));
     this.end();
     return true;
   }
@@ -1168,7 +1172,7 @@ export class CommandPhase extends FieldPhase {
       globalScene.currentBattle.isBattleMysteryEncounter()
       && globalScene.currentBattle.mysteryEncounter?.skipToFightInput
     ) {
-      if (this.handleBerserkGeneFightCommand()) {
+      if (this.handleAutoSelectedFightCommand()) {
         return;
       }
       globalScene.ui.clearText();
@@ -1683,9 +1687,8 @@ export class CommandPhase extends FieldPhase {
   private handleRepositionCommand(targetPosition: FieldPosition): boolean {
     const playerPokemon = this.getPokemon();
     if (
-      !globalScene.twoPlayerMode
-      || globalScene.twoPlayerVsMode
-      || globalScene.getPlayerFieldOwners().length < 3
+      globalScene.twoPlayerVsMode
+      || globalScene.getBattleFieldSlotCount() < 3
       || globalScene.currentBattle.getBattlerCount() < 3
       || playerPokemon.fieldPosition === targetPosition
     ) {

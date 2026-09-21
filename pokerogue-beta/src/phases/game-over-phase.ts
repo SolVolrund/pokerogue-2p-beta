@@ -29,12 +29,17 @@ import { awardRibbonsToSpeciesLine } from "#system/ribbons/ribbon-methods";
 import { TrainerData } from "#system/trainer-data";
 import { trainerConfigs } from "#trainers/trainer-config";
 import type { DejaVuGhostData, SessionSaveData } from "#types/save-data";
-import { checkSpeciesValidForChallenge, isNuzlockeChallenge } from "#utils/challenge-utils";
+import { checkSpeciesValidForChallenge, getChallengesForPlayer, isNuzlockeChallenge } from "#utils/challenge-utils";
 import { isUnownCrystalGauntletWave } from "#utils/classic-final-boss-utils";
 import { fixedInt, isLocalServerConnected } from "#utils/common";
 import { getDejaVuGhostRunKey } from "#utils/deja-vu-run-key";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
+
+interface ClassicVictoryUnlock {
+  unlockable: Unlockables;
+  playerIndexes: PlayerIndex[];
+}
 
 export class GameOverPhase extends BattlePhase {
   public readonly phaseName = "GameOverPhase";
@@ -166,7 +171,7 @@ export class GameOverPhase extends BattlePhase {
 
   private awardRibbons(playerIndex: PlayerIndex): void {
     let ribbonFlags = 0n;
-    for (const challenge of globalScene.gameMode.challenges) {
+    for (const challenge of getChallengesForPlayer(playerIndex)) {
       const ribbon = challenge.ribbonAwarded;
       if (challenge.value && ribbon) {
         ribbonFlags |= ribbon;
@@ -200,6 +205,7 @@ export class GameOverPhase extends BattlePhase {
           species,
           gameData.getSpeciesDexAttrProps(species, pokemon.getDexAttr()),
           false,
+          playerIndex,
         )
       ) {
         awardRibbonsToSpeciesLine(species.speciesId, ribbonFlags as RibbonFlag, gameData);
@@ -215,6 +221,7 @@ export class GameOverPhase extends BattlePhase {
       globalScene.time.delayedCall(1000, () => {
         const victoryProfilePlayerIndexes = this.getVictoryProfilePlayerIndexes();
         const firstClearByPlayer = new Map<PlayerIndex, boolean>();
+        const victoryUnlocks = newClear ? this.getNewClassicUnlocks() : [];
         if (this.isVictory) {
           if (globalScene.gameMode.isClassic) {
             for (const playerIndex of victoryProfilePlayerIndexes) {
@@ -240,6 +247,22 @@ export class GameOverPhase extends BattlePhase {
           }
         }
 
+        // Commit completion before the ending UI; unlock phases only announce it later.
+        for (const { unlockable, playerIndexes } of victoryUnlocks) {
+          for (const playerIndex of playerIndexes) {
+            globalScene.getPlayerGameData(playerIndex).unlocks[unlockable] = true;
+          }
+        }
+        if (this.isVictory) {
+          if (globalScene.twoPlayerMode) {
+            for (const playerIndex of globalScene.getActivePlayerIndexes()) {
+              globalScene.savePlayerSystemSaveLocal(playerIndex);
+            }
+          } else {
+            globalScene.gameData.saveSystemLocal();
+          }
+        }
+
         const fadeDuration = this.isVictory ? 10000 : 5000;
         audioManager.fadeOutBgm(fadeDuration);
         const activeBattlers = globalScene.getField().filter(p => p?.isActive(true));
@@ -252,7 +275,7 @@ export class GameOverPhase extends BattlePhase {
 
           if (this.isVictory && globalScene.gameMode.isChallenge) {
             victoryProfilePlayerIndexes.forEach(playerIndex => {
-              globalScene.gameMode.challenges.forEach(c =>
+              getChallengesForPlayer(playerIndex).forEach(c =>
                 globalScene.validateAchvsForPlayer(ChallengeAchv, playerIndex, c),
               );
             });
@@ -260,7 +283,7 @@ export class GameOverPhase extends BattlePhase {
 
           const clear = (endCardPhase?: EndCardPhase) => {
             if (this.isVictory && newClear) {
-              this.handleUnlocks();
+              this.handleUnlocks(victoryUnlocks);
 
               for (const playerIndex of victoryProfilePlayerIndexes) {
                 for (const species of this.firstRibbonsByPlayer.get(playerIndex) ?? []) {
@@ -410,43 +433,51 @@ export class GameOverPhase extends BattlePhase {
     }
   }
 
-  handleUnlocks(): void {
+  handleUnlocks(unlocks = this.getNewClassicUnlocks()): void {
+    for (const { unlockable, playerIndexes } of unlocks) {
+      globalScene.phaseManager.unshiftNew("UnlockPhase", unlockable, playerIndexes);
+    }
+  }
+
+  private getNewClassicUnlocks(): ClassicVictoryUnlock[] {
+    const unlocks: ClassicVictoryUnlock[] = [];
     if (this.isVictory && globalScene.gameMode.isClassic) {
       const classicFinalBossSpeciesId = globalScene.currentBattle.classicFinalBossSpeciesId;
       const activePlayerIndexes = globalScene.getActivePlayerIndexes();
-      const queueUnlock = (unlockable: Unlockables, playerIndexes = activePlayerIndexes): void => {
+      const collectUnlock = (unlockable: Unlockables, playerIndexes = activePlayerIndexes): void => {
         const lockedPlayerIndexes = playerIndexes.filter(playerIndex => (
           !globalScene.getPlayerGameData(playerIndex).unlocks[unlockable]
         ));
         if (lockedPlayerIndexes.length > 0) {
-          globalScene.phaseManager.unshiftNew("UnlockPhase", unlockable, lockedPlayerIndexes);
+          unlocks.push({ unlockable, playerIndexes: lockedPlayerIndexes });
         }
       };
 
-      queueUnlock(Unlockables.ENDLESS_MODE);
+      collectUnlock(Unlockables.ENDLESS_MODE);
       if (activePlayerIndexes.some(playerIndex => globalScene.getPlayerParty(playerIndex).some(p => p.fusionSpecies))) {
-        queueUnlock(Unlockables.SPLICED_ENDLESS_MODE);
+        collectUnlock(Unlockables.SPLICED_ENDLESS_MODE);
       }
 
       if (classicFinalBossSpeciesId === SpeciesId.ETERNATUS) {
-        queueUnlock(Unlockables.MINI_BLACK_HOLE);
+        collectUnlock(Unlockables.MINI_BLACK_HOLE);
       }
       if (classicFinalBossSpeciesId === SpeciesId.NECROZMA) {
-        queueUnlock(Unlockables.GAMMA_RAY_BURST);
+        collectUnlock(Unlockables.GAMMA_RAY_BURST);
       }
       if (classicFinalBossSpeciesId === SpeciesId.MEW) {
-        queueUnlock(Unlockables.OLD_SEA_MAP);
+        collectUnlock(Unlockables.OLD_SEA_MAP);
       }
       if (classicFinalBossSpeciesId === SpeciesId.UNOWN) {
-        queueUnlock(Unlockables.UNOWN_BOX);
+        collectUnlock(Unlockables.UNOWN_BOX);
       }
-      queueUnlock(
+      collectUnlock(
         Unlockables.EVIOLITE,
         activePlayerIndexes.filter(playerIndex => globalScene
           .getPlayerParty(playerIndex)
           .some(p => speciesDataRegistry.hasEvolutions(p.getSpeciesForm(true).speciesId))),
       );
     }
+    return unlocks;
   }
 
   awardFirstClassicCompletion(pokemon: Pokemon, playerIndex: PlayerIndex, forStarter = false): void {

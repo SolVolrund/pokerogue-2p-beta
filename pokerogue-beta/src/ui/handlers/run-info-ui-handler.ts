@@ -697,7 +697,10 @@ export class RunInfoUiHandler extends UiHandler {
         case Challenges.SINGLE_GENERATION:
           rules.push(i18next.t(`runHistory:challengeMonoGen${chal.value}`));
           break;
-        case Challenges.SINGLE_TYPE: {
+        case Challenges.SINGLE_TYPE:
+        case Challenges.SINGLE_TYPE_P1:
+        case Challenges.SINGLE_TYPE_P2:
+        case Challenges.SINGLE_TYPE_P3: {
           const typeRule = PokemonType[chal.value - 1];
           const typeTextColor = `[color=${TypeColor[typeRule]}]`;
           const typeShadowColor = `[shadow=${TypeShadow[typeRule]}]`;
@@ -706,7 +709,8 @@ export class RunInfoUiHandler extends UiHandler {
             + typeShadowColor
             + i18next.t(`pokemonInfo:type.${toCamelCase(typeRule)}`)!
             + "[/color][/shadow]";
-          rules.push(typeText);
+          const playerLabel = chal.id === Challenges.SINGLE_TYPE ? "" : `P${chal.id - Challenges.SINGLE_TYPE_P1 + 1}: `;
+          rules.push(playerLabel + typeText);
           break;
         }
         case Challenges.INVERSE_BATTLE:

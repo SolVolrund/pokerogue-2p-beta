@@ -118,14 +118,14 @@ export class QuietFormChangePhase extends BattlePhase {
   private async playFormChangeTween(): Promise<void> {
     const [pokemonTintSprite, pokemonFormTintSprite] = [this.getPokemonSprite(), this.getPokemonSprite()];
 
-    // TODO: This is never deregistered
-    this.pokemon.getSprite().on("animationupdate", (_anim, frame) => {
+    const updateTintFrame = (_anim: Phaser.Animations.Animation, frame: Phaser.Animations.AnimationFrame) => {
       if (frame.textureKey === pokemonTintSprite.texture.key) {
         pokemonTintSprite.setFrame(frame.textureFrame);
       } else {
         pokemonFormTintSprite.setFrame(frame.textureFrame);
       }
-    });
+    };
+    this.pokemon.getSprite().on("animationupdate", updateTintFrame);
 
     pokemonTintSprite // formatting
       .setAlpha(0)
@@ -163,7 +163,7 @@ export class QuietFormChangePhase extends BattlePhase {
       scale: 0.01,
       ease: "Cubic.easeInOut",
       duration: 500,
-      onComplete: () => pokemonTintSprite.destroy(),
+      onComplete: () => pokemonTintSprite.setVisible(false),
     });
     await playTween({
       targets: pokemonFormTintSprite,
@@ -181,7 +181,9 @@ export class QuietFormChangePhase extends BattlePhase {
       ease: "Cubic.easeOut",
       duration: 1000,
     });
-    pokemonTintSprite.setVisible(false);
+    this.pokemon.getSprite().off("animationupdate", updateTintFrame);
+    pokemonTintSprite.destroy();
+    pokemonFormTintSprite.destroy();
 
     this.showFormChangeTextAndEnd();
   }
@@ -222,7 +224,7 @@ export class QuietFormChangePhase extends BattlePhase {
     this.pokemon.removeTag(BattlerTagType.AUTOTOMIZED);
 
     // TODO: This final boss fight code should almost certainly go in its own superclass phase
-    if (globalScene.currentBattle.isClassicFinalBoss && this.pokemon.isEnemy()) {
+    if (globalScene.currentBattle.isClassicFinalBoss && this.pokemon.isEnemy() && !this.pokemon.isBioInstabilityEevee()) {
       audioManager.playBgm();
       globalScene.phaseManager.unshiftNew(
         "PokemonHealPhase",

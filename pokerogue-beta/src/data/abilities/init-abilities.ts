@@ -2223,6 +2223,11 @@ export function initAbilities() {
       )
       .ignorable()
       .build(),
+    new AbBuilder(AbilityId.BIO_INSTABILITY, 9)
+      .attr(NoFusionAbilityAbAttr)
+      .uncopiable()
+      .unreplaceable()
+      .build(),
   );
 }
 

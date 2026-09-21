@@ -1,5 +1,6 @@
 import type { FixedBattleConfig } from "#app/battle";
 import { getRandomTrainerFunc } from "#app/battle";
+import type { PlayerIndex } from "#app/battle-scene";
 import type { GameMode } from "#app/game-mode";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
@@ -40,6 +41,10 @@ const DEFAULT_PARTY_MAX_COST = 10;
 type ChallengeCondition = (data: GameData) => boolean;
 
 export abstract class Challenge {
+  appliesToPlayer(_playerIndex: PlayerIndex): boolean {
+    return true;
+  }
+
   /** The id of the challenge */
   public readonly id: Challenges;
 
@@ -759,6 +764,28 @@ interface MonotypeOverride {
 
 /** Implements a mono type challenge. */
 export class SingleTypeChallenge extends Challenge {
+  public get playerIndex(): PlayerIndex | undefined {
+    switch (this.id) {
+      case Challenges.SINGLE_TYPE_P1:
+        return 0;
+      case Challenges.SINGLE_TYPE_P2:
+        return 1;
+      case Challenges.SINGLE_TYPE_P3:
+        return 2;
+      default:
+        return undefined;
+    }
+  }
+
+  override appliesToPlayer(playerIndex: PlayerIndex): boolean {
+    return this.playerIndex === undefined || this.playerIndex === playerIndex;
+  }
+
+  override getName(): string {
+    const name = i18next.t("challenges:singleType.name");
+    return this.playerIndex === undefined ? name : `${name} P${this.playerIndex + 1}`;
+  }
+
   public override get ribbonAwarded(): RibbonFlag {
     // `this.value` represents the 1-based index of pokemon type
     // `RibbonData.MONO_NORMAL` starts the flag position for the types,
@@ -771,8 +798,8 @@ export class SingleTypeChallenge extends Challenge {
     { species: SpeciesId.CASTFORM, type: PokemonType.NORMAL, fusion: false },
   ];
 
-  constructor() {
-    super(Challenges.SINGLE_TYPE, 18);
+  constructor(id: Challenges = Challenges.SINGLE_TYPE) {
+    super(id, 18);
   }
 
   override applyStarterChoice(species: PokemonSpecies, isValid: BooleanHolder, dexAttr: DexAttrProps): boolean {
@@ -838,7 +865,7 @@ export class SingleTypeChallenge extends Challenge {
   }
 
   static loadChallenge(source: SingleTypeChallenge | any): SingleTypeChallenge {
-    const newChallenge = new SingleTypeChallenge();
+    const newChallenge = new SingleTypeChallenge(source.id ?? Challenges.SINGLE_TYPE);
     newChallenge.value = source.value;
     newChallenge.severity = source.severity;
     return newChallenge;
@@ -1223,6 +1250,9 @@ export function copyChallenge(source: Challenge | any): Challenge {
     case Challenges.SINGLE_GENERATION:
       return SingleGenerationChallenge.loadChallenge(source);
     case Challenges.SINGLE_TYPE:
+    case Challenges.SINGLE_TYPE_P1:
+    case Challenges.SINGLE_TYPE_P2:
+    case Challenges.SINGLE_TYPE_P3:
       return SingleTypeChallenge.loadChallenge(source);
     case Challenges.LOWER_MAX_STARTER_COST:
       return LowerStarterMaxCostChallenge.loadChallenge(source);
@@ -1255,7 +1285,9 @@ export function initChallenges() {
     new LimitedCatchChallenge(),
     new LimitedSupportChallenge(),
     new SingleGenerationChallenge(),
-    new SingleTypeChallenge(),
+    new SingleTypeChallenge(Challenges.SINGLE_TYPE_P1),
+    new SingleTypeChallenge(Challenges.SINGLE_TYPE_P2),
+    new SingleTypeChallenge(Challenges.SINGLE_TYPE_P3),
     new PassivesChallenge(),
     new InverseBattleChallenge(),
     new FlipStatChallenge(),

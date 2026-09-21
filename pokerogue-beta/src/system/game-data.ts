@@ -450,6 +450,14 @@ export class GameData {
       }
     }
 
+    // Older interrupted endings could save the victory achievement before the win and unlocks.
+    if (Object.hasOwn(this.achvUnlocks, "CLASSIC_VICTORY")) {
+      this.gameStats.sessionsWon = Math.max(1, this.gameStats.sessionsWon || 0);
+    }
+    if (this.gameStats.sessionsWon > 0) {
+      this.unlocks[Unlockables.ENDLESS_MODE] = true;
+    }
+
     if (systemData.voucherUnlocks) {
       for (const v of Object.keys(systemData.voucherUnlocks)) {
         if (Object.hasOwn(vouchers, v)) {
@@ -543,7 +551,12 @@ export class GameData {
         localStorage.setItem(lsItemKey, "");
       }
 
+      const savedWins = systemData.gameStats?.sessionsWon ?? 0;
+      const savedEndlessUnlock = systemData.unlocks?.[Unlockables.ENDLESS_MODE];
       this.initParsedSystem(systemData);
+      if (this.gameStats.sessionsWon !== savedWins || this.unlocks[Unlockables.ENDLESS_MODE] !== savedEndlessUnlock) {
+        this.saveSystemLocal();
+      }
       return true;
     } catch (err) {
       console.error(err);
@@ -1489,6 +1502,7 @@ export class GameData {
       score: globalScene.score,
       waveIndex: globalScene.currentBattle.waveIndex,
       battleType: globalScene.currentBattle.battleType,
+      wildBattlerCount: globalScene.currentBattle.wildBattlerCount,
       trainer:
         globalScene.currentBattle.battleType === BattleType.TRAINER
           ? new TrainerData(globalScene.currentBattle.trainer)
@@ -2709,6 +2723,9 @@ export class GameData {
   }
 
   setPokemonSeen(pokemon: Pokemon, incrementCount = true, trainer = false): void {
+    if (pokemon.isBioInstabilityEevee()) {
+      return;
+    }
     // Some Mystery Encounters block updates to these stats
     if (
       globalScene.currentBattle?.isBattleMysteryEncounter()
@@ -2751,6 +2768,9 @@ export class GameData {
     fromEgg = false,
     showMessage = true,
   ): Promise<boolean> {
+    if (pokemon.isBioInstabilityEevee()) {
+      return false;
+    }
     // If incrementCount === false (not a catch scenario), only update the pokemon's dex data if the Pokemon has already been marked as caught in dex
     // Prevents form changes, nature changes, etc. from unintentionally updating the dex data of a "rental" pokemon
     const speciesRootForm = pokemon.species.getRootSpeciesId();

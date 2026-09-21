@@ -22,24 +22,23 @@ describe("Items - Double Battle Chance Boosters", () => {
     game = new GameManager(phaserGame);
   });
 
-  it("should guarantee double battle with 2 unique tiers", async () => {
+  it("should guarantee at least a double battle with 2 unique tiers", async () => {
     game.override.startingModifier([{ name: "LURE" }, { name: "SUPER_LURE" }]).startingWave(2);
 
     await game.classicMode.startBattle(SpeciesId.FEEBAS);
 
-    expect(game.scene.getEnemyField()).toHaveLength(2);
+    expect(game.scene.getEnemyField().length).toBeGreaterThanOrEqual(2);
   });
 
-  it("should guarantee double boss battle with 3 unique tiers", async () => {
+  it("should guarantee at least a double boss battle with 3 unique tiers", async () => {
     game.override.startingModifier([{ name: "LURE" }, { name: "SUPER_LURE" }, { name: "MAX_LURE" }]).startingWave(10);
 
     await game.classicMode.startBattle(SpeciesId.FEEBAS);
 
     const enemyField = game.scene.getEnemyField();
 
-    expect(enemyField).toHaveLength(2);
-    expect(enemyField[0].isBoss()).toBe(true);
-    expect(enemyField[1].isBoss()).toBe(true);
+    expect(enemyField.length).toBeGreaterThanOrEqual(2);
+    expect(enemyField.every(p => p.isBoss())).toBe(true);
   });
 
   it("should renew how many battles are left of existing booster when picking up new booster of same tier", async () => {

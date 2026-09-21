@@ -108,7 +108,7 @@ export class PokemonHealPhase extends CommonAnimPhase {
         pokemon.resetStatus();
       }
       if (this.fullRestorePP) {
-        for (const move of this.getPokemon().getMoveset()) {
+        for (const move of this.getPokemon().getMovesetForPpRestore()) {
           if (move) {
             move.ppUsed = 0;
           }

@@ -8,6 +8,7 @@ import type { AnySound } from "#audio/audio-manager";
 import { speciesEggMoves } from "#balance/moves/egg-moves";
 import type { GrowthRate } from "#data/exp";
 import { Gender } from "#data/gender";
+import { getBioInstabilityForm } from "#data/bio-instability";
 import { AbilityId } from "#enums/ability-id";
 import { DexAttr } from "#enums/dex-attr";
 import { EvoLevelThresholdKind } from "#enums/evo-level-threshold-kind";
@@ -463,6 +464,10 @@ export abstract class PokemonSpeciesForm {
   }
 
   getIconAtlasKey(formIndex?: number, shiny?: boolean, variant?: number): string {
+    const bioForm = getBioInstabilityForm(this.speciesId, this.getFormSpriteKey(formIndex) ?? "");
+    if (bioForm) {
+      return getPokemonSpecies(bioForm.species).getIconAtlasKey(0, shiny, 0);
+    }
     const variantDataIndex = this.getVariantDataIndex(formIndex);
     const isVariant =
       shiny && variantData[variantDataIndex] && variant !== undefined && variantData[variantDataIndex][variant];
@@ -475,6 +480,10 @@ export abstract class PokemonSpeciesForm {
   }
 
   getIconId(female: boolean, formIndex?: number, shiny?: boolean, variant?: number): string {
+    const bioForm = getBioInstabilityForm(this.speciesId, this.getFormSpriteKey(formIndex) ?? "");
+    if (bioForm) {
+      return getPokemonSpecies(bioForm.species).getIconId(female, 0, shiny, 0);
+    }
     if (formIndex === undefined) {
       formIndex = this.formIndex;
     }
@@ -554,6 +563,10 @@ export abstract class PokemonSpeciesForm {
   }
 
   getCryKey(formIndex?: number): string {
+    const bioForm = getBioInstabilityForm(this.speciesId, this.getFormSpriteKey(formIndex) ?? "");
+    if (bioForm) {
+      return getPokemonSpecies(bioForm.species).getCryKey(0);
+    }
     let speciesId = this.speciesId;
 
     const override = timedEventManager.getEventPokemonSpriteReplacement(this.speciesId, formIndex);
@@ -931,6 +944,10 @@ export class PokemonSpecies extends PokemonSpeciesForm implements Localizable {
   }
 
   getName(formIndex?: number): string {
+    const bioForm = getBioInstabilityForm(this.speciesId, this.getFormSpriteKey(formIndex) ?? "");
+    if (bioForm) {
+      return getPokemonSpecies(bioForm.species).getName();
+    }
     if (formIndex !== undefined && this.forms.length > 0) {
       const form = this.forms[formIndex];
       if (!form) {

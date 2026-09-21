@@ -1098,6 +1098,7 @@ export class Arena {
       case BiomeId.FAIRY_CAVE:
       case BiomeId.TEMPLE:
       case BiomeId.LABORATORY:
+      case BiomeId.ROCKET_HQ:
         return false;
       default:
         return true;
@@ -1171,6 +1172,7 @@ export function getBiomeHasProps(biomeId: BiomeId): boolean {
     case BiomeId.VOLCANO:
     case BiomeId.GRAVEYARD:
     case BiomeId.FACTORY:
+    case BiomeId.ROCKET_HQ:
     case BiomeId.RUINS:
     case BiomeId.WASTELAND:
     case BiomeId.ABYSS:

@@ -5,6 +5,7 @@ import { globalScene } from "#app/global-scene";
 import { modifierTypes } from "#data/data-lists";
 import { getCharVariantFromDialogue } from "#data/dialogue";
 import { BiomeId } from "#enums/biome-id";
+import { SpeciesId } from "#enums/species-id";
 import { TrainerSlot } from "#enums/trainer-slot";
 import { TrainerType } from "#enums/trainer-type";
 import { BattlePhase } from "#phases/battle-phase";
@@ -37,6 +38,9 @@ export class TrainerVictoryPhase extends BattlePhase {
     }
 
     const trainerType = globalScene.currentBattle.trainer?.config.trainerType!; // TODO: is this bang correct?
+    if (globalScene.arena.biomeId === BiomeId.ROCKET_HQ && trainerType === TrainerType.GIOVANNI) {
+      this.queueRocketHqRewards();
+    }
     // Validate Voucher for boss trainers
     if (Object.hasOwn(vouchers, TrainerType[trainerType]) && globalScene.currentBattle.trainer?.config.isBoss) {
       const trainerVoucher = vouchers[TrainerType[trainerType]];
@@ -148,6 +152,28 @@ export class TrainerVictoryPhase extends BattlePhase {
     }
 
     globalScene.phaseManager.unshiftNew("ModifierRewardPhase", modifierTypeFunc);
+  }
+
+  private queueRocketHqRewards(): void {
+    for (const playerIndex of globalScene.getActivePlayerIndexes().slice().reverse()) {
+      const rewards: ModifierTypeFunc[] = [modifierTypes.SILPH_SCOPE];
+      if (globalScene.getPlayerParty(playerIndex).some(pokemon => pokemon.hasSpecies(SpeciesId.MEWTWO))) {
+        rewards.unshift(modifierTypes.STRANGE_HELMET);
+      }
+      globalScene.phaseManager.unshiftNew(
+        "SelectModifierPhase",
+        0,
+        undefined,
+        {
+          guaranteedModifierTypeFuncs: rewards,
+          fillRemaining: false,
+          rerollMultiplier: -1,
+          allowBonusRewards: false,
+        },
+        false,
+        playerIndex,
+      );
+    }
   }
 
   private unlockComputerPartner(key: ComputerPartnerKey): void {

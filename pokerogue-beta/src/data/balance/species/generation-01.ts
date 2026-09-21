@@ -1,4 +1,5 @@
 import { EVOLVE_MOVE, RELEARN_MOVE } from "#app/constants";
+import { bioInstabilityPassives, createBioInstabilityForms } from "#balance/bio-instability-forms";
 import { EvoCondKey, EvolutionItem, SpeciesEvolution, SpeciesFormEvolution } from "#balance/pokemon-evolutions";
 import { COSPLAY_PIKACHU_BASE_FORM_KEY, COSPLAY_PIKACHU_SCARF_FORMS } from "#data/cosplay-pikachu";
 import { GrowthRate } from "#data/exp";
@@ -13451,6 +13452,7 @@ export function initGenerationOne(): SpeciesDataMapConfig {
           baseFriendship: 50,
           baseExp: 65,
         }),
+        ...createBioInstabilityForms(),
       ],
     }),
     starterCost: 3,
@@ -13624,6 +13626,7 @@ export function initGenerationOne(): SpeciesDataMapConfig {
       0: [AbilityId.PICKUP, AbilityId.FRIEND_GUARD],
       1: [AbilityId.PICKUP, AbilityId.FRIEND_GUARD],
       2: [AbilityId.FLUFFY, AbilityId.FRIEND_GUARD],
+      ...bioInstabilityPassives,
     },
     levelMoves: [
       [1, MoveId.TACKLE],
@@ -15560,6 +15563,32 @@ export function initGenerationOne(): SpeciesDataMapConfig {
         evoFormKey: SpeciesFormKey.MEGA_Y,
         trigger: new SpeciesFormChangeItemTrigger(FormChangeItem.MEWTWONITE_Y),
         conditions: [],
+      }),
+      ...["", SpeciesFormKey.MEGA_X, SpeciesFormKey.MEGA_Y].map(preFormKey =>
+        new SpeciesFormChange({
+          speciesId: SpeciesId.MEWTWO,
+          preFormKey,
+          evoFormKey: "armored",
+          trigger: new SpeciesFormChangeItemTrigger(FormChangeItem.STRANGE_HELMET),
+        }),
+      ),
+      // Explicit return paths keep removing the Helm from restoring a previous Mega form.
+      ...([
+        [SpeciesFormKey.MEGA_X, FormChangeItem.MEWTWONITE_X],
+        [SpeciesFormKey.MEGA_Y, FormChangeItem.MEWTWONITE_Y],
+      ] as const).map(([evoFormKey, item]) =>
+        new SpeciesFormChange({
+          speciesId: SpeciesId.MEWTWO,
+          preFormKey: "armored",
+          evoFormKey,
+          trigger: new SpeciesFormChangeItemTrigger(item),
+        }),
+      ),
+      new SpeciesFormChange({
+        speciesId: SpeciesId.MEWTWO,
+        preFormKey: "armored",
+        evoFormKey: "",
+        trigger: new SpeciesFormChangeItemTrigger(FormChangeItem.STRANGE_HELMET, false),
       }),
     ],
     eggTier: EggTier.LEGENDARY,

@@ -85,6 +85,7 @@ export class BallUiHandler extends UiHandler {
 
     this.updateCounts();
     this.pokeballSelectContainer.setVisible(true);
+    this.getUi().bringToTop(this.pokeballSelectContainer);
     this.setCursor(this.cursor);
 
     return true;

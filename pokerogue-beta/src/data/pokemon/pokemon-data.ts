@@ -34,6 +34,9 @@ export class CustomPokemonData {
   public nature: Nature | -1;
   public types: (RegularPokemonType | null)[];
   public alphBaseStatBoosts: Partial<Record<PermanentStat, number>>;
+  public eventVariant: string | undefined;
+  /** Shared move objects retain PP and PP Ups while a form's moves are hidden. */
+  public bioInstabilityMoves: PokemonMove[];
 
   constructor(data?: CustomPokemonData | Partial<CustomPokemonData>) {
     this.spriteScale = data?.spriteScale ?? -1;
@@ -42,6 +45,8 @@ export class CustomPokemonData {
     this.nature = data?.nature ?? -1;
     this.types = data?.types ?? [];
     this.alphBaseStatBoosts = { ...(data?.alphBaseStatBoosts ?? {}) };
+    this.eventVariant = data?.eventVariant;
+    this.bioInstabilityMoves = data?.bioInstabilityMoves?.map(move => PokemonMove.loadMove(move)) ?? [];
   }
 }
 

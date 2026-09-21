@@ -176,6 +176,8 @@ export class CommandUiHandler extends UiHandler {
     messageHandler.movesWindowContainer.setVisible(false);
     messageHandler.message.setWordWrapWidth(canTera || canZMove ? 910 : 1110);
     messageHandler.showText(i18next.t("commandUiHandler:actionMessage", { pokemonName }), 0);
+    messageHandler.restoreBattleUiLayering();
+    this.getUi().bringToTop(this.commandsContainer);
 
     if (this.getCursor() === Command.POKEMON) {
       this.setCursor(Command.FIGHT);
@@ -203,7 +205,7 @@ export class CommandUiHandler extends UiHandler {
         switch (cursor) {
           // Fight
           case Command.FIGHT:
-            if (this.isEnemyCommandPhase(commandPhase) || !commandPhase.handleBerserkGeneFightCommand()) {
+            if (this.isEnemyCommandPhase(commandPhase) || !commandPhase.handleAutoSelectedFightCommand()) {
               ui.setMode(UiMode.FIGHT, commandPhase.getFieldIndex());
             }
             success = true;
@@ -364,9 +366,8 @@ export class CommandUiHandler extends UiHandler {
 
   private shouldShowTriplePokemonMenu(): boolean {
     return (
-      globalScene.twoPlayerMode
-      && !globalScene.twoPlayerVsMode
-      && globalScene.getPlayerFieldOwners().length > 2
+      !globalScene.twoPlayerVsMode
+      && globalScene.getBattleFieldSlotCount() > 2
       && (globalScene.currentBattle?.getBattlerCount() ?? 1) > 2
     );
   }

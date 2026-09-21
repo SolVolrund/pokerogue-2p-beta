@@ -50,6 +50,8 @@ interface NewBattleBaseProps {
    * and set it to `false`.
    */
   double?: boolean | undefined;
+  /** Explicit size for naturally rolled solo wild encounters. */
+  wildBattlerCount?: 1 | 2 | 3 | undefined;
 }
 
 /**

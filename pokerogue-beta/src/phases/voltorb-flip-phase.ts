@@ -6,6 +6,7 @@ import { showEncounterText } from "#mystery-encounters/encounter-dialogue-utils"
 import { restoreGameCornerBgm } from "#mystery-encounters/game-corner-music";
 import { clearVoltorbFlipInputMode, setVoltorbFlipInputMode } from "#ui/voltorb-flip-input-ui-handler";
 import { randSeedInt } from "#utils/common";
+import { rollGameCornerCpuNuggies, withGameCornerSeed } from "#utils/game-corner";
 import { getCachedUrl } from "#utils/fetch-utils";
 import i18next from "i18next";
 
@@ -70,6 +71,18 @@ export class VoltorbFlipPhase extends Phase {
   start(): void {
     super.start();
 
+    if (globalScene.isComputerPartnerPlayer(this.playerIndex)) {
+      const nuggies = withGameCornerSeed(this.playerIndex, "cpu-payout", () => rollGameCornerCpuNuggies());
+      globalScene.phaseManager.unshiftNew(
+        "GameCornerRewardPhase",
+        nuggies,
+        this.playerIndex,
+        this.queuePostEncounterPhase,
+      );
+      this.end();
+      return;
+    }
+
     if (globalScene.twoPlayerMode) {
       globalScene.waitForPlayerInput(this.playerIndex);
     } else {
@@ -90,7 +103,7 @@ export class VoltorbFlipPhase extends Phase {
 
   private async startVoltorbFlip(): Promise<void> {
     await this.loadAssets();
-    this.generateBoard();
+    withGameCornerSeed(this.playerIndex, "board", () => this.generateBoard());
     this.createUi();
     this.render();
     await this.showVoltorbText(`${namespace}:voltorbFlip.start`);
@@ -98,6 +111,7 @@ export class VoltorbFlipPhase extends Phase {
   }
 
   private enableInput(inputDelayMs = 0): void {
+    globalScene.waitForPlayerInput(this.playerIndex);
     setVoltorbFlipInputMode({
       inputDelayMs,
       onMove: (dx, dy) => this.moveCursor(dx, dy),
@@ -225,8 +239,8 @@ export class VoltorbFlipPhase extends Phase {
 
     for (let col = 0; col < CARD_COLS; col++) {
       const x = this.getCardX(col) + 10;
-      this.addCountText(x+10, 295, `: x${colCounts[col].nuggies}`);
-      this.addCountText(x+10, 323, `: x${colCounts[col].voltorbs}`);
+      this.addCountText(x + 10, 295, `: x${colCounts[col].nuggies}`);
+      this.addCountText(x + 10, 323, `: x${colCounts[col].voltorbs}`);
     }
 
     this.totalText = this.addCountText(584, 295, `:0/${this.getTotalNuggies()}`);
@@ -393,13 +407,18 @@ export class VoltorbFlipPhase extends Phase {
 
     this.container?.destroy(true);
     this.container = undefined;
-    if (this.queuePostEncounterPhase) {
-      if (result === "lost") {
+    if (result === "lost") {
+      if (this.queuePostEncounterPhase) {
         restoreGameCornerBgm();
         globalScene.phaseManager.pushNew("PostMysteryEncounterPhase");
-      } else {
-        globalScene.phaseManager.pushNew("GameCornerRewardPhase", this.revealedNuggies, this.playerIndex, true);
       }
+    } else {
+      globalScene.phaseManager.unshiftNew(
+        "GameCornerRewardPhase",
+        this.revealedNuggies,
+        this.playerIndex,
+        this.queuePostEncounterPhase,
+      );
     }
     this.end();
   }
@@ -407,7 +426,7 @@ export class VoltorbFlipPhase extends Phase {
   private showVoltorbText(textKey: string, tokens?: Record<string, string | number>): Promise<void> {
     return new Promise(resolve => {
       if (globalScene.twoPlayerMode) {
-        globalScene.waitForSharedInput();
+        globalScene.waitForPlayerInput(this.playerIndex);
       } else {
         globalScene.setActivePlayerIndex(this.playerIndex);
       }

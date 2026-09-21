@@ -8685,6 +8685,7 @@ export class NaturePowerAttr extends CallMoveAttr {
       case BiomeId.SPACE:
         return MoveId.DRACO_METEOR;
       case BiomeId.FACTORY:
+      case BiomeId.ROCKET_HQ:
         return MoveId.FLASH_CANNON;
       case BiomeId.LABORATORY:
         return MoveId.ZAP_CANNON;

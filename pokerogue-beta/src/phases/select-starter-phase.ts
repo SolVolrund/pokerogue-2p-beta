@@ -306,6 +306,7 @@ export class SelectStarterPhase extends Phase {
       profile,
       hostGameData.getComputerPartnerProgress(partnerKey),
       globalScene.getPlayerPartyLimit(playerIndex),
+      playerIndex,
     );
     return this.initPlayerStarters(starters, playerIndex).then(() => {
       globalScene.savePlayerSystemSaveLocal(0);

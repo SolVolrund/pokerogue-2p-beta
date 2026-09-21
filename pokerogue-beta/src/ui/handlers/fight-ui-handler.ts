@@ -147,6 +147,10 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
     messageHandler.bg.setVisible(false);
     messageHandler.commandWindow.setVisible(false);
     messageHandler.movesWindowContainer.setVisible(true);
+    messageHandler.restoreBattleUiLayering();
+    this.getUi().bringToTop(this.movesContainer);
+    this.getUi().bringToTop(this.moveInfoContainer);
+    this.getUi().bringToTop(this.moveInfoOverlay);
     const pokemon = commandPhase.getPokemon();
     if (pokemon.tempSummonData.turnCount <= 1) {
       this.setCursor(0);

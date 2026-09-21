@@ -251,6 +251,7 @@ export const mysteryEncountersByBiome = new Map<BiomeId, MysteryEncounterType[]>
   [BiomeId.LABORATORY, []],
   [BiomeId.ALTO_MARE, []],
   [BiomeId.SECRET_GARDEN, [MysteryEncounterType.POKE_POACHERS]],
+  [BiomeId.ROCKET_HQ, []],
 ]);
 
 export function initMysteryEncounters() {
@@ -338,7 +339,7 @@ export function initMysteryEncounters() {
   // Add ANY biome encounters to biome map
   let _encounterBiomeTableLog = "";
   mysteryEncountersByBiome.forEach((biomeEncounters, biome) => {
-    if (biome !== BiomeId.FARAWAY_ISLAND && biome !== BiomeId.SECRET_GARDEN) {
+    if (biome !== BiomeId.FARAWAY_ISLAND && biome !== BiomeId.SECRET_GARDEN && biome !== BiomeId.ROCKET_HQ) {
       anyBiomeEncounters.forEach(encounter => {
         if (!biomeEncounters.includes(encounter)) {
           biomeEncounters.push(encounter);

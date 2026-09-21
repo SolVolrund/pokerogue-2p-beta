@@ -1825,7 +1825,7 @@ export class BattleScene extends SceneBase {
       return this.currentBattle?.double ? 2 : 1;
     }
 
-    return this.twoPlayerMode ? this.getPlayerFieldOwners().length : this.currentBattle?.double ? 2 : 1;
+    return this.twoPlayerMode ? this.getPlayerFieldOwners().length : this.currentBattle?.getBattlerCount() ?? 1;
   }
 
   public getPlayerBattlerIndex(fieldIndex: number): BattlerIndex {
@@ -2856,6 +2856,9 @@ export class BattleScene extends SceneBase {
   }
 
   public getPlayerIndexForFieldSlot(fieldSlot: number): PlayerIndex {
+    if (!this.twoPlayerMode) {
+      return 0;
+    }
     return this.getPlayerFieldOwners()[fieldSlot] ?? this.fieldSlotOwners[fieldSlot] ?? 0;
   }
 
@@ -3033,7 +3036,7 @@ export class BattleScene extends SceneBase {
 
   // TODO: Add `undefined` to return type
   /**
-   * Returns an array of PlayerPokemon of length 1 or 2 depending on if in a double battle or not.
+   * Returns the player Pokemon occupying the current battle's one to three field slots.
    * @param active - (Default `false`) Whether to consider only {@linkcode Pokemon.isActive | active} on-field pokemon
    * @returns array of {@linkcode PlayerPokemon}
    */
@@ -3054,7 +3057,7 @@ export class BattleScene extends SceneBase {
       return [];
     }
     return party
-      .slice(0, Math.min(party.length, this.currentBattle?.double ? 2 : 1))
+      .slice(0, Math.min(party.length, this.currentBattle?.getBattlerCount() ?? 1))
       .filter(p => !active || p.isActive());
   }
 
@@ -3074,7 +3077,7 @@ export class BattleScene extends SceneBase {
   }
 
   /**
-   * Returns an array of EnemyPokemon of length 1 or 2 depending on if in a double battle or not.
+   * Returns the enemy Pokemon occupying the current battle's one to three field slots.
    * @param active - (Default `false`) Whether to consider only {@linkcode Pokemon.isActive | active} on-field pokemon
    * @returns array of {@linkcode EnemyPokemon}
    */
@@ -3087,7 +3090,7 @@ export class BattleScene extends SceneBase {
 
   /**
    * Returns an array of Pokemon on both sides of the battle - player first, then enemy.
-   * Does not actually check if the pokemon are on the field or not, and always has length 4 regardless of battle type.
+   * Does not check if Pokemon are on the field, and keeps all six battler-index positions unless filtered.
    * @param activeOnly - Whether to consider only active pokemon (as described by {@linkcode Pokemon.isActive()}); default `false`.
    * If `true`, will also remove all `null` values from the array.
    * @returns An array of {@linkcode Pokemon}, as described above.
@@ -3656,14 +3659,30 @@ export class BattleScene extends SceneBase {
   }
 
   // TODO: Invert the chances for this
-  private getDoubleBattleChance(newWaveIndex: number): number {
-    const doubleChance = new NumberHolder(newWaveIndex % 10 === 0 ? 32 : 8);
-    this.applyModifiers(DoubleBattleChanceBoosterModifier, true, doubleChance);
+  private getDoubleBattleChance(newWaveIndex: number, soloWild = false): number {
+    const useSoloLureTable = soloWild && newWaveIndex % 10 !== 0;
+    const lureCount = Math.min(this.getModifiers(DoubleBattleChanceBoosterModifier).length, 3);
+    const doubleChance = new NumberHolder(
+      useSoloLureTable ? [8, 2, 1, 1][lureCount] : newWaveIndex % 10 === 0 ? 32 : 8,
+    );
+    if (!useSoloLureTable) {
+      this.applyModifiers(DoubleBattleChanceBoosterModifier, true, doubleChance);
+    }
     for (const p of this.getPlayerField()) {
       // TODO: This passes `null` to `applyAbAttrs`
       applyAbAttrs("DoubleBattleChanceAbAttr", { pokemon: p, chance: doubleChance });
     }
     return Math.max(doubleChance.value, 1);
+  }
+
+  private rollSoloWildBattlerCount(waveIndex: number): 1 | 2 | 3 {
+    const lureCount = Math.min(this.getModifiers(DoubleBattleChanceBoosterModifier).length, 3);
+    // Roll triples first; the double odds are conditional on that roll failing.
+    const tripleChance = (waveIndex % 10 === 0 ? [128, 32, 8, 2] : [32, 8, 2, 1])[lureCount];
+    if (randSeedInt(tripleChance) === 0) {
+      return 3;
+    }
+    return randSeedInt(this.getDoubleBattleChance(waveIndex, true)) === 0 ? 2 : 1;
   }
 
   isNewBiome(currentBattle = this.currentBattle) {
@@ -3784,7 +3803,7 @@ export class BattleScene extends SceneBase {
 
     switch (battleType) {
       case BattleType.WILD:
-        fixedDouble = fromSession.enemyParty.length > 1;
+        fixedDouble = (fromSession.wildBattlerCount ?? fromSession.enemyParty.length) > 1;
         break;
       case BattleType.TRAINER: {
         const config = trainerConfigs[trainerData.trainerType];
@@ -3805,6 +3824,7 @@ export class BattleScene extends SceneBase {
       waveIndex,
       trainerData,
       double: fixedDouble,
+      wildBattlerCount: fromSession.wildBattlerCount,
     } satisfies NewBattleSavedProps;
   }
 
@@ -3841,6 +3861,7 @@ export class BattleScene extends SceneBase {
   private handleSavedBattle(resolved: NewBattleInitialProps, props: NewBattleSavedProps): void {
     resolved.battleType = props.battleType;
     resolved.double = props.double;
+    resolved.wildBattlerCount = props.wildBattlerCount;
     resolved.trainer = props.trainerData?.toTrainer();
     if (resolved.trainer) {
       this.field.add(resolved.trainer);
@@ -3957,10 +3978,11 @@ export class BattleScene extends SceneBase {
 
   /**
    * Sub-method of {@linkcode newBattle} that returns whether the new battle is a double battle.
-   * @param __namedParameters - Needed for typedoc to function
-   * @returns Whether the battle should be a double battle.
+   * @param props - Battle configuration, also populated with the solo wild encounter size.
+   * @returns Whether the battle needs more than one field slot.
    */
-  private checkIsDouble({ double: forcedDouble, battleType, waveIndex, trainer }: NewBattleConstructedProps): boolean {
+  private checkIsDouble(props: NewBattleConstructedProps): boolean {
+    const { double: forcedDouble, battleType, waveIndex, trainer } = props;
     if (this.twoPlayerMode && (!this.twoPlayerEnemyPlayerMode || this.multiplayerPlayerCount > 1)) {
       if (isUnownRealFinalBossWave(waveIndex, this.gameMode.modeId)) {
         return battleType !== BattleType.MYSTERY_ENCOUNTER;
@@ -3975,6 +3997,7 @@ export class BattleScene extends SceneBase {
     // TODO: enforce using the proper override depending on whether it's a trainer or a wild battle
     const doubleBattleOverride = this.doCheckDoubleOverride(waveIndex);
     if (doubleBattleOverride != null) {
+      props.wildBattlerCount = undefined;
       return doubleBattleOverride;
     }
 
@@ -3995,6 +4018,10 @@ export class BattleScene extends SceneBase {
     // Standard wild battle chance
     // TODO: Rework the calcs here - this is weird
     if (battleType === BattleType.WILD) {
+      if (!this.twoPlayerMode) {
+        props.wildBattlerCount = this.rollSoloWildBattlerCount(waveIndex);
+        return props.wildBattlerCount > 1;
+      }
       return randSeedInt(this.getDoubleBattleChance(waveIndex)) === 0;
     }
     return trainer?.variant === TrainerVariant.DOUBLE;
@@ -4040,13 +4067,21 @@ export class BattleScene extends SceneBase {
       this.arena.updatePoolsForTimeOfDay();
     }
 
-    // use the old value of `double` to ensure both combatants get recalled properly when going from double to single battles
+    // Use the previous slot count so shrinking encounters still recall every outgoing Pokemon.
     const playerField =
       this.twoPlayerEnemyPlayerMode && this.multiplayerPlayerCount === 1
         ? this.getPlayerParty(0).slice(0, 1 + Number(lastBattle.double))
         : this.twoPlayerMode
           ? this.getPlayerField()
-          : this.getPlayerParty().slice(0, 1 + Number(lastBattle.double));
+          : this.getPlayerParty().slice(0, lastBattle.getBattlerCount());
+    if (!resetArenaState && !this.twoPlayerMode && lastBattle.getBattlerCount() !== this.currentBattle.getBattlerCount()) {
+      for (let i = this.currentBattle.getBattlerCount(); i < playerField.length; i++) {
+        if (playerField[i].isOnField()) {
+          this.phaseManager.pushNew("ReturnPhase", i);
+        }
+      }
+      this.phaseManager.pushNew("ToggleDoublePositionPhase", this.currentBattle.double, lastBattle.getBattlerCount());
+    }
     if (
       !resetArenaState
       && this.twoPlayerEnemyPlayerMode
@@ -4914,7 +4949,7 @@ export class BattleScene extends SceneBase {
   generateRandomBiome(waveIndex: number): BiomeId {
     const relWave = waveIndex % 250;
     const biomes = Object.values(BiomeId).filter(
-      b => b !== BiomeId.TOWN && b !== BiomeId.END && b !== BiomeId.FARAWAY_ISLAND,
+      b => b !== BiomeId.TOWN && b !== BiomeId.END && b !== BiomeId.FARAWAY_ISLAND && b !== BiomeId.ROCKET_HQ,
     );
     const maxDepth = biomeDepths[BiomeId.END][0] - 2;
     const depthWeights = new Array(maxDepth + 1)
@@ -6735,6 +6770,21 @@ export class BattleScene extends SceneBase {
     battleType: BattleType,
     waveIndex: number,
   ): MysteryEncounterType | undefined {
+    const overrideEncounterType = activeOverrides.MYSTERY_ENCOUNTER_OVERRIDE;
+    if (
+      overrideEncounterType != null
+      && Object.hasOwn(allMysteryEncounters, overrideEncounterType)
+      && this.gameMode.hasMysteryEncounters
+      && battleType === BattleType.WILD
+      && !this.gameMode.isBoss(waveIndex)
+      && !this.gameMode.isFixedBattle(waveIndex)
+      && !this.gameMode.isWaveFinal(waveIndex)
+      && waveIndex % 10 !== 1
+      && this.isMysteryEncounterEnabled(overrideEncounterType)
+    ) {
+      return overrideEncounterType;
+    }
+
     if (
       this.arena.biomeId === BiomeId.SECRET_GARDEN
       && this.isMysteryEncounterValidForWave(battleType, waveIndex)

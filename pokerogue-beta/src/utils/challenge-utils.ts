@@ -1,4 +1,5 @@
 import type { FixedBattleConfig } from "#app/battle";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import type { PokemonSpecies } from "#data/pokemon-species";
@@ -27,6 +28,7 @@ export function applyChallenges(
   pokemon: PokemonSpecies,
   valid: BooleanHolder,
   dexAttr: DexAttrProps,
+  playerIndex?: PlayerIndex,
 ): boolean;
 /**
  * Apply all challenges that modify available total starter points.
@@ -60,6 +62,7 @@ export function applyChallenges(
   speciesId: SpeciesId,
   dexEntry: DexEntry,
   starterDataEntry: StarterDataEntry,
+  playerIndex?: PlayerIndex,
 ): boolean;
 /**
  * Apply all challenges that modify a starter after selection.
@@ -271,7 +274,12 @@ export function applyChallenges(challengeType: ChallengeType.PREVENT_REVIVE, sta
 
 export function applyChallenges(challengeType: ChallengeType, ...args: any[]): boolean {
   let ret = false;
-  globalScene.gameMode.challenges.forEach(c => {
+  const playerIndex: PlayerIndex = challengeType === ChallengeType.POKEMON_IN_BATTLE
+    ? globalScene.getPlayerIndexForPokemon(args[0]) ?? globalScene.activePlayerIndex
+    : challengeType === ChallengeType.STARTER_CHOICE || challengeType === ChallengeType.STARTER_SELECT_MODIFY
+      ? args[3] ?? globalScene.activePlayerIndex
+      : globalScene.activePlayerIndex;
+  getChallengesForPlayer(playerIndex).forEach(c => {
     if (c.value !== 0) {
       switch (challengeType) {
         case ChallengeType.STARTER_CHOICE:
@@ -349,6 +357,10 @@ export function applyChallenges(challengeType: ChallengeType, ...args: any[]): b
   return ret;
 }
 
+export function getChallengesForPlayer(playerIndex: PlayerIndex = globalScene.activePlayerIndex) {
+  return globalScene.gameMode.challenges.filter(c => c.appliesToPlayer(playerIndex));
+}
+
 /**
  * Apply all challenges to the given starter (and form) to check its validity.
  * Differs from {@linkcode checkSpeciesValidForChallenge} which only checks form changes.
@@ -357,10 +369,15 @@ export function applyChallenges(challengeType: ChallengeType, ...args: any[]): b
  * @param soft - If `true`, allow it if it could become valid through evolution or form change.
  * @returns `true` if the species is considered valid.
  */
-export function checkStarterValidForChallenge(species: PokemonSpecies, props: DexAttrProps, soft: boolean) {
+export function checkStarterValidForChallenge(
+  species: PokemonSpecies,
+  props: DexAttrProps,
+  soft: boolean,
+  playerIndex: PlayerIndex = globalScene.activePlayerIndex,
+) {
   if (!soft) {
     const isValidForChallenge = new BooleanHolder(true);
-    applyChallenges(ChallengeType.STARTER_CHOICE, species, isValidForChallenge, props);
+    applyChallenges(ChallengeType.STARTER_CHOICE, species, isValidForChallenge, props, playerIndex);
     return isValidForChallenge.value;
   }
   // We check the validity of every evolution and form change, and require that at least one is valid
@@ -372,7 +389,7 @@ export function checkStarterValidForChallenge(species: PokemonSpecies, props: De
       return false;
     }
     const checkingSpecies = getPokemonSpecies(checking);
-    if (checkSpeciesValidForChallenge(checkingSpecies, props, true)) {
+    if (checkSpeciesValidForChallenge(checkingSpecies, props, true, playerIndex)) {
       return true;
     }
     if (checking && speciesDataRegistry.hasEvolutions(checking)) {
@@ -396,9 +413,14 @@ export function checkStarterValidForChallenge(species: PokemonSpecies, props: De
  * @param soft - If `true`, allow it if it could become valid through a form change.
  * @returns `true` if the species is considered valid.
  */
-export function checkSpeciesValidForChallenge(species: PokemonSpecies, props: DexAttrProps, soft: boolean) {
+export function checkSpeciesValidForChallenge(
+  species: PokemonSpecies,
+  props: DexAttrProps,
+  soft: boolean,
+  playerIndex: PlayerIndex = globalScene.activePlayerIndex,
+) {
   const isValidForChallenge = new BooleanHolder(true);
-  applyChallenges(ChallengeType.STARTER_CHOICE, species, isValidForChallenge, props);
+  applyChallenges(ChallengeType.STARTER_CHOICE, species, isValidForChallenge, props, playerIndex);
   if (!soft || !speciesDataRegistry.hasFormChanges(species.speciesId)) {
     return isValidForChallenge.value;
   }
@@ -417,7 +439,7 @@ export function checkSpeciesValidForChallenge(species: PokemonSpecies, props: De
       if (f1.formKey === f2.formKey) {
         const formProps = { ...props, formIndex };
         const isFormValidForChallenge = new BooleanHolder(true);
-        applyChallenges(ChallengeType.STARTER_CHOICE, species, isFormValidForChallenge, formProps);
+        applyChallenges(ChallengeType.STARTER_CHOICE, species, isFormValidForChallenge, formProps, playerIndex);
         return isFormValidForChallenge.value;
       }
       return false;

@@ -34,7 +34,7 @@ import { MoveFlags } from "#enums/move-flags";
 import type { MoveId } from "#enums/move-id";
 import type { Nature } from "#enums/nature";
 import type { PokeballType } from "#enums/pokeball";
-import type { PokemonType } from "#enums/pokemon-type";
+import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { BATTLE_STATS, type PermanentStat, Stat, TEMP_BATTLE_STATS, type TempBattleStat } from "#enums/stat";
 import { StatChangeSource } from "#enums/stat-change-source";
@@ -2967,7 +2967,7 @@ export class PokemonAllMovePpRestoreModifier extends ConsumablePokemonModifier {
    * @returns always `true`
    */
   override apply(playerPokemon: PlayerPokemon): boolean {
-    for (const move of playerPokemon.getMoveset()) {
+    for (const move of playerPokemon.getMovesetForPpRestore()) {
       if (move) {
         move.ppUsed = this.restorePoints > -1 ? Math.max(move.ppUsed - this.restorePoints, 0) : 0;
       }
@@ -3602,6 +3602,31 @@ export class ShinyBadgeModifier extends PokemonHeldItemModifier {
   }
 }
 
+export class SilphScopeModifier extends PokemonHeldItemModifier {
+  matchType(modifier: Modifier): boolean {
+    return modifier instanceof SilphScopeModifier;
+  }
+
+  clone(): PersistentModifier {
+    return new SilphScopeModifier(this.type, this.pokemonId, this.stackCount);
+  }
+
+  override shouldApply(pokemon: Pokemon, moveType?: PokemonType, defenderType?: PokemonType): boolean {
+    return super.shouldApply(pokemon)
+      && defenderType === PokemonType.GHOST
+      && (moveType === PokemonType.NORMAL || moveType === PokemonType.FIGHTING);
+  }
+
+  override apply(_pokemon: Pokemon, _moveType: PokemonType, _defenderType: PokemonType, ignoreImmunity: BooleanHolder): boolean {
+    ignoreImmunity.value = true;
+    return true;
+  }
+
+  getMaxHeldItemCount(_pokemon?: Pokemon): number {
+    return 1;
+  }
+}
+
 export class BerserkGeneModifier extends PokemonHeldItemModifier {
   public isTransferable = false;
 
@@ -3914,12 +3939,16 @@ export class PokemonFormChangeItemModifier extends PokemonHeldItemModifier {
   }
 
   private deactivateOtherExclusiveFormChangeItems(pokemon: Pokemon): void {
+    const isMewtwoFormItem = (item: FormChangeItem) =>
+      [FormChangeItem.STRANGE_HELMET, FormChangeItem.MEWTWONITE_X, FormChangeItem.MEWTWONITE_Y].includes(item);
     const shouldDeactivate =
       pokemon.hasSpecies(SpeciesId.PIKACHU) && isCosplayPikachuScarfItem(this.formChangeItem)
         ? isCosplayPikachuScarfItem
         : pokemon.hasSpecies(SpeciesId.ROTOM) && isRotomApplianceItem(this.formChangeItem)
           ? isRotomApplianceItem
-          : null;
+          : pokemon.hasSpecies(SpeciesId.MEWTWO) && isMewtwoFormItem(this.formChangeItem)
+            ? isMewtwoFormItem
+            : null;
 
     if (!shouldDeactivate) {
       return;
@@ -5022,6 +5051,7 @@ const ModifierClassMap = Object.freeze({
   ExpBalanceModifier,
   PokemonFriendshipBoosterModifier,
   ShinyBadgeModifier,
+  SilphScopeModifier,
   PokemonNatureWeightModifier,
   PokemonMoveAccuracyBoosterModifier,
   LoadedDiceModifier,

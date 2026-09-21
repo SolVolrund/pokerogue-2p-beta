@@ -203,7 +203,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
     const enemySidePlayer = this.player && globalScene.isMysteryEncounterEnemySidePlayer(playerIndex);
     const shinyBadgeDuelVisualPosition = this.getShinyBadgeDuelVisualPosition(playerIndex);
     const playerFieldSlotCount =
-      this.player && globalScene.twoPlayerMode ? globalScene.getPlayerFieldOwners().length : 2;
+      this.player ? globalScene.getBattleFieldSlotCount() : globalScene.currentBattle.getBattlerCount();
     const fieldSlotCount = this.player ? playerFieldSlotCount : globalScene.currentBattle.getBattlerCount();
     const twoTrainerThrowOffset =
       this.player && playerFieldSlotCount > 2
@@ -244,7 +244,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
       pokemon.setFieldPosition(FieldPosition.RIGHT, 0);
     } else {
       const availablePartyMembers = this.getParty().filter(p => p.isAllowedInBattle()).length;
-      const forceLeftFieldPosition = this.player && playerFieldSlotCount > 1;
+      const forceLeftFieldPosition = this.player && globalScene.twoPlayerMode && playerFieldSlotCount > 1;
       pokemon.setFieldPosition(
         (!forceLeftFieldPosition && (!globalScene.currentBattle.double || availablePartyMembers === 1))
           || playerFieldSlotCount === 1
@@ -336,7 +336,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
   summonWild(): void {
     const pokemon = this.getPokemon();
     const playerFieldSlotCount =
-      this.player && globalScene.twoPlayerMode ? globalScene.getPlayerFieldOwners().length : 2;
+      this.player ? globalScene.getBattleFieldSlotCount() : globalScene.currentBattle.getBattlerCount();
     const fieldSlotCount = this.player ? playerFieldSlotCount : globalScene.currentBattle.getBattlerCount();
 
     if (fieldSlotCount > 2 && this.fieldIndex === 2) {
@@ -345,7 +345,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
       pokemon.setFieldPosition(FieldPosition.RIGHT, 0);
     } else {
       const availablePartyMembers = this.getParty().filter(p => !p.isFainted()).length;
-      const forceLeftFieldPosition = this.player && playerFieldSlotCount > 1;
+      const forceLeftFieldPosition = this.player && globalScene.twoPlayerMode && playerFieldSlotCount > 1;
       pokemon.setFieldPosition(
         (!forceLeftFieldPosition && (!globalScene.currentBattle.double || availablePartyMembers === 1))
           || playerFieldSlotCount === 1

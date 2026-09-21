@@ -217,7 +217,10 @@ export class MovePhase extends PokemonPhase {
       // Stance Change form change
       // Struggle's "There are no more moves it can use" message
 
-      globalScene.triggerPokemonFormChange(user, SpeciesFormChangePreMoveTrigger);
+      // Use the move actually being executed, including Encore and extra actions.
+      if (!user.queueBioInstabilityFormChange(move.type)) {
+        globalScene.triggerPokemonFormChange(user, SpeciesFormChangePreMoveTrigger);
+      }
       // TODO: apply gorilla tactics here instead of in the move effect phase
     }
 

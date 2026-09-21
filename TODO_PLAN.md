@@ -569,6 +569,19 @@ Current allowlist:
 
 - `MYSTERIOUS_CHEST`: v1 ported. Each player is prompted separately, rewards are owned per player, and trap rolls create one or two Gimmighoul enemies. Dedicated two-chest intro visuals are still pending.
 
+## Cleanup / Performance Watchlist
+
+- Investigate rare browser memory spikes during longer test sessions, especially around reward-screen transitions.
+- Alph tile full-stock debug path does not appear to spam-create reward tile UI:
+  - `getAlphTileRewardOptions()` returns an empty list when every finite Alph tile is already at max stock.
+  - `ModifierSelectUiHandler` creates no `AlphTileOption` containers when that list is empty.
+  - The reward screen still schedules one delayed animation callback, but it only iterates the empty Alph option array once.
+- If memory spikes continue, check these likely areas first:
+  - reward-screen tweens or delayed callbacks surviving phase cleanup;
+  - reward/shop/Alph UI objects that are hidden but not destroyed after mode changes;
+  - console logging retaining large battle, reward, or party objects while DevTools is open;
+  - temporary helper Pokemon/field sprites, such as Eon Flute guests, failing to clean up across battle transitions.
+
 ## Basic Test Checklist
 
 - P1 and P2 can select different starters.

@@ -133,6 +133,7 @@ export interface SessionSaveData {
   // TODO: This enum being inside save data is basically useless, being inferrable from the presence or absence of `trainer` and `mysteryEncounterType`.
   // Remove this later on to reduce save size and improve clarity.
   battleType: Exclude<BattleType, BattleType.CLEAR>;
+  wildBattlerCount?: 1 | 2 | 3 | undefined;
   // TODO: This being nullable NEEDS to be reflected in the type signature
   trainer: TrainerData;
   gameVersion: string;

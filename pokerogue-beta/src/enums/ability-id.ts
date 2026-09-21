@@ -639,4 +639,5 @@ export enum AbilityId {
   SPICY_SPRAY,
   /** {@link https://bulbapedia.bulbagarden.net/wiki/Aura_Guard_(Ability) | Source} */
   AURA_GUARD,
+  BIO_INSTABILITY,
 }

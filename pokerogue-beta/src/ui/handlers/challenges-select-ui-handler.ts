@@ -1,7 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import type { Challenge } from "#data/challenge";
 import { Button } from "#enums/buttons";
-import { Challenges } from "#enums/challenges";
+import { isSingleTypeChallenge } from "#enums/challenges";
 import { Color, ShadowColor } from "#enums/color";
 import { TextStyle } from "#enums/text-style";
 import type { UiMode } from "#enums/ui-mode";
@@ -17,12 +17,19 @@ type ChallengeLabel = {
   value: Phaser.GameObjects.Text;
   leftArrow: Phaser.GameObjects.Image;
   rightArrow: Phaser.GameObjects.Image;
+  typeIcon: Phaser.GameObjects.Sprite;
 };
 
 const MAX_ROWS_TO_DISPLAY = 9;
 
+export interface ChallengeSelectConfig {
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
 /** Handles all the UI for choosing optional challenges. */
 export class GameChallengesUiHandler extends UiHandler {
+  private selectionConfig: ChallengeSelectConfig | undefined;
   private challengesContainer: Phaser.GameObjects.Container;
   private valuesContainer: Phaser.GameObjects.Container;
 
@@ -35,7 +42,6 @@ export class GameChallengesUiHandler extends UiHandler {
   private descriptionText: BBCodeText;
 
   private readonly challengeLabels: ChallengeLabel[] = [];
-  private monoTypeValue: Phaser.GameObjects.Sprite;
 
   private cursorObj: Phaser.GameObjects.NineSlice | null;
 
@@ -151,17 +157,14 @@ export class GameChallengesUiHandler extends UiHandler {
         .setName(`challenge-value-text-${i}`)
         .setPositionRelative(label, 100, 0);
 
-      this.valuesContainer.add([label, leftArrow, rightArrow, value]);
+      const typeIcon = globalScene.add.sprite(0, 0, getLocalizedSpriteKey("types"))
+        .setName(`challenge-value-monotype-sprite-${i}`)
+        .setScale(0.86)
+        .setVisible(false);
+      this.valuesContainer.add([label, leftArrow, rightArrow, value, typeIcon]);
 
-      this.challengeLabels[i] = { label, value, leftArrow, rightArrow };
+      this.challengeLabels[i] = { label, value, leftArrow, rightArrow, typeIcon };
     }
-
-    this.monoTypeValue = globalScene.add
-      .sprite(8, 98, getLocalizedSpriteKey("types"))
-      .setName("challenge-value-monotype-sprite")
-      .setScale(0.86)
-      .setVisible(false);
-    this.valuesContainer.add(this.monoTypeValue);
 
     this.challengesContainer.add([
       headerBg,
@@ -212,7 +215,7 @@ export class GameChallengesUiHandler extends UiHandler {
     const tempText = addTextObject(0, 0, "", TextStyle.SETTINGS_LABEL);
 
     for (const challenge of challenges) {
-      if (challenge.id === Challenges.SINGLE_TYPE) {
+      if (isSingleTypeChallenge(challenge.id)) {
         continue;
       }
       const challengeName = challenge.getName();
@@ -245,7 +248,7 @@ export class GameChallengesUiHandler extends UiHandler {
     /** Used to get the display width of the current option */
     const tempText = addTextObject(0, 0, "", TextStyle.SETTINGS_LABEL);
     this.setDescription(this.getActiveChallenge().getDescription());
-    let monoTypeVisible = false;
+    this.challengeLabels.forEach(label => label.typeIcon.setVisible(false));
     for (let i = 0; i < Math.min(MAX_ROWS_TO_DISPLAY, challenges.length); i++) {
       const challenge = challenges[this.scrollCursor + i];
       const challengeLabel = this.challengeLabels[i];
@@ -258,7 +261,7 @@ export class GameChallengesUiHandler extends UiHandler {
 
       tempText.setText(challenge.getValue());
       // monotype challenge has a unique display and needs to be accounted for manually
-      const leftArrowX = (challenge.id === Challenges.SINGLE_TYPE ? -30 : -Math.round(tempText.displayWidth)) - 10;
+      const leftArrowX = (isSingleTypeChallenge(challenge.id) ? -30 : -Math.round(tempText.displayWidth)) - 10;
       challengeLabel.leftArrow
         .setPositionRelative(challengeLabel.rightArrow, leftArrowX, 0)
         .setVisible(challenge.value !== 0);
@@ -268,14 +271,13 @@ export class GameChallengesUiHandler extends UiHandler {
       const optionX = Math.round(
         (challengeLabel.leftArrow.x + challengeLabel.rightArrow.x + challengeLabel.leftArrow.displayWidth) / 2,
       );
-      if (challenge.id === Challenges.SINGLE_TYPE) {
-        this.monoTypeValue
+      if (isSingleTypeChallenge(challenge.id)) {
+        challengeLabel.typeIcon
           .setX(optionX)
           .setY(challengeLabel.label.y + 8)
           .setFrame(challenge.getValue())
           .setVisible(true);
         challengeLabel.value.setVisible(false);
-        monoTypeVisible = true;
       } else {
         challengeLabel.value //
           .setText(challenge.getValue())
@@ -285,10 +287,6 @@ export class GameChallengesUiHandler extends UiHandler {
       }
     }
     tempText.destroy();
-
-    if (!monoTypeVisible) {
-      this.monoTypeValue.setVisible(false);
-    }
 
     this.hasSelectedChallenge = challenges.some(c => c.value !== 0);
     let i18nKey = "common:start";
@@ -307,6 +305,7 @@ export class GameChallengesUiHandler extends UiHandler {
 
   public override show(args: any[]): boolean {
     super.show(args);
+    this.selectionConfig = args[0] as ChallengeSelectConfig | undefined;
 
     const { challenges } = globalScene.gameMode;
 
@@ -314,6 +313,7 @@ export class GameChallengesUiHandler extends UiHandler {
     this.updateChallengeArrowsTint(false);
     this.challengesContainer.setVisible(true);
     this.hasSelectedChallenge = challenges.some(c => c.value !== 0);
+    this.setScrollCursor(0);
     this.setCursor(0);
 
     this.initLabels();
@@ -366,6 +366,8 @@ export class GameChallengesUiHandler extends UiHandler {
         this.startCursor.setVisible(false);
         this.cursorObj?.setVisible(true);
         this.updateChallengeArrowsTint(this.startCursor.visible);
+      } else if (this.selectionConfig) {
+        this.selectionConfig.onCancel();
       } else {
         phaseManager.toTitleScreen();
         phaseManager.getCurrentPhase().end();
@@ -374,8 +376,12 @@ export class GameChallengesUiHandler extends UiHandler {
     } else if (button === Button.SUBMIT || button === Button.ACTION) {
       if (this.hasSelectedChallenge) {
         if (this.startCursor.visible) {
-          phaseManager.unshiftNew("SelectStarterPhase");
-          phaseManager.getCurrentPhase().end();
+          if (this.selectionConfig) {
+            this.selectionConfig.onConfirm();
+          } else {
+            phaseManager.unshiftNew("SelectStarterPhase");
+            phaseManager.getCurrentPhase().end();
+          }
         } else {
           this.startCursor.setVisible(true);
           this.cursorObj?.setVisible(false);

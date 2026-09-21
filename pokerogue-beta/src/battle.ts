@@ -72,6 +72,7 @@ export class Battle {
   public enemyParty: EnemyPokemon[] = [];
   public seenEnemyPartyMemberIds: Set<number> = new Set<number>();
   public double: boolean;
+  public wildBattlerCount: 1 | 2 | 3 | undefined;
   public started = false;
   public enemySwitchCounter = 0;
   public computerPartnerSwitchCounter = 0;
@@ -172,7 +173,7 @@ export class Battle {
 
   constructor(
     gameMode: GameMode,
-    { waveIndex, battleType, trainer, mysteryEncounterType, double = false }: NewBattleResolvedProps,
+    { waveIndex, battleType, trainer, mysteryEncounterType, double = false, wildBattlerCount }: NewBattleResolvedProps,
   ) {
     this.gameMode = gameMode;
     this.waveIndex = waveIndex;
@@ -180,6 +181,7 @@ export class Battle {
     this.trainer = trainer ?? null;
     this.mysteryEncounterType = mysteryEncounterType;
     this.double = double;
+    this.wildBattlerCount = wildBattlerCount;
 
     this.enemyLevels =
       battleType === BattleType.TRAINER
@@ -235,6 +237,10 @@ export class Battle {
 
     if (this.mysteryEncounterBattlerCount != null) {
       return this.mysteryEncounterBattlerCount;
+    }
+
+    if (!globalScene.twoPlayerMode && this.battleType === BattleType.WILD && this.wildBattlerCount != null) {
+      return this.wildBattlerCount;
     }
 
     if (

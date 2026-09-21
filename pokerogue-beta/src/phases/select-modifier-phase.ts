@@ -216,6 +216,9 @@ export class SelectModifierPhase extends BattlePhase {
   }
 
   private getAlphTileRewardOptions(modifierCount: number): AlphTileRewardOption[] {
+    if (this.customModifierSettings?.allowBonusRewards === false) {
+      return [];
+    }
     if (!globalScene.findModifierForPlayer(m => m instanceof UnownBoxModifier, this.playerIndex)) {
       return [];
     }
@@ -243,12 +246,15 @@ export class SelectModifierPhase extends BattlePhase {
   }
 
   private getVsEnemyTokenOptions(): ModifierTypeOption[] {
+    if (this.customModifierSettings?.allowBonusRewards === false) {
+      return [];
+    }
     if (!globalScene.twoPlayerVsMode) {
       return [];
     }
 
     const targetModifierGroups = this.getVsEnemyTokenTargetPlayerIndexes().map(playerIndex =>
-      globalScene.getVsEnemyModifiersForPlayer(playerIndex)
+      globalScene.getVsEnemyModifiersForPlayer(playerIndex),
     );
     return getVsEnemyTokenModifierTypeOptionsForWave(
       globalScene.currentBattle.waveIndex,
@@ -1416,7 +1422,7 @@ export class SelectModifierPhase extends BattlePhase {
   }
 
   private tryAppendPokeblockRewardOption(options: ModifierTypeOption[]): void {
-    if (this.isCopy) {
+    if (this.isCopy || this.customModifierSettings?.allowBonusRewards === false) {
       return;
     }
 
@@ -1445,6 +1451,7 @@ export class SelectModifierPhase extends BattlePhase {
       {
         guaranteedModifierTypeOptions: this.typeOptions,
         rerollMultiplier: this.customModifierSettings?.rerollMultiplier,
+        allowBonusRewards: this.customModifierSettings?.allowBonusRewards ?? true,
         allowLuckUpgrades: false,
       },
       true,

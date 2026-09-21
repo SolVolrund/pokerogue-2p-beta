@@ -18,11 +18,14 @@ import { GameModes } from "#enums/game-modes";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
+import { Unlockables } from "#enums/unlockables";
 import { getBiomeAssetKey } from "#field/arena";
 import type { Modifier } from "#modifiers/modifier";
 import { getDailyRunStarterModifiers, regenerateModifierPoolThresholds } from "#modifiers/modifier-type";
+import { ChallengeData } from "#system/challenge-data";
 import { vouchers } from "#system/voucher";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
+import type { ChallengeSelectConfig } from "#ui/challenges-select-ui-handler";
 import { SaveSlotUiMode } from "#ui/save-slot-select-ui-handler";
 import { isLocalServerConnected, randomString } from "#utils/common";
 import {
@@ -31,6 +34,7 @@ import {
   type ComputerPartnerRole,
   type ComputerPartnerRolePreferences,
   getComputerPartnerProfile,
+  getComputerPartnerChallengeProfile,
   isComputerPartnerKey as isKnownComputerPartnerKey,
 } from "#utils/computer-partner-profile";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
@@ -56,6 +60,7 @@ export class TitlePhase extends Phase {
   public readonly phaseName = "TitlePhase";
   private loaded = false;
   private remoteTitleStartApplied = false;
+  private selectedChallenges: ChallengeData[] = [];
   private profileStartupAnnounceInterval: ReturnType<typeof globalThis.setInterval> | undefined;
   // TODO: Make `end` take a `GameModes` as a parameter rather than storing it on the class itself
   public gameMode: GameModes;
@@ -198,6 +203,9 @@ export class TitlePhase extends Phase {
   }
 
   private setModeAndEnd(gameMode: GameModes): void {
+    if (!this.validateChallengePlayers(gameMode)) {
+      return;
+    }
     globalScene.setTwoPlayerTitleStartHandler(undefined);
     this.gameMode = gameMode;
     globalScene.ui.setMode(UiMode.MESSAGE);
@@ -877,6 +885,8 @@ export class TitlePhase extends Phase {
   }
 
   private showNewGameModeSelect(): void {
+    this.selectedChallenges = [];
+    globalScene.gameMode = getGameMode(GameModes.CLASSIC);
     const options: OptionSelectItem[] = [
       {
         label: GameMode.getModeName(GameModes.CLASSIC),
@@ -894,17 +904,104 @@ export class TitlePhase extends Phase {
         },
         keepOpen: true,
       },
-      {
-        label: i18next.t("menu:cancel"),
-        handler: () => {
-          globalScene.phaseManager.toTitleScreen();
-          super.end();
-          return true;
-        },
-      },
     ];
 
+    const gameData = globalScene.getLocalPlayerGameData();
+    if (gameData.isUnlocked(Unlockables.ENDLESS_MODE)) {
+      options.push({
+        label: GameMode.getModeName(GameModes.CHALLENGE),
+        handler: () => {
+          this.showChallengeSettings();
+          return true;
+        },
+        keepOpen: true,
+      });
+      const endlessModes = [GameModes.ENDLESS];
+      if (gameData.isUnlocked(Unlockables.SPLICED_ENDLESS_MODE)) {
+        endlessModes.push(GameModes.SPLICED_ENDLESS);
+      }
+      for (const mode of endlessModes) {
+        options.push({
+          label: GameMode.getModeName(mode),
+          handler: () => {
+            this.showPlayerCountSelect(mode);
+            return true;
+          },
+          keepOpen: true,
+        });
+      }
+    }
+    options.push({
+      label: i18next.t("menu:cancel"),
+      handler: () => {
+        globalScene.phaseManager.toTitleScreen();
+        super.end();
+        return true;
+      },
+    });
+
     this.showOptionSelectWithText(i18next.t("menu:selectGameMode"), options);
+  }
+
+  private showChallengeSettings(): void {
+    globalScene.gameMode = getGameMode(GameModes.CHALLENGE);
+    this.applySelectedChallenges();
+    const config: ChallengeSelectConfig = {
+      onConfirm: () => {
+        this.selectedChallenges = globalScene.gameMode.challenges.map(challenge => new ChallengeData(challenge));
+        void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showPlayerCountSelect(GameModes.CHALLENGE));
+      },
+      onCancel: () => {
+        void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showNewGameModeSelect());
+      },
+    };
+    void globalScene.ui.setMode(UiMode.CHALLENGE_SELECT, config);
+  }
+
+  private applySelectedChallenges(): void {
+    if (globalScene.gameMode.modeId === GameModes.CHALLENGE) {
+      for (const challenge of this.selectedChallenges) {
+        globalScene.gameMode.setChallengeValue(challenge.id, challenge.value, challenge.severity);
+      }
+    }
+  }
+
+  private validateChallengePlayers(gameMode: GameModes): boolean {
+    if (gameMode !== GameModes.CHALLENGE) {
+      return true;
+    }
+    globalScene.gameMode = getGameMode(gameMode);
+    this.applySelectedChallenges();
+    const players = globalScene.getActivePlayerIndexes();
+    let message: string | undefined;
+    if (!globalScene.gameMode.challenges.some(c => c.value && players.some(player => c.appliesToPlayer(player)))) {
+      message = "Select at least one challenge for a participating player.";
+    } else {
+      for (const playerIndex of globalScene.getComputerPartnerPlayerIndexes()) {
+        const key = globalScene.getComputerPartnerKey(playerIndex);
+        const profile = getComputerPartnerProfile(key);
+        if (profile.usesPlayerSelectedStarters) {
+          continue;
+        }
+        const eligible = getComputerPartnerChallengeProfile(
+          profile,
+          playerIndex,
+          globalScene.getPlayerGameData(0).getComputerPartnerProgress(key),
+        );
+        if (eligible !== profile && !eligible.startingStarters?.length) {
+          message = `${profile.name} has no eligible starters for P${playerIndex + 1}'s Mono Type. Choose another type or partner.`;
+          break;
+        }
+      }
+    }
+    if (message) {
+      const text = message;
+      void globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+        globalScene.ui.showText(text, null, () => this.showChallengeSettings(), null, true);
+      });
+      return false;
+    }
+    return true;
   }
 
   private showPlayerCountSelect(gameMode: GameModes): void {
@@ -1106,7 +1203,11 @@ export class TitlePhase extends Phase {
       {
         label: i18next.t("menu:cancel"),
         handler: () => {
-          this.showNewGameModeSelect();
+          if (gameMode === GameModes.CHALLENGE) {
+            this.showChallengeSettings();
+          } else {
+            this.showNewGameModeSelect();
+          }
           return true;
         },
         keepOpen: true,
@@ -1492,6 +1593,9 @@ export class TitlePhase extends Phase {
       vsMode,
       enemyPlayerMode,
     );
+    if (!this.validateChallengePlayers(gameMode)) {
+      return;
+    }
     globalScene.resetTwoPlayerProfileExchangeForRun();
     const runSeed = activeOverrides.SEED_OVERRIDE || getTwoPlayerRunSeedOverride() || randomString(24);
     globalScene.setSeed(runSeed);
@@ -1499,6 +1603,7 @@ export class TitlePhase extends Phase {
     const titleStart: TwoPlayerTitleStart = {
       action: "new-run",
       gameMode,
+      ...(gameMode === GameModes.CHALLENGE ? { challenges: this.selectedChallenges } : {}),
       partySize,
       playerCount,
       vsMode,
@@ -1600,6 +1705,11 @@ export class TitlePhase extends Phase {
       if (gameMode === undefined || gameMode === GameModes.DAILY) {
         return false;
       }
+
+      this.selectedChallenges =
+        gameMode === GameModes.CHALLENGE
+          ? (titleStart.challenges ?? []).map(challenge => new ChallengeData(challenge))
+          : [];
 
       const playerCount = titleStart.playerCount ?? 2;
       const computerPartnerPlayerIndexes = this.getTitleStartComputerPartnerPlayerIndexes(titleStart, playerCount);
@@ -1928,11 +2038,14 @@ export class TitlePhase extends Phase {
 
     if (!this.loaded && !globalScene.gameMode.isDaily) {
       globalScene.gameMode = getGameMode(this.gameMode);
-      if (this.gameMode === GameModes.CHALLENGE) {
-        globalScene.phaseManager.pushNew("SelectChallengePhase");
-      } else {
-        globalScene.phaseManager.pushNew("SelectStarterPhase");
+      this.applySelectedChallenges();
+      const players = globalScene.getActivePlayerIndexes();
+      for (const challenge of globalScene.gameMode.challenges) {
+        if (!players.some(playerIndex => challenge.appliesToPlayer(playerIndex))) {
+          challenge.value = 0;
+        }
       }
+      globalScene.phaseManager.pushNew("SelectStarterPhase");
       globalScene.newArena(globalScene.gameMode.getStartingBiome());
     } else {
       audioManager.playBgm();
@@ -1971,9 +2084,8 @@ export class TitlePhase extends Phase {
         const availablePartyMembers = globalScene.getPokemonAllowedInBattle().length;
 
         if (availablePartyMembers > 0) {
-          globalScene.phaseManager.pushNew("SummonPhase", 0, true, true);
-          if (globalScene.currentBattle.double && availablePartyMembers > 1) {
-            globalScene.phaseManager.pushNew("SummonPhase", 1, true, true);
+          for (let fieldIndex = 0; fieldIndex < Math.min(availablePartyMembers, globalScene.currentBattle.getBattlerCount()); fieldIndex++) {
+            globalScene.phaseManager.pushNew("SummonPhase", fieldIndex, true, true);
           }
         } else if (globalScene.hasEonFluteProtection(0)) {
           globalScene.phaseManager.pushNew("EonFluteSummonPhase", 0);
@@ -1983,11 +2095,10 @@ export class TitlePhase extends Phase {
           globalScene.currentBattle.battleType !== BattleType.TRAINER
           && (globalScene.currentBattle.waveIndex > 1 || !globalScene.gameMode.isDaily)
         ) {
-          const minPartySize = globalScene.currentBattle.double ? 2 : 1;
+          const minPartySize = globalScene.currentBattle.getBattlerCount();
           if (availablePartyMembers > minPartySize) {
-            globalScene.phaseManager.pushNew("CheckSwitchPhase", 0, globalScene.currentBattle.double);
-            if (globalScene.currentBattle.double) {
-              globalScene.phaseManager.pushNew("CheckSwitchPhase", 1, globalScene.currentBattle.double);
+            for (let fieldIndex = 0; fieldIndex < minPartySize; fieldIndex++) {
+              globalScene.phaseManager.pushNew("CheckSwitchPhase", fieldIndex, globalScene.currentBattle.double);
             }
           }
         }

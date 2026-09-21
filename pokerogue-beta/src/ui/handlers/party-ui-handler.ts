@@ -416,6 +416,8 @@ export class PartyUiHandler extends MessageUiHandler {
     this.showMovePp = args.length > 6 && args[6];
 
     this.partyContainer.setVisible(true);
+    this.getUi().bringToTop(this.partyContainer);
+    this.getUi().bringToTop(this.moveInfoOverlay);
     const doublePartyLayout = this.usesDoublePartyLayout();
     if (this.isItemManageMode()) {
       this.partyBg.setTexture(`party_bg${doublePartyLayout ? "_double_manage" : ""}`);
@@ -1244,6 +1246,16 @@ export class PartyUiHandler extends MessageUiHandler {
     }
 
     let success = false;
+    if (battlerCount === 3 && this.isItemManageMode() && (button === Button.UP || button === Button.DOWN)) {
+      const slots = Array.from({ length: slotCount }, (_, i) => i);
+      const order = [...slots.slice(0, battlerCount), 7, ...slots.slice(battlerCount), 6];
+      const direction = button === Button.DOWN ? 1 : -1;
+      success = this.setCursor(order[(order.indexOf(this.cursor) + direction + order.length) % order.length]);
+      if (success) {
+        ui.playSelect();
+      }
+      return success;
+    }
     switch (button) {
       // Item manage mode adds an extra 8th "toggle mode" button to the UI, located *below* both active party members.
       // The following logic serves to ensure its menu behaviour matches its in-game position,
@@ -2162,7 +2174,7 @@ class PartySlot extends Phaser.GameObjects.Container {
     iconAnimHandler: PokemonIconAnimHelper,
     partyUiMode: PartyUiMode,
     tmMoveId: MoveId,
-    activePartySlotCount = globalScene.currentBattle.getBattlerCount(),
+    private readonly activePartySlotCount = globalScene.currentBattle.getBattlerCount(),
   ) {
     const isBenched = slotIndex >= activePartySlotCount;
     const isDoubleBattle = activePartySlotCount > 1;
@@ -2177,7 +2189,9 @@ class PartySlot extends Phaser.GameObjects.Container {
     const slotPositionX = isBenched ? 143 : 9;
 
     let slotPositionY: number;
-    if (isBenched) {
+    if (activePartySlotCount === 3) {
+      slotPositionY = -216 + 48 * (isBenched ? slotIndex - activePartySlotCount : slotIndex);
+    } else if (isBenched) {
       slotPositionY = -196 + (isDoubleBattle ? -40 : 0);
       slotPositionY += (28 + (isDoubleBattle ? 8 : 0)) * slotIndex;
     } else {
@@ -2207,7 +2221,7 @@ class PartySlot extends Phaser.GameObjects.Container {
 
     this.slotBgKey = this.isBenched
       ? "party_slot"
-      : isItemManageMode && globalScene.currentBattle.double
+      : this.activePartySlotCount === 3 || (isItemManageMode && globalScene.currentBattle.double)
         ? "party_slot_main_short"
         : "party_slot_main";
     const fullSlotBgKey = this.pokemon.hp ? this.slotBgKey : `${this.slotBgKey}${"_fnt"}`;
@@ -2247,7 +2261,7 @@ class PartySlot extends Phaser.GameObjects.Container {
     let descriptionLabelPosition = { x: 32, y: 46 };
 
     // If in item management mode, the active slots are shorter
-    if (isItemManageMode && globalScene.currentBattle.double && !this.isBenched) {
+    if (this.slotBgKey === "party_slot_main_short") {
       namePosition.y -= 8;
       levelLabelPosition.y -= 8;
       hpBarPosition.y -= 8;

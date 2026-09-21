@@ -1,4 +1,5 @@
 import { speciesDataRegistry } from "#app/global-species-data-registry";
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { speciesEggMoves } from "#balance/moves/egg-moves";
@@ -22,6 +23,7 @@ import { allMoves } from "#data/data-lists";
 import type { PokemonSpecies } from "#data/pokemon-species";
 import { getTypeDamageMultiplier } from "#data/type";
 import { AbilityAttr } from "#enums/ability-attr";
+import { Challenges, isSingleTypeChallenge } from "#enums/challenges";
 import { DexAttr } from "#enums/dex-attr";
 import { MoveId } from "#enums/move-id";
 import { Nature } from "#enums/nature";
@@ -41,6 +43,7 @@ import type {
   StarterMoveset,
 } from "#types/save-data";
 import { randSeedInt, randSeedIntRange, randSeedShuffle } from "#utils/common";
+import { checkStarterValidForChallenge, getChallengesForPlayer } from "#utils/challenge-utils";
 import { getSpeciesEntryHazardAccessScore } from "#utils/computer-partner-hazard-support";
 import { getSpeciesHealingSupportAccessScore } from "#utils/computer-partner-healing-support";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
@@ -412,7 +415,11 @@ export function createComputerPartnerStarter(
   profile: ComputerPartnerProfile,
   progress?: ComputerPartnerProgressData,
   partyLimit = PLAYER_PARTY_MAX_SIZE,
+  playerIndex?: PlayerIndex,
 ): ComputerPartnerStarter[] {
+  if (playerIndex !== undefined) {
+    profile = getComputerPartnerChallengeProfile(profile, playerIndex, progress);
+  }
   const progressBeforeSpending = getComputerPartnerStarterProgressSnapshot(profile, progress);
   if (progress) {
     spendComputerPartnerStarterProgress(profile, progress);
@@ -432,6 +439,29 @@ export function createComputerPartnerStarter(
   }
 
   return startingStarters.map(starter => createComputerPartnerStarterData(profile, starter, progress));
+}
+
+/** Preserve a trainer's own pool, promoting its first eligible member when the ace is off-type. */
+export function getComputerPartnerChallengeProfile(
+  profile: ComputerPartnerProfile,
+  playerIndex: PlayerIndex,
+  progress?: ComputerPartnerProgressData,
+): ComputerPartnerProfile {
+  if (!globalScene.gameMode.hasChallenge(Challenges.SINGLE_TYPE, playerIndex)) {
+    return profile;
+  }
+  const candidates = profile.startingStarters ?? (profile.starterSpeciesId
+    ? [{ speciesId: profile.starterSpeciesId, points: 0, moveset: profile.starterMoveset }]
+    : []);
+  const starters = candidates.filter(config => {
+    const starter = createComputerPartnerStarterData(profile, config, progress);
+    return checkStarterValidForChallenge(getPokemonSpecies(starter.speciesId), {
+      shiny: starter.shiny, female: !!starter.female, variant: starter.variant, formIndex: starter.formIndex,
+    }, false, playerIndex);
+  });
+  const result = { ...profile, startingStarters: starters };
+  delete result.starterSpeciesId;
+  return result;
 }
 
 export function isComputerPartnerStarterAce(
@@ -1125,7 +1155,8 @@ export function getComputerPartnerReplacementScores(
   candidate: ComputerPartnerScoringPokemon,
   partyLimit = PLAYER_PARTY_MAX_SIZE,
 ): ComputerPartnerSlotScore[] {
-  if (!isComputerPartnerCandidateAllowed(profile, candidate)) {
+  const playerIndex = party[0] ? globalScene.getPlayerIndexForPokemon(party[0]) : undefined;
+  if (!isComputerPartnerCandidateAllowed(profile, candidate, playerIndex)) {
     return [];
   }
 
@@ -1221,7 +1252,19 @@ export function isTemporaryHumanGtsMalfunctionPokemon(pokemon: PlayerPokemon | u
 export function isComputerPartnerCandidateAllowed(
   profile: ComputerPartnerProfile,
   candidate: ComputerPartnerScoringPokemon,
+  playerIndex?: PlayerIndex,
 ): boolean {
+  if (playerIndex !== undefined && getChallengesForPlayer(playerIndex).some(challenge => {
+    if (!isSingleTypeChallenge(challenge.id) || !challenge.value) {
+      return false;
+    }
+    const type = challenge.value - 1;
+    return "species" in candidate
+      ? !candidate.isOfType(type, { includeTeraType: false, bypassSummonData: true, ignoreThirdType: true })
+      : ![candidate.type1, candidate.type2].includes(type);
+  })) {
+    return false;
+  }
   const allowedSpeciesIds = profile.allowedReplacementSpeciesIds;
   if (!allowedSpeciesIds || allowedSpeciesIds.length === 0) {
     return true;

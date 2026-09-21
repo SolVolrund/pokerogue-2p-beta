@@ -4,18 +4,39 @@ import type { ModifierTier } from "#enums/modifier-tier";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import type { ModifierTypeOption } from "#modifiers/modifier-type";
+import type { PokemonData } from "#system/pokemon-data";
 import { addModifierIconSprite } from "#ui/modifier-icon";
 import { addTextObject, getModifierTierTextTint, getTextColor, getTextWithColors } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { formatMoney } from "#utils/common";
 import i18next from "i18next";
 
-export interface GameCornerRewardSlot {
-  option: ModifierTypeOption;
+interface GameCornerRewardSlotBase {
   tier: ModifierTier;
   cost: number;
   purchased: boolean;
+  layout?: { col: number; row: number };
 }
+
+export interface GameCornerItemRewardSlot extends GameCornerRewardSlotBase {
+  kind: "item";
+  option: ModifierTypeOption;
+}
+
+export interface GameCornerPokemonRewardSlot extends GameCornerRewardSlotBase {
+  kind: "pokemon";
+  pokemon: PokemonData;
+  pokemonName: string;
+  iconAtlas: string;
+  iconFrame: string;
+  fallbackIconAtlas: string;
+  fallbackIconFrame: string;
+  minStarterCost: number;
+  maxStarterCost: number;
+  jackpot: boolean;
+}
+
+export type GameCornerRewardSlot = GameCornerItemRewardSlot | GameCornerPokemonRewardSlot;
 
 export interface GameCornerRewardUiConfig {
   slots: GameCornerRewardSlot[];
@@ -48,6 +69,7 @@ const PRIZE_ROWS_BY_COLUMN = [5, 4, 3, 2, 1];
 const PRIZE_ROW_Y = [-150, -129, -108, -87, -66];
 const PRIZE_CLUSTER_SCALE = 0.47;
 const PRIZE_ICON_SCALE = 0.8;
+const PRIZE_POKEMON_ICON_SCALE = 1.05;
 const PRIZE_TEXT_FONT_SIZE = "54px";
 const PRIZE_TEXT_Y = 8;
 const PRIZE_TEXT_GAP = 5;
@@ -164,6 +186,7 @@ export class GameCornerRewardUiHandler extends UiHandler {
     this.cursorIndex = 0;
     this.nuggiesText = undefined;
     this.cashOutText = undefined;
+    this.getUi().getMessageHandler().restoreBattleUiLayering();
     this.getUi().clearText();
     globalScene.hideShopOverlay(750 * globalScene.gameSpeed);
     globalScene.hideLuckText(250);
@@ -197,9 +220,7 @@ export class GameCornerRewardUiHandler extends UiHandler {
       const cell = globalScene.add.container(x, y);
       cell.setScale(PRIZE_CLUSTER_SCALE);
 
-      const icon = addModifierIconSprite(0, -6, slot.option.type.iconImage);
-      icon.setScale(PRIZE_ICON_SCALE);
-      cell.add(icon);
+      cell.add(this.createPrizeIcon(slot));
 
       const costText = addTextObject(0, PRIZE_TEXT_Y, `x${slot.cost}`, TextStyle.MONEY, {
         fontSize: PRIZE_TEXT_FONT_SIZE,
@@ -207,7 +228,7 @@ export class GameCornerRewardUiHandler extends UiHandler {
       costText.setOrigin(0, 0);
       cell.add(costText);
 
-      const nameText = addTextObject(0, PRIZE_TEXT_Y, this.formatPrizeName(slot.option.type.name), TextStyle.PARTY, {
+      const nameText = addTextObject(0, PRIZE_TEXT_Y, this.formatPrizeName(this.getPrizeName(slot)), TextStyle.PARTY, {
         fontSize: PRIZE_TEXT_FONT_SIZE,
       });
       nameText.setOrigin(0, 0);
@@ -232,6 +253,23 @@ export class GameCornerRewardUiHandler extends UiHandler {
         slotIndex,
       });
     });
+  }
+
+  private createPrizeIcon(slot: GameCornerRewardSlot): Phaser.GameObjects.GameObject {
+    if (slot.kind === "item") {
+      const icon = addModifierIconSprite(0, -6, slot.option.type.iconImage);
+      icon.setScale(PRIZE_ICON_SCALE);
+      return icon;
+    }
+
+    const icon = globalScene.add.sprite(0, -8, slot.iconAtlas, slot.iconFrame);
+    if (icon.frame.name !== slot.iconFrame) {
+      icon.setTexture(slot.fallbackIconAtlas, slot.fallbackIconFrame);
+      icon.setFrame(slot.fallbackIconFrame);
+    }
+    icon.setOrigin(0.5, 0.5);
+    icon.setScale(PRIZE_POKEMON_ICON_SCALE);
+    return icon;
   }
 
   private buildCashOutCell(): void {
@@ -357,17 +395,40 @@ export class GameCornerRewardUiHandler extends UiHandler {
 
     const slot = this.config.slots[point.slotIndex!];
     const canAfford = this.config.nuggies >= slot.cost;
+    if (slot.kind === "item") {
+      this.getUi().showText(
+        i18next.t("mysteryEncounters/gameCorner:rewardCounter.prizeDesc", {
+          description: slot.option.type.getDescription(),
+        }),
+      );
+
+      this.getUi().getMessageHandler().showNameTextWithIconPair(
+        getTextWithColors(`@[${canAfford ? "MONEY" : "PARTY_RED"}]{x${slot.cost}} =`, TextStyle.MESSAGE, true),
+        "nugget",
+        slot.option.type.name,
+        slot.option.type.iconImage,
+      );
+      return;
+    }
+
     this.getUi().showText(
-      i18next.t("mysteryEncounters/gameCorner:rewardCounter.prizeDesc", {
-        description: slot.option.type.getDescription(),
-      }),
+      i18next.t(
+        `mysteryEncounters/gameCorner:rewardCounter.${slot.jackpot ? "jackpotShadowPrizeDesc" : "shadowPrizeDesc"}`,
+        {
+          pokemonName: slot.pokemonName,
+          minStarterCost: slot.minStarterCost,
+          maxStarterCost: slot.maxStarterCost,
+        },
+      ),
     );
 
-    this.getUi().getMessageHandler().showNameTextWithIconPair(
-      getTextWithColors(`@[${canAfford ? "MONEY" : "PARTY_RED"}]{x${slot.cost}} =`, TextStyle.MESSAGE, true),
+    this.getUi().getMessageHandler().showNameText(
+      getTextWithColors(
+        `@[${canAfford ? "MONEY" : "PARTY_RED"}]{x${slot.cost}} = ${slot.pokemonName}`,
+        TextStyle.MESSAGE,
+        true,
+      ),
       "nugget",
-      slot.option.type.name,
-      slot.option.type.iconImage,
     );
   }
 
@@ -385,6 +446,15 @@ export class GameCornerRewardUiHandler extends UiHandler {
   }
 
   private getSlotPosition(slotIndex: number): { col: number; row: number; x: number; y: number } {
+    const configuredLayout = this.config?.slots[slotIndex]?.layout;
+    if (configuredLayout) {
+      return {
+        ...configuredLayout,
+        x: this.getColumnX(configuredLayout.col),
+        y: PRIZE_ROW_Y[configuredLayout.row] ?? PRIZE_ROW_Y[PRIZE_ROW_Y.length - 1],
+      };
+    }
+
     let col = 0;
     let row = slotIndex;
 
@@ -393,17 +463,29 @@ export class GameCornerRewardUiHandler extends UiHandler {
       col++;
     }
 
-    const sliceWidth = globalScene.scaledCanvas.width / (PRIZE_COLUMNS + 2);
     return {
       col,
       row,
-      x: sliceWidth * (col + 1) + sliceWidth * 0.5,
+      x: this.getColumnX(col),
       y: PRIZE_ROW_Y[row] ?? PRIZE_ROW_Y[PRIZE_ROW_Y.length - 1],
     };
   }
 
+  private getColumnX(col: number): number {
+    if (col >= PRIZE_COLUMNS) {
+      return globalScene.scaledCanvas.width - 22;
+    }
+
+    const sliceWidth = globalScene.scaledCanvas.width / (PRIZE_COLUMNS + 2);
+    return sliceWidth * (col + 1) + sliceWidth * 0.5;
+  }
+
   private formatPrizeName(name: string): string {
     return name.length <= PRIZE_NAME_MAX_LENGTH ? name : `${name.slice(0, PRIZE_NAME_MAX_LENGTH - 3)}...`;
+  }
+
+  private getPrizeName(slot: GameCornerRewardSlot): string {
+    return slot.kind === "item" ? slot.option.type.name : slot.pokemonName;
   }
 
   private positionInlinePrizeText(costText: Phaser.GameObjects.Text, nameText: Phaser.GameObjects.Text): void {

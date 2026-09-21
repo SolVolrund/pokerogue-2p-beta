@@ -1,4 +1,5 @@
 import { FixedBattleConfig } from "#app/battle";
+import type { PlayerIndex } from "#app/battle-scene";
 import { CHALLENGE_MODE_MYSTERY_ENCOUNTER_WAVES, CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
@@ -15,7 +16,7 @@ import { parseDailySeed } from "#data/daily-seed/daily-seed-utils";
 import type { PokemonSpecies } from "#data/pokemon-species";
 import { BiomeId } from "#enums/biome-id";
 import { ChallengeType } from "#enums/challenge-type";
-import { Challenges } from "#enums/challenges";
+import { Challenges, isSingleTypeChallenge } from "#enums/challenges";
 import { GameModes } from "#enums/game-modes";
 import { SpeciesId } from "#enums/species-id";
 import { classicFixedBattles, type FixedBattleConfigs } from "#trainers/fixed-battle-configs";
@@ -82,7 +83,9 @@ export class GameMode implements GameModeConfig {
       this.challenges = allChallenges.map(c => copyChallenge(c));
     }
     this.challenges
-      .filter((chal: Challenge) => chal.id === challenge)
+      .filter((chal: Challenge) =>
+        chal.id === challenge || (challenge === Challenges.SINGLE_TYPE && isSingleTypeChallenge(chal.id)),
+      )
       .forEach(chal => {
         chal.value = value;
         if (chal.hasSeverity()) {
@@ -96,8 +99,14 @@ export class GameMode implements GameModeConfig {
    * @param challenge the Challenges it looks for
    * @returns true if the game mode has that challenge
    */
-  hasChallenge(challenge: Challenges): boolean {
-    return this.challenges.some(c => c.id === challenge && c.value !== 0);
+  hasChallenge(challenge: Challenges, playerIndex?: PlayerIndex): boolean {
+    return this.challenges.some(c =>
+      (c.id === challenge || (challenge === Challenges.SINGLE_TYPE && isSingleTypeChallenge(c.id)))
+      && c.value !== 0
+      && (playerIndex === undefined
+        ? globalScene.getActivePlayerIndexes().some(player => c.appliesToPlayer(player))
+        : c.appliesToPlayer(playerIndex)),
+    );
   }
 
   /**
@@ -208,6 +217,11 @@ export class GameMode implements GameModeConfig {
   public isWaveTrainer(waveIndex: number): boolean {
     const { arena, offsetGym } = globalScene;
 
+    // HQ is a trainer gauntlet; normal spacing rules would still suppress most fights at chance 1.
+    if (arena.biomeId === BiomeId.ROCKET_HQ && !this.isWaveFinal(waveIndex)) {
+      return true;
+    }
+
     // Daily spawns trainers on floors 5, 15, 20, 25, 30, 35, 40, and 45
     if (this.isDaily) {
       const trainerManipulation = getDailyTrainerManipulation(waveIndex);
@@ -256,6 +270,9 @@ export class GameMode implements GameModeConfig {
   }
 
   isTrainerBoss(waveIndex: number, biomeType: BiomeId, offsetGym: boolean): boolean {
+    if (biomeType === BiomeId.ROCKET_HQ) {
+      return waveIndex % 10 === 0 && !this.isWaveFinal(waveIndex);
+    }
     switch (this.modeId) {
       case GameModes.DAILY:
         return waveIndex > 10 && waveIndex < 50 && !(waveIndex % 10);

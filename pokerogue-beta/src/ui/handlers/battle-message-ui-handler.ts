@@ -169,6 +169,15 @@ export class BattleMessageUiHandler extends MessageUiHandler {
     ui.bringToTop(this.messageContainer);
   }
 
+  public restoreBattleUiLayering(): void {
+    const ui = this.getUi();
+    // Restore the setup order beneath menus, including the next mystery encounter's options.
+    ui.sendToBack(this.messageContainer);
+    ui.sendToBack(this.movesWindowContainer);
+    ui.sendToBack(this.commandWindow);
+    ui.sendToBack(this.bg);
+  }
+
   public setMessageWindowVisible(visible: boolean): void {
     this.bg.setVisible(visible);
     this.messageContainer.setVisible(visible);

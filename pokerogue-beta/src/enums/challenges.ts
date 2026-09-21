@@ -10,4 +10,16 @@ export enum Challenges {
   LIMITED_SUPPORT,
   HARDCORE,
   PASSIVES,
+  SINGLE_TYPE_P1,
+  SINGLE_TYPE_P2,
+  SINGLE_TYPE_P3,
+}
+
+export function isSingleTypeChallenge(id: Challenges): boolean {
+  return (
+    id === Challenges.SINGLE_TYPE
+    || id === Challenges.SINGLE_TYPE_P1
+    || id === Challenges.SINGLE_TYPE_P2
+    || id === Challenges.SINGLE_TYPE_P3
+  );
 }

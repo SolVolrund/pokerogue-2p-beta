@@ -172,6 +172,8 @@ const REWARD_PRIORITY: Partial<Record<ComputerPartnerRecoveryItemId | string, nu
   MEGA_BRACELET: 3,
   Z_RING: 4,
   RARE_FORM_CHANGE_ITEM: 5,
+  STRANGE_HELMET: 5,
+  SILPH_SCOPE: 9,
   GRIP_CLAW: 6,
   BERRY_POUCH: 7,
   SHELL_BELL: 8,
@@ -1162,6 +1164,23 @@ function getRewardTarget(
       chooseScoredPokemonTarget(type, party, (pokemon, targetPokemonIndex) =>
         hasHighCritMoveOrAbility(pokemon) ? 250 - targetPokemonIndex : undefined)
       ?? chooseRandomPokemonTarget(type, party));
+  }
+
+  if (itemId === "SILPH_SCOPE") {
+    return (
+      chooseScoredPokemonTarget(
+        type,
+        party,
+        pokemon =>
+          pokemon.getMoveset().filter(move => {
+            const attack = move.getMove();
+            return (
+              attack.is("AttackMove")
+              && [PokemonType.NORMAL, PokemonType.FIGHTING].includes(pokemon.getMoveType(attack))
+            );
+          }).length,
+      ) ?? chooseRandomPokemonTarget(type, party)
+    );
   }
 
   if (itemId === "BATON") {

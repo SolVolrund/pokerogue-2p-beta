@@ -11,6 +11,8 @@ Pokerogue-2P/
 Pokerogue-App-main/
 pokeemerald-rogue-vanilla/
 pokeemerald-rogue-assistant-main/
+_investigate_pokerogue_offline/
+_reference_gen9_move_anims/
 
 # Build output
 dist/
@@ -25,9 +27,13 @@ coverage/
 
 # Logs and caches
 *.log
+*.pyc
+__pycache__/
 .cache/
 .vite/
 screen caps of pokerogue/
+pokerogue-beta/ALPH_WALL_SPELL_CHEATSHEET.md
+pokerogue-beta/dev-tools/
 
 # OS/editor noise
 .DS_Store

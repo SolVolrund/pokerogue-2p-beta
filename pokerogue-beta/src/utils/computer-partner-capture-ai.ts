@@ -1,5 +1,6 @@
 import type { PlayerIndex, PokeballCounts } from "#app/battle-scene";
 import { timedEventManager } from "#app/global-event-manager";
+import { globalScene } from "#app/global-scene";
 import type { Move } from "#data/moves/move";
 import { getCriticalCaptureChance, getPokeballCatchMultiplier } from "#data/pokeball";
 import { getStatusEffectCatchRateMultiplier } from "#data/status-effect";
@@ -124,6 +125,7 @@ export function getComputerPartnerCaptureInterests(
   const allowedBossTargetIdSet = toNumberSet(options.allowedBossTargetIds);
   const forceThrowTargetIdSet = toNumberSet(options.forceThrowTargetIds);
   const preferredTargetIdSet = toNumberSet(options.preferredTargetIds);
+  const playerIndex = options.playerIndex ?? (party[0] ? globalScene.getPlayerIndexForPokemon(party[0]) : undefined);
   return enemyField
     .map((target, targetIndex) => {
       const isAllowedBossTarget = allowedBossTargetIdSet.has(target.id);
@@ -132,6 +134,7 @@ export function getComputerPartnerCaptureInterests(
         || target.isFainted()
         || (target.isBoss() && (!isAllowedBossTarget || target.bossSegmentIndex >= 1))
         || reservedTargetIdSet.has(target.id)
+        || !isComputerPartnerCandidateAllowed(profile, target, playerIndex)
       ) {
         return undefined;
       }

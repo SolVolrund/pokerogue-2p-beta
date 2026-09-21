@@ -262,7 +262,7 @@ function healWeirdDreamPlayerParty(playerIndex: PlayerIndex): void {
   for (const pokemon of globalScene.getPlayerParty(playerIndex)) {
     pokemon.hp = pokemon.getMaxHp();
     pokemon.resetStatus(true, false, false, true);
-    for (const move of pokemon.moveset) {
+    for (const move of pokemon.getMovesetForPpRestore()) {
       move.ppUsed = 0;
     }
     pokemon.updateInfo(true);

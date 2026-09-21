@@ -39,6 +39,7 @@ export interface TwoPlayerRunBootstrap {
 export interface TwoPlayerTitleStart {
   action: "new-run" | "load-session";
   gameMode?: number;
+  challenges?: { id: number; value: number; severity: number }[];
   partySize?: 3 | 6;
   playerCount?: 1 | 2 | 3;
   vsMode?: boolean;
@@ -257,6 +258,14 @@ function isValidTitleStart(titleStart: unknown): titleStart is TwoPlayerTitleSta
   const data = titleStart as Partial<TwoPlayerTitleStart>;
   return (data.action === "new-run" || data.action === "load-session")
     && (data.gameMode === undefined || typeof data.gameMode === "number")
+    && (data.challenges === undefined
+      || (Array.isArray(data.challenges)
+        && data.challenges.length <= 64
+        && data.challenges.every(challenge =>
+          challenge && typeof challenge === "object"
+          && Number.isInteger(challenge.id) && challenge.id >= 0
+          && Number.isInteger(challenge.value) && challenge.value >= 0
+          && Number.isFinite(challenge.severity))))
     && (data.partySize === undefined || data.partySize === 3 || data.partySize === 6)
     && (data.playerCount === undefined || data.playerCount === 1 || data.playerCount === 2 || data.playerCount === 3)
     && (data.vsMode === undefined || typeof data.vsMode === "boolean")

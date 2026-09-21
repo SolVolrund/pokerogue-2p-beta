@@ -45,6 +45,7 @@ import {
   BaseStatModifier,
   BerryModifier,
   BerserkGeneModifier,
+  SilphScopeModifier,
   BoostBugSpawnModifier,
   BypassSpeedChanceModifier,
   ContactHeldItemTransferChanceModifier,
@@ -763,7 +764,7 @@ export class PokemonAllMovePpRestoreModifierType extends PokemonModifierType {
       iconImage,
       (_type, args) => new PokemonAllMovePpRestoreModifier(this, (args[0] as PlayerPokemon).id, this.restorePoints),
       (pokemon: PlayerPokemon) => {
-        if (pokemon.getMoveset().filter(m => m.ppUsed).length === 0) {
+        if (pokemon.getMovesetForPpRestore().filter(m => m.ppUsed).length === 0) {
           return PartyUiHandler.NoEffectMessage;
         }
         return null;
@@ -1733,6 +1734,9 @@ export class FormChangeItemModifierType extends PokemonModifierType implements G
   }
 
   getDescription(): string {
+    if (this.formChangeItem === FormChangeItem.STRANGE_HELMET) {
+      return i18next.t("modifierType:ModifierType.STRANGE_HELMET.description");
+    }
     return i18next.t("modifierType:ModifierType.FormChangeItemModifierType.description");
   }
 
@@ -1754,7 +1758,7 @@ export class FusePokemonModifierType extends PokemonModifierType {
           args[2] as FusionOptions | undefined,
         ),
       (pokemon: PlayerPokemon) => {
-        const selectStatus = new BooleanHolder(pokemon.isFusion());
+        const selectStatus = new BooleanHolder(pokemon.isFusion() || pokemon.isBioInstabilityEevee());
         applyChallenges(ChallengeType.POKEMON_FUSION, pokemon, selectStatus);
         if (selectStatus.value) {
           return PartyUiHandler.NoEffectMessage;
@@ -2190,7 +2194,7 @@ export class FormChangeItemModifierTypeGenerator extends ModifierTypeGenerator {
       ]
         .flat()
         .flatMap(fc => fc.item)
-        .filter(i => (i && i < 100) === isRareFormChangeItem);
+        .filter(i => i !== FormChangeItem.STRANGE_HELMET && (i && i < 100) === isRareFormChangeItem);
       // convert it into a set to remove duplicate values, which can appear when the same species with a potential form change is in the party.
 
       if (formChangeItemPool.length === 0) {
@@ -2966,6 +2970,22 @@ const modifierTypeInitObj = Object.freeze({
       (type, args) => new BerserkGeneModifier(type, (args[0] as Pokemon).id),
     ),
 
+  STRANGE_HELMET: () => {
+    const type = new FormChangeItemModifierType(FormChangeItem.STRANGE_HELMET);
+    type.setTier(ModifierTier.ROGUE);
+    return type;
+  },
+
+  SILPH_SCOPE: () => {
+    const type = new PokemonHeldItemModifierType(
+      "modifierType:ModifierType.SILPH_SCOPE",
+      "silphscope",
+      (type, args) => new SilphScopeModifier(type, (args[0] as Pokemon).id),
+    );
+    type.setTier(ModifierTier.ROGUE);
+    return type;
+  },
+
   VOUCHER: () => new AddVoucherModifierType(VoucherType.REGULAR, 1),
   VOUCHER_PLUS: () => new AddVoucherModifierType(VoucherType.PLUS, 1),
   VOUCHER_PREMIUM: () => new AddVoucherModifierType(VoucherType.PREMIUM, 1),
@@ -3226,6 +3246,8 @@ export function regenerateModifierPoolThresholds(
 }
 
 export interface CustomModifierSettings {
+  /** Disable extra Alph, token and Pokeblock choices for an exclusive event reward. */
+  allowBonusRewards?: boolean;
   /** If specified, will override the next X items to be the specified tier. These can upgrade with luck. */
   guaranteedModifierTiers?: ModifierTier[];
   /** If specified, will generate every remaining shop item at this tier. */

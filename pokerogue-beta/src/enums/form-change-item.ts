@@ -183,6 +183,7 @@ export enum FormChangeItem {
   ROTOM_FRIDGE,
   ROTOM_FAN,
   ROTOM_MOWER,
+  STRANGE_HELMET,
 
   // #endregion Form Change Items
 }
