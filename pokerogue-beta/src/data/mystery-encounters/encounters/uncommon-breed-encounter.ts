@@ -233,7 +233,7 @@ function showUncommonBreedPlayerMenu(playerIndex: PlayerIndex, startingCursorInd
   globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
     globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
       slideInDescription: false,
-      overrideTitle: `Player ${playerIndex + 1}`,
+      overrideTitle: globalScene.getPlayerDisplayName(playerIndex),
       overrideQuery: i18next.t(`${namespace}:query`),
       overrideOptions: buildUncommonBreedPlayerOptions(playerIndex),
       startingCursorIndex,

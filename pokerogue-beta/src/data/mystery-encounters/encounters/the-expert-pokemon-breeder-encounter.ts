@@ -385,7 +385,7 @@ function configureBreederOutro(choices: ExpertBreederChoice[]): void {
 
     for (const choice of choices) {
       for (const text of getEggRewardLines(
-        `Player ${choice.playerIndex + 1}`,
+        globalScene.getPlayerDisplayName(choice.playerIndex),
         choice.commonEggs,
         choice.rareEggs,
       )) {

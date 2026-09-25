@@ -2,6 +2,7 @@ import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
+import { getPlayerMessageOptions } from "#utils/player-messages";
 import { modifierTypes } from "#data/data-lists";
 import { BattlerIndex } from "#enums/battler-index";
 import { FieldPosition } from "#enums/field-position";
@@ -239,6 +240,7 @@ async function applyDigOutcome(playerIndex: PlayerIndex): Promise<void> {
     });
     await showEncounterText(
       i18next.t("battle:rewardGain", {
+        ...getPlayerMessageOptions(playerIndex),
         modifierName: modifier.type.name,
       }),
       null,
@@ -482,6 +484,7 @@ async function tryApplyDigRewardItems(playerIndex: PlayerIndex = globalScene.act
   audioManager.playSound("se/item_fanfare");
   await showEncounterText(
     i18next.t("battle:rewardGainCount", {
+      ...getPlayerMessageOptions(playerIndex),
       modifierName: leftovers.name,
       count: 1,
     }),
@@ -508,6 +511,7 @@ async function tryApplyDigRewardItems(playerIndex: PlayerIndex = globalScene.act
   audioManager.playSound("se/item_fanfare");
   await showEncounterText(
     i18next.t("battle:rewardGainCount", {
+      ...getPlayerMessageOptions(playerIndex),
       modifierName: shellBell.name,
       count: 1,
     }),

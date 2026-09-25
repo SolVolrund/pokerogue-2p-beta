@@ -1,142 +1,105 @@
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
-import type { HealBlockTag } from "#data/battler-tags";
 import { getStatusEffectHealText } from "#data/status-effect";
 import type { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { HitResult } from "#enums/hit-result";
 import { CommonAnim } from "#enums/move-anims-common";
-import { StatusEffect } from "#enums/status-effect";
 import { HealingBoosterModifier } from "#modifiers/modifier";
 import { CommonAnimPhase } from "#phases/common-anim-phase";
 import { HealAchv } from "#system/achv";
 import { NumberHolder } from "#utils/common";
 import i18next from "i18next";
 
-// TODO: Refactor this - it has far too many arguments
+export interface PokemonHealOptions {
+  message?: string;
+  showFullHpMessage?: boolean;
+  skipAnim?: boolean;
+  revive?: boolean;
+  healStatus?: boolean;
+  preventFullHeal?: boolean;
+  fullRestorePP?: boolean;
+}
+
 export class PokemonHealPhase extends CommonAnimPhase {
   public readonly phaseName = "PokemonHealPhase";
-  private hpHealed: number;
-  private message: string | null;
-  private showFullHpMessage: boolean;
-  private skipAnim: boolean;
-  private revive: boolean;
-  private healStatus: boolean;
-  private preventFullHeal: boolean;
-  private fullRestorePP: boolean;
 
   constructor(
     battlerIndex: BattlerIndex,
-    hpHealed: number,
-    message: string | null,
-    showFullHpMessage = true,
-    skipAnim = false,
-    revive = false,
-    healStatus = false,
-    preventFullHeal = false,
-    fullRestorePP = false,
+    private readonly hpHealed: number,
+    private readonly options: PokemonHealOptions = {},
   ) {
     super(battlerIndex, undefined, CommonAnim.HEALTH_UP);
-
-    this.hpHealed = hpHealed;
-    this.message = message;
-    this.showFullHpMessage = showFullHpMessage;
-    this.skipAnim = skipAnim;
-    this.revive = revive;
-    this.healStatus = healStatus;
-    this.preventFullHeal = preventFullHeal;
-    this.fullRestorePP = fullRestorePP;
   }
 
-  start() {
-    if (!this.skipAnim && (this.revive || this.getPokemon().hp) && !this.getPokemon().isFullHp()) {
+  public override start(): void {
+    const pokemon = this.getPokemon();
+    if (!this.options.skipAnim && (this.options.revive || pokemon.hp) && !pokemon.isFullHp()) {
       super.start();
     } else {
       this.end();
     }
   }
 
-  end() {
-    const pokemon = this.getPokemon();
+  public override async end(): Promise<void> {
+    await this.heal();
+    super.end();
+  }
 
-    if (!pokemon.isOnField() || (!this.revive && !pokemon.isActive())) {
-      return super.end();
+  private async heal(): Promise<void> {
+    const pokemon = this.getPokemon();
+    if (!this.options.revive && !pokemon.isActive(true)) {
+      return;
     }
 
-    const hasMessage = !!this.message;
-    const canRestorePP = this.fullRestorePP && pokemon.getMoveset().some(mv => mv.ppUsed > 0);
-    const healOrDamage = !pokemon.isFullHp() || this.hpHealed < 0 || canRestorePP;
-    const healBlock = pokemon.getTag(BattlerTagType.HEAL_BLOCK) as HealBlockTag;
-    let lastStatusEffect = StatusEffect.NONE;
-
+    const healBlock = pokemon.getTag(BattlerTagType.HEAL_BLOCK);
     if (healBlock && this.hpHealed > 0) {
       globalScene.phaseManager.queueMessage(healBlock.onActivation(pokemon));
-      this.message = null;
-      return super.end();
+      return;
     }
 
-    if (healOrDamage) {
-      const hpRestoreMultiplier = new NumberHolder(1);
-      if (!this.revive) {
-        globalScene.applyModifiersForPokemon(HealingBoosterModifier, pokemon, hpRestoreMultiplier);
+    let message = this.options.message;
+    if (this.hpHealed < 0) {
+      // Liquid Ooze damage is not increased by the recipient's Healing Charms.
+      pokemon.damageAndUpdate(Math.max(1, Math.floor(-this.hpHealed)), { result: HitResult.INDIRECT });
+    } else if (this.hpHealed > 0 && pokemon.isFullHp()) {
+      if (this.options.showFullHpMessage ?? true) {
+        message = i18next.t("battle:hpIsFull", { pokemonName: getPokemonNameWithAffix(pokemon) });
       }
-      const healAmount = new NumberHolder(Math.floor(this.hpHealed * hpRestoreMultiplier.value));
-      if (healAmount.value < 0) {
-        pokemon.damageAndUpdate(healAmount.value * -1, { result: HitResult.INDIRECT });
-        healAmount.value = 0;
+    } else if (this.hpHealed > 0) {
+      const multiplier = new NumberHolder(1);
+      if (!this.options.revive) {
+        globalScene.applyModifiersForPokemon(HealingBoosterModifier, pokemon, multiplier);
       }
-      // Prevent healing to full if specified (in case of healing tokens so Sturdy doesn't cause a softlock)
-      if (this.preventFullHeal && pokemon.hp + healAmount.value >= pokemon.getMaxHp()) {
-        healAmount.value = pokemon.getMaxHp() - pokemon.hp - 1;
-      }
-      healAmount.value = pokemon.heal(healAmount.value);
-      if (healAmount.value) {
-        globalScene.damageNumberHandler.add(pokemon, healAmount.value, HitResult.HEAL);
-      }
-      if (pokemon.isPlayer()) {
-        const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.activePlayerIndex;
-        const gameData = globalScene.getPlayerGameData(playerIndex);
-        if (!globalScene.isComputerPartnerPlayer(playerIndex)) {
-          globalScene.validateAchvsForPlayer(HealAchv, playerIndex, healAmount);
-        }
-        if (healAmount.value > gameData.gameStats.highestHeal) {
-          gameData.gameStats.highestHeal = healAmount.value;
-        }
-      }
-      if (this.healStatus && !this.revive && pokemon.status) {
-        lastStatusEffect = pokemon.status.effect;
-        pokemon.resetStatus();
-      }
-      if (this.fullRestorePP) {
-        for (const move of this.getPokemon().getMovesetForPpRestore()) {
-          if (move) {
-            move.ppUsed = 0;
+      const missingHp = Math.max(0, pokemon.getMaxHp() - pokemon.hp - Number(!!this.options.preventFullHeal));
+      const amount = Math.min(missingHp, Math.max(1, Math.floor(this.hpHealed * multiplier.value)));
+      const actualHeal = pokemon.heal(amount);
+      if (actualHeal > 0) {
+        globalScene.damageNumberHandler.add(pokemon, actualHeal, HitResult.HEAL);
+        if (pokemon.isPlayer()) {
+          const playerIndex = globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.activePlayerIndex;
+          const gameData = globalScene.getPlayerGameData(playerIndex);
+          if (!globalScene.isComputerPartnerPlayer(playerIndex)) {
+            globalScene.validateAchvsForPlayer(HealAchv, playerIndex, new NumberHolder(actualHeal));
           }
+          gameData.gameStats.highestHeal = Math.max(gameData.gameStats.highestHeal, actualHeal);
         }
       }
-      pokemon.updateInfo().then(() => super.end());
-    } else if (this.healStatus && !this.revive && pokemon.status) {
-      lastStatusEffect = pokemon.status.effect;
+    }
+
+    // Status cures and PP restoration must still run when HP is already full.
+    if (this.options.healStatus && pokemon.status) {
+      message = getStatusEffectHealText(pokemon.status.effect, getPokemonNameWithAffix(pokemon));
       pokemon.resetStatus();
-      pokemon.updateInfo().then(() => super.end());
-    } else if (this.showFullHpMessage) {
-      this.message = i18next.t("battle:hpIsFull", {
-        pokemonName: getPokemonNameWithAffix(pokemon),
-      });
     }
-
-    if (this.message) {
-      globalScene.phaseManager.queueMessage(this.message);
+    if (this.options.fullRestorePP) {
+      for (const move of pokemon.getMovesetForPpRestore()) {
+        move.ppUsed = 0;
+      }
     }
-
-    if (this.healStatus && lastStatusEffect && !hasMessage) {
-      globalScene.phaseManager.queueMessage(
-        getStatusEffectHealText(lastStatusEffect, getPokemonNameWithAffix(pokemon)),
-      );
+    if (message) {
+      globalScene.phaseManager.queueMessage(message);
     }
-
-    if (!healOrDamage && !lastStatusEffect) {
-      super.end();
-    }
+    await pokemon.updateInfo();
   }
 }

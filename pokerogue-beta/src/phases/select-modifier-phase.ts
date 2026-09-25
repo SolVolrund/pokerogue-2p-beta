@@ -1057,11 +1057,7 @@ export class SelectModifierPhase extends BattlePhase {
   }
 
   private getPlayerDisplayName(playerIndex: PlayerIndex): string {
-    if (globalScene.isComputerPartnerPlayer(playerIndex)) {
-      return getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex)).name;
-    }
-
-    return `Player ${playerIndex + 1}`;
+    return globalScene.getPlayerDisplayName(playerIndex);
   }
 
   private hasLinkingCordGold(playerIndex: PlayerIndex): boolean {

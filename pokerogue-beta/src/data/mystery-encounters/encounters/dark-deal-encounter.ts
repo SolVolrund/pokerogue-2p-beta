@@ -471,7 +471,7 @@ function queueDarkDealCaptureReservationMessages(captureTargets: DarkDealCapture
 function getDarkDealTrainerName(playerIndex: PlayerIndex): string {
   return globalScene.isComputerPartnerPlayer(playerIndex)
     ? getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex)).name
-    : `Player ${playerIndex + 1}`;
+    : globalScene.getPlayerDisplayName(playerIndex);
 }
 
 function getDarkDealCapturePositionLabel(targetIndex: number, targetCount: number): string {

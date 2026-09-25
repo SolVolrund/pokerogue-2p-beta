@@ -3,6 +3,7 @@ import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
+import { getPlayerMessageOptions } from "#utils/player-messages";
 import { IS_TEST, isBeta, isDev } from "#constants/app-constants";
 import { SubstituteTag } from "#data/battler-tags";
 import { Gender } from "#data/gender";
@@ -371,6 +372,7 @@ export class AttemptCapturePhase extends PokemonPhase {
 
     globalScene.ui.showText(
       i18next.t("battle:pokemonCloned", {
+        ...getPlayerMessageOptions(this.playerIndex),
         pokemonName: pokemon.name,
       }),
       null,
@@ -394,6 +396,7 @@ export class AttemptCapturePhase extends PokemonPhase {
           }
           globalScene.ui.showText(
             i18next.t("battle:partyFull", {
+              ...getPlayerMessageOptions(this.playerIndex),
               pokemonName: pokemon.getNameToRender(),
             }),
             null,
@@ -485,6 +488,7 @@ export class AttemptCapturePhase extends PokemonPhase {
 
     globalScene.ui.showText(
       i18next.t(addStatus.value ? "battle:pokemonCaught" : "battle:pokemonCaughtButChallenge", {
+        ...getPlayerMessageOptions(this.playerIndex),
         pokemonName: pokemon.name,
       }),
       null,
@@ -647,6 +651,7 @@ export class AttemptCapturePhase extends PokemonPhase {
               }
               globalScene.ui.showText(
                 i18next.t("battle:partyFull", {
+                  ...getPlayerMessageOptions(this.playerIndex),
                   pokemonName: pokemon.getNameToRender(),
                 }),
                 null,

@@ -108,9 +108,9 @@ async function promptShinyBadgePlayer(playerIndex: PlayerIndex, startingCursorIn
     overrideOptions: buildShinyBadgeOptions(playerIndex),
     startingCursorIndex,
     privateOwnerPlayerIndex: playerIndex,
-    privateWaitingQuery: `Player ${playerIndex + 1} is choosing...`,
+    privateWaitingQuery: `${globalScene.getPlayerDisplayName(playerIndex)} is choosing...`,
     privateOptionLabel: "???",
-    privateOptionTooltip: `Waiting for Player ${playerIndex + 1} to choose.`,
+    privateOptionTooltip: `Waiting for ${globalScene.getPlayerDisplayName(playerIndex)} to choose.`,
     computerPartnerOption: {
       chooseOptionIndex: chooseComputerPartnerShinyBadgeOption,
       onOptionChosen: (optionIndex, choicePlayerIndex) =>
@@ -202,7 +202,7 @@ async function runShinyBadgeChoices(): Promise<boolean> {
 
   if (wantChoices.length === 0) {
     const winningPlayerIndex = globalScene.resolvePlayerTieBreak(choices.map(choice => choice.playerIndex));
-    await showEncounterText(`Player ${winningPlayerIndex + 1}'s choice wins this time.`);
+    await showEncounterText(`${globalScene.getPlayerDisplayName(winningPlayerIndex)}'s choice wins this time.`);
     await awardShinyBadgeWithoutBattle(winningPlayerIndex, `${namespace}:outro.tiebreak`);
     return true;
   }

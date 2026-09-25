@@ -109,6 +109,7 @@ import { decrypt, encrypt } from "#utils/data";
 import { getEnumKeys } from "#utils/enums";
 import type { MewtwoFinalBossState } from "#utils/classic-final-boss-utils";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
+import { getPlayerDisplayName, normalizePlayerDisplayName } from "#utils/player-display-name";
 import { toCamelCase } from "#utils/strings";
 import { AES, enc } from "crypto-js";
 import i18next from "i18next";
@@ -175,6 +176,7 @@ export class GameData {
 
   public trainerId: number;
   public secretId: number;
+  public playerDisplayName = "";
 
   public gender: PlayerGender;
 
@@ -244,10 +246,15 @@ export class GameData {
     this.initStarterData();
   }
 
+  public getPlayerDisplayName(playerIndex = 0): string {
+    return getPlayerDisplayName(this.playerDisplayName, playerIndex);
+  }
+
   public getSystemSaveData(): SystemSaveData {
     return {
       trainerId: this.trainerId,
       secretId: this.secretId,
+      playerDisplayName: normalizePlayerDisplayName(this.playerDisplayName),
       gender: this.gender,
       dexData: this.dexData,
       starterData: this.starterData,
@@ -388,6 +395,7 @@ export class GameData {
 
     this.trainerId = systemData.trainerId;
     this.secretId = systemData.secretId;
+    this.playerDisplayName = normalizePlayerDisplayName(systemData.playerDisplayName);
 
     this.gender = systemData.gender;
 
@@ -1647,6 +1655,11 @@ export class GameData {
     }
     await this.initSessionFromData(sessionData);
     return true;
+  }
+
+  /** Restore a host-provided run through the normal parser/migrations without importing its system profile. */
+  public async loadSessionSnapshot(snapshot: string): Promise<void> {
+    await this.initSessionFromData(this.parseSessionData(snapshot));
   }
 
   // TODO: This needs a giant refactor and overhaul

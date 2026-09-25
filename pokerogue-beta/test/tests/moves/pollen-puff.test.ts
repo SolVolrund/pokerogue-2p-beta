@@ -3,8 +3,9 @@ import { BattlerIndex } from "#enums/battler-index";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";
 import { GameManager } from "#test/framework/game-manager";
+import { Pokemon } from "#field/pokemon";
 import Phaser from "phaser";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("Moves - Pollen Puff", () => {
   let phaserGame: Phaser.Game;
@@ -18,6 +19,9 @@ describe("Moves - Pollen Puff", () => {
 
   beforeEach(() => {
     game = new GameManager(phaserGame);
+    // Accessory sprites need real animation frames, which the headless renderer does not provide.
+    vi.spyOn(Pokemon.prototype, "playAnim").mockImplementation(() => {});
+    vi.spyOn(Pokemon.prototype, "refreshAccessoryOutfitSprites").mockImplementation(() => {});
     game.override
       .ability(AbilityId.BALL_FETCH)
       .battleStyle("single")

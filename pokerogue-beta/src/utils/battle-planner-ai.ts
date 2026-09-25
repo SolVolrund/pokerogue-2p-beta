@@ -2,7 +2,6 @@ import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { globalScene } from "#app/global-scene";
 import { allMoves } from "#data/data-lists";
 import { TerrainType } from "#data/terrain";
-import { getEffectiveWeatherForMove } from "#data/weather";
 import { AbilityId } from "#enums/ability-id";
 import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
@@ -17,12 +16,13 @@ import { BATTLE_STATS, type BattleStat, Stat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
 import { WeatherType } from "#enums/weather-type";
 import type { Pokemon } from "#field/pokemon";
-import { type HealAttr, type Move, WeatherHealAttr } from "#moves/move";
+import { HealingBoosterModifier } from "#modifiers/modifier";
+import type { HealAttr, Move } from "#moves/move";
 import { getMoveTargets } from "#moves/move-utils";
 import type { PokemonMove } from "#moves/pokemon-move";
 import type { TurnMove } from "#types/turn-move";
 import { getAiMoveTargetData, getAiRelevantOpponents } from "#utils/ai-targeting";
-import { BooleanHolder } from "#utils/common";
+import { BooleanHolder, NumberHolder } from "#utils/common";
 
 const FAIL_SCORE = -100_000;
 const KO_SCORE = 220;
@@ -2288,7 +2288,7 @@ function getProjectedDirectHealAmount(
       return bestHeal;
     }
 
-    const expectedHeal = Math.max(1, Math.floor(pokemon.getMaxHp() * getHealingRatioForAttr(user, move, attr)));
+    const expectedHeal = getExpectedDirectHeal(user, pokemon, move, attr);
     const missingHp = Math.max(0, pokemon.getMaxHp() - pokemon.hp);
     return Math.max(bestHeal, Math.min(missingHp, expectedHeal));
   }, 0);
@@ -2313,7 +2313,7 @@ function getHealingMoveScore(user: Pokemon, target: Pokemon, move: Move, targetI
       return bestScore;
     }
 
-    const expectedHeal = Math.max(1, Math.floor(maxHp * getHealingRatioForAttr(user, move, attr)));
+    const expectedHeal = getExpectedDirectHeal(user, healedTarget, move, attr);
     const actualHeal = Math.min(missingHp, expectedHeal);
     const restoredRatio = actualHeal / maxHp;
     const overhealRatio = Math.max(0, expectedHeal - actualHeal) / maxHp;
@@ -2457,34 +2457,17 @@ function getStatusBurdenScore(pokemon: Pokemon, healer: Pokemon): number {
   }
 }
 
-function getHealingRatioForAttr(user: Pokemon, move: Move, attr: HealAttr): number {
-  if (attr instanceof WeatherHealAttr) {
-    return attr.getWeatherHealRatio(getEffectiveWeatherForMove(user));
+function getExpectedDirectHeal(user: Pokemon, target: Pokemon, move: Move, attr: HealAttr): number {
+  if (target.getTag(BattlerTagType.HEAL_BLOCK)) {
+    return 0;
   }
-
-  const attrData = attr as unknown as {
-    healRatio?: unknown;
-    normalHealRatio?: unknown;
-    boostedHealRatio?: unknown;
-  };
-
-  if (typeof attrData.boostedHealRatio === "number") {
-    return attrData.boostedHealRatio;
+  const baseHeal = Math.round(target.getMaxHp() * attr.getHealRatio(user, target, move, true));
+  if (baseHeal <= 0) {
+    return 0;
   }
-
-  if (typeof attrData.normalHealRatio === "number") {
-    return attrData.normalHealRatio;
-  }
-
-  if (typeof attrData.healRatio === "number") {
-    return attrData.healRatio;
-  }
-
-  if (move.id === MoveId.REST) {
-    return 1;
-  }
-
-  return 0.5;
+  const multiplier = new NumberHolder(1);
+  globalScene.applyModifiersForPokemon(HealingBoosterModifier, target, multiplier);
+  return Math.max(1, Math.floor(baseHeal * multiplier.value));
 }
 
 function canHealBeforeLikelyKo(

@@ -30,6 +30,7 @@ import type { DexData } from "./dex-data";
 export interface SystemSaveData {
   trainerId: number;
   secretId: number;
+  playerDisplayName?: string;
   gender: PlayerGender;
   dexData: DexData;
   starterData: StarterData;

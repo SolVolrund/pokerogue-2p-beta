@@ -61,9 +61,9 @@ export class SelectStarterPhase extends Phase {
               globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
                 const starterPrompt = globalScene.isComputerPartnerPlayer(nextPlayerIndex)
                   ? i18next.t("menu:computerPartnerStarterPrompt")
-                  : nextPlayerIndex === 1
-                    ? i18next.t("menu:playerTwoStarterPrompt")
-                    : "Player 3, choose your starters.";
+                  : i18next.t("menu:namedStarterPrompt", {
+                      playerName: globalScene.getPlayerDisplayName(nextPlayerIndex),
+                    });
                 globalScene.ui.showText(starterPrompt, null, () => this.selectStartersForPlayer(nextPlayerIndex));
               });
             });
@@ -108,9 +108,9 @@ export class SelectStarterPhase extends Phase {
         globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
           const starterPrompt = globalScene.isComputerPartnerPlayer(nextPlayerIndex)
             ? i18next.t("menu:computerPartnerStarterPrompt")
-            : nextPlayerIndex === 1
-              ? i18next.t("menu:playerTwoStarterPrompt")
-              : "Player 3, choose your starters.";
+            : i18next.t("menu:namedStarterPrompt", {
+                playerName: globalScene.getPlayerDisplayName(nextPlayerIndex),
+              });
           globalScene.ui.showText(starterPrompt, null, () => this.selectStartersForPlayer(nextPlayerIndex));
         });
       });

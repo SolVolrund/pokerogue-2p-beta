@@ -22,7 +22,7 @@ export class VsModeVictoryPhase extends BattlePhase {
     }
 
     globalScene.ui.showText(
-      `Player ${this.winnerPlayerIndex + 1} wins!`,
+      `${globalScene.getPlayerDisplayName(this.winnerPlayerIndex)} wins!`,
       null,
       () => this.finishRun(),
       null,

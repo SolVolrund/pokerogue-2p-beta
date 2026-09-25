@@ -35,6 +35,13 @@ export class TitleUiHandler extends OptionSelectUiHandler {
    * @returns The username of logged in user
    */
   private getUsername(): string {
+    const playerName = globalScene.twoPlayerLocalInputSeat === "ep"
+      ? ""
+      : globalScene.getLocalPlayerGameData().playerDisplayName;
+    if (playerName && !globalScene.hideUsername) {
+      return `Player: ${playerName}`;
+    }
+
     const multiplayerName = this.getMultiplayerUsername();
     if (multiplayerName) {
       return i18next.t("menu:loggedInAs", { username: multiplayerName });

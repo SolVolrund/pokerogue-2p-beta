@@ -437,13 +437,13 @@ export class MysteryEncounterUiHandler extends UiHandler {
   private getPrivateWaitingText(): string {
     const privateOwnerPlayerIndex = this.getPrivateOwnerPlayerIndex();
     return this.overrideSettings?.privateWaitingQuery
-      ?? `Player ${(privateOwnerPlayerIndex ?? globalScene.activePlayerIndex) + 1} is choosing...`;
+      ?? `${globalScene.getPlayerDisplayName(privateOwnerPlayerIndex ?? globalScene.activePlayerIndex)} is choosing...`;
   }
 
   private getPrivateOptionTooltipText(): string {
     const privateOwnerPlayerIndex = this.getPrivateOwnerPlayerIndex();
     return this.overrideSettings?.privateOptionTooltip
-      ?? `Waiting for Player ${(privateOwnerPlayerIndex ?? globalScene.activePlayerIndex) + 1} to choose.`;
+      ?? `Waiting for ${globalScene.getPlayerDisplayName(privateOwnerPlayerIndex ?? globalScene.activePlayerIndex)} to choose.`;
   }
 
   override setCursor(cursor: number): boolean {

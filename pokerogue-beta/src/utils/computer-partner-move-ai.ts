@@ -239,7 +239,7 @@ function scoreMoveEffects(pokemon: Pokemon, move: Move): number {
       * getEffectChanceScale(move, attr.effectChanceOverride);
   }
 
-  if (move.hasAttr("HealAttr") || move.hasAttr("WeatherHealAttr") || move.hasAttr("PlantHealAttr")) {
+  if (move.hasAttr("HealAttr")) {
     score += 24;
   }
   if (move.hasAttr("HitHealAttr")) {

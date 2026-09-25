@@ -2,6 +2,7 @@ import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
+import { getPlayerMessageOptions } from "#utils/player-messages";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { modifierTypes } from "#data/data-lists";
 import { BattlerTagType } from "#enums/battler-tag-type";
@@ -241,6 +242,7 @@ function setBerryRewards(
     audioManager.playSound("se/item_fanfare");
     queueEncounterMessage(
       i18next.t("battle:rewardGainCount", {
+        ...getPlayerMessageOptions(playerIndex),
         modifierName: berryText,
         count: berryCount,
       }),

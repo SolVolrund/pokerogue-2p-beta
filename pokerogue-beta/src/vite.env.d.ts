@@ -14,6 +14,8 @@ interface ImportMetaEnv {
   readonly VITE_BYPASS_TUTORIAL?: "0" | "1";
   readonly VITE_API_BASE_URL?: HTTP_URL;
   readonly VITE_SERVER_URL?: HTTP_URL;
+  readonly VITE_ONLINE_SERVICE_URL?: HTTP_URL;
+  readonly VITE_ONLINE_BUILD_ID?: string;
   readonly VITE_DISCORD_CLIENT_ID?: string;
   readonly VITE_GOOGLE_CLIENT_ID?: string;
   readonly VITE_I18N_DEBUG?: "0" | "1";

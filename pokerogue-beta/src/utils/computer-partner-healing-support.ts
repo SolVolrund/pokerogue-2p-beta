@@ -14,7 +14,12 @@ const SELF_HEAL_TAG_MOVES = new Set<MoveId>([MoveId.AQUA_RING, MoveId.INGRAIN]);
 const SELF_HEAL_EFFECT_MOVES = new Set<MoveId>([MoveId.WISH]);
 const PARTNER_HEAL_MOVES = new Set<MoveId>([MoveId.HEAL_PULSE, MoveId.FLORAL_HEALING]);
 const ALLIED_HEAL_TARGETS = new Set<MoveTarget>([MoveTarget.USER_AND_ALLIES, MoveTarget.USER_SIDE]);
-const SELF_HEAL_TARGETS = new Set<MoveTarget>([MoveTarget.USER, MoveTarget.USER_AND_ALLIES, MoveTarget.USER_SIDE]);
+const SELF_HEAL_TARGETS = new Set<MoveTarget>([
+  MoveTarget.USER,
+  MoveTarget.USER_OR_NEAR_ALLY,
+  MoveTarget.USER_AND_ALLIES,
+  MoveTarget.USER_SIDE,
+]);
 const PARTNER_HEAL_TARGETS = new Set<MoveTarget>([
   MoveTarget.ALLY,
   MoveTarget.NEAR_ALLY,
@@ -24,19 +29,13 @@ const PARTNER_HEAL_TARGETS = new Set<MoveTarget>([
 ]);
 
 export function getHealingSupportMoveCapabilities(move: Move): HealingSupportMoveCapabilities {
-  const hasDirectHeal =
-    move.hasAttr("HealAttr")
-    || move.hasAttr("WeatherHealAttr")
-    || move.hasAttr("PlantHealAttr")
-    || move.hasAttr("SandHealAttr")
-    || move.hasAttr("BoostHealAttr")
-    || move.hasAttr("SwallowHealAttr");
+  const hasDirectHeal = move.hasAttr("HealAttr");
   const healsAllAllies = hasDirectHeal && ALLIED_HEAL_TARGETS.has(move.moveTarget);
   const healsPartner =
     healsAllAllies
     || PARTNER_HEAL_MOVES.has(move.id)
     || move.hasAttr("HealOnAllyAttr")
-    || (hasDirectHeal && PARTNER_HEAL_TARGETS.has(move.moveTarget) && !SELF_HEAL_TARGETS.has(move.moveTarget));
+    || (hasDirectHeal && PARTNER_HEAL_TARGETS.has(move.moveTarget));
   const healsSelf =
     healsAllAllies
     || SELF_HEAL_TAG_MOVES.has(move.id)

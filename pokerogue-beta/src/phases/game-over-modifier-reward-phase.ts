@@ -1,5 +1,6 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
+import { getPlayerMessageOptions } from "#utils/player-messages";
 import { UiMode } from "#enums/ui-mode";
 import { ModifierRewardPhase } from "#phases/modifier-reward-phase";
 import i18next from "i18next";
@@ -16,6 +17,7 @@ export class GameOverModifierRewardPhase extends ModifierRewardPhase {
       globalScene.ui.fadeIn(250).then(() => {
         globalScene.ui.showText(
           i18next.t("battle:rewardGain", {
+            ...getPlayerMessageOptions(this.playerIndex),
             modifierName: newModifier?.type.name,
           }),
           null,

@@ -378,7 +378,7 @@ async function runMultiPlayerTeleportingHijinksChoices(): Promise<boolean> {
   if (teleportChoices.length === inspectChoices.length) {
     const winningPlayerIndex = globalScene.resolvePlayerTieBreak(choices.map(choice => choice.playerIndex));
     useTeleportRoute = teleportChoices.some(choice => choice.playerIndex === winningPlayerIndex);
-    await showEncounterText(`Player ${winningPlayerIndex + 1}'s choice wins this time.`);
+    await showEncounterText(`${globalScene.getPlayerDisplayName(winningPlayerIndex)}'s choice wins this time.`);
   }
 
   const winningChoices = useTeleportRoute ? teleportChoices : inspectChoices;

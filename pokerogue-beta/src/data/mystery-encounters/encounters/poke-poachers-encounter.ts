@@ -249,7 +249,7 @@ async function getWinningPokePoachersOption(choices: PokePoachersChoice[]): Prom
   }
 
   const winningPlayerIndex = globalScene.resolvePlayerTieBreak(choices.map(choice => choice.playerIndex));
-  await showEncounterText(`Player ${winningPlayerIndex + 1}'s choice wins this time.`);
+    await showEncounterText(`${globalScene.getPlayerDisplayName(winningPlayerIndex)}'s choice wins this time.`);
   return choices.find(choice => choice.playerIndex === winningPlayerIndex)?.optionIndex ?? choices[0].optionIndex;
 }
 

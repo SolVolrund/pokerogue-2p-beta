@@ -1,6 +1,7 @@
 import { audioManager } from "#app/global-audio-manager";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
+import { getPlayerMessageOptions } from "#utils/player-messages";
 import type { ModifierType } from "#modifiers/modifier-type";
 import { BattlePhase } from "#phases/battle-phase";
 import type { ModifierTypeFunc } from "#types/modifier-types";
@@ -42,6 +43,7 @@ export class ModifierRewardPhase extends BattlePhase {
       audioManager.playSound("se/item_fanfare");
       globalScene.ui.showText(
         i18next.t("battle:rewardGain", {
+          ...getPlayerMessageOptions(this.playerIndex),
           modifierName: newModifier?.type.name,
         }),
         null,

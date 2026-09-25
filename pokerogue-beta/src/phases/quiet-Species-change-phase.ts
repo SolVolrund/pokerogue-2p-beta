@@ -513,11 +513,7 @@ private getMewGauntletMoveIds(): MoveId[] | undefined{
         "PokemonHealPhase",
         this.pokemon.getBattlerIndex(),
         this.pokemon.getMaxHp(),
-        null,
-        false,
-        false,
-        false,
-        true,
+        { showFullHpMessage: false, skipAnim: false, revive: false, healStatus: true },
       );
       // TODO: Use or create a helper function to remove all tags on a Pokemon
       this.pokemon.findAndRemoveTags(() => true);

@@ -7,6 +7,8 @@ import { PositionalTagType } from "#enums/positional-tag-type";
 import { SpeciesId } from "#enums/species-id";
 import { Stat } from "#enums/stat";
 import { GameManager } from "#test/framework/game-manager";
+import { Pokemon } from "#field/pokemon";
+import type { PokemonHealPhase } from "#phases/pokemon-heal-phase";
 import { toDmgValue } from "#utils/common";
 import i18next from "i18next";
 import Phaser from "phaser";
@@ -24,6 +26,9 @@ describe("Move - Wish", () => {
 
   beforeEach(() => {
     game = new GameManager(phaserGame);
+    // Accessory sprites need real animation frames, which the headless renderer does not provide.
+    vi.spyOn(Pokemon.prototype, "playAnim").mockImplementation(() => {});
+    vi.spyOn(Pokemon.prototype, "refreshAccessoryOutfitSprites").mockImplementation(() => {});
     game.override
       .ability(AbilityId.BALL_FETCH)
       .battleStyle("single")
@@ -132,6 +137,8 @@ describe("Move - Wish", () => {
     expect(game).not.toHavePositionalTag(PositionalTagType.WISH);
 
     const healPhases = game.scene.phaseManager["phaseQueue"].findAll("PokemonHealPhase");
+    expect(game).toBeAtPhase("PokemonHealPhase");
+    healPhases.unshift(game.scene.phaseManager.getCurrentPhase() as PokemonHealPhase);
     expect(healPhases).toHaveLength(4);
     expect.soft(healPhases.map(php => php.getPokemon())).toEqual(oldOrder);
 

@@ -3,6 +3,7 @@ import { globalScene } from "#app/global-scene";
 import type { InputsController } from "#app/inputs-controller";
 import type { InputSeat, PlayerIndex, TwoPlayerDebugStateCheckpoint } from "#app/battle-scene";
 import { isDev } from "#constants/app-constants";
+import { onlineSaveSession } from "#utils/online-save-session";
 import { Button } from "#enums/buttons";
 import { UiMode } from "#enums/ui-mode";
 import { Setting, SettingKeys, settingIndex } from "#system/settings";
@@ -264,6 +265,7 @@ export class UiInputs {
   }
 
   private processLocalButtonInput(button: Button, pressed: boolean): boolean {
+    const localSaveMenu = onlineSaveSession.localMenu;
     const inputCheckpoint = this.getInputCheckpoint();
     const inputSeat = globalScene.getLocalInputSeatForInput();
     const inputReadinessBlockReason = this.twoPlayerInputTransport?.getInputReadinessBlockReason(inputCheckpoint);
@@ -319,7 +321,7 @@ export class UiInputs {
       pressed,
     });
 
-    if (processed) {
+    if (processed && !localSaveMenu && !onlineSaveSession.localMenu) {
       this.twoPlayerInputTransport?.send(button, pressed, inputCheckpoint, inputSeat);
     }
 

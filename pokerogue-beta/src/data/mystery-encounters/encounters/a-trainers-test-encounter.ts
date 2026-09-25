@@ -395,7 +395,7 @@ function setATrainersTestRewardMessages(choices: ATrainersTestChoice[]): void {
       const eggType = i18next.t(
         `${namespace}:eggTypes.${choice.optionIndex === 1 ? "epic" : "rare"}`,
       ).replace(/^a[n]? /, "");
-      await showEncounterText(`${trainerName} gave Player ${choice.playerIndex + 1} ${eggType}!`);
+      await showEncounterText(`${trainerName} gave ${globalScene.getPlayerDisplayName(choice.playerIndex)} ${eggType}!`);
     }
   };
 }

@@ -1,6 +1,7 @@
 import type { PlayerIndex } from "#app/battle-scene";
 import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { globalScene } from "#app/global-scene";
+import { getPlayerMessageOptions } from "#utils/player-messages";
 import { audioManager } from "#app/global-audio-manager";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { Phase } from "#app/phase";
@@ -463,6 +464,7 @@ export class GameCornerRewardPhase extends Phase {
       this.refreshRewardCounter();
       globalScene.ui.showText(
         i18next.t(`${namespace}:rewardCounter.purchased`, {
+          ...getPlayerMessageOptions(this.playerIndex),
           itemName: slot.kind === "item" ? slot.option.type.name : "",
           nuggies: this.nuggies,
         }),
@@ -473,6 +475,9 @@ export class GameCornerRewardPhase extends Phase {
   }
 
   private async applyPokemonPrize(slot: GameCornerPokemonRewardSlot, slotIndex: number): Promise<void> {
+    this.setActiveRewardPlayer();
+    // Prompts must own input instead of leaving the prize counter active during the purchase.
+    await globalScene.ui.setMode(UiMode.MESSAGE);
     const pokemon = await this.addShadowPokemonToParty(slot);
     if (!pokemon) {
       await globalScene.ui.setMode(UiMode.GAME_CORNER_REWARD, this.getUiConfig());
@@ -485,6 +490,7 @@ export class GameCornerRewardPhase extends Phase {
     this.refreshRewardCounter();
     globalScene.ui.showText(
       i18next.t(`${namespace}:rewardCounter.pokemonPurchased`, {
+        ...getPlayerMessageOptions(this.playerIndex),
         pokemonName: pokemon.getNameToRender(),
         nuggies: this.nuggies,
       }),
@@ -589,7 +595,7 @@ export class GameCornerRewardPhase extends Phase {
         this.setActiveRewardPlayer();
         updateWindowType(this.playerIndex + 1);
         globalScene.ui.showText(
-          i18next.t("battle:partyFull", { pokemonName }),
+          i18next.t("battle:partyFull", { ...getPlayerMessageOptions(this.playerIndex), pokemonName }),
           null,
           () => {
             globalScene.pokemonInfoContainer.makeRoomForConfirmUi(1, true);
@@ -706,6 +712,7 @@ export class GameCornerRewardPhase extends Phase {
 
     const isCpu = globalScene.isComputerPartnerPlayer(this.playerIndex);
     const cashOutMessage = i18next.t(`${namespace}:${isCpu ? "cpu.cashOut" : "rewardCounter.cashOutComplete"}`, {
+      ...getPlayerMessageOptions(this.playerIndex),
       amount: payout,
       nuggies: remainingNuggies,
       player: isCpu ? this.getCpuProfile().name : "",

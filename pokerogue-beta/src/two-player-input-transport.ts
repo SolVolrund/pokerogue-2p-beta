@@ -1,6 +1,14 @@
 import type { InputOwner, InputSeat, LocalInputSeat, PlayerIndex } from "#app/battle-scene";
 import { Button } from "#enums/buttons";
+import { onlineSaveSession, type OnlineSaveControl } from "#utils/online-save-session";
 import type { ComputerPartnerKey, ComputerPartnerRolePreferences } from "#utils/computer-partner-profile";
+import {
+  getOnlineMembership,
+  isOnlineSession,
+  ONLINE_BUILD_ID,
+  ONLINE_PROTOCOL,
+  showOnlineConnectionStatus,
+} from "#utils/online-lobby-client";
 
 const LOCAL_INPUT_PROTOCOL = "pokerogue-2p-local-input";
 const LOCAL_INPUT_PROTOCOL_VERSION = 1;
@@ -386,6 +394,9 @@ export class TwoPlayerInputTransport {
   private readonly webSocketUrl = getWebSocketUrl();
   private channel: BroadcastChannel | undefined;
   private webSocket: WebSocket | undefined;
+  private readonly onlineSession = isOnlineSession();
+  private onlineAuthenticated = false;
+  private onlineReady = false;
   private sequence = 0;
   private authoritySequence = 0;
   private latestRemoteCheckpoint: TwoPlayerStateCheckpoint | undefined;
@@ -489,6 +500,12 @@ export class TwoPlayerInputTransport {
   }
 
   public getInputReadinessBlockReason(checkpoint = this.getInputCheckpoint()): string | undefined {
+    if (this.onlineSession && onlineSaveSession.loading) {
+      return "online-save-loading";
+    }
+    if (this.onlineSession && (!this.onlineReady || this.webSocket?.readyState !== WebSocket.OPEN)) {
+      return "online-lobby-waiting-for-players";
+    }
     if (!checkpoint) {
       return "local-checkpoint-unavailable";
     }
@@ -966,7 +983,7 @@ export class TwoPlayerInputTransport {
       return true;
     }
 
-    if (this.mode === "websocket" && this.webSocket?.readyState === WebSocket.OPEN) {
+    if (this.mode === "websocket" && this.webSocket?.readyState === WebSocket.OPEN && (!this.onlineSession || this.onlineAuthenticated)) {
       this.webSocket.send(JSON.stringify(message));
       return true;
     }
@@ -985,8 +1002,39 @@ export class TwoPlayerInputTransport {
   }
 
   private startWebSocket(): void {
+    let onlineCheckpointInterval: ReturnType<typeof setInterval> | undefined;
+    let onlineCloseReason: string | undefined;
+    if (this.onlineSession) {
+      showOnlineConnectionStatus("Connecting to lobby...");
+    }
     this.webSocket = new WebSocket(this.webSocketUrl);
+    if (this.onlineSession) {
+      onlineSaveSession.send = message => {
+        if (!this.onlineAuthenticated || this.webSocket?.readyState !== WebSocket.OPEN) {
+          return false;
+        }
+        this.webSocket.send(JSON.stringify({ ...message, protocol: ONLINE_PROTOCOL }));
+        return true;
+      };
+    }
     this.webSocket.addEventListener("open", () => {
+      if (this.onlineSession) {
+        const member = getOnlineMembership();
+        if (!member) {
+          showOnlineConnectionStatus("Lobby membership expired. Leave and join again.");
+          this.webSocket?.close();
+          return;
+        }
+        this.webSocket?.send(
+          JSON.stringify({
+            protocol: ONLINE_PROTOCOL,
+            type: "authenticate",
+            token: member.token,
+            buildId: ONLINE_BUILD_ID,
+          }),
+        );
+        return;
+      }
       this.logDebug?.({
         action: "connected",
         source: "transport",
@@ -1001,9 +1049,55 @@ export class TwoPlayerInputTransport {
       setTimeout(() => this.sendCheckpoint("transport-connected"), 0);
     });
     this.webSocket.addEventListener("message", event => {
+      if (this.onlineSession && typeof event.data === "string") {
+        let control: (OnlineSaveControl & { protocol?: string; ready?: boolean }) | undefined;
+        try {
+          control = JSON.parse(event.data);
+        } catch {
+          /* Normal transport validation handles malformed frames. */
+        }
+        if (control?.protocol === ONLINE_PROTOCOL && typeof control.type === "string") {
+          if (control.type.startsWith("load-") || control.type === "title-reset") {
+            onlineSaveSession.receive?.(control);
+            return;
+          }
+          if (control.type === "authenticated") {
+            this.onlineAuthenticated = true;
+            onlineCheckpointInterval = setInterval(() => this.sendCheckpoint("online-presence"), 2000);
+          }
+          if (control.type === "authenticated" || control.type === "peer-joined") {
+            this.sendProfileSnapshot();
+            this.sendSettingsSnapshot();
+            this.flushPendingRunBootstrap();
+            this.flushPendingTitleStart();
+            this.sendCheckpoint("online-connected");
+          }
+          if (control.type === "status") {
+            this.onlineReady = control.ready === true;
+            showOnlineConnectionStatus(control.message || "Waiting for players...");
+          } else if (control.type === "closed") {
+            this.onlineReady = false;
+            onlineCloseReason = control.message || "Lobby closed.";
+            onlineSaveSession.receive?.({ type: "load-abort", message: onlineCloseReason });
+            showOnlineConnectionStatus(onlineCloseReason);
+          }
+          return;
+        }
+      }
       this.onMessageData(event.data);
     });
     this.webSocket.addEventListener("close", () => {
+      clearInterval(onlineCheckpointInterval);
+      this.onlineReady = false;
+      this.onlineAuthenticated = false;
+      if (this.onlineSession) {
+        onlineSaveSession.send = undefined;
+        onlineSaveSession.receive?.({
+          type: "load-abort",
+          message: "Disconnected while loading. Leave this lobby and try again.",
+        });
+        showOnlineConnectionStatus(onlineCloseReason || "Disconnected. Leave this lobby and create or join a new one.");
+      }
       this.latestRemoteCheckpoint = undefined;
       this.latestHostCheckpoint = undefined;
       this.latestRemoteCheckpointsByPlayerIndex.clear();

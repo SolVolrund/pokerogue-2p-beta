@@ -1,11 +1,14 @@
 import type { PlayerIndex } from "#app/battle-scene";
 import { modifierTypes } from "#data/data-lists";
 import { BiomeId } from "#enums/biome-id";
+import { Button } from "#enums/buttons";
 import { ModifierTier } from "#enums/modifier-tier";
 import { MoveId } from "#enums/move-id";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { SpeciesId } from "#enums/species-id";
+import { UiMode } from "#enums/ui-mode";
 import { Pokemon, type PlayerPokemon } from "#field/pokemon";
+import { HealingBoosterModifier, type PersistentModifier } from "#modifiers/modifier";
 import { ModifierTypeOption } from "#modifiers/modifier-type";
 import { GameCornerEncounter } from "#mystery-encounters/game-corner-encounter";
 import { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
@@ -22,6 +25,7 @@ import { GameCornerRewardPhase } from "#phases/game-corner-reward-phase";
 import { VoltorbFlipPhase } from "#phases/voltorb-flip-phase";
 import { GameManager } from "#test/framework/game-manager";
 import type { GameCornerPokemonRewardSlot } from "#ui/game-corner-reward-ui-handler";
+import type { PartyUiHandler } from "#ui/party-ui-handler";
 import { GAME_CORNER_CPU_PAYOUT_WEIGHTS, rollGameCornerCpuNuggies, withGameCornerSeed } from "#utils/game-corner";
 import { getModifierType } from "#utils/modifier-utils";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
@@ -86,6 +90,120 @@ describe("Game Corner multiplayer visits and CPU rewards", () => {
       jackpot: true,
     });
   }
+
+  async function startFullPartyPurchase(player: PlayerIndex, multiplayer = true) {
+    game.scene.twoPlayerMode = multiplayer;
+    for (const owner of [0, 1, 2] as const) {
+      for (let i = 0; i < 6; i++) {
+        addPokemon(owner);
+      }
+    }
+    vi.spyOn(game.scene, "getPlayerFieldOwners").mockReturnValue([0, 1, 2]);
+    vi.spyOn(Pokemon.prototype, "loadAssets").mockResolvedValue();
+    vi.spyOn(game.scene, "savePlayerSystemSaveLocal").mockImplementation(() => {});
+    const ui = game.scene.ui;
+    // Headless sprites do not have atlas frames; keep the real counter/input handlers.
+    vi.spyOn(ui.handlers[UiMode.GAME_CORNER_REWARD] as any, "createPrizeIcon").mockImplementation(() =>
+      game.scene.add.sprite(0, 0, "pokemon_icons_0"),
+    );
+    // The default text mock immediately invokes callbacks, masking input-mode bugs.
+    vi.spyOn(ui, "showText").mockImplementation((text, _delay, callback, _callbackDelay, prompt) => {
+      ui.getMessageHandler().showText(text, 0, callback, 0, prompt);
+    });
+    const phase = new GameCornerRewardPhase(32, player, false);
+    const slot = jackpot(phase);
+    phase["slots"] = [slot];
+    await ui.setMode(UiMode.GAME_CORNER_REWARD, phase["getUiConfig"]());
+    game.scene.activePlayerIndex = player === 0 ? 1 : 0;
+    const purchase = phase["applyPokemonPrize"](slot, 0);
+    await vi.waitFor(() => {
+      expect(ui.getMode()).toBe(UiMode.MESSAGE);
+      expect(ui.getMessageHandler().getTwoPlayerMessageInputContextKey()).toBeDefined();
+    });
+    return { phase, slot, purchase };
+  }
+
+  it.each([
+    { player: 0, multiplayer: false },
+    { player: 0, multiplayer: true },
+    { player: 1, multiplayer: true },
+    { player: 2, multiplayer: true },
+  ] as const)("opens the full-party release menu for prize owner $player (multiplayer: $multiplayer) and charges only after replacement", async ({
+    player,
+    multiplayer,
+  }) => {
+    const { phase, slot, purchase } = await startFullPartyPurchase(player, multiplayer);
+    const ui = game.scene.ui;
+    const originalParties = parties.map(party => [...party]);
+    expect(game.scene.activePlayerIndex).toBe(player);
+    if (multiplayer) {
+      expect(game.scene.inputOwner).toBe(player);
+    }
+    expect(phase["nuggies"]).toBe(32);
+    expect(slot.purchased).toBe(false);
+
+    expect(ui.processInput(Button.ACTION)).toBe(true);
+    expect(ui.getMode()).toBe(UiMode.CONFIRM);
+    expect(ui.processInput(Button.ACTION)).toBe(true);
+    await vi.waitFor(() => expect(ui.getMode()).toBe(UiMode.PARTY));
+    const partyUi = ui.getHandler<PartyUiHandler>();
+    expect(partyUi["getParty"]()).toEqual(parties[player]);
+    const showText = partyUi.showText.bind(partyUi);
+    vi.spyOn(partyUi, "showText").mockImplementation((text, _delay, callback, _callbackDelay, prompt) => {
+      showText(text, 0, callback, 0, prompt);
+    });
+    partyUi.doRelease(2);
+    expect(ui.processInput(Button.ACTION)).toBe(true);
+    await purchase;
+
+    expect(ui.getMode()).toBe(UiMode.GAME_CORNER_REWARD);
+    expect(phase["nuggies"]).toBe(0);
+    expect(slot.purchased).toBe(true);
+    expect(parties[player]).toHaveLength(6);
+    expect(parties[player]).not.toContain(originalParties[player][2]);
+    expect(parties[player][2].isBioInstabilityEevee()).toBe(true);
+    expect(parties[player][2].isShadowPokemon()).toBe(true);
+    expect(parties[player][2].friendship).toBe(0);
+    for (const owner of [0, 1, 2] as const) {
+      if (owner !== player) {
+        expect(parties[owner]).toEqual(originalParties[owner]);
+      }
+    }
+  });
+
+  it.each([
+    false,
+    true,
+  ])("returns to the counter without charging when declining a full-party prize (cancel menu first: %s)", async cancelMenu => {
+    const { phase, slot, purchase } = await startFullPartyPurchase(2);
+    const originalParty = [...parties[2]];
+    const ui = game.scene.ui;
+    expect(ui.processInput(Button.ACTION)).toBe(true);
+    expect(ui.getMode()).toBe(UiMode.CONFIRM);
+    if (cancelMenu) {
+      expect(ui.processInput(Button.ACTION)).toBe(true);
+      await vi.waitFor(() => expect(ui.getMode()).toBe(UiMode.PARTY));
+      expect(ui.processInput(Button.CANCEL)).toBe(true);
+      await vi.waitFor(() => {
+        expect(ui.getMode()).toBe(UiMode.MESSAGE);
+        expect(ui.getMessageHandler().getTwoPlayerMessageInputContextKey()).toBeDefined();
+      });
+      expect(ui.processInput(Button.ACTION)).toBe(true);
+      expect(ui.getMode()).toBe(UiMode.CONFIRM);
+    }
+    expect(ui.processInput(Button.CANCEL)).toBe(true);
+    await vi.waitFor(() => {
+      expect(ui.getMode()).toBe(UiMode.MESSAGE);
+      expect(ui.getMessageHandler().getTwoPlayerMessageInputContextKey()).toBeDefined();
+    });
+    expect(ui.processInput(Button.ACTION)).toBe(true);
+    await purchase;
+    expect(ui.getMode()).toBe(UiMode.GAME_CORNER_REWARD);
+    expect(phase["nuggies"]).toBe(32);
+    expect(slot.purchased).toBe(false);
+    expect(parties[2]).toEqual(originalParty);
+    expect(game.scene.inputOwner).toBe(2);
+  });
 
   it("allows independent Game Corner visits in co-op, EP, and Vs encounter pools", () => {
     for (const multiplayerPlayerCount of [1, 2, 3] as const) {
@@ -303,6 +421,48 @@ describe("Game Corner multiplayer visits and CPU rewards", () => {
     expect(choice?.replacement.replacedPokemonIndex).toBeGreaterThan(1);
     phase["nuggies"] = 31;
     expect(phase["getCpuPokemonChoice"]()).toBeUndefined();
+  });
+
+  it.each([
+    0, 1, 2,
+  ] as const)("charges player index %s for a real persistent prize and prevents buying it twice", player => {
+    const inventories: PersistentModifier[][] = [[], [], []];
+    vi.spyOn(game.scene, "getPlayerModifiers").mockImplementation(
+      (owner = game.scene.activePlayerIndex) => inventories[owner],
+    );
+    vi.spyOn(game.scene, "updateModifiers").mockImplementation(() => {});
+    vi.spyOn(game.scene, "validateAchvsForPlayer").mockImplementation(() => {});
+    vi.spyOn(game.scene.ui, "showText").mockImplementation(() => {});
+    const error = vi.spyOn(game.scene.ui, "playError").mockImplementation(() => {});
+    const phase = new GameCornerRewardPhase(32, player, false);
+    const type = getModifierType(modifierTypes.HEALING_CHARM);
+    phase["slots"] = [
+      {
+        kind: "item",
+        cost: 25,
+        purchased: false,
+        tier: ModifierTier.ROGUE,
+        option: new ModifierTypeOption(type, 0),
+      },
+    ];
+    // Keep the existing stack so this also exercises successful stack increments.
+    inventories[player].push(type.newModifier() as PersistentModifier);
+    vi.spyOn(phase as any, "refreshRewardCounter").mockImplementation(() => {});
+    game.scene.activePlayerIndex = player === 0 ? 1 : 0;
+
+    expect(phase["selectPrize"](0)).toBe(true);
+    expect(phase["nuggies"]).toBe(7);
+    expect(phase["slots"][0].purchased).toBe(true);
+    expect(inventories[player]).toHaveLength(1);
+    expect(inventories[player][0]).toBeInstanceOf(HealingBoosterModifier);
+    expect(inventories[player][0].stackCount).toBe(2);
+    expect(inventories.filter((_, owner) => owner !== player).every(items => items.length === 0)).toBe(true);
+    expect(error).not.toHaveBeenCalled();
+
+    expect(phase["selectPrize"](0)).toBe(false);
+    expect(phase["nuggies"]).toBe(7);
+    expect(inventories[player][0].stackCount).toBe(2);
+    expect(error).toHaveBeenCalledOnce();
   });
 
   it("buys only affordable useful items and re-evaluates after each purchase", async () => {

@@ -228,7 +228,7 @@ export class SelectBiomePhase extends BattlePhase {
     };
 
     globalScene.waitForPlayerInput(playerIndex);
-    globalScene.ui.showText(`Player ${playerIndex + 1}, choose the next biome.`, null, () => {
+    globalScene.ui.showText(`${globalScene.getPlayerDisplayName(playerIndex)}, choose the next biome.`, null, () => {
       globalScene.ui.setMode(UiMode.OPTION_SELECT, config).then(() => {
         const handler = globalScene.ui.getHandler();
         if ("setCursor" in handler && startingCursorIndex > 0) {

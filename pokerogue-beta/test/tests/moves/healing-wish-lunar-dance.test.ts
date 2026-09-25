@@ -7,8 +7,9 @@ import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { StatusEffect } from "#enums/status-effect";
 import { GameManager } from "#test/framework/game-manager";
+import { Pokemon } from "#field/pokemon";
 import Phaser from "phaser";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("Moves - Lunar Dance and Healing Wish", () => {
   let phaserGame: Phaser.Game;
@@ -22,6 +23,9 @@ describe("Moves - Lunar Dance and Healing Wish", () => {
 
   beforeEach(() => {
     game = new GameManager(phaserGame);
+    // Accessory sprites need real animation frames, which the headless renderer does not provide.
+    vi.spyOn(Pokemon.prototype, "playAnim").mockImplementation(() => {});
+    vi.spyOn(Pokemon.prototype, "refreshAccessoryOutfitSprites").mockImplementation(() => {});
     game.override.battleStyle("double").enemyAbility(AbilityId.BALL_FETCH).enemyMoveset(MoveId.SPLASH);
   });
 

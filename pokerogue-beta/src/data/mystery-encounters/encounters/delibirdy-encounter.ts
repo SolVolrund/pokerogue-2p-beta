@@ -3,6 +3,7 @@ import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
+import { getPlayerMessageOptions } from "#utils/player-messages";
 import { modifierTypes } from "#data/data-lists";
 import { ModifierTier } from "#enums/modifier-tier";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
@@ -404,7 +405,10 @@ async function giveDelibirdyFallbackShellBell(playerIndex: PlayerIndex): Promise
   const shellBell = generateModifierType(modifierTypes.SHELL_BELL) as PokemonHeldItemModifierType;
   await applyModifierTypeToPlayerPokemon(globalScene.getPlayerParty(playerIndex)[0], shellBell);
   audioManager.playSound("se/item_fanfare");
-  await showEncounterText(i18next.t("battle:rewardGain", { modifierName: shellBell.name }), null, undefined, true);
+  await showEncounterText(
+    i18next.t("battle:rewardGain", { ...getPlayerMessageOptions(playerIndex), modifierName: shellBell.name }),
+    null, undefined, true,
+  );
 }
 
 async function queueDelibirdyReward(choice: DelibirdyChoice): Promise<void> {

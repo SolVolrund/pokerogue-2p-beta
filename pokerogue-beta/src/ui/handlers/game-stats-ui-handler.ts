@@ -1,4 +1,3 @@
-import { loggedInUser } from "#app/account";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { Button } from "#enums/buttons";
@@ -332,8 +331,7 @@ export class GameStatsUiHandler extends UiHandler {
   }
 
   /**
-   * Returns the username of logged in user. If the username is hidden, the trainer name based on gender will be displayed.
-   * @returns The username of logged in user
+   * Uses the profile's chosen name, retaining the anonymous trainer label when names are hidden.
    */
   private getUsername(): string {
     const usernameReplacement =
@@ -343,7 +341,7 @@ export class GameStatsUiHandler extends UiHandler {
 
     const displayName = globalScene.hideUsername
       ? usernameReplacement
-      : (loggedInUser?.username ?? i18next.t("common:guest"));
+      : globalScene.getPlayerDisplayName();
 
     return i18next.t("gameStatsUiHandler:stats", { username: displayName });
   }

@@ -367,7 +367,7 @@ async function getWinningLegendaryConflictOption(
 
   const tiedChoices = choices.filter(choice => tiedOptions.includes(choice.optionIndex));
   const winningPlayerIndex = globalScene.resolvePlayerTieBreak(tiedChoices.map(choice => choice.playerIndex));
-  await showEncounterText(`Player ${winningPlayerIndex + 1}'s choice wins this time.`);
+    await showEncounterText(`${globalScene.getPlayerDisplayName(winningPlayerIndex)}'s choice wins this time.`);
   return tiedChoices.find(choice => choice.playerIndex === winningPlayerIndex)?.optionIndex ?? tiedChoices[0].optionIndex;
 }
 
@@ -512,11 +512,7 @@ function startPhaseTwo(pokemon: Pokemon, member: LegendaryConflictMember): void 
     "PokemonHealPhase",
     pokemon.getBattlerIndex(),
     pokemon.getMaxHp(),
-    null,
-    false,
-    false,
-    true,
-    true,
+    { showFullHpMessage: false, skipAnim: false, revive: true, healStatus: true },
   );
 
   if (formChange) {

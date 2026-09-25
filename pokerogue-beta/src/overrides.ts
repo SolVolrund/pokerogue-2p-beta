@@ -55,8 +55,8 @@ import type { IntClosedRange, TupleOf } from "type-fest";
 
 const overrides: Partial<InstanceType<OverridesType>> = {
 //  STARTING_WAVE_OVERRIDE: 2,
-  MYSTERY_ENCOUNTER_RATE_OVERRIDE: 256,
-  MYSTERY_ENCOUNTER_OVERRIDE: MysteryEncounterType.GAME_CORNER,
+//  MYSTERY_ENCOUNTER_RATE_OVERRIDE: 256,
+//  MYSTERY_ENCOUNTER_OVERRIDE: MysteryEncounterType.GAME_CORNER,
 //  WAVE_ITEM_REWARD_OVERRIDE: {
 //    1: [{ name: "DNA_SPLICERS" }],
 //  },

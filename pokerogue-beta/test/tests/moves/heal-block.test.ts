@@ -9,10 +9,11 @@ import { PositionalTagType } from "#enums/positional-tag-type";
 import { SpeciesId } from "#enums/species-id";
 import { healBlockedMoves } from "#moves/invalid-moves";
 import { GameManager } from "#test/framework/game-manager";
+import { Pokemon } from "#field/pokemon";
 import { toTitleCase } from "#utils/strings";
 import i18next from "i18next";
 import Phaser from "phaser";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Bulbapedia Reference: https://bulbapedia.bulbagarden.net/wiki/Heal_Block_(move)
 describe("Move - Heal Block", () => {
@@ -27,6 +28,9 @@ describe("Move - Heal Block", () => {
 
   beforeEach(() => {
     game = new GameManager(phaserGame);
+    // Accessory sprites need real animation frames, which the headless renderer does not provide.
+    vi.spyOn(Pokemon.prototype, "playAnim").mockImplementation(() => {});
+    vi.spyOn(Pokemon.prototype, "refreshAccessoryOutfitSprites").mockImplementation(() => {});
     game.override
       .enemyMoveset(MoveId.HEAL_BLOCK)
       .ability(AbilityId.NO_GUARD)
@@ -63,7 +67,7 @@ describe("Move - Heal Block", () => {
     feebas.addTag(BattlerTagType.HEAL_BLOCK);
 
     // "Fake" feebas having recieved a 1 hp healing instance
-    game.scene.phaseManager.unshiftNew("PokemonHealPhase", BattlerIndex.PLAYER, 1, null);
+    game.scene.phaseManager.unshiftNew("PokemonHealPhase", BattlerIndex.PLAYER, 1, {  });
     game.move.use(MoveId.SPLASH);
     await game.phaseInterceptor.to("PokemonHealPhase");
 

@@ -33,6 +33,7 @@ import { LoadingModalUiHandler } from "#ui/loading-modal-ui-handler";
 import { LobbyInfoFormUiHandler } from "#ui/lobby-info-form-ui-handler";
 import { LobbyIpFormUiHandler } from "#ui/lobby-ip-form-ui-handler";
 import { LobbyJoinFormUiHandler } from "#ui/lobby-join-form-ui-handler";
+import { PlayerNameFormUiHandler } from "#ui/player-name-form-ui-handler";
 import { LoginFormUiHandler } from "#ui/login-form-ui-handler";
 import { LoginOrRegisterUiHandler } from "#ui/login-or-register-ui-handler";
 import { MenuUiHandler } from "#ui/menu-ui-handler";
@@ -41,6 +42,7 @@ import { ModifierSelectUiHandler } from "#ui/modifier-select-ui-handler";
 import { MysteryEncounterUiHandler } from "#ui/mystery-encounter-ui-handler";
 import { NavigationManager } from "#ui/navigation-menu";
 import { OptionSelectUiHandler } from "#ui/option-select-ui-handler";
+import { OnlineLobbyUiHandler } from "#ui/online-lobby-ui-handler";
 import { PartyUiHandler } from "#ui/party-ui-handler";
 import { PokedexPageUiHandler } from "#ui/pokedex-page-ui-handler";
 import { PokedexScanUiHandler } from "#ui/pokedex-scan-ui-handler";
@@ -120,6 +122,8 @@ const noTransitionModes = [
   UiMode.LOBBY_IP_FORM,
   UiMode.LOBBY_INFO_FORM,
   UiMode.LOBBY_JOIN_FORM,
+  UiMode.PLAYER_NAME_FORM,
+  UiMode.ONLINE_LOBBY,
   UiMode.TEST_DIALOGUE,
   UiMode.AUTO_COMPLETE,
   UiMode.ADMIN,
@@ -215,6 +219,8 @@ export class UI extends Phaser.GameObjects.Container {
       new AlphWallUiHandler(),
       new FusionSummaryUiHandler(),
       new SettingsItemsUiHandler(),
+      new PlayerNameFormUiHandler(UiMode.PLAYER_NAME_FORM),
+      new OnlineLobbyUiHandler(),
     ];
   }
 

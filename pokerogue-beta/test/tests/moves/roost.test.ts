@@ -5,8 +5,9 @@ import { MoveId } from "#enums/move-id";
 import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { GameManager } from "#test/framework/game-manager";
+import { Pokemon } from "#field/pokemon";
 import Phaser from "phaser";
-import { beforeAll, beforeEach, describe, expect, it, test } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, test, vi } from "vitest";
 
 describe("Moves - Roost", () => {
   let phaserGame: Phaser.Game;
@@ -20,6 +21,9 @@ describe("Moves - Roost", () => {
 
   beforeEach(() => {
     game = new GameManager(phaserGame);
+    // Accessory sprites need real animation frames, which the headless renderer does not provide.
+    vi.spyOn(Pokemon.prototype, "playAnim").mockImplementation(() => {});
+    vi.spyOn(Pokemon.prototype, "refreshAccessoryOutfitSprites").mockImplementation(() => {});
     game.override
       .battleStyle("single")
       .enemySpecies(SpeciesId.RELICANTH)
@@ -47,6 +51,7 @@ describe("Moves - Roost", () => {
     await game.classicMode.startBattle(SpeciesId.DUNSPARCE);
     const playerPokemon = game.field.getPlayerPokemon();
     const playerPokemonStartingHP = playerPokemon.hp;
+    playerPokemon.hp -= 1;
     game.move.select(MoveId.ROOST);
     await game.setTurnOrder([BattlerIndex.PLAYER, BattlerIndex.ENEMY]);
     await game.phaseInterceptor.to("MoveEffectPhase");
@@ -71,6 +76,7 @@ describe("Moves - Roost", () => {
     await game.classicMode.startBattle(SpeciesId.TORNADUS);
     const playerPokemon = game.field.getPlayerPokemon();
     const playerPokemonStartingHP = playerPokemon.hp;
+    playerPokemon.hp -= 1;
     game.move.select(MoveId.ROOST);
     await game.setTurnOrder([BattlerIndex.PLAYER, BattlerIndex.ENEMY]);
     await game.phaseInterceptor.to("MoveEffectPhase");
@@ -95,6 +101,7 @@ describe("Moves - Roost", () => {
     await game.classicMode.startBattle(SpeciesId.HAWLUCHA);
     const playerPokemon = game.field.getPlayerPokemon();
     const playerPokemonStartingHP = playerPokemon.hp;
+    playerPokemon.hp -= 1;
     game.move.select(MoveId.ROOST);
     await game.setTurnOrder([BattlerIndex.PLAYER, BattlerIndex.ENEMY]);
     await game.phaseInterceptor.to("MoveEffectPhase");
@@ -120,6 +127,7 @@ describe("Moves - Roost", () => {
     await game.classicMode.startBattle(SpeciesId.ROTOM);
     const playerPokemon = game.field.getPlayerPokemon();
     const playerPokemonStartingHP = playerPokemon.hp;
+    playerPokemon.hp -= 1;
     game.move.select(MoveId.ROOST);
     await game.setTurnOrder([BattlerIndex.PLAYER, BattlerIndex.ENEMY]);
     await game.phaseInterceptor.to("MoveEffectPhase");
@@ -144,6 +152,7 @@ describe("Moves - Roost", () => {
     await game.classicMode.startBattle(SpeciesId.MOLTRES);
     const playerPokemon = game.field.getPlayerPokemon();
     const playerPokemonStartingHP = playerPokemon.hp;
+    playerPokemon.hp -= 1;
     game.move.select(MoveId.BURN_UP);
     await game.setTurnOrder([BattlerIndex.PLAYER, BattlerIndex.ENEMY]);
     await game.phaseInterceptor.to("MoveEffectPhase");
@@ -179,6 +188,7 @@ describe("Moves - Roost", () => {
     await game.classicMode.startBattle(SpeciesId.ZAPDOS);
     const playerPokemon = game.field.getPlayerPokemon();
     const playerPokemonStartingHP = playerPokemon.hp;
+    playerPokemon.hp -= 1;
     game.move.select(MoveId.DOUBLE_SHOCK);
     await game.setTurnOrder([BattlerIndex.PLAYER, BattlerIndex.ENEMY]);
     await game.phaseInterceptor.to("MoveEffectPhase");
@@ -218,6 +228,7 @@ describe("Moves - Roost", () => {
     ]);
     await game.classicMode.startBattle(SpeciesId.MOLTRES);
     const playerPokemon = game.field.getPlayerPokemon();
+    playerPokemon.hp -= 1;
     game.move.select(MoveId.ROOST);
     await game.phaseInterceptor.to("MoveEffectPhase");
 

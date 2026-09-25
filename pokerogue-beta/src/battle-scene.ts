@@ -1999,6 +1999,17 @@ export class BattleScene extends SceneBase {
       uiMode,
       uiModeName: uiMode === null ? null : UiMode[uiMode],
       twoPlayerEnemyPlayerMode: this.twoPlayerEnemyPlayerMode,
+      twoPlayerVsMode: this.twoPlayerVsMode,
+      ...(this.twoPlayerVsMode
+        ? {
+            vsEnemyModifiersByPlayer: this.getActivePlayerIndexes().map(playerIndex =>
+              this.getVsEnemyModifiersForPlayer(playerIndex).map(modifier => this.getTwoPlayerDebugModifierState(modifier)),
+            ),
+            vsEnemyTokenPurchaseStateByPlayer: this.getActivePlayerIndexes().map(playerIndex =>
+              this.getVsEnemyTokenPurchaseState(playerIndex),
+            ),
+          }
+        : {}),
       activePlayerIndex: this.activePlayerIndex,
       inputOwner: this.inputOwner,
       inputContext,
@@ -2753,6 +2764,16 @@ export class BattleScene extends SceneBase {
     }
 
     return this.ensurePlayerSystemSaves()[playerIndex];
+  }
+
+  public getPlayerDisplayName(playerIndex: PlayerIndex = this.activePlayerIndex): string {
+    if (this.isComputerPartnerPlayer(playerIndex)) {
+      return getComputerPartnerProfile(this.getComputerPartnerKey(playerIndex)).name;
+    }
+    if (this.hideUsername) {
+      return `Player ${playerIndex + 1}`;
+    }
+    return this.getPlayerGameData(playerIndex)?.getPlayerDisplayName(playerIndex) ?? `Player ${playerIndex + 1}`;
   }
 
   public async savePlayerSystemSave(playerIndex: PlayerIndex = this.activePlayerIndex): Promise<boolean> {
@@ -5031,16 +5052,18 @@ export class BattleScene extends SceneBase {
     if (modifier instanceof PersistentModifier) {
       const playerModifiers = this.getPlayerModifiers(playerIndex);
       if ((modifier as PersistentModifier).add(playerModifiers, !!virtual)) {
+        // Acquiring the item succeeds even when its immediate effect does not trigger.
+        success = true;
         if (modifier instanceof PokemonFormChangeItemModifier) {
           const pokemon = this.getPokemonById(modifier.pokemonId);
           if (pokemon) {
-            success = modifier.apply(pokemon, true);
+            modifier.apply(pokemon, true);
           }
         }
         if (modifier instanceof ShinyBadgeModifier) {
           const pokemon = this.getPokemonById(modifier.pokemonId);
           if (pokemon) {
-            success = modifier.apply(pokemon, "shiny");
+            modifier.apply(pokemon, "shiny");
           }
         }
         if (playSound && !this.sound.get(soundName)) {
@@ -6512,11 +6535,7 @@ export class BattleScene extends SceneBase {
           "PokemonHealPhase",
           enemyPokemon.getBattlerIndex(),
           enemyPokemon.getMaxHp(),
-          null,
-          false,
-          false,
-          false,
-          true,
+          { showFullHpMessage: false, skipAnim: false, revive: false, healStatus: true },
         );
         this.phaseManager.shiftPhase();
       });

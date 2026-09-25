@@ -62,7 +62,7 @@ export class MoveHelper extends GameManagerHelper {
    */
   public select(
     move: MoveId,
-    pkmIndex: BattlerIndex.PLAYER | BattlerIndex.PLAYER_2 = BattlerIndex.PLAYER,
+    pkmIndex: BattlerIndex.PLAYER | BattlerIndex.PLAYER_2 | BattlerIndex.PLAYER_3 = BattlerIndex.PLAYER,
     targetIndex?: BattlerIndex | null,
   ) {
     const movePosition = this.getMovePosition(pkmIndex, move);
@@ -71,7 +71,7 @@ export class MoveHelper extends GameManagerHelper {
         `MoveHelper.select called with move '${toTitleCase(MoveId[move])}' not in moveset!`
           + `\nBattler Index: ${toTitleCase(BattlerIndex[pkmIndex])}`
           + `\nMoveset: [${this.game.scene
-            .getPlayerParty()
+            .getField()
             [pkmIndex].getMoveset()
             .map(pm => toTitleCase(MoveId[pm.moveId]))
             .join(", ")}]`,
@@ -110,7 +110,7 @@ export class MoveHelper extends GameManagerHelper {
    */
   public selectWithTera(
     move: MoveId,
-    pkmIndex: BattlerIndex.PLAYER | BattlerIndex.PLAYER_2 = BattlerIndex.PLAYER,
+    pkmIndex: BattlerIndex.PLAYER | BattlerIndex.PLAYER_2 | BattlerIndex.PLAYER_3 = BattlerIndex.PLAYER,
     targetIndex?: BattlerIndex | null,
   ) {
     const movePosition = this.getMovePosition(pkmIndex, move);
@@ -119,14 +119,14 @@ export class MoveHelper extends GameManagerHelper {
         `MoveHelper.selectWithTera called with move '${toTitleCase(MoveId[move])}' not in moveset!`
           + `\nBattler Index: ${toTitleCase(BattlerIndex[pkmIndex])}`
           + `\nMoveset: [${this.game.scene
-            .getPlayerParty()
+            .getField()
             [pkmIndex].getMoveset()
             .map(pm => toTitleCase(MoveId[pm.moveId]))
             .join(", ")}]`,
       );
     }
 
-    this.game.scene.getPlayerParty()[pkmIndex].isTerastallized = false;
+    this.game.scene.getField()[pkmIndex].isTerastallized = false;
 
     this.game.onNextPrompt("CommandPhase", UiMode.COMMAND, () => {
       this.game.scene.ui.setMode(
@@ -149,8 +149,11 @@ export class MoveHelper extends GameManagerHelper {
   }
 
   /** Helper function to get the index of the selected move in the selected party member's moveset. */
-  private getMovePosition(pokemonIndex: BattlerIndex.PLAYER | BattlerIndex.PLAYER_2, move: MoveId): number {
-    const playerPokemon = this.game.scene.getPlayerField()[pokemonIndex];
+  private getMovePosition(
+    pokemonIndex: BattlerIndex.PLAYER | BattlerIndex.PLAYER_2 | BattlerIndex.PLAYER_3,
+    move: MoveId,
+  ): number {
+    const playerPokemon = this.game.scene.getField()[pokemonIndex];
     const moveset = playerPokemon.getMoveset();
     const index = moveset.findIndex(m => m.moveId === move && m.ppUsed < m.getMovePp());
     console.log(`Move position for ${MoveId[move]} (=${move}):`, index);
@@ -173,7 +176,7 @@ export class MoveHelper extends GameManagerHelper {
    */
   public use(
     moveId: MoveId,
-    pkmIndex: BattlerIndex.PLAYER | BattlerIndex.PLAYER_2 = BattlerIndex.PLAYER,
+    pkmIndex: BattlerIndex.PLAYER | BattlerIndex.PLAYER_2 | BattlerIndex.PLAYER_3 = BattlerIndex.PLAYER,
     targetIndex?: BattlerIndex,
     useTera = false,
   ): void {
@@ -183,7 +186,7 @@ export class MoveHelper extends GameManagerHelper {
     }
 
     // Clear out both the normal and temporary movesets before setting the move.
-    const pokemon = this.game.scene.getPlayerField()[pkmIndex];
+    const pokemon = this.game.scene.getField()[pkmIndex];
     pokemon.moveset.splice(0);
     pokemon.summonData.moveset?.splice(0);
     pokemon.setMove(0, moveId);

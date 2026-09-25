@@ -1,4 +1,5 @@
 import { globalScene } from "#app/global-scene";
+import { getPlayerMessageOptions } from "#utils/player-messages";
 import { ArenaTagType } from "#enums/arena-tag-type";
 import { MoneyMultiplierModifier } from "#modifiers/modifier";
 import { BattlePhase } from "#phases/battle-phase";
@@ -22,19 +23,28 @@ export class MoneyRewardPhase extends BattlePhase {
       const payouts = rewardPlayerIndexes.map(playerIndex => {
         const playerMoneyAmount = this.getMoneyAmount(playerIndex);
         globalScene.addMoneyForPlayer(playerMoneyAmount.value, playerIndex, false);
-        return playerMoneyAmount.value;
+        return { playerIndex, amount: playerMoneyAmount.value };
       });
       globalScene.setActivePlayerIndex(previousPlayerIndex);
       globalScene.updateMoneyText();
 
       const userLocale = navigator.language || "en-US";
-      const formattedMoneyAmount = Math.min(...payouts).toLocaleString(userLocale);
-      const message = i18next.t("battle:moneyWon", {
-        moneyAmount: formattedMoneyAmount,
-      });
+      const messages = payouts.map(({ playerIndex, amount }) =>
+        i18next.t("battle:moneyWon", {
+          ...getPlayerMessageOptions(playerIndex),
+          moneyAmount: amount.toLocaleString(userLocale),
+        }),
+      );
 
       globalScene.waitForSharedInput();
-      globalScene.ui.showText(message, null, () => this.end(), null, true);
+      const showNext = (index: number): void => {
+        if (index >= messages.length) {
+          this.end();
+          return;
+        }
+        globalScene.ui.showText(messages[index], null, () => showNext(index + 1), null, true);
+      };
+      showNext(0);
       return;
     }
 

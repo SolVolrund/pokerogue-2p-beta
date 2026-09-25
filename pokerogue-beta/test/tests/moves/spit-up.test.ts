@@ -8,6 +8,7 @@ import { SpeciesId } from "#enums/species-id";
 import { Stat } from "#enums/stat";
 import type { Move } from "#moves/move";
 import { GameManager } from "#test/framework/game-manager";
+import { Pokemon } from "#field/pokemon";
 import Phaser from "phaser";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,6 +25,9 @@ describe("Moves - Spit Up", () => {
   beforeEach(() => {
     spitUp = allMoves[MoveId.SPIT_UP];
     game = new GameManager(phaserGame);
+    // Accessory sprites need real animation frames, which the headless renderer does not provide.
+    vi.spyOn(Pokemon.prototype, "playAnim").mockImplementation(() => {});
+    vi.spyOn(Pokemon.prototype, "refreshAccessoryOutfitSprites").mockImplementation(() => {});
 
     game.override
       .battleStyle("single")

@@ -143,7 +143,7 @@ export class MysteryEncounterPhase extends Phase {
         const winningPlayerIndex = globalScene.resolvePlayerTieBreak(playerIndexes);
         index = this.twoPlayerDecisionIndexes[winningPlayerIndex] ?? index;
         option = encounter.options[index];
-        this.twoPlayerDecisionMessage = `Player ${winningPlayerIndex + 1}'s choice wins this time.`;
+        this.twoPlayerDecisionMessage = `${globalScene.getPlayerDisplayName(winningPlayerIndex)}'s choice wins this time.`;
       } else {
         index = firstIndex;
         option = encounter.options[index];

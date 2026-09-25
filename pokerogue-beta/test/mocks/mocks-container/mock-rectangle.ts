@@ -16,6 +16,14 @@ export class MockRectangle implements MockGameObject {
     return this;
   }
 
+  setInteractive(): this {
+    return this;
+  }
+
+  on(_event, _callback): this {
+    return this;
+  }
+
   setAlpha(_alpha): this {
     return this;
   }

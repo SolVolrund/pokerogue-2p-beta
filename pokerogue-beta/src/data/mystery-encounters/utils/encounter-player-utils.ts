@@ -37,7 +37,7 @@ export function getMysteryEncounterRequirementParty(): PlayerPokemon[] {
 }
 
 export function getMysteryEncounterPlayerTitle(playerIndex: PlayerIndex): string {
-  return `Player ${playerIndex + 1}`;
+  return globalScene.getPlayerDisplayName(playerIndex);
 }
 
 export function getNextMysteryEncounterPlayerIndex(

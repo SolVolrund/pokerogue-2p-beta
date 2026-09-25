@@ -494,7 +494,7 @@ async function runGtsMalfunctionChoices(): Promise<boolean> {
   if (participateChoices.length === leaveChoices.length) {
     const winningPlayerIndex = globalScene.resolvePlayerTieBreak(choices.map(choice => choice.playerIndex));
     shouldParticipate = participateChoices.some(choice => choice.playerIndex === winningPlayerIndex);
-    await showEncounterText(`Player ${winningPlayerIndex + 1}'s choice wins this time.`);
+    await showEncounterText(`${globalScene.getPlayerDisplayName(winningPlayerIndex)}'s choice wins this time.`);
   }
 
   for (const choice of choices) {

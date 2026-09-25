@@ -3,6 +3,7 @@ import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
+import { getPlayerMessageOptions } from "#utils/player-messages";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { modifierTypes } from "#data/data-lists";
@@ -800,6 +801,7 @@ export async function catchPokemon(
             }
             globalScene.ui.showText(
               i18next.t("battle:partyFull", {
+                ...getPlayerMessageOptions(playerIndex),
                 pokemonName: pokemon.getNameToRender(),
               }),
               null,
@@ -897,7 +899,7 @@ export async function catchPokemon(
         catchMessage = "battle:pokemonCaughtButChallenge";
       }
       globalScene.ui.showText(
-        i18next.t(catchMessage, { pokemonName: pokemon.getNameToRender() }),
+        i18next.t(catchMessage, { ...getPlayerMessageOptions(playerIndex), pokemonName: pokemon.getNameToRender() }),
         null,
         doPokemonCatchMenu,
         0,

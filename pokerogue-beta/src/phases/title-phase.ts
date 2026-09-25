@@ -33,10 +33,36 @@ import {
   type ComputerPartnerKey,
   type ComputerPartnerRole,
   type ComputerPartnerRolePreferences,
-  getComputerPartnerProfile,
   getComputerPartnerChallengeProfile,
+  getComputerPartnerProfile,
   isComputerPartnerKey as isKnownComputerPartnerKey,
 } from "#utils/computer-partner-profile";
+import {
+  createDemoOnlineLobby,
+  getOnlineLobbySeats,
+  getOnlineRunOptions,
+  ONLINE_LOBBY_SETUPS,
+  type OnlineLobbySetup,
+  type OnlineLobbySummary,
+} from "#utils/online-lobby";
+import {
+  createOnlineLobby,
+  getOnlineMembership,
+  getOnlineServiceUrl,
+  isOnlineSession,
+  joinOnlineLobby,
+  launchOnlineLobby,
+  listOnlineLobbies,
+  onlineErrorMessage,
+} from "#utils/online-lobby-client";
+import {
+  hashOnlineSave,
+  onlineLoadedState,
+  type OnlineSaveControl,
+  onlineSaveSession,
+  validateOnlineSessionSave,
+} from "#utils/online-save-session";
+import { normalizePlayerDisplayName } from "#utils/player-display-name";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -59,6 +85,11 @@ function getTwoPlayerRunSeedOverride(): string | undefined {
 export class TitlePhase extends Phase {
   public readonly phaseName = "TitlePhase";
   private loaded = false;
+  private onlineLastSlot = NO_SAVE_SLOT;
+  private onlineHostLoadSlot = NO_SAVE_SLOT;
+  private onlineLoadId: string | undefined;
+  private onlineLoadPrepared = false;
+  private onlineLoadAnnounceInterval: ReturnType<typeof setInterval> | undefined;
   private remoteTitleStartApplied = false;
   private selectedChallenges: ChallengeData[] = [];
   private profileStartupAnnounceInterval: ReturnType<typeof globalThis.setInterval> | undefined;
@@ -67,6 +98,11 @@ export class TitlePhase extends Phase {
 
   async start(): Promise<void> {
     super.start();
+    if (isOnlineSession()) {
+      onlineSaveSession.localMenu = false;
+      onlineSaveSession.loading = false;
+      onlineSaveSession.receive = message => this.onOnlineSaveControl(message);
+    }
 
     globalScene.setTwoPlayerTitleStartHandler(titleStart => this.applyRemoteTwoPlayerTitleStart(titleStart));
 
@@ -123,10 +159,15 @@ export class TitlePhase extends Phase {
   }
 
   private async showOptions(lastSessionSlot: number): Promise<void> {
+    this.onlineLastSlot = lastSessionSlot;
     const options: OptionSelectItem[] = [];
     const continueOption: OptionSelectItem = {
       label: i18next.t("continue", { ns: "menu" }),
       handler: () => {
+        if (isOnlineSession()) {
+          this.openOnlineSaveMenu(lastSessionSlot);
+          return true;
+        }
         if (lastSessionSlot > NO_SAVE_SLOT) {
           this.loadSaveSlot(lastSessionSlot);
           return true;
@@ -135,7 +176,7 @@ export class TitlePhase extends Phase {
         return false;
       },
     };
-    if (lastSessionSlot <= NO_SAVE_SLOT) {
+    if (lastSessionSlot <= NO_SAVE_SLOT && !isOnlineSession()) {
       continueOption.style = TextStyle.SETTINGS_LOCKED;
     }
     options.push(continueOption);
@@ -150,6 +191,10 @@ export class TitlePhase extends Phase {
       {
         label: i18next.t("menu:loadGame"),
         handler: () => {
+          if (isOnlineSession()) {
+            this.openOnlineSaveMenu();
+            return true;
+          }
           globalScene.ui.setOverlayMode(UiMode.SAVE_SLOT, SaveSlotUiMode.LOAD, (slotId: number) => {
             if (slotId === NO_SAVE_SLOT) {
               console.warn("Attempted to load save slot of -1 through load game menu!");
@@ -171,9 +216,27 @@ export class TitlePhase extends Phase {
       {
         label: "Multiplayer",
         handler: () => {
-          this.showMultiplayerSelect();
+          if (isOnlineSession()) {
+            return false;
+          }
+          void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showMultiplayerSelect());
           return true;
         },
+        keepOpen: true,
+        ...(isOnlineSession() ? { disabled: true, style: TextStyle.SETTINGS_LOCKED } : {}),
+      },
+      {
+        label: "Player Name",
+        handler: () => {
+          if (globalScene.twoPlayerMode && globalScene.twoPlayerLocalInputSeat !== "both") {
+            return false;
+          }
+          this.showPlayerNameForm(lastSessionSlot);
+          return true;
+        },
+        ...(globalScene.twoPlayerMode && globalScene.twoPlayerLocalInputSeat !== "both"
+          ? { disabled: true, style: TextStyle.SETTINGS_LOCKED }
+          : {}),
         keepOpen: true,
       },
       {
@@ -247,6 +310,212 @@ export class TitlePhase extends Phase {
   }
 
   private showMultiplayerSelect(): void {
+    this.showOptionSelectWithText("Multiplayer", [
+      {
+        label: "Online",
+        handler: () => {
+          this.showOnlineMultiplayerSelect();
+          return true;
+        },
+        keepOpen: true,
+      },
+      {
+        label: "LAN",
+        handler: () => {
+          this.showLanMultiplayerSelect();
+          return true;
+        },
+        keepOpen: true,
+      },
+      {
+        label: "Back",
+        handler: () => {
+          globalScene.phaseManager.toTitleScreen();
+          super.end();
+          return true;
+        },
+      },
+    ]);
+  }
+
+  private showPlayerNameForm(lastSessionSlot: number): void {
+    const profile = globalScene.getLocalPlayerGameData();
+    const returnToTitle = () => void this.showOptions(lastSessionSlot);
+    void globalScene.ui.setMode(
+      UiMode.PLAYER_NAME_FORM,
+      {
+        buttonActions: [
+          (value: string) => {
+            const name = normalizePlayerDisplayName(value);
+            if (!name) {
+              return;
+            }
+            const previousName = profile.playerDisplayName;
+            profile.playerDisplayName = name;
+            try {
+              profile.saveSystemLocal();
+            } catch {
+              profile.playerDisplayName = previousName;
+              void globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+                globalScene.ui.showText("Your name could not be saved. Please try again.", null, returnToTitle);
+              });
+              return;
+            }
+            returnToTitle();
+          },
+          returnToTitle,
+        ],
+      },
+      profile.playerDisplayName,
+    );
+  }
+
+  private showOnlineMultiplayerSelect(): void {
+    this.showOptionSelectWithText(
+      getOnlineServiceUrl()
+        ? "Online Multiplayer"
+        : "Online service is not configured. You can preview lobbies or play over LAN.",
+      [
+        {
+          label: "Host Game",
+          handler: () => {
+            this.showOnlineLobbySetup();
+            return true;
+          },
+          keepOpen: true,
+        },
+        {
+          label: "Join Game",
+          handler: () => {
+            this.showOnlineLobbyBrowser();
+            return true;
+          },
+          keepOpen: true,
+        },
+        {
+          label: "Back",
+          handler: () => {
+            this.showMultiplayerSelect();
+            return true;
+          },
+          keepOpen: true,
+        },
+      ],
+    );
+  }
+
+  private showOnlineLobbySetup(): void {
+    const options: OptionSelectItem[] = ONLINE_LOBBY_SETUPS.map(setup => ({
+      label: setup.label,
+      handler: () => {
+        if (setup.computerPartner) {
+          return false;
+        }
+        this.showOnlineHostPreview(setup);
+        return true;
+      },
+      ...(setup.computerPartner ? { disabled: true, style: TextStyle.SETTINGS_LOCKED } : {}),
+      keepOpen: true,
+    }));
+    options.push({
+      label: "Back",
+      handler: () => {
+        this.showOnlineMultiplayerSelect();
+        return true;
+      },
+      keepOpen: true,
+    });
+    this.showOptionSelectWithText("Lobby Setup", options);
+  }
+
+  private showOnlineHostPreview(setup: OnlineLobbySetup, partySize: 3 | 6 = 6): void {
+    const profile = globalScene.getLocalPlayerGameData();
+    const lobby: OnlineLobbySummary = {
+      id: "",
+      setup,
+      hostAtMainMenu: true,
+      status: "waiting",
+      seats: { p1: { displayName: profile.getPlayerDisplayName() } },
+    };
+    const options: OptionSelectItem[] = getOnlineLobbySeats(lobby).map(seat => ({
+      label: seat.label,
+      handler: () => false,
+      disabled: true,
+      style: TextStyle.SETTINGS_LOCKED,
+    }));
+    if (!setup.enemyPlayer) {
+      options.push({
+        label: `Team Size: ${partySize === 6 ? "Full" : "Limited"}`,
+        handler: () => {
+          this.showOnlineHostPreview(setup, partySize === 6 ? 3 : 6);
+          return true;
+        },
+        keepOpen: true,
+      });
+    }
+    options.push(
+      {
+        label: getOnlineServiceUrl() ? "Create Lobby" : "Create Lobby (Unavailable)",
+        handler: () => {
+          if (!getOnlineServiceUrl()) {
+            return false;
+          }
+          void this.createOnlineHost(setup, partySize);
+          return true;
+        },
+        ...(getOnlineServiceUrl() ? {} : { disabled: true, style: TextStyle.SETTINGS_LOCKED }),
+      },
+      {
+        label: "Back",
+        handler: () => {
+          this.showOnlineLobbySetup();
+          return true;
+        },
+        keepOpen: true,
+      },
+    );
+    this.showOptionSelectWithText(`${setup.label} lobby. Your name: ${profile.getPlayerDisplayName()}`, options);
+  }
+
+  private async createOnlineHost(setup: OnlineLobbySetup, partySize: 3 | 6): Promise<void> {
+    await globalScene.ui.setMode(UiMode.MESSAGE);
+    globalScene.ui.showText("Creating lobby...", null, null, null, false);
+    try {
+      const membership = await createOnlineLobby(
+        setup,
+        partySize,
+        globalScene.getLocalPlayerGameData().getPlayerDisplayName(),
+      );
+      launchOnlineLobby(membership);
+    } catch (error) {
+      globalScene.ui.showText(onlineErrorMessage(error), null, () => this.showOnlineHostPreview(setup, partySize));
+    }
+  }
+
+  private showOnlineLobbyBrowser(): void {
+    void globalScene.ui.setMode(UiMode.ONLINE_LOBBY, {
+      lobbies: getOnlineServiceUrl() ? [] : [createDemoOnlineLobby()],
+      demo: !getOnlineServiceUrl(),
+      ...(getOnlineServiceUrl()
+        ? {
+            loadLobbies: listOnlineLobbies,
+            onJoin: async (lobby: OnlineLobbySummary, seat: "p1" | "p2" | "p3" | "ep") => {
+              const membership = await joinOnlineLobby(
+                lobby.id,
+                seat,
+                globalScene.getLocalPlayerGameData().getPlayerDisplayName(),
+              );
+              launchOnlineLobby(membership);
+            },
+          }
+        : {}),
+      onCancel: () => {
+        void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showOnlineMultiplayerSelect());
+      },
+    });
+  }
+
+  private showLanMultiplayerSelect(): void {
     const options: OptionSelectItem[] = [
       {
         label: "Host 2P",
@@ -265,11 +534,10 @@ export class TitlePhase extends Phase {
         keepOpen: true,
       },
       {
-        label: "Host 2P+1C",
-        handler: () => {
-          this.showMultiplayerLobbyTeamSizeSelect(3, [2]);
-          return true;
-        },
+        label: "Host 2P+CPU (Unavailable)",
+        handler: () => false,
+        disabled: true,
+        style: TextStyle.SETTINGS_LOCKED,
         keepOpen: true,
       },
       {
@@ -318,16 +586,16 @@ export class TitlePhase extends Phase {
         },
       },
       {
-        label: i18next.t("menu:cancel"),
+        label: "Back",
         handler: () => {
-          globalScene.phaseManager.toTitleScreen();
-          super.end();
+          this.showMultiplayerSelect();
           return true;
         },
+        keepOpen: true,
       },
     ];
 
-    this.showOptionSelectWithText("Multiplayer", options, { yOffset: 36 });
+    this.showOptionSelectWithText("LAN / Hamachi", options, { yOffset: 36, maxOptions: 8 });
   }
 
   private showSaveDataSelect(): void {
@@ -379,9 +647,7 @@ export class TitlePhase extends Phase {
   }
 
   private getLimitedTeamSizeLabel(playerCount: 2 | 3): string {
-    return playerCount === 3
-      ? i18next.t("menu:twoPlayerTwoTwoTwoMode")
-      : i18next.t("menu:twoPlayerThreeThreeMode");
+    return playerCount === 3 ? i18next.t("menu:twoPlayerTwoTwoTwoMode") : i18next.t("menu:twoPlayerThreeThreeMode");
   }
 
   private showMultiplayerLobbyTeamSizeSelect(
@@ -410,7 +676,7 @@ export class TitlePhase extends Phase {
       {
         label: i18next.t("menu:cancel"),
         handler: () => {
-          this.showMultiplayerSelect();
+          this.showLanMultiplayerSelect();
           return true;
         },
         keepOpen: true,
@@ -513,7 +779,7 @@ export class TitlePhase extends Phase {
             );
           },
           () => {
-            void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showMultiplayerSelect());
+            void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showLanMultiplayerSelect());
           },
         ],
       });
@@ -569,7 +835,16 @@ export class TitlePhase extends Phase {
           )
         : undefined;
     const enemyPlayerUrl = enemyPlayerMode
-      ? this.getMultiplayerLobbyUrl(lobbyCode, "guest", lanAddress, playerCount, partySize, "ep", computerPartnerPlayerIndexes, true)
+      ? this.getMultiplayerLobbyUrl(
+          lobbyCode,
+          "guest",
+          lanAddress,
+          playerCount,
+          partySize,
+          "ep",
+          computerPartnerPlayerIndexes,
+          true,
+        )
       : undefined;
     const hostAddress = this.getDisplayHostAddress(lanAddress);
 
@@ -605,7 +880,7 @@ export class TitlePhase extends Phase {
           void globalScene.ui.setMode(UiMode.MESSAGE).then(() => window.location.assign(hostLaunchUrl));
         },
         () => {
-          void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showMultiplayerSelect());
+          void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showLanMultiplayerSelect());
         },
       ],
     });
@@ -617,13 +892,13 @@ export class TitlePhase extends Phase {
         (input: string, hostAddress: string) => {
           const lobbyUrl = this.getJoinLobbyUrl(input, guestSeat, hostAddress);
           if (!lobbyUrl) {
-            void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showMultiplayerSelect());
+            void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showLanMultiplayerSelect());
             return;
           }
           void globalScene.ui.setMode(UiMode.MESSAGE).then(() => window.location.assign(lobbyUrl));
         },
         () => {
-          void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showMultiplayerSelect());
+          void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showLanMultiplayerSelect());
         },
       ],
     });
@@ -974,9 +1249,7 @@ export class TitlePhase extends Phase {
     this.applySelectedChallenges();
     const players = globalScene.getActivePlayerIndexes();
     let message: string | undefined;
-    if (!globalScene.gameMode.challenges.some(c => c.value && players.some(player => c.appliesToPlayer(player)))) {
-      message = "Select at least one challenge for a participating player.";
-    } else {
+    if (globalScene.gameMode.challenges.some(c => c.value && players.some(player => c.appliesToPlayer(player)))) {
       for (const playerIndex of globalScene.getComputerPartnerPlayerIndexes()) {
         const key = globalScene.getComputerPartnerKey(playerIndex);
         const profile = getComputerPartnerProfile(key);
@@ -988,11 +1261,13 @@ export class TitlePhase extends Phase {
           playerIndex,
           globalScene.getPlayerGameData(0).getComputerPartnerProgress(key),
         );
-        if (eligible !== profile && !eligible.startingStarters?.length) {
+        if (eligible !== profile && eligible.startingStarters?.length === 0) {
           message = `${profile.name} has no eligible starters for P${playerIndex + 1}'s Mono Type. Choose another type or partner.`;
           break;
         }
       }
+    } else {
+      message = "Select at least one challenge for a participating player.";
     }
     if (message) {
       const text = message;
@@ -1005,6 +1280,32 @@ export class TitlePhase extends Phase {
   }
 
   private showPlayerCountSelect(gameMode: GameModes): void {
+    const membership = getOnlineMembership();
+    if (membership) {
+      const { setup, partySize } = membership.lobby;
+      this.showOptionSelectWithText(`Online lobby: ${setup.label}`, [
+        ...getOnlineRunOptions(setup).map(({ label, vsMode }): OptionSelectItem => ({
+          label,
+          handler: () => {
+            if (gameMode === GameModes.DAILY) {
+              return false;
+            }
+            this.startMultiplayerRun(gameMode, setup.playerCount, partySize, [], vsMode, setup.enemyPlayer);
+            return true;
+          },
+          ...(gameMode === GameModes.DAILY ? { disabled: true, style: TextStyle.SETTINGS_LOCKED } : {}),
+        })),
+        {
+          label: i18next.t("menu:cancel"),
+          handler: () => {
+            this.showNewGameModeSelect();
+            return true;
+          },
+          keepOpen: true,
+        },
+      ]);
+      return;
+    }
     const showDailyMultiplayerUnavailable = () => {
       globalScene.ui.setMode(UiMode.MESSAGE);
       globalScene.ui.showText(i18next.t("menu:twoPlayerDailyUnavailable"), null, () =>
@@ -1608,9 +1909,10 @@ export class TitlePhase extends Phase {
       playerCount,
       vsMode,
       enemyPlayerMode,
+      // An empty list explicitly means every player seat is human.
+      computerPartnerPlayerIndexes: globalScene.getComputerPartnerPlayerIndexes(),
       ...(globalScene.twoPlayerComputerPartner
         ? {
-            computerPartnerPlayerIndexes: globalScene.getComputerPartnerPlayerIndexes(),
             computerPartnerKeys: Object.fromEntries(
               globalScene
                 .getComputerPartnerPlayerIndexes()
@@ -1640,6 +1942,158 @@ export class TitlePhase extends Phase {
 
   private startEnemyPlayerRun(gameMode: GameModes, playerCount: 1 | 2 | 3): void {
     this.startMultiplayerRun(gameMode, playerCount, 6, [], false, true);
+  }
+
+  /** Slot browsing is host-local: guests never inspect or navigate their own save slots. */
+  private openOnlineSaveMenu(continueSlot?: number): void {
+    if (getOnlineMembership()?.seat !== "p1") {
+      return;
+    }
+    onlineSaveSession.localMenu = true;
+    const choose = (slot: number) => {
+      if (slot < 0) {
+        onlineSaveSession.send?.({ type: "title-reset" });
+      } else {
+        void this.requestOnlineSaveLoad(slot);
+      }
+    };
+    if (continueSlot !== undefined && continueSlot >= 0) {
+      choose(continueSlot);
+    } else {
+      // Continue without a remembered slot falls back to the host's save browser.
+      void globalScene.ui.setOverlayMode(UiMode.SAVE_SLOT, SaveSlotUiMode.LOAD, choose);
+    }
+  }
+
+  private async requestOnlineSaveLoad(slotId: number): Promise<void> {
+    await globalScene.ui.setMode(UiMode.MESSAGE);
+    globalScene.ui.showText("Checking saved run...", null, null, null, false);
+    try {
+      const member = getOnlineMembership();
+      if (!member || member.seat !== "p1") {
+        throw new Error("Only the host can choose a saved run.");
+      }
+      const save = await globalScene.gameData.getSession(slotId);
+      if (!save) {
+        throw new Error("No saved run was found in that slot.");
+      }
+      validateOnlineSessionSave(save, member);
+      const snapshot = JSON.stringify(save, (_key, value) => (typeof value === "bigint" ? value.toString() : value));
+      if (new TextEncoder().encode(snapshot).byteLength > 3 * 1024 * 1024) {
+        throw new Error("This save exceeds the Online transfer limit (3 MiB).");
+      }
+      this.onlineHostLoadSlot = slotId;
+      onlineSaveSession.loading = true;
+      if (!onlineSaveSession.send?.({ type: "load-request", snapshot })) {
+        throw new Error("The lobby connection was lost. Leave and join again.");
+      }
+    } catch (error) {
+      this.showOnlineLoadError(error instanceof Error ? error.message : "Could not read that saved run.");
+    }
+  }
+
+  private showOnlineLoadError(message: string): void {
+    onlineSaveSession.loading = false;
+    globalScene.ui.showText(message, null, () => onlineSaveSession.send?.({ type: "title-reset" }));
+  }
+
+  private onOnlineSaveControl(message: OnlineSaveControl): void {
+    if (message.type === "title-reset") {
+      onlineSaveSession.localMenu = false;
+      onlineSaveSession.loading = false;
+      globalScene.ui.resetModeChain();
+      void this.showOptions(this.onlineLastSlot);
+    } else if (message.type === "load-error") {
+      this.showOnlineLoadError(message.message || "The saved run could not be loaded.");
+    } else if (message.type === "load-prepare" && message.loadId && message.snapshot && message.snapshotHash) {
+      if (this.onlineLoadId) {
+        return;
+      }
+      this.onlineLoadId = message.loadId;
+      this.onlineLoadPrepared = false;
+      onlineSaveSession.loading = true;
+      void this.prepareOnlineSave(message.loadId, message.snapshot, message.snapshotHash);
+    } else if (message.type === "load-commit" && message.loadId === this.onlineLoadId && this.onlineLoadPrepared) {
+      clearInterval(this.onlineLoadAnnounceInterval);
+      this.onlineLoadId = undefined;
+      onlineSaveSession.localMenu = false;
+      onlineSaveSession.loading = false;
+      this.loaded = true;
+      globalScene.ui.clearText();
+      this.end();
+    } else if (message.type === "load-abort") {
+      clearInterval(this.onlineLoadAnnounceInterval);
+      this.onlineLoadId = undefined;
+      this.onlineLoadPrepared = false;
+      // A partially restored scene must not accept input or continue after another client failed.
+      onlineSaveSession.loading = true;
+      onlineSaveSession.localMenu = false;
+    }
+  }
+
+  private async prepareOnlineSave(loadId: string, snapshot: string, snapshotHash: string): Promise<void> {
+    try {
+      const member = getOnlineMembership();
+      if (!member || (await hashOnlineSave(snapshot)) !== snapshotHash) {
+        throw new Error("Saved-run transfer could not be verified.");
+      }
+      const save = globalScene.gameData.parseSessionData(snapshot);
+      validateOnlineSessionSave(save, member);
+      await globalScene.ui.setMode(UiMode.MESSAGE);
+      globalScene.ui.resetModeChain();
+      globalScene.ui.clearText();
+      globalScene.waitForPlayerInput(0);
+      globalScene.resetTwoPlayerProfileExchangeForRun();
+      this.onlineLoadAnnounceInterval = setInterval(() => globalScene.uiInputs?.broadcastTwoPlayerProfileSnapshot(), 500);
+      globalScene.uiInputs?.broadcastTwoPlayerProfileSnapshot();
+      let localSlot = this.onlineHostLoadSlot;
+      if (member.seat !== "p1") {
+        localSlot = NO_SAVE_SLOT;
+        for (let slot = 0; slot < 5; slot++) {
+          if (!(await globalScene.gameData.getSession(slot))) {
+            localSlot = slot;
+            break;
+          }
+        }
+        if (localSlot < 0) {
+          throw new Error("A guest has no empty save slot. Free a slot and create a new lobby.");
+        }
+      }
+      if (this.onlineLoadId !== loadId) {
+        return;
+      }
+      if (localSlot < 0) {
+        throw new Error("The host's selected save slot was lost.");
+      }
+      if (!(await globalScene.waitForTwoPlayerProfileExchange(30000))) {
+        throw new Error("Player profile exchange timed out.");
+      }
+      if (this.onlineLoadId !== loadId) {
+        return;
+      }
+      globalScene.sessionSlotId = localSlot;
+      await globalScene.gameData.loadSessionSnapshot(snapshot);
+      globalScene.uiInputs?.broadcastTwoPlayerProfileSnapshot();
+      const checkpoint = globalScene.getTwoPlayerDebugStateCheckpoint();
+      if (!checkpoint) {
+        throw new Error("Loaded multiplayer state is unavailable.");
+      }
+      const stateHash = await hashOnlineSave(onlineLoadedState(checkpoint.summary));
+      if (this.onlineLoadId !== loadId) {
+        return;
+      }
+      this.onlineLoadPrepared = true;
+      onlineSaveSession.send?.({ type: "load-ready", loadId, snapshotHash, stateHash });
+    } catch (error) {
+      if (this.onlineLoadId === loadId) {
+        console.error("Online saved-run restoration failed:", error);
+        onlineSaveSession.send?.({
+          type: "load-failed",
+          loadId,
+          message: error instanceof Error ? error.message : "Saved run could not be restored.",
+        });
+      }
+    }
   }
 
   // TODO: Make callers actually wait for the save slot to load
@@ -1683,6 +2137,10 @@ export class TitlePhase extends Phase {
   }
 
   private applyRemoteTwoPlayerTitleStart(titleStart: TwoPlayerTitleStart): boolean {
+    if (isOnlineSession() && titleStart.action === "load-session") {
+      // Online resumes only through the shared snapshot / all-seats acknowledgement protocol.
+      return false;
+    }
     if (!globalScene.twoPlayerMode) {
       return false;
     }
@@ -1745,36 +2203,19 @@ export class TitlePhase extends Phase {
       return [];
     }
 
-    if (
-      !titleStart.computerPartnerPlayerIndexes?.length
-      && Object.keys(titleStart.computerPartnerKeys ?? {}).length === 0
-    ) {
-      return [];
-    }
-
     const keyedPlayerIndexes = Object.keys(titleStart.computerPartnerKeys ?? {})
       .map(playerIndex => Number(playerIndex))
-      .filter((playerIndex): playerIndex is PlayerIndex =>
-        playerIndex === 1 || playerIndex === 2 || (!!titleStart.enemyPlayerMode && playerIndex === 0)
+      .filter(
+        (playerIndex): playerIndex is PlayerIndex =>
+          playerIndex === 1 || playerIndex === 2 || (!!titleStart.enemyPlayerMode && playerIndex === 0),
       );
 
-    const requestedPlayerIndexes = titleStart.computerPartnerPlayerIndexes?.length
-      ? titleStart.computerPartnerPlayerIndexes
-      : keyedPlayerIndexes;
-    const validPlayerIndexes = [...new Set(requestedPlayerIndexes)]
-      .filter(playerIndex =>
-        (playerIndex > 0 || !!titleStart.enemyPlayerMode)
-        && playerIndex < playerCount
-      )
+    // Older human-run messages omit both fields. Only explicit CPU metadata can
+    // assign a CPU seat; the CPU-selection menu's defaults do not apply here.
+    const requestedPlayerIndexes = titleStart.computerPartnerPlayerIndexes ?? keyedPlayerIndexes;
+    return [...new Set(requestedPlayerIndexes)]
+      .filter(playerIndex => (playerIndex > 0 || !!titleStart.enemyPlayerMode) && playerIndex < playerCount)
       .sort((a, b) => a - b);
-
-    if (validPlayerIndexes.length > 0) {
-      return validPlayerIndexes;
-    }
-
-    return titleStart.enemyPlayerMode
-      ? ([0, 1, 2] as PlayerIndex[]).slice(0, playerCount)
-      : this.getComputerPartnerSelectionIndexes(playerCount as 2 | 3);
   }
 
   private applyTitleStartComputerPartners(titleStart: TwoPlayerTitleStart): void {
@@ -2030,6 +2471,10 @@ export class TitlePhase extends Phase {
 
   // TODO: Refactor this
   end(): void {
+    clearInterval(this.onlineLoadAnnounceInterval);
+    if (isOnlineSession()) {
+      onlineSaveSession.receive = undefined;
+    }
     globalScene.setTwoPlayerTitleStartHandler(undefined);
     if (this.profileStartupAnnounceInterval !== undefined) {
       globalThis.clearInterval(this.profileStartupAnnounceInterval);
@@ -2084,7 +2529,11 @@ export class TitlePhase extends Phase {
         const availablePartyMembers = globalScene.getPokemonAllowedInBattle().length;
 
         if (availablePartyMembers > 0) {
-          for (let fieldIndex = 0; fieldIndex < Math.min(availablePartyMembers, globalScene.currentBattle.getBattlerCount()); fieldIndex++) {
+          for (
+            let fieldIndex = 0;
+            fieldIndex < Math.min(availablePartyMembers, globalScene.currentBattle.getBattlerCount());
+            fieldIndex++
+          ) {
             globalScene.phaseManager.pushNew("SummonPhase", fieldIndex, true, true);
           }
         } else if (globalScene.hasEonFluteProtection(0)) {
