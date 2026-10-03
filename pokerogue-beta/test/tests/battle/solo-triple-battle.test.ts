@@ -142,6 +142,22 @@ describe("Solo wild encounter size", () => {
     expect(roll).not.toHaveBeenCalled();
   });
 
+  it("forces solo wild triples without lures while retaining fixed trainer and multiplayer sizes", () => {
+    activeOverrides.BATTLE_STYLE_OVERRIDE = "triple";
+    const roll = vi.spyOn(game.scene, "rollSoloWildBattlerCount" as never);
+    for (const waveIndex of [2, 3, 10]) {
+      const props: NewBattleConstructedProps = { waveIndex, battleType: BattleType.WILD };
+      props.double = game.scene["checkIsDouble"](props);
+      expect(new Battle(game.scene.gameMode, { ...props, double: props.double }).getBattlerCount()).toBe(3);
+    }
+    expect(game.scene["checkIsDouble"]({ waveIndex: 5, battleType: BattleType.TRAINER, double: false })).toBe(false);
+    game.scene.configureTwoPlayerMode(true, 6, false, 2);
+    const props: NewBattleConstructedProps = { waveIndex: 2, battleType: BattleType.WILD };
+    props.double = game.scene["checkIsDouble"](props);
+    expect(new Battle(game.scene.gameMode, { ...props, double: props.double }).getBattlerCount()).toBe(2);
+    expect(roll).not.toHaveBeenCalled();
+  });
+
   it("saves the rolled size and restores it without rerolling, including old doubles", () => {
     game.scene.currentBattle = battle(3);
     addParty();
@@ -195,15 +211,52 @@ describe("Solo wild encounter size", () => {
     expect(queue).toHaveBeenCalledWith("SwitchSummonPhase", SwitchType.SWITCH, 2, 3, false);
   });
 
-  it("fits all three active party panels above the item-management button and navigates through each", () => {
+  it("skips a forced replacement when the only living Pokemon occupies another active slot", () => {
+    game.scene.currentBattle = battle(3);
+    const party = addParty();
+    party.slice(1).forEach(pokemon => {
+      pokemon.hp = 0;
+    });
+    // An active-slot Pokemon can be off the field during a queued return/summon.
+    // It still cannot be selected as a bench replacement by the party menu.
+    expect(party[0].isOnField()).toBe(false);
+    const mode = vi.spyOn(game.scene.ui, "setMode").mockResolvedValue(undefined);
+    const end = vi.spyOn(Phase.prototype, "end").mockImplementation(() => {});
+    new SwitchPhase(SwitchType.SWITCH, 2, true, false).start();
+    expect(mode).not.toHaveBeenCalled();
+    expect(end).toHaveBeenCalledOnce();
+  });
+
+  it("rechecks the bench when a previous replacement has used the last reserve", () => {
+    game.scene.currentBattle = battle(3);
+    const party = addParty();
+    party[1].hp = 0;
+    party[2].hp = 0;
+    game.scene.field.add(party[0]);
+    const mode = vi.spyOn(game.scene.ui, "setMode").mockResolvedValue(undefined);
+    const end = vi.spyOn(Phase.prototype, "end").mockImplementation(() => {});
+    new SwitchPhase(SwitchType.SWITCH, 1, true, false).start();
+    expect(mode).toHaveBeenCalledWith(
+      UiMode.PARTY, PartyUiMode.FAINT_SWITCH, 1, expect.any(Function), expect.any(Function),
+    );
+    // The first replacement moves the last living reserve into an active slot.
+    [party[1], party[3]] = [party[3], party[1]];
+    game.scene.field.add(party[1]);
+    mode.mockClear();
+    new SwitchPhase(SwitchType.SWITCH, 2, true, false).start();
+    expect(mode).not.toHaveBeenCalled();
+    expect(end).toHaveBeenCalledOnce();
+  });
+
+  it("fits all three active party panels beside the item-management button and navigates through each", () => {
     game.scene.currentBattle = battle(3);
     addParty();
     const handler = game.scene.ui.handlers[UiMode.PARTY] as PartyUiHandler;
     handler.show([PartyUiMode.MODIFIER_TRANSFER, 2]);
-    expect(handler["partySlots"].map(slot => slot.y)).toEqual([-216, -168, -120, -216]);
+    expect(handler["partySlots"].map(slot => slot.y)).toEqual([-168.5, -121.5, -74.5, -164]);
     expect(handler["partySlots"].slice(0, 3).every(slot => slot["slotBgKey"] === "party_slot_main_short")).toBe(true);
     handler.setCursor(0);
-    for (const cursor of [1, 2, 7, 3, 6, 0]) {
+    for (const cursor of [1, 2, 3, 7, 6, 0]) {
       handler["processPartyDirectionalInput"](Button.DOWN);
       expect(handler.getCursor()).toBe(cursor);
     }

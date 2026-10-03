@@ -29,7 +29,9 @@ export function getComputerPartnerPartyMemberMatchupScores(
 
   return party
     .map((pokemon, partyIndex) => [pokemon, partyIndex] as const)
-    .filter(([pokemon, partyIndex]) => partyIndex > 0 && pokemon.isAllowedInBattle() && !pokemon.isOnField())
+    .filter(([pokemon, partyIndex]) =>
+      partyIndex >= globalScene.getPlayerActiveSlotCount(playerIndex) && pokemon.isAllowedInBattle() && !pokemon.isOnField(),
+    )
     .map(([pokemon, partyIndex]) => {
       let score = 0;
 
@@ -97,7 +99,7 @@ export function getComputerPartnerImprovedSwitchIndex(
     return;
   }
 
-  if (globalScene.twoPlayerVsMode) {
+  if (globalScene.isVsLaneBattle()) {
     return;
   }
 

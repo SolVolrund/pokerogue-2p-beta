@@ -19,6 +19,8 @@ export enum PlayerTrainerSprite {
   BIANCA_LATIAS,
   DUPLICA_DITTO,
   MOLLY_HALE,
+  WHITNEY,
+  SABRINA,
 }
 
 export interface PlayerTrainerSpriteOption {
@@ -27,6 +29,7 @@ export interface PlayerTrainerSpriteOption {
   atlasKey: string;
   gender: PlayerGender;
   yOffset: number;
+  scale?: number;
 }
 
 export const PLAYER_TRAINER_SPRITE_OPTIONS: PlayerTrainerSpriteOption[] = [
@@ -138,6 +141,22 @@ export const PLAYER_TRAINER_SPRITE_OPTIONS: PlayerTrainerSpriteOption[] = [
     gender: PlayerGender.FEMALE,
     yOffset: -54,
   },
+  {
+    sprite: PlayerTrainerSprite.WHITNEY,
+    label: "Whitney",
+    atlasKey: "whitney_back",
+    gender: PlayerGender.FEMALE,
+    yOffset: -54,
+    scale: 0.5,
+  },
+  {
+    sprite: PlayerTrainerSprite.SABRINA,
+    label: "Sabrina",
+    atlasKey: "sabrina_back",
+    gender: PlayerGender.FEMALE,
+    yOffset: -54,
+    scale: 0.5,
+  },
 ];
 
 export const PLAYER_BOY_TRAINER_SPRITES: PlayerTrainerSprite[] = [
@@ -162,6 +181,8 @@ export const PLAYER_GIRL_TRAINER_SPRITES: PlayerTrainerSprite[] = [
   PlayerTrainerSprite.MARLEY,
   PlayerTrainerSprite.MIRA,
   PlayerTrainerSprite.MOLLY_HALE,
+  PlayerTrainerSprite.WHITNEY,
+  PlayerTrainerSprite.SABRINA,
 ];
 
 const PLAYER_TRAINER_FRONT_SPRITE_KEYS: Record<PlayerTrainerSprite, string> = {
@@ -183,6 +204,8 @@ const PLAYER_TRAINER_FRONT_SPRITE_KEYS: Record<PlayerTrainerSprite, string> = {
   [PlayerTrainerSprite.BIANCA_LATIAS]: "bianca_latias",
   [PlayerTrainerSprite.DUPLICA_DITTO]: "duplica_ditto",
   [PlayerTrainerSprite.MOLLY_HALE]: "molly_hale",
+  [PlayerTrainerSprite.WHITNEY]: "whitney",
+  [PlayerTrainerSprite.SABRINA]: "sabrina",
 };
 
 export function getPlayerTrainerSpriteOption(sprite: PlayerTrainerSprite): PlayerTrainerSpriteOption {

@@ -37,6 +37,10 @@ import type { PokeballType } from "#enums/pokeball";
 import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { BATTLE_STATS, type PermanentStat, Stat, TEMP_BATTLE_STATS, type TempBattleStat } from "#enums/stat";
+import {
+  CLASSIC_FINAL_BOSS_MULTIPLAYER_SCALING_STATS,
+  CLASSIC_FINAL_BOSS_PHASE_TWO_VITAMIN_STACKS,
+} from "#utils/classic-final-boss-utils";
 import { StatChangeSource } from "#enums/stat-change-source";
 import { StatusEffect } from "#enums/status-effect";
 import { TextStyle } from "#enums/text-style";
@@ -1013,7 +1017,12 @@ export class BaseStatModifier extends PokemonHeldItemModifier {
   }
 
   getMaxHeldItemCount(pokemon: Pokemon): number {
-    return pokemon.ivs[this.stat];
+    const bossBonus = pokemon.isEnemy()
+      && pokemon.customPokemonData.finalBossBulkBonusApplied
+      && CLASSIC_FINAL_BOSS_MULTIPLAYER_SCALING_STATS.includes(this.stat)
+      ? CLASSIC_FINAL_BOSS_PHASE_TWO_VITAMIN_STACKS
+      : 0;
+    return pokemon.ivs[this.stat] + bossBonus;
   }
 }
 

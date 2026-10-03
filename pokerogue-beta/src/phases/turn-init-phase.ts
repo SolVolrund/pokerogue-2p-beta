@@ -31,7 +31,7 @@ export class TurnInitPhase extends FieldPhase {
         );
 
         const playerIndex = globalScene.getPlayerIndexForPokemon(p) ?? globalScene.getPlayerIndexForFieldSlot(p.getFieldIndex());
-        const activePartySlotCount = globalScene.twoPlayerMode ? 1 : globalScene.currentBattle.getBattlerCount();
+        const activePartySlotCount = globalScene.getPlayerActiveSlotCount(playerIndex);
         const allowedPokemon = globalScene.getPokemonAllowedInBattle(playerIndex);
 
         if (allowedPokemon.length === 0 && globalScene.queueVsModeVictoryIfDecided()) {

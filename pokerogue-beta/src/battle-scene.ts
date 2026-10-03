@@ -3,7 +3,6 @@ import { Animation } from "#app/animations";
 import { Battle } from "#app/battle";
 import {
   ANTI_VARIANCE_WEIGHT_MODIFIER,
-  AVERAGE_ENCOUNTERS_PER_RUN_TARGET,
   BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT,
   MYSTERY_ENCOUNTER_SPAWN_MAX_WEIGHT,
   PLAYER_PARTY_MAX_SIZE,
@@ -66,6 +65,7 @@ import type { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BerryType } from "#enums/berry-type";
 import { BiomeId } from "#enums/biome-id";
+import { Command } from "#enums/command";
 import { EaseType } from "#enums/ease-type";
 import { ExpGainsSpeed } from "#enums/exp-gains-speed";
 import { ExpNotification } from "#enums/exp-notification";
@@ -83,6 +83,7 @@ import { Nature } from "#enums/nature";
 import { PlayerGender } from "#enums/player-gender";
 import {
   getPlayerTrainerSpriteBackTextureKey,
+  getPlayerTrainerSpriteOption,
   getPlayerTrainerSpriteYOffset,
   PlayerTrainerSprite,
 } from "#enums/player-trainer-sprite";
@@ -557,6 +558,7 @@ export class BattleScene extends SceneBase {
   public uiInputs: UiInputs;
 
   public sessionPlayTime: number | null = null;
+  public isRestoringSession = false;
   public lastSavePlayTime: number | null = null;
   // TODO: move these settings into a settings helper object
   public gameSpeed = 1;
@@ -2155,6 +2157,12 @@ export class BattleScene extends SceneBase {
   }
 
   public getTrainerGender(playerIndex: PlayerIndex = 0): PlayerGender {
+    if (playerIndex === 0 && this.isComputerPartnerPlayer(0)) {
+      const gender = getComputerPartnerProfile(this.getComputerPartnerKey(0)).trainerGender;
+      if (gender !== undefined) {
+        return gender;
+      }
+    }
     if (playerIndex === 2) {
       return this.threePlayerGuestGender;
     }
@@ -2163,6 +2171,12 @@ export class BattleScene extends SceneBase {
   }
 
   public getTrainerSprite(playerIndex: PlayerIndex = 0): PlayerTrainerSprite {
+    if (playerIndex === 0 && this.isComputerPartnerPlayer(0)) {
+      const sprite = getComputerPartnerProfile(this.getComputerPartnerKey(0)).trainerSprite;
+      if (sprite !== undefined) {
+        return sprite;
+      }
+    }
     if (playerIndex === 2) {
       return this.threePlayerGuestTrainerSprite;
     }
@@ -2262,18 +2276,14 @@ export class BattleScene extends SceneBase {
     x: number,
     baseY = 186,
   ): Phaser.GameObjects.Sprite {
-    return trainerSprite.setPosition(x, this.getTrainerBackSpriteY(playerIndex, baseY));
+    return trainerSprite
+      .setScale(getPlayerTrainerSpriteOption(this.getTrainerSprite(playerIndex)).scale ?? 1)
+      .setPosition(x, this.getTrainerBackSpriteY(playerIndex, baseY));
   }
 
   public getPlayerTrainerBackSprite(playerIndex: PlayerIndex): Phaser.GameObjects.Sprite {
-    switch (playerIndex) {
-      case 1:
-        return this.trainerPartner;
-      case 2:
-        return this.trainerGuest2;
-      default:
-        return this.trainer;
-    }
+    const sprite = playerIndex === 1 ? this.trainerPartner : playerIndex === 2 ? this.trainerGuest2 : this.trainer;
+    return sprite.setScale(getPlayerTrainerSpriteOption(this.getTrainerSprite(playerIndex)).scale ?? 1);
   }
 
   // TODO: Add a `getPartyOnSide` function for getting the party of a pokemon
@@ -2817,17 +2827,22 @@ export class BattleScene extends SceneBase {
     return player ? this.getPlayerModifiers(playerIndex) : this.enemyModifiers;
   }
 
-  public setMysteryEncounterBattlePlayerFieldOwners(playerIndexes?: PlayerIndex[]): void {
+  public setMysteryEncounterBattlePlayerFieldOwners(playerIndexes?: PlayerIndex[], doubleForSinglePlayer = false): void {
     if (!this.currentBattle) {
       return;
     }
 
+    this.currentBattle.mysteryEncounterSoloPlayerIndex = undefined;
     if (!this.twoPlayerMode || playerIndexes?.length === 0) {
       this.currentBattle.playerFieldOwners = undefined;
       return;
     }
 
     const fieldOwners = [...new Set(playerIndexes)].slice(0, this.multiplayerPlayerCount) as PlayerIndex[];
+    if (doubleForSinglePlayer && fieldOwners.length === 1) {
+      this.currentBattle.mysteryEncounterSoloPlayerIndex = fieldOwners[0];
+      fieldOwners.push(fieldOwners[0]);
+    }
     this.currentBattle.playerFieldOwners = fieldOwners;
     this.setActivePlayerIndex(fieldOwners[0]);
 
@@ -2841,6 +2856,7 @@ export class BattleScene extends SceneBase {
   public clearMysteryEncounterBattlePlayerFieldOwners(): void {
     if (this.currentBattle) {
       this.currentBattle.playerFieldOwners = undefined;
+      this.currentBattle.mysteryEncounterSoloPlayerIndex = undefined;
       this.currentBattle.mysteryEncounterEnemySidePlayerIndexes = undefined;
     }
   }
@@ -2896,7 +2912,42 @@ export class BattleScene extends SceneBase {
 
     const playerIndex = this.getPlayerIndexForFieldSlot(fieldSlot);
     const guest = this.getEonFluteGuest(playerIndex);
-    return guest && !guest.isFainted() ? guest : this.getPlayerParty(playerIndex)[0];
+    const partyIndex = this.getPlayerPartyIndexForFieldSlot(fieldSlot);
+    return guest && !guest.isFainted()
+      ? partyIndex === 0 ? guest : undefined
+      : this.getPlayerParty(playerIndex)[partyIndex];
+  }
+
+  public getPlayerPartyIndexForFieldSlot(fieldSlot: number): number {
+    if (!this.twoPlayerMode) {
+      return fieldSlot;
+    }
+    const owner = this.getPlayerIndexForFieldSlot(fieldSlot);
+    return this.getPlayerFieldOwners().slice(0, fieldSlot).filter(index => index === owner).length;
+  }
+
+  public getPlayerActiveSlotCount(playerIndex: PlayerIndex = this.activePlayerIndex): number {
+    return this.twoPlayerMode
+      ? Math.max(1, this.getPlayerFieldOwners().filter(owner => owner === playerIndex).length)
+      : this.currentBattle.getBattlerCount();
+  }
+
+  public isPlayerSwitchReserved(playerIndex: PlayerIndex, partyIndex: number, fieldIndex: number): boolean {
+    return this.getPlayerFieldOwners().some((owner, slot) => {
+      const command = this.currentBattle.turnCommands?.[this.getPlayerBattlerIndex(slot)];
+      return owner === playerIndex && slot !== fieldIndex
+        && command?.command === Command.POKEMON && command.cursor === partyIndex;
+    });
+  }
+
+  /** Trials use normal doubles targeting without changing the run's saved Vs mode. */
+  public isVsLaneBattle(): boolean {
+    return this.twoPlayerVsMode && this.currentBattle?.mysteryEncounterSoloPlayerIndex === undefined;
+  }
+
+  public getBattleParticipantPlayerIndexes(): PlayerIndex[] {
+    const soloPlayer = this.currentBattle?.mysteryEncounterSoloPlayerIndex;
+    return soloPlayer === undefined ? this.getActivePlayerIndexes() : [soloPlayer];
   }
 
   public getPlayerIndexForPokemon(pokemon: Pokemon): PlayerIndex | undefined {
@@ -4015,6 +4066,11 @@ export class BattleScene extends SceneBase {
       );
     }
 
+    if (!this.twoPlayerMode && battleType === BattleType.WILD && activeOverrides.BATTLE_STYLE_OVERRIDE === "triple") {
+      props.wildBattlerCount = 3;
+      return true;
+    }
+
     // TODO: enforce using the proper override depending on whether it's a trainer or a wild battle
     const doubleBattleOverride = this.doCheckDoubleOverride(waveIndex);
     if (doubleBattleOverride != null) {
@@ -4056,6 +4112,9 @@ export class BattleScene extends SceneBase {
    */
   private doCheckDoubleOverride(waveIndex: number): boolean | undefined {
     switch (activeOverrides.BATTLE_STYLE_OVERRIDE) {
+      case "triple":
+        // Handled for solo wild encounters by checkIsDouble.
+        return;
       case "double":
         return true;
       case "single":
@@ -4970,7 +5029,10 @@ export class BattleScene extends SceneBase {
   generateRandomBiome(waveIndex: number): BiomeId {
     const relWave = waveIndex % 250;
     const biomes = Object.values(BiomeId).filter(
-      b => b !== BiomeId.TOWN && b !== BiomeId.END && b !== BiomeId.FARAWAY_ISLAND && b !== BiomeId.ROCKET_HQ,
+      // Special destinations outside the normal route graph have no depth
+      // weight (e.g. Alto Mare and Secret Garden) and cannot enter this pool.
+      b => b !== BiomeId.TOWN && b !== BiomeId.END && b !== BiomeId.FARAWAY_ISLAND && b !== BiomeId.ROCKET_HQ
+        && biomeDepths[b] !== undefined,
     );
     const maxDepth = biomeDepths[BiomeId.END][0] - 2;
     const depthWeights = new Array(maxDepth + 1)
@@ -5865,8 +5927,16 @@ export class BattleScene extends SceneBase {
       return undefined;
     }
 
+    if (this.currentBattle?.mysteryEncounterSoloPlayerIndex !== undefined) {
+      return this.currentBattle.mysteryEncounterSoloPlayerIndex;
+    }
+
     const fieldIndex = pokemon.getFieldIndex();
-    // Vs mode is lane based: enemy field slot 0 pressures P1, slot 1 pressures P2, slot 2 pressures P3.
+    // Mystery encounters can compact the lanes when some players choose not to fight.
+    const encounterOwner = this.currentBattle?.playerFieldOwners?.[fieldIndex];
+    if (encounterOwner !== undefined) {
+      return encounterOwner;
+    }
     return this.getActivePlayerIndexes().includes(fieldIndex as PlayerIndex) ? (fieldIndex as PlayerIndex) : undefined;
   }
 
@@ -6582,7 +6652,7 @@ export class BattleScene extends SceneBase {
   ): void {
     if (this.twoPlayerMode && playerIndex === undefined) {
       const previousPlayerIndex = this.activePlayerIndex;
-      for (const expPlayerIndex of this.getActivePlayerIndexes()) {
+      for (const expPlayerIndex of this.getBattleParticipantPlayerIndexes()) {
         this.setActivePlayerIndex(expPlayerIndex);
         this.applyPartyExp(expValue, pokemonDefeated, useWaveIndexMultiplier, participantIds, expPlayerIndex);
       }
@@ -6749,9 +6819,13 @@ export class BattleScene extends SceneBase {
       return true;
     }
 
+    if (this.mysteryEncounterSaveData.frequency === 0 && activeOverrides.MYSTERY_ENCOUNTER_RATE_OVERRIDE === null) {
+      return false;
+    }
+
     const [lowestMysteryEncounterWave, highestMysteryEncounterWave] = this.gameMode.getMysteryEncounterLegalWaves();
     // Base spawn weight is BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT/256, and increases
-    // by WEIGHT_INCREMENT_ON_SPAWN_MISS/256 for each missed attempt at spawning an encounter on a valid floor
+    // by the run's frequency/256 for each eligible wild floor without an encounter.
     const sessionEncounterRate = this.mysteryEncounterSaveData.encounterSpawnChance;
     const encounteredEvents = this.mysteryEncounterSaveData.encounteredEvents;
 
@@ -6765,10 +6839,10 @@ export class BattleScene extends SceneBase {
     }
 
     // If total number of encounters is lower than expected for the run, slightly favor a new encounter spawn (reverse as well)
-    // Reduces occurrence of runs with total encounters significantly different from AVERAGE_ENCOUNTERS_PER_RUN_TARGET
+    // Reduces occurrence of runs with total encounters significantly different from the run's target.
     // Favored rate changes can never exceed 50%. So if base rate is 15/256 and favored rate would add 200/256, result will be (15 + 128)/256
     const expectedEncountersByFloor =
-      (AVERAGE_ENCOUNTERS_PER_RUN_TARGET / (highestMysteryEncounterWave - lowestMysteryEncounterWave))
+      (this.mysteryEncounterSaveData.encounterTarget / (highestMysteryEncounterWave - lowestMysteryEncounterWave))
       * (waveIndex - lowestMysteryEncounterWave);
     const currentRunDiffFromAvg = expectedEncountersByFloor - encounteredEvents.length;
     const favoredEncounterRate =

@@ -58,11 +58,18 @@ export function chooseComputerPartnerMoveLearningDecision(
   learnMoveType: LearnMoveType,
   context: ComputerPartnerMoveLearningContext = {},
 ): ComputerPartnerMoveLearningDecision {
-  if (shouldRejectForbiddenMove(pokemon, newMove.id, learnMoveType)) {
+  const signatureMoves = context.profile?.signatureMoves?.[pokemon.species.speciesId] ?? [];
+  const isSignatureMove = signatureMoves.includes(newMove.id);
+  if (
+    (newMove.id !== MoveId.SKETCH && currentMoveIds.includes(newMove.id))
+    || (!isSignatureMove && shouldRejectForbiddenMove(pokemon, newMove.id, learnMoveType))
+  ) {
     return { shouldLearn: false, replaceIndex: -1, improvementRatio: 0 };
   }
 
-  const supersededDecision = chooseSupersededMoveLearningDecision(pokemon, currentMoveIds, newMove.id, context);
+  const supersededDecision = isSignatureMove
+    ? undefined
+    : chooseSupersededMoveLearningDecision(pokemon, currentMoveIds, newMove.id, context, signatureMoves);
   if (supersededDecision) {
     return supersededDecision;
   }
@@ -74,9 +81,12 @@ export function chooseComputerPartnerMoveLearningDecision(
   const oldScore = scoreMoveset(pokemon, currentMoveIds, context);
   const minimumImprovementRatio = getImprovementThreshold(learnMoveType);
   let bestReplaceIndex = -1;
-  let bestScore = oldScore;
+  let bestScore = isSignatureMove ? Number.NEGATIVE_INFINITY : oldScore;
 
-  for (const [index] of currentMoveIds.entries()) {
+  for (const [index, moveId] of currentMoveIds.entries()) {
+    if (signatureMoves.includes(moveId)) {
+      continue;
+    }
     const candidateMoveIds = currentMoveIds.slice();
     candidateMoveIds[index] = newMove.id;
     const candidateScore = scoreMoveset(pokemon, candidateMoveIds, context);
@@ -84,6 +94,10 @@ export function chooseComputerPartnerMoveLearningDecision(
       bestScore = candidateScore;
       bestReplaceIndex = index;
     }
+  }
+
+  if (isSignatureMove && bestReplaceIndex >= 0) {
+    return { shouldLearn: true, replaceIndex: bestReplaceIndex, improvementRatio: Number.POSITIVE_INFINITY };
   }
 
   const improvementRatio = oldScore <= 0 ? Number.POSITIVE_INFINITY : bestScore / oldScore;
@@ -115,10 +129,11 @@ function chooseSupersededMoveLearningDecision(
   currentMoveIds: MoveId[],
   newMoveId: MoveId,
   context: ComputerPartnerMoveLearningContext,
+  signatureMoves: readonly MoveId[],
 ): ComputerPartnerMoveLearningDecision | undefined {
   const supersededMoveIndexes = currentMoveIds
     .map((moveId, index) => ({ moveId, index }))
-    .filter(({ moveId }) => doesMoveSupersede(newMoveId, moveId));
+    .filter(({ moveId }) => !signatureMoves.includes(moveId) && doesMoveSupersede(newMoveId, moveId));
 
   if (supersededMoveIndexes.length > 0) {
     const oldScore = scoreMoveset(pokemon, currentMoveIds, context);

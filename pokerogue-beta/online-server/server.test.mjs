@@ -241,6 +241,79 @@ async function readyLobby(f, count = 2, ep = false) {
   return { clients, member };
 }
 
+async function startSelection(clients, count = 2, ep = false, seed = "new-run-seed") {
+  clients[0].send("title-start", { titleStart: {
+    action: "new-run", playerCount: count, partySize: 6, vsMode: false,
+    enemyPlayerMode: ep, computerPartnerPlayerIndexes: [], seed,
+  } });
+  await clients[1].next(m => m.kind === "title-start");
+  for (const client of clients) client.control("start-wait", { seed });
+  const prepares = await Promise.all(clients.map(c => c.next(m => m.type === "start-prepare")));
+  assert.ok(prepares.every(m => m.startId === prepares[0].startId));
+  return prepares[0].startId;
+}
+
+test("new runs wait for host slot confirmation and every guest including EP, once per transaction", async t => {
+  for (const last of [0, 3]) {
+    const f = await fixture(t);
+    const { clients } = await readyLobby(f, 3, true);
+    const startId = await startSelection(clients, 3, true);
+    clients[last].control("start-ready", { startId: "stale" });
+    for (const [index, client] of clients.entries()) {
+      if (index !== last) {
+        client.control("start-ready", { startId });
+        client.control("start-ready", { startId });
+      }
+    }
+    clients[0].send("input-accepted", { authoritySequence: 1 });
+    await delay(30);
+    assert.ok(clients.every(c => !c.messages.some(m => m.type === "start-commit" || m.kind === "input-accepted")));
+    clients[last].control("start-ready", { startId });
+    await Promise.all(clients.map(c => c.next(m => m.type === "start-commit" && m.startId === startId)));
+    clients[last].control("start-ready", { startId });
+    await delay(20);
+    assert.ok(clients.every(c => !c.messages.some(m => m.type === "start-commit")));
+    clients[0].send("input-accepted", { authoritySequence: 2 });
+    await clients[1].next(m => m.kind === "input-accepted" && m.authoritySequence === 2);
+  }
+});
+
+test("host startup cancellation resets everyone and stale acknowledgements cannot start the next run", async t => {
+  const f = await fixture(t);
+  const { clients } = await readyLobby(f);
+  const startId = await startSelection(clients);
+  clients[1].control("start-ready", { startId });
+  clients[0].control("start-cancel", { startId });
+  await Promise.all(clients.map(c => c.next(m => m.type === "start-cancel" && m.seed === "new-run-seed")));
+  for (const client of clients) {
+    client.messages.length = 0;
+    client.title();
+  }
+  await clients[0].next(m => m.type === "status" && m.ready);
+  const nextId = await startSelection(clients, 2, false, "next-run-seed");
+  assert.notEqual(startId, nextId);
+  clients[0].control("start-ready", { startId });
+  clients[1].control("start-ready", { startId: nextId });
+  await delay(20);
+  assert.ok(clients.every(c => !c.messages.some(m => m.type === "start-commit")));
+  clients[0].control("start-ready", { startId: nextId });
+  await Promise.all(clients.map(c => c.next(m => m.type === "start-commit" && m.startId === nextId)));
+});
+
+test("startup timeout, disconnect, or a guest cancellation never releases the run", async t => {
+  for (const failure of ["timeout", "disconnect", "guest-cancel"]) {
+    const f = await fixture(t, { loadTimeoutMs: failure === "timeout" ? 100 : 3000 });
+    const { clients } = await readyLobby(f);
+    const startId = await startSelection(clients);
+    clients[0].control("start-ready", { startId });
+    if (failure === "disconnect") clients[1].socket.close();
+    if (failure === "guest-cancel") clients[1].control("start-cancel", { startId });
+    await clients[0].next(m => m.type === "closed");
+    assert.ok(clients.every(c => !c.messages.some(m => m.type === "start-commit")));
+    assert.equal((await f.request("/lobbies")).lobbies.length, 0);
+  }
+});
+
 test("saved runs transfer identically and wait for every seat, including EP, before resuming", async t => {
   const f = await fixture(t);
   const { clients } = await readyLobby(f, 3, true);

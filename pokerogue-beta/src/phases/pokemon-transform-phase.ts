@@ -61,7 +61,11 @@ export class PokemonTransformPhase extends PokemonPhase {
     });
 
     // TODO: This should fallback to the target's original typing if none are left (from Burn Up, etc.)
-    user.summonData.types = target.getTypes({ includeTeraType: false });
+    user.summonData.types = target.getTypes({
+      includeTeraType: false,
+      ignoreAceType: true,
+      ignoreThirdType: user.getAceType() !== undefined,
+    });
 
     const promises = [user.updateInfo()];
 

@@ -1,6 +1,8 @@
 import type { PlayerIndex } from "#app/battle-scene";
+import { GUEST_SAVE_SLOT } from "#app/account";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
+import { getUnlockedAceType } from "#data/ace-type";
 import { activeOverrides } from "#app/overrides";
 import { Phase } from "#app/phase";
 import { modifierTypes } from "#data/data-lists";
@@ -22,12 +24,23 @@ import {
 } from "#utils/computer-partner-profile";
 import type { PlayerPokemon } from "#field/pokemon";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
+import { getOnlineMembership, isOnlineSession } from "#utils/online-lobby-client";
+import { onlineSaveSession, type OnlineSaveControl } from "#utils/online-save-session";
 import i18next from "i18next";
 
 export class SelectStarterPhase extends Phase {
   public readonly phaseName = "SelectStarterPhase";
+  private onlineStartId?: string;
+  private onlineStartReady = false;
+  private onlineStartDone = false;
+  private onOnlineSlotSelected?: () => void;
+  private readonly onlineStartReceiver = (message: OnlineSaveControl) => this.onOnlineStartControl(message);
+
   start() {
     super.start();
+    if (isOnlineSession()) {
+      onlineSaveSession.receive = this.onlineStartReceiver;
+    }
 
     audioManager.playBgm("menu");
     this.waitForTwoPlayerProfilesBeforeAction(() => {
@@ -41,11 +54,13 @@ export class SelectStarterPhase extends Phase {
   }
 
   private selectStartersForPlayer(playerIndex: PlayerIndex): void {
+    if (this.onlineStartDone) return;
     this.setStarterSelectionOwner(playerIndex);
     void globalScene.ui.setMode(UiMode.STARTER_SELECT, (starters: Starter[]) => {
       globalScene.ui.clearText();
       if (globalScene.twoPlayerMode) {
         this.initPlayerStarters(starters, playerIndex).then(() => {
+          if (this.onlineStartDone) return;
           const playerIndexes = globalScene.getActivePlayerIndexes();
           const currentPlayerOffset = playerIndexes.indexOf(playerIndex);
           const nextPlayerIndex = playerIndexes[currentPlayerOffset + 1];
@@ -59,6 +74,7 @@ export class SelectStarterPhase extends Phase {
               }
 
               globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+                if (this.onlineStartDone) return;
                 const starterPrompt = globalScene.isComputerPartnerPlayer(nextPlayerIndex)
                   ? i18next.t("menu:computerPartnerStarterPrompt")
                   : i18next.t("menu:namedStarterPrompt", {
@@ -93,6 +109,7 @@ export class SelectStarterPhase extends Phase {
   }
 
   private advanceAfterStarterSelection(playerIndex: PlayerIndex): void {
+    if (this.onlineStartDone) return;
     const playerIndexes = globalScene.getActivePlayerIndexes();
     const currentPlayerOffset = playerIndexes.indexOf(playerIndex);
     const nextPlayerIndex = playerIndexes[currentPlayerOffset + 1];
@@ -106,6 +123,7 @@ export class SelectStarterPhase extends Phase {
         }
 
         globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+          if (this.onlineStartDone) return;
           const starterPrompt = globalScene.isComputerPartnerPlayer(nextPlayerIndex)
             ? i18next.t("menu:computerPartnerStarterPrompt")
             : i18next.t("menu:namedStarterPrompt", {
@@ -132,6 +150,20 @@ export class SelectStarterPhase extends Phase {
   }
 
   private selectSaveSlot(onSlotSelected: () => void): void {
+    if (this.onlineStartDone) return;
+    if (isOnlineSession()) {
+      this.onOnlineSlotSelected = onSlotSelected;
+      onlineSaveSession.receive = this.onlineStartReceiver;
+      onlineSaveSession.loading = true;
+      globalScene.waitForPlayerInput(0);
+      void globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+        if (this.onlineStartDone) return;
+        globalScene.ui.showText("Waiting for the host to choose a save slot...", null, null, null, false);
+        globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("online-save-slot-wait");
+        this.sendOnlineStartControl({ type: "start-wait", seed: globalScene.seed });
+      });
+      return;
+    }
     globalScene.ui.setMode(UiMode.SAVE_SLOT, SaveSlotUiMode.SAVE, (slotId: number) => {
       // If clicking cancel, back out to title screen
       if (slotId === -1) {
@@ -143,6 +175,80 @@ export class SelectStarterPhase extends Phase {
 
       onSlotSelected();
     });
+  }
+
+  private sendOnlineStartControl(message: OnlineSaveControl): void {
+    if (!onlineSaveSession.send?.(message)) {
+      this.onOnlineStartControl({ type: "load-abort", message: "Connection lost. Leave the lobby and try again." });
+    }
+  }
+
+  private onOnlineStartControl(message: OnlineSaveControl): void {
+    if (this.onlineStartDone) return;
+    if (message.type === "load-abort") {
+      this.onlineStartDone = true;
+      onlineSaveSession.localMenu = false;
+      onlineSaveSession.loading = true;
+      void globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+        globalScene.ui.showText(message.message || "Startup failed. Leave the lobby and try again.", null, null, null, false);
+      });
+      return;
+    }
+    if (message.type === "start-cancel" && message.seed === globalScene.seed) {
+      this.onlineStartDone = true;
+      globalScene.phaseManager.toTitleScreen();
+      this.end();
+      return;
+    }
+    if (message.type === "start-prepare" && message.startId && this.onOnlineSlotSelected && !this.onlineStartId) {
+      this.onlineStartId = message.startId;
+      const member = getOnlineMembership();
+      if (!member) {
+        this.onOnlineStartControl({ type: "load-abort", message: "Lobby membership expired." });
+        return;
+      }
+      if (member.seat === "p1") {
+        onlineSaveSession.localMenu = true;
+        void globalScene.ui.setMode(UiMode.SAVE_SLOT, SaveSlotUiMode.SAVE, (slotId: number) => {
+          if (this.onlineStartDone || this.onlineStartReady || !this.onlineStartId) return;
+          onlineSaveSession.localMenu = false;
+          if (slotId === -1) {
+            this.sendOnlineStartControl({ type: "start-cancel", startId: this.onlineStartId });
+            return;
+          }
+          if (slotId < 0 || slotId >= GUEST_SAVE_SLOT) return;
+          globalScene.sessionSlotId = slotId;
+          this.confirmOnlineStartReady();
+        }, true);
+      } else {
+        globalScene.sessionSlotId = GUEST_SAVE_SLOT;
+        this.confirmOnlineStartReady();
+      }
+    } else if (message.type === "start-commit" && message.startId === this.onlineStartId && this.onlineStartReady) {
+      this.onlineStartDone = true;
+      onlineSaveSession.localMenu = false;
+      onlineSaveSession.loading = false;
+      globalScene.ui.clearText();
+      this.onOnlineSlotSelected?.();
+    }
+  }
+
+  private confirmOnlineStartReady(): void {
+    void globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+      if (this.onlineStartDone || this.onlineStartReady || !this.onlineStartId) return;
+      globalScene.ui.showText("Waiting for all players to start...", null, null, null, false);
+      this.onlineStartReady = true;
+      this.sendOnlineStartControl({ type: "start-ready", startId: this.onlineStartId });
+    });
+  }
+
+  override end(): void {
+    if (onlineSaveSession.receive === this.onlineStartReceiver) {
+      onlineSaveSession.receive = undefined;
+      onlineSaveSession.localMenu = false;
+      onlineSaveSession.loading = false;
+    }
+    super.end();
   }
 
   /**
@@ -197,6 +303,9 @@ export class SelectStarterPhase extends Phase {
         starterPokemon.id = starter.spindaPid >>> 0;
       }
       starterPokemon.ace = !!starter.ace;
+      starterPokemon.aceType = starterPokemon.ace
+        ? getUnlockedAceType(starter.aceType, globalScene.getPlayerGameData(playerIndex).achvUnlocks)
+        : undefined;
       starterPokemon.accessoryOutfit = starter.ace && starter.accessoryOutfit?.length
         ? starter.accessoryOutfit.map(item => ({ ...item }))
         : [];
@@ -314,6 +423,7 @@ export class SelectStarterPhase extends Phase {
   }
 
   private waitForTwoPlayerProfilesBeforeAction(onReady: () => void): void {
+    if (this.onlineStartDone) return;
     if (!globalScene.twoPlayerMode || globalScene.isTwoPlayerProfileExchangeComplete()) {
       onReady();
       return;

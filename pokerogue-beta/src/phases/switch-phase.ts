@@ -44,11 +44,15 @@ export class SwitchPhase extends BattlePhase {
 
     const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
     const allowedPartyMembers = globalScene.getPokemonAllowedInBattle(playerIndex);
-    const activePartySlotCount = globalScene.twoPlayerMode ? 1 : globalScene.currentBattle.getBattlerCount();
+    const activePartySlotCount = globalScene.getPlayerActiveSlotCount(playerIndex);
     const fieldPokemon = globalScene.getPlayerPokemonForFieldSlot(this.fieldIndex);
 
-    // Skip modal switch if impossible (no remaining party members that aren't already in battle)
-    if (this.isModal && allowedPartyMembers.every(p => p.isOnField())) {
+    // Only bench slots can be selected in the replacement menu. An active-slot
+    // Pokemon being returned or summoned is not an available replacement.
+    const hasReplacement = globalScene.getPlayerParty(playerIndex)
+      .slice(activePartySlotCount)
+      .some(pokemon => pokemon.isAllowedInBattle() && !pokemon.isOnField());
+    if (this.isModal && !hasReplacement) {
       return super.end();
     }
 

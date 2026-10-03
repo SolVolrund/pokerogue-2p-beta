@@ -10,6 +10,7 @@ import { randSeedItem } from "#utils/common";
 export const CLASSIC_FINAL_BOSS_SEGMENTS = 5;
 export const UNOWN_REAL_FINAL_BOSS_SEGMENTS = 8;
 export const CLASSIC_FINAL_BOSS_VITAMIN_STACKS_PER_EXTRA_PLAYER = 5;
+export const CLASSIC_FINAL_BOSS_PHASE_TWO_VITAMIN_STACKS = 10;
 export const CLASSIC_FINAL_BOSS_MULTIPLAYER_SCALING_STATS: readonly PermanentStat[] = [Stat.HP, Stat.DEF, Stat.SPDEF];
 
 export const UNOWN_TEASER_CODES = ["SPEED", "HEALTH", "SPATK", "PAPA!?", "UNCLE?", "MAMA!?"] as const;

@@ -121,6 +121,11 @@ export class MoveEffectPhase extends PokemonPhase {
       globalScene.currentBattle.lastEnemyInvolved = this.fieldIndex;
     }
 
+    const shellSideArm = this.move.getAttrs("ShellSideArmCategoryAttr")[0];
+    const target = this.getFirstTarget();
+    if (shellSideArm && target) {
+      this.move = shellSideArm.resolveMove(user, target, this.move);
+    }
     const move = this.move;
 
     /**
@@ -702,6 +707,7 @@ export class MoveEffectPhase extends PokemonPhase {
      */
     applyMoveAttrs("StatChangeBeforeDmgCalcAttr", user, target, this.move);
 
+    const moveCategory = user.getMoveCategory(target, this.move);
     const { result, damage: initialDmg } = target.getAttackDamage({
       source: user,
       move: this.move,
@@ -776,6 +782,7 @@ export class MoveEffectPhase extends PokemonPhase {
 
     target.turnData.attacksReceived.unshift({
       move: this.move.id,
+      category: moveCategory,
       result: result as DamageResult,
       damage: finalDmg,
       critical: isCritical,

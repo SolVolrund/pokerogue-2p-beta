@@ -10,6 +10,7 @@ import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { SpeciesId } from "#enums/species-id";
 import { Stat } from "#enums/stat";
+import { Pokemon } from "#field/pokemon";
 import type { BerryModifier } from "#modifiers/modifier";
 import * as EncounterPhaseUtils from "#mystery-encounters/encounter-phase-utils";
 import { generateModifierType } from "#mystery-encounters/encounter-phase-utils";
@@ -40,6 +41,8 @@ describe("Uncommon Breed - Mystery Encounter", () => {
 
   beforeEach(async () => {
     game = new GameManager(phaserGame);
+    vi.spyOn(Pokemon.prototype, "playAnim").mockImplementation(() => {});
+    vi.spyOn(Pokemon.prototype, "refreshAccessoryOutfitSprites").mockImplementation(() => {});
     scene = game.scene;
     game.override
       .mysteryEncounterChance(100)
@@ -254,7 +257,7 @@ describe("Uncommon Breed - Mystery Encounter", () => {
       await runSelectMysteryEncounterOption(game, 3);
 
       expect(game).toBeAtPhase("MysteryEncounterPhase");
-      expect(scene.ui.playError).not.toHaveBeenCalled(); // No error sfx, option is disabled
+      expect(scene.ui.playError).toHaveBeenCalledOnce();
       expect(mysteryEncounterPhase.handleOptionSelect).not.toHaveBeenCalled();
       expect(mysteryEncounterPhase.continueEncounter).not.toHaveBeenCalled();
     });

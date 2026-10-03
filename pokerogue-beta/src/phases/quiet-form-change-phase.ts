@@ -18,6 +18,7 @@ import { GammaRayBurstModifier, PokemonFormChangeItemModifier } from "#modifiers
 import { FormChangeItemModifierType } from "#modifiers/modifier-type";
 import { BattlePhase } from "#phases/battle-phase";
 import { playTween } from "#utils/anim-utils";
+import { applyClassicFinalBossBulkBonus } from "#utils/classic-final-boss-bulk";
 import { CLASSIC_FINAL_BOSS_SEGMENTS, isClassicFinalBossPhaseTwo } from "#utils/classic-final-boss-utils";
 import { getModifierType } from "#utils/modifier-utils";
 import { groupStatChange } from "#utils/stat-change";
@@ -225,6 +226,7 @@ export class QuietFormChangePhase extends BattlePhase {
 
     // TODO: This final boss fight code should almost certainly go in its own superclass phase
     if (globalScene.currentBattle.isClassicFinalBoss && this.pokemon.isEnemy() && !this.pokemon.isBioInstabilityEevee()) {
+      applyClassicFinalBossBulkBonus(this.pokemon);
       audioManager.playBgm();
       globalScene.phaseManager.unshiftNew(
         "PokemonHealPhase",

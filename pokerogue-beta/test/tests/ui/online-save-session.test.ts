@@ -1,9 +1,21 @@
 import { Battle } from "#app/battle";
+import { modifierTypes } from "#data/data-lists";
+import { Stat } from "#enums/stat";
+import { BaseStatModifier } from "#modifiers/modifier";
+import { ModifierTypeGenerator } from "#modifiers/modifier-type";
+import { SettingKeys } from "#system/settings";
+import { getModifierType } from "#utils/modifier-utils";
+import { getSessionDataLocalStorageKey, GUEST_SAVE_SLOT, loggedInUser, updateUserInfo } from "#app/account";
 import { BattleType } from "#enums/battle-type";
 import { SpeciesId } from "#enums/species-id";
 import { Button } from "#enums/buttons";
 import { Pokemon } from "#field/pokemon";
 import { TitlePhase } from "#phases/title-phase";
+import { SelectStarterPhase } from "#phases/select-starter-phase";
+import { UiMode } from "#enums/ui-mode";
+import { SaveSlotUiMode, type SaveSlotSelectUiHandler } from "#ui/save-slot-select-ui-handler";
+import { decrypt } from "#utils/data";
+import { bypassLogin } from "#constants/app-constants";
 import { GameManager } from "#test/framework/game-manager";
 import type { SessionSaveData } from "#types/save-data";
 import type { OnlineMembership } from "#utils/online-lobby-client";
@@ -93,7 +105,7 @@ describe("Online saved-run handoff", () => {
     return hash;
   }
 
-  it("restores the host snapshot into a free guest slot and waits for matching commit", async () => {
+  it("restores the host snapshot into the reserved guest slot and waits for matching commit", async () => {
     const data = snapshot();
     const unrelated = game.scene.gameData.getSessionSaveData();
     const read = vi
@@ -107,8 +119,8 @@ describe("Online saved-run handoff", () => {
     expect(send).toHaveBeenLastCalledWith(
       expect.objectContaining({ type: "load-ready", loadId: "load-test", snapshotHash: hash }),
     );
-    expect(game.scene.sessionSlotId).toBe(2);
-    expect(read.mock.calls.map(([slot]) => slot)).toEqual([0, 1, 2]);
+    expect(game.scene.sessionSlotId).toBe(GUEST_SAVE_SLOT);
+    expect(read).not.toHaveBeenCalled();
     expect(game.scene.getPlayerMoney(1)).toBe(1001);
     expect(game.scene.getPlayerParty(0)[0].hp).toBe(JSON.parse(data).players[0].party[0].hp);
     expect(game.scene.currentBattle.waveIndex).toBe(23);
@@ -133,15 +145,220 @@ describe("Online saved-run handoff", () => {
     expect(read).not.toHaveBeenCalled();
   });
 
-  it("full guest slots fail without restoring or overwriting any save", async () => {
+  it.each(["none", "settings", "intermediate-recalculation"])("preserves all three parties' vitamin stats and HP during %s", async interruption => {
+    const originalSeat = game.scene.twoPlayerLocalInputSeat;
+    game.scene.configureTwoPlayerMode(true, 6, false, 3);
+    game.scene.twoPlayerLocalInputSeat = 1;
+    const species = [SpeciesId.MAGEARNA, SpeciesId.ORICORIO, SpeciesId.BLISSEY];
+    for (const playerIndex of [0, 1, 2] as const) {
+      const party = game.scene.getPlayerParty(playerIndex);
+      party.splice(0);
+      const pokemon = game.scene.addPlayerPokemon(getPokemonSpecies(species[playerIndex]), 56);
+      pokemon.ivs.fill(31);
+      party.push(pokemon);
+      game.scene.setActivePlayerIndex(playerIndex);
+      const generator = getModifierType(modifierTypes.BASE_STAT_BOOSTER) as ModifierTypeGenerator;
+      const vitamin = generator.generateType(party, [Stat.HP])!.newModifier(pokemon) as BaseStatModifier;
+      await game.scene.addModifier(vitamin, true);
+      pokemon.calculateStats();
+      pokemon.hp = pokemon.getMaxHp() - 6;
+      const fainted = game.scene.addPlayerPokemon(getPokemonSpecies(SpeciesId.EEVEE), 56);
+      fainted.hp = 0;
+      party.push(fainted);
+    }
+    game.scene.setActivePlayerIndex(0);
+    const data = snapshot();
+    const expected = game.scene.getActivePlayerIndexes().map(playerIndex =>
+      game.scene.getPlayerParty(playerIndex).map(p => ({ hp: p.hp, stats: [...p.stats] })),
+    );
+    const loadBiomeAssets = game.scene.loadBiomeAssets.bind(game.scene);
+    vi.spyOn(game.scene, "loadBiomeAssets").mockImplementation(async biome => {
+      if (interruption === "settings") {
+        expect(game.scene.applyTwoPlayerSettingsSnapshot({ settings: { [SettingKeys.Ace_Mechanics]: 0 } })).toBe(true);
+        expect(game.scene.getActivePlayerIndexes().map(playerIndex =>
+          game.scene.getPlayerParty(playerIndex).map(p => ({ hp: p.hp, stats: [...p.stats] })),
+        )).toEqual(expected);
+      } else if (interruption === "intermediate-recalculation") {
+        for (const playerIndex of game.scene.getActivePlayerIndexes()) {
+          for (const pokemon of game.scene.getPlayerParty(playerIndex)) pokemon.calculateStats();
+        }
+      }
+      await loadBiomeAssets(biome);
+    });
+
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await game.scene.gameData.loadSessionSnapshot(data);
+        expect(game.scene.getActivePlayerIndexes().map(playerIndex =>
+          game.scene.getPlayerParty(playerIndex).map(p => ({ hp: p.hp, stats: [...p.stats] })),
+        )).toEqual(expected);
+      }
+      expect(game.scene.isRestoringSession).toBe(false);
+    } finally {
+      game.scene.twoPlayerLocalInputSeat = originalSeat;
+      game.scene.configureTwoPlayerMode(true, 6, false, 2);
+    }
+  });
+
+  it("clears the restore guard after an asset failure and allows retrying the same save", async () => {
+    const data = snapshot();
+    vi.spyOn(game.scene, "loadBiomeAssets").mockRejectedValueOnce(new Error("asset failure"));
+    await expect(game.scene.gameData.loadSessionSnapshot(data)).rejects.toThrow("asset failure");
+    expect(game.scene.isRestoringSession).toBe(false);
+    await game.scene.gameData.loadSessionSnapshot(data);
+    expect(game.scene.isRestoringSession).toBe(false);
+  });
+
+  it.each(["p2", "p3", "ep"] as const)("%s can resume with full personal slots without overwriting existing saves", async seat => {
+    member.seat = seat;
+    saveMembership();
+    const keys = Array.from({ length: 6 }, (_, slot) => getSessionDataLocalStorageKey(slot));
+    keys.forEach(key => localStorage.setItem(key, `previous-${key}`));
     const saved = game.scene.gameData.getSessionSaveData();
     vi.spyOn(game.scene.gameData, "getSession").mockResolvedValue(saved);
     const restore = vi.spyOn(game.scene.gameData, "loadSessionSnapshot");
     await prepare();
-    expect(restore).not.toHaveBeenCalled();
+    expect(restore).toHaveBeenCalled();
+    expect(game.scene.sessionSlotId).toBe(GUEST_SAVE_SLOT);
     expect(send).toHaveBeenLastCalledWith(
-      expect.objectContaining({ type: "load-failed", message: expect.stringContaining("empty save slot") }),
+      expect.objectContaining({ type: "load-ready" }),
     );
+    keys.forEach(key => expect(localStorage.getItem(key)).toBe(`previous-${key}`));
+    title["onOnlineSaveControl"]({ type: "load-abort" });
+    keys.forEach(key => expect(localStorage.getItem(key)).toBe(`previous-${key}`));
+    keys.forEach(key => localStorage.removeItem(key));
+  });
+
+  it.each(["p2", "p3", "ep"] as const)("%s starts in the guest slot without opening save menus or starting early", async seat => {
+    member.seat = seat;
+    saveMembership();
+    const phase = new SelectStarterPhase();
+    const start = vi.fn();
+    const mode = vi.spyOn(game.scene.ui, "setMode").mockResolvedValue(undefined);
+    phase["selectSaveSlot"](start);
+    await vi.waitFor(() => expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: "start-wait" })));
+    onlineSaveSession.receive?.({ type: "start-prepare", startId: "start-1" });
+    await vi.waitFor(() => expect(send).toHaveBeenCalledWith({ type: "start-ready", startId: "start-1" }));
+    expect(mode.mock.calls.some(([value]) => value === UiMode.SAVE_SLOT)).toBe(false);
+    expect(game.scene.sessionSlotId).toBe(GUEST_SAVE_SLOT);
+    expect(start).not.toHaveBeenCalled();
+    onlineSaveSession.receive?.({ type: "start-commit", startId: "stale" });
+    expect(start).not.toHaveBeenCalled();
+    onlineSaveSession.receive?.({ type: "start-commit", startId: "start-1" });
+    onlineSaveSession.receive?.({ type: "start-commit", startId: "start-1" });
+    expect(start).toHaveBeenCalledOnce();
+    expect(onlineSaveSession.loading).toBe(false);
+  });
+
+  it("the host privately chooses a personal slot and waits for the all-seat commit", async () => {
+    member.seat = "p1";
+    saveMembership();
+    const phase = new SelectStarterPhase();
+    const start = vi.fn();
+    const mode = vi.spyOn(game.scene.ui, "setMode").mockResolvedValue(undefined);
+    phase["selectSaveSlot"](start);
+    await vi.waitFor(() => expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: "start-wait" })));
+    onlineSaveSession.receive?.({ type: "start-prepare", startId: "start-1" });
+    expect(onlineSaveSession.localMenu).toBe(true);
+    const call = mode.mock.calls.find(([value]) => value === UiMode.SAVE_SLOT)!;
+    expect(call[3]).toBe(true); // Defer overwriting until the run actually autosaves.
+    (call[2] as (slot: number) => void)(4);
+    await vi.waitFor(() => expect(send).toHaveBeenCalledWith({ type: "start-ready", startId: "start-1" }));
+    expect(onlineSaveSession.localMenu).toBe(false);
+    expect(game.scene.sessionSlotId).toBe(4);
+    expect(start).not.toHaveBeenCalled();
+    onlineSaveSession.receive?.({ type: "start-commit", startId: "start-1" });
+    expect(start).toHaveBeenCalledOnce();
+  });
+
+  it("host cancellation returns every client to the title and ignores late startup callbacks", async () => {
+    member.seat = "p1";
+    saveMembership();
+    const phase = new SelectStarterPhase();
+    const start = vi.fn();
+    const mode = vi.spyOn(game.scene.ui, "setMode").mockResolvedValue(undefined);
+    const toTitle = vi.spyOn(game.scene.phaseManager, "toTitleScreen").mockImplementation(() => {});
+    vi.spyOn(game.scene.phaseManager, "shiftPhase").mockImplementation(() => {});
+    phase["selectSaveSlot"](start);
+    await vi.waitFor(() => expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: "start-wait" })));
+    onlineSaveSession.receive?.({ type: "start-prepare", startId: "start-1" });
+    const choose = mode.mock.calls.find(([value]) => value === UiMode.SAVE_SLOT)![2] as (slot: number) => void;
+    choose(-1);
+    expect(send).toHaveBeenLastCalledWith({ type: "start-cancel", startId: "start-1" });
+    expect(toTitle).not.toHaveBeenCalled();
+    onlineSaveSession.receive?.({ type: "start-cancel", startId: "start-1", seed: game.scene.seed });
+    expect(toTitle).toHaveBeenCalledOnce();
+    choose(0);
+    expect(start).not.toHaveBeenCalled();
+    expect(onlineSaveSession.receive).toBeUndefined();
+    expect(onlineSaveSession.loading).toBe(false);
+  });
+
+  it("disconnecting before commit prevents a guest from starting", async () => {
+    const phase = new SelectStarterPhase();
+    const start = vi.fn();
+    vi.spyOn(game.scene.ui, "setMode").mockResolvedValue(undefined);
+    phase["selectSaveSlot"](start);
+    await vi.waitFor(() => expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: "start-wait" })));
+    onlineSaveSession.receive?.({ type: "start-prepare", startId: "start-1" });
+    await vi.waitFor(() => expect(send).toHaveBeenCalledWith({ type: "start-ready", startId: "start-1" }));
+    onlineSaveSession.receive?.({ type: "load-abort" });
+    onlineSaveSession.receive?.({ type: "start-commit", startId: "start-1" });
+    expect(start).not.toHaveBeenCalled();
+    expect(onlineSaveSession.loading).toBe(true);
+  });
+
+  it("guest autosaving and cleanup preserve personal slots and permanent profile progress", async () => {
+    // GameManager's reload helper normally intercepts saves into an in-memory snapshot.
+    vi.mocked(game.scene.gameData.saveAll).mockRestore();
+    await updateUserInfo();
+    const keys = Array.from({ length: 5 }, (_, slot) => getSessionDataLocalStorageKey(slot));
+    keys.forEach(key => localStorage.setItem(key, `personal-${key}`));
+    const guestKey = getSessionDataLocalStorageKey(GUEST_SAVE_SLOT);
+    game.scene.twoPlayerLocalInputSeat = 1;
+    game.scene.markLocalPlayerSystemSaveLoaded();
+    const profile = game.scene.getLocalPlayerGameData();
+    profile.starterData[SpeciesId.BULBASAUR].candyCount = 123;
+    vi.spyOn(game.scene, "isLocalPlayerSystemSaveLoaded").mockReturnValue(true);
+    vi.spyOn(profile, "verify").mockResolvedValue(true);
+    game.scene.sessionSlotId = GUEST_SAVE_SLOT;
+    expect(await game.scene.gameData.saveAll(true)).toBe(true);
+    expect((await game.scene.gameData.getSession(GUEST_SAVE_SLOT))?.waveIndex).toBe(23);
+    const profileKey = `data_${loggedInUser?.username}`;
+    const savedProfile = localStorage.getItem(profileKey)!;
+    expect(JSON.parse(decrypt(savedProfile, bypassLogin)).starterData[SpeciesId.BULBASAUR].candyCount).toBe(123);
+    await updateUserInfo();
+    expect(loggedInUser?.lastSessionSlot).toBeLessThan(GUEST_SAVE_SLOT);
+    await game.scene.gameData.tryClearSession(GUEST_SAVE_SLOT);
+    expect(localStorage.getItem(guestKey)).toBeFalsy();
+    expect(localStorage.getItem(profileKey)).toBe(savedProfile);
+    keys.forEach(key => expect(localStorage.getItem(key)).toBe(`personal-${key}`));
+    keys.forEach(key => localStorage.removeItem(key));
+  });
+
+  it.each([true, false])("Online slot selection preserves the previous save (occupied=%s)", async occupied => {
+    const handler = game.scene.ui.handlers[UiMode.SAVE_SLOT] as SaveSlotSelectUiHandler;
+    const selected = vi.fn();
+    handler["uiMode"] = SaveSlotUiMode.SAVE;
+    handler["deferOverwrite"] = true;
+    handler["saveSlotSelectCallback"] = selected;
+    handler["sessionSlots"] = [{ hasData: occupied }] as any;
+    handler["cursor"] = 0;
+    handler["scrollCursor"] = 0;
+    vi.spyOn(game.scene.ui, "setMode").mockResolvedValue(undefined);
+    vi.spyOn(game.scene.ui, "revertMode").mockResolvedValue(true);
+    const text = vi.spyOn(game.scene.ui, "showText").mockImplementation(() => {});
+    const overlay = vi.spyOn(game.scene.ui, "setOverlayMode").mockResolvedValue(undefined);
+    const remove = vi.spyOn(game.scene.gameData, "deleteSession");
+    handler.processInput(Button.ACTION);
+    if (occupied) {
+      expect(selected).not.toHaveBeenCalled();
+      (text.mock.calls.at(-1)![2] as () => void)();
+      expect(overlay.mock.calls.at(-1)![0]).toBe(UiMode.CONFIRM);
+      (overlay.mock.calls.at(-1)![1] as () => void)();
+    }
+    expect(selected).toHaveBeenCalledWith(0);
+    expect(remove).not.toHaveBeenCalled();
   });
 
   it("corrupt bytes and profile timeouts fail; an abort prevents a late commit", async () => {

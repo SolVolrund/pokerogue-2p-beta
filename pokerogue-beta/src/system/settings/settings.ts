@@ -1048,6 +1048,10 @@ export function setSetting(setting: string, value: number): boolean {
       globalScene.battleStyle = value;
       break;
     case SettingKeys.Ace_Mechanics:
+      // The session loader refreshes stats once every party's items are restored.
+      if (globalScene?.isRestoringSession) {
+        break;
+      }
       if (globalScene?.getActivePlayerIndexes && globalScene?.getPlayerParty && globalScene?.getEnemyParty) {
         const playerIndexes = globalScene.getActivePlayerIndexes();
         for (const playerIndex of Array.isArray(playerIndexes) ? playerIndexes : []) {

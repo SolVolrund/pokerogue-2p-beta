@@ -7,6 +7,8 @@ export interface OnlineSaveControl {
   snapshot?: string;
   snapshotHash?: string;
   stateHash?: string;
+  startId?: string;
+  seed?: string;
   message?: string;
 }
 

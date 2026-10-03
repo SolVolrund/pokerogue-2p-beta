@@ -203,7 +203,7 @@ export class GameOverPhase extends BattlePhase {
       if (
         checkSpeciesValidForChallenge(
           species,
-          gameData.getSpeciesDexAttrProps(species, pokemon.getDexAttr()),
+          { ...gameData.getSpeciesDexAttrProps(species, pokemon.getDexAttr()), aceType: pokemon.getAceType() },
           false,
           playerIndex,
         )

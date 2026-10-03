@@ -8,6 +8,7 @@ import { SpeciesId } from "#enums/species-id";
 import type { Pokemon } from "#field/pokemon";
 import { BattlePhase } from "#phases/battle-phase";
 import { playTween } from "#utils/anim-utils";
+import { applyClassicFinalBossBulkBonus } from "#utils/classic-final-boss-bulk";
 import { CLASSIC_FINAL_BOSS_SEGMENTS } from "#utils/classic-final-boss-utils";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import type { BattlerIndex } from "#enums/battler-index";
@@ -508,6 +509,7 @@ private getMewGauntletMoveIds(): MoveId[] | undefined{
 
     // TODO: This final boss fight code should almost certainly go in its own superclass phase
     if (globalScene.currentBattle.isClassicFinalBoss && this.pokemon.isEnemy()) {
+      applyClassicFinalBossBulkBonus(this.pokemon);
       audioManager.playBgm();
       globalScene.phaseManager.unshiftNew(
         "PokemonHealPhase",

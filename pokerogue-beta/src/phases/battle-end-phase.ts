@@ -1,6 +1,7 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { globalScene } from "#app/global-scene";
 import { BerryPotModifier, LapsingPersistentModifier, LapsingPokemonHeldItemModifier } from "#modifiers/modifier";
+import { clearRollingMove } from "#moves/rolling-move";
 import { BattlePhase } from "#phases/battle-phase";
 
 export class BattleEndPhase extends BattlePhase {
@@ -47,9 +48,12 @@ export class BattleEndPhase extends BattlePhase {
     }
 
     const playerIndexes = globalScene.twoPlayerMode
-      ? globalScene.getActivePlayerIndexes()
+      ? globalScene.getBattleParticipantPlayerIndexes()
       : [globalScene.activePlayerIndex];
     for (const playerIndex of playerIndexes) {
+      for (const pokemon of globalScene.getPlayerParty(playerIndex)) {
+        clearRollingMove(pokemon);
+      }
       for (const pokemon of globalScene.getPokemonAllowedInBattle(playerIndex)) {
         applyAbAttrs("PostBattleAbAttr", { pokemon, victory: this.isVictory });
       }

@@ -1,12 +1,13 @@
 import type { TwoPlayerTitleStart } from "#app/two-player-input-transport";
 import { GameModes } from "#enums/game-modes";
+import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import { CommandPhase } from "#phases/command-phase";
 import { EncounterPhase } from "#phases/encounter-phase";
 import { TitlePhase } from "#phases/title-phase";
 import { GameData } from "#system/game-data";
 import { GameManager } from "#test/framework/game-manager";
-import type { OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
+import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import type { ModalConfig } from "#ui/modal-ui-handler";
 import {
   getOnlineLobbyLabel,
@@ -24,7 +25,9 @@ describe("Multiplayer menu preparation", () => {
   let phaserGame: Phaser.Game;
   let game: GameManager;
   let title: TitlePhase;
-  let menu: ReturnType<typeof vi.fn<(text: string, options: OptionSelectItem[]) => void>>;
+  let menu: ReturnType<
+    typeof vi.fn<(text: string, options: OptionSelectItem[], config?: Partial<OptionSelectConfig>) => void>
+  >;
 
   const initialUrl = window.location.href;
   afterEach(() => {
@@ -56,6 +59,88 @@ describe("Multiplayer menu preparation", () => {
     expect(option!.disabled).not.toBe(true);
     expect(option!.handler()).toBe(true);
   }
+
+  it.each(["ally", "opponent", "ep"] as const)("shows the five-column trainer preview in the %s picker", picker => {
+    vi.spyOn(game.scene.gameData, "isComputerPartnerUnlocked").mockReturnValue(true);
+    if (picker === "ep") {
+      title["showEnemyPlayerCpuProfileSelect"](GameModes.CLASSIC, 1);
+    } else {
+      title["showComputerPartnerSelect"](GameModes.CLASSIC, 2, undefined, undefined, undefined, picker === "opponent");
+    }
+    const entries = options();
+    const rows = Array.from({ length: 6 }, (_, row) =>
+      Array.from({ length: 5 }, (_, column) => entries[column * 6 + row].label),
+    );
+    expect(rows).toEqual([
+      ["Alex", "Dawn?", "Burgh", "Blaine", "Whitney"],
+      ["Cheryl", "Bianca?", "Nanu", "Winona", "Roxie"],
+      ["Riley", "Duplica?", "Raihan", "Acerola", "Sabrina"],
+      ["Mira", "Molly", "Iono", "Gardenia", "Brock"],
+      ["Buck", "Amber2", "Valerie", "Clay", "Jasmine"],
+      ["Marley", "Joy", "Korrina", "Grusha", "Misty"],
+    ]);
+    expect(entries).toHaveLength(31);
+    expect(entries.at(-1)!.label).toBe(i18next.t("menu:cancel"));
+    expect(menu.mock.calls.at(-1)![2]?.gridLayout).toMatchObject({
+      rows: 6,
+      columns: 5,
+      slotCount: 30,
+      centerLastOption: true,
+    });
+    for (const entry of entries.slice(10, 30).filter(entry => !["Whitney", "Sabrina"].includes(entry.label))) {
+      expect(entry.disabled).toBe(true);
+      expect(entry.style).toBe(TextStyle.SETTINGS_LOCKED);
+      expect(entry.handler()).toBe(false);
+    }
+    expect(menu).toHaveBeenCalledOnce();
+    expect(entries[0].disabled).toBe(picker === "ep" ? true : undefined);
+    expect(entries[1].disabled).not.toBe(true);
+    expect(entries[24].disabled).not.toBe(true);
+    expect(entries[26].disabled).not.toBe(true);
+  });
+
+  it("enables Whitney in her existing slot only after a Normal monotype clear", () => {
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    expect(options()[24].label).toBe("Whitney");
+    expect(options()[24].disabled).toBe(true);
+    expect(options()[24].handler()).toBe(false);
+    game.scene.gameData.achvUnlocks.MONO_NORMAL = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    const nextMenu = vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("Whitney");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("whitney");
+    expect(nextMenu).toHaveBeenCalledWith(GameModes.CLASSIC, 2, [1]);
+  });
+
+  it("enables Sabrina in her existing slot only after a Psychic monotype clear", () => {
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    expect(options()[26].label).toBe("Sabrina");
+    expect(options()[26].disabled).toBe(true);
+    expect(options()[26].handler()).toBe(false);
+    game.scene.gameData.achvUnlocks.MONO_PSYCHIC = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    const nextMenu = vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("Sabrina");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("sabrina");
+    expect(nextMenu).toHaveBeenCalledWith(GameModes.CLASSIC, 2, [1]);
+  });
+
+  it("preserves unlock, duplicate-partner, selection and cancel behavior with the preview entries", () => {
+    vi.spyOn(game.scene.gameData, "isComputerPartnerUnlocked").mockImplementation(key => key !== "dawn_zorua");
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 3);
+    select("Cheryl");
+    for (const label of ["Cheryl", "Dawn?"]) {
+      const entry = options().find(option => option.label === label)!;
+      expect(entry.disabled).toBe(true);
+      expect(entry.handler()).toBe(false);
+    }
+    select(i18next.t("menu:cancel"));
+    expect(options().find(option => option.label === "Cheryl")!.disabled).not.toBe(true);
+    const nextMenu = vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("Cheryl");
+    select("Riley");
+    expect(nextMenu).toHaveBeenCalledWith(GameModes.CLASSIC, 3, [1, 2]);
+  });
 
   it.each([
     [2, false, ["2P", "P.Vs.P"]],

@@ -197,7 +197,7 @@ export class PartyUiHandler extends MessageUiHandler {
       return 1;
     }
 
-    return globalScene.twoPlayerMode ? 1 : globalScene.currentBattle.getBattlerCount();
+    return globalScene.getPlayerActiveSlotCount(this.getPlayerIndex());
   }
 
   private usesDoublePartyLayout(): boolean {
@@ -419,7 +419,9 @@ export class PartyUiHandler extends MessageUiHandler {
     this.getUi().bringToTop(this.partyContainer);
     this.getUi().bringToTop(this.moveInfoOverlay);
     const doublePartyLayout = this.usesDoublePartyLayout();
-    if (this.isItemManageMode()) {
+    if (this.getActivePartySlotCount() === 3) {
+      this.partyBg.setTexture("party_bg_triple");
+    } else if (this.isItemManageMode()) {
       this.partyBg.setTexture(`party_bg${doublePartyLayout ? "_double_manage" : ""}`);
     } else {
       this.partyBg.setTexture(`party_bg${doublePartyLayout ? "_double" : ""}`);
@@ -1248,7 +1250,7 @@ export class PartyUiHandler extends MessageUiHandler {
     let success = false;
     if (battlerCount === 3 && this.isItemManageMode() && (button === Button.UP || button === Button.DOWN)) {
       const slots = Array.from({ length: slotCount }, (_, i) => i);
-      const order = [...slots.slice(0, battlerCount), 7, ...slots.slice(battlerCount), 6];
+      const order = [...slots, 7, 6];
       const direction = button === Button.DOWN ? 1 : -1;
       success = this.setCursor(order[(order.indexOf(this.cursor) + direction + order.length) % order.length]);
       if (success) {
@@ -1301,6 +1303,10 @@ export class PartyUiHandler extends MessageUiHandler {
         success = this.setCursor(this.cursor < 6 ? (this.cursor < slotCount - 1 ? this.cursor + 1 : 6) : 0);
         break;
       case Button.LEFT:
+        if (battlerCount === 3 && this.cursor === 7) {
+          success = this.setCursor(this.lastLeftPokemonCursor);
+          break;
+        }
         if (this.cursor === 6) {
           success = this.setCursor(this.isItemManageMode() ? 7 : this.lastLeftPokemonCursor);
         }
@@ -1309,6 +1315,10 @@ export class PartyUiHandler extends MessageUiHandler {
         }
         break;
       case Button.RIGHT:
+        if (battlerCount === 3 && this.isItemManageMode() && this.cursor < battlerCount && slotCount <= battlerCount) {
+          success = this.setCursor(7);
+          break;
+        }
         // Scrolling right from item transfer button or with no backup party members goes to cancel
         if (this.cursor === 7 || slotCount <= battlerCount) {
           success = this.setCursor(6);
@@ -1642,7 +1652,11 @@ export class PartyUiHandler extends MessageUiHandler {
           break;
         }
 
-        if (this.cursor >= this.getActivePartySlotCount()) {
+        if (
+          this.cursor >= this.getActivePartySlotCount()
+          && (this.partyUiMode !== PartyUiMode.SWITCH
+            || !globalScene.isPlayerSwitchReserved(this.getPlayerIndex(), this.cursor, this.fieldIndex))
+        ) {
           const allowBatonModifierSwitch = this.allowBatonModifierSwitch();
           const isBatonPassMove = this.isBatonPassMove();
 
@@ -2190,7 +2204,9 @@ class PartySlot extends Phaser.GameObjects.Container {
 
     let slotPositionY: number;
     if (activePartySlotCount === 3) {
-      slotPositionY = -216 + 48 * (isBenched ? slotIndex - activePartySlotCount : slotIndex);
+      slotPositionY = isBenched
+        ? -164 + 36 * (slotIndex - activePartySlotCount)
+        : -168.5 + 47 * slotIndex;
     } else if (isBenched) {
       slotPositionY = -196 + (isDoubleBattle ? -40 : 0);
       slotPositionY += (28 + (isDoubleBattle ? 8 : 0)) * slotIndex;
@@ -2612,6 +2628,12 @@ class PartyDiscardModeButton extends Phaser.GameObjects.Container {
         this.textBox.setText(i18next.t("partyUiHandler:discard"));
         this.discardIcon.displayWidth = this.textBox.text.length * 9 + 3;
         break;
+    }
+    // The third active panel fills the old toggle location. Use the spare
+    // fourth bench tile in the triples background instead.
+    if (!globalScene.twoPlayerMode && globalScene.currentBattle.getBattlerCount() === 3) {
+      this.setPosition(228, -44);
+      return;
     }
     this.setPosition(
       globalScene.currentBattle.double ? DISCARD_BUTTON_X_DOUBLES : DISCARD_BUTTON_X,

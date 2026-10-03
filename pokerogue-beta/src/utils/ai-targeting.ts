@@ -49,7 +49,7 @@ export function filterAiRelevantOpponentsForPosition(
   fieldIndex = referencePokemon.getFieldIndex(),
   fieldPosition = referencePokemon.fieldPosition,
 ): Pokemon[] {
-  if (globalScene.twoPlayerVsMode) {
+  if (globalScene.isVsLaneBattle()) {
     return opponents.filter(
       opponent =>
         isForcedDuelOpponent(referencePokemon, opponent)
@@ -72,7 +72,7 @@ export function filterAiRelevantOpponentsForPosition(
 
 export function shouldAiRepositionToCenter(user: Pokemon): boolean {
   if (
-    globalScene.twoPlayerVsMode
+    globalScene.isVsLaneBattle()
     || (globalScene.currentBattle?.getBattlerCount() ?? 1) < 3
     || user.fieldPosition === FieldPosition.CENTER
   ) {

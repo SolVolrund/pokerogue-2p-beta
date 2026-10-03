@@ -2,9 +2,10 @@ import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
 import type { SpeciesFormChange } from "#data/pokemon-forms";
 import { AbilityId } from "#enums/ability-id";
-import { Challenges } from "#enums/challenges";
+import { isSingleTypeChallenge } from "#enums/challenges";
 import { FormChangeItem } from "#enums/form-change-item";
 import { MoveId } from "#enums/move-id";
+import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesFormKey } from "#enums/species-form-key";
 import { StatusEffect } from "#enums/status-effect";
 import type { TimeOfDay } from "#enums/time-of-day";
@@ -194,9 +195,13 @@ export class MeloettaFormChangePostMoveTrigger extends SpeciesFormChangePostMove
   override canChange(pokemon: Pokemon): boolean {
     if (
       pokemon.isPlayer()
-      && globalScene.gameMode.hasChallenge(
-        Challenges.SINGLE_TYPE,
-        globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.activePlayerIndex,
+      // Both forms retain Normal typing; other monotypes must keep their current form.
+      && globalScene.gameMode.challenges.some(
+        challenge =>
+          isSingleTypeChallenge(challenge.id)
+          && challenge.value !== 0
+          && challenge.value !== PokemonType.NORMAL + 1
+          && challenge.appliesToPlayer(globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.activePlayerIndex),
       )
     ) {
       return false;

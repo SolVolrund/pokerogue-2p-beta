@@ -135,6 +135,7 @@ export class LoadingScene extends SceneBase {
       .loadImage("party_bg", "ui")
       .loadImage("party_bg_double", "ui")
       .loadImage("party_bg_double_manage", "ui")
+      .loadImage("party_bg_triple", "ui", "party_bg_triple.png", { legacy: false })
       .loadAtlas("party_slot_main", "ui")
       .loadAtlas("party_slot_main_short", "ui")
       .loadAtlas("party_slot", "ui")

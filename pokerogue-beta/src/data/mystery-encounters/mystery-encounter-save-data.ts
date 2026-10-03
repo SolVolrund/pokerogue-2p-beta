@@ -1,4 +1,8 @@
-import { BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT } from "#app/constants";
+import {
+  AVERAGE_ENCOUNTERS_PER_RUN_TARGET,
+  BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT,
+  WEIGHT_INCREMENT_ON_SPAWN_MISS,
+} from "#app/constants";
 import type { PlayerIndex } from "#app/battle-scene";
 import type { GameModes } from "#enums/game-modes";
 import type { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
@@ -44,7 +48,14 @@ export interface DejaVuScheduledEncounterData {
   completed?: boolean;
 }
 
+export function normalizeMysteryEncounterFrequency(value: unknown): number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 6
+    ? value
+    : WEIGHT_INCREMENT_ON_SPAWN_MISS;
+}
+
 export class MysteryEncounterSaveData {
+  frequency = WEIGHT_INCREMENT_ON_SPAWN_MISS;
   encounteredEvents: SeenEncounterData[] = [];
   encounterSpawnChance: number = BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT;
   queuedEncounters: QueuedEncounter[] = [];
@@ -57,11 +68,17 @@ export class MysteryEncounterSaveData {
   dejaVuScheduleRunKey?: string;
   dejaVuScheduledEncounters: DejaVuScheduledEncounterData[] = [];
 
+  get encounterTarget(): number {
+    return AVERAGE_ENCOUNTERS_PER_RUN_TARGET * this.frequency / WEIGHT_INCREMENT_ON_SPAWN_MISS;
+  }
+
   constructor(data?: MysteryEncounterSaveData) {
     if (data != null) {
       Object.assign(this, data);
     }
 
+    // Older saves retain the original frequency, regardless of the current menu preference.
+    this.frequency = normalizeMysteryEncounterFrequency(this.frequency);
     this.encounteredEvents = this.encounteredEvents ?? [];
     this.queuedEncounters = this.queuedEncounters ?? [];
     this.contestHallProgress = this.contestHallProgress ?? {};

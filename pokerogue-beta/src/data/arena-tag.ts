@@ -298,7 +298,7 @@ export abstract class ArenaTag implements BaseArenaTag {
   }
 
   protected canAffectVsLane(pokemon: Pokemon): boolean {
-    return !globalScene.twoPlayerVsMode || this.vsLane === undefined || pokemon.getFieldIndex() === this.vsLane;
+    return !globalScene.isVsLaneBattle() || this.vsLane === undefined || pokemon.getFieldIndex() === this.vsLane;
   }
 }
 

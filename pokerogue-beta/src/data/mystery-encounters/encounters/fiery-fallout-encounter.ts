@@ -67,7 +67,9 @@ const namespace = "mysteryEncounters/fieryFallout";
  * The higher the more damage taken (100% = instant KO).
  */
 const DAMAGE_PERCENTAGE: number = 20;
-const VOLCARONA_COUNT = 3;
+function getVolcaronaCount(): 2 | 3 {
+  return globalScene.twoPlayerMode && globalScene.multiplayerPlayerCount === 3 ? 3 : 2;
+}
 
 type FieryFalloutOptionIndex = 1 | 2 | 3;
 
@@ -327,7 +329,8 @@ export const FieryFalloutEncounter: MysteryEncounter = MysteryEncounterBuilder.w
   .withOnInit(() => {
     const encounter = globalScene.currentBattle.mysteryEncounter!;
 
-    encounter.enemyPartyConfigs = [createVolcaronaEnemyPartyConfig(VOLCARONA_COUNT)];
+    const volcaronaCount = getVolcaronaCount();
+    encounter.enemyPartyConfigs = [createVolcaronaEnemyPartyConfig(volcaronaCount)];
     if (globalScene.twoPlayerMode) {
       encounter.misc = {
         ...(encounter.misc ?? {}),
@@ -337,36 +340,16 @@ export const FieryFalloutEncounter: MysteryEncounter = MysteryEncounterBuilder.w
     }
 
     // Load hidden Volcarona sprites
-    encounter.spriteConfigs = [
-      {
-        spriteKey: "",
-        fileRoot: "",
-        species: SpeciesId.VOLCARONA,
-        repeat: true,
-        hidden: true,
-        hasShadow: true,
-        x: -40,
-        startFrame: 20,
-      },
-      {
-        spriteKey: "",
-        fileRoot: "",
-        species: SpeciesId.VOLCARONA,
-        repeat: true,
-        hidden: true,
-        hasShadow: true,
-        x: 0,
-      },
-      {
-        spriteKey: "",
-        fileRoot: "",
-        species: SpeciesId.VOLCARONA,
-        repeat: true,
-        hidden: true,
-        hasShadow: true,
-        x: 40,
-      },
-    ];
+    encounter.spriteConfigs = Array.from({ length: volcaronaCount }, (_unused, index) => ({
+      spriteKey: "",
+      fileRoot: "",
+      species: SpeciesId.VOLCARONA,
+      repeat: true,
+      hidden: true,
+      hasShadow: true,
+      x: (index - (volcaronaCount - 1) / 2) * 40,
+      ...(index === 0 ? { startFrame: 20 } : {}),
+    }));
 
     // Load animations/sfx for Volcarona moves
     loadCustomMovesForEncounter([MoveId.FIRE_SPIN, MoveId.QUIVER_DANCE]);
@@ -436,6 +419,7 @@ function createVolcaronaEnemyPartyConfig(volcaronaCount: 1 | 2 | 3): EnemyPartyC
   return {
     pokemonConfigs,
     doubleBattle: volcaronaCount > 1,
+    battlerCountOverride: volcaronaCount,
     disableSwitch: true,
   };
 }
@@ -443,7 +427,7 @@ function createVolcaronaEnemyPartyConfig(volcaronaCount: 1 | 2 | 3): EnemyPartyC
 async function runOnePlayerFindSource(): Promise<void> {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   setEncounterRewards({ fillRemaining: true }, undefined, () => giveLeadPokemonAttackTypeBoostItem());
-  queueVolcaronaStartOfBattleEffects([0], VOLCARONA_COUNT);
+  queueVolcaronaStartOfBattleEffects([0], getVolcaronaCount());
   await initBattleWithEnemyConfig(encounter.enemyPartyConfigs[0]);
 }
 
@@ -510,7 +494,8 @@ async function runTwoPlayerFieryFalloutChoices(): Promise<void> {
     applyFieryFalloutHelperReward(choice);
   }
 
-  const hunkerDamageMultiplier = Math.max(0, 1 - helperChoices.length / VOLCARONA_COUNT);
+  const initialVolcaronaCount = getVolcaronaCount();
+  const hunkerDamageMultiplier = Math.max(0, 1 - helperChoices.length / initialVolcaronaCount);
   const helperSoftensHeat = helperChoices.length > 0;
   for (const choice of hunkerChoices) {
     applyHunkerDownForPlayer(choice.playerIndex, hunkerDamageMultiplier, !helperSoftensHeat);
@@ -522,7 +507,7 @@ async function runTwoPlayerFieryFalloutChoices(): Promise<void> {
   }
 
   const sourcePlayers = sourceChoices.map(choice => choice.playerIndex);
-  const volcaronaCount = Math.max(1, VOLCARONA_COUNT - helperChoices.length) as 1 | 2 | 3;
+  const volcaronaCount = Math.max(1, initialVolcaronaCount - helperChoices.length) as 1 | 2 | 3;
 
   for (const choice of sourceChoices) {
     setEncounterRewards(

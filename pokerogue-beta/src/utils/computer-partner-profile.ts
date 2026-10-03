@@ -20,6 +20,7 @@ import {
   normalizeAceEvTotal,
 } from "#data/ace-evs";
 import { allMoves } from "#data/data-lists";
+import { Gender } from "#data/gender";
 import type { PokemonSpecies } from "#data/pokemon-species";
 import { getTypeDamageMultiplier } from "#data/type";
 import { AbilityAttr } from "#enums/ability-attr";
@@ -43,7 +44,7 @@ import type {
   StarterMoveset,
 } from "#types/save-data";
 import { randSeedInt, randSeedIntRange, randSeedShuffle } from "#utils/common";
-import { checkStarterValidForChallenge, getChallengesForPlayer } from "#utils/challenge-utils";
+import { checkStarterValidForChallenge, createMonotypeRestriction, getChallengesForPlayer } from "#utils/challenge-utils";
 import { getSpeciesEntryHazardAccessScore } from "#utils/computer-partner-hazard-support";
 import { getSpeciesHealingSupportAccessScore } from "#utils/computer-partner-healing-support";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
@@ -58,7 +59,9 @@ export type ComputerPartnerKey =
   | "dawn_zorua"
   | "bianca_latias"
   | "duplica_ditto"
-  | "molly_hale";
+  | "molly_hale"
+  | "whitney"
+  | "sabrina";
 
 export type ComputerPartnerRole =
   | "ace"
@@ -88,6 +91,9 @@ export interface ComputerPartnerProfile {
   aceStarterSpeciesIds?: SpeciesId[];
   allowedReplacementSpeciesIds?: readonly SpeciesId[];
   requiresUnlock?: boolean;
+  unlockAchievement?: string;
+  monotype?: PokemonType;
+  signatureMoves?: Partial<Record<SpeciesId, readonly MoveId[]>>;
 }
 
 export interface ComputerPartnerStarterConfig {
@@ -379,6 +385,70 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
       { speciesId: SpeciesId.MANTYKE, points: 2, crystalized: true },
     ],
   },
+  whitney: {
+    key: "whitney",
+    name: "Whitney", 
+    starterSpeciesId: SpeciesId.MILTANK,
+    starterNature: Nature.IMPISH,
+    trainerSprite: PlayerTrainerSprite.WHITNEY,
+    trainerGender: PlayerGender.FEMALE,
+    roles: ["ace", "physical", "special", "bulk", "speed", "balanced"],
+    personalityTypes: [PokemonType.NORMAL],
+    monotype: PokemonType.NORMAL,
+//    requiresUnlock: true,
+//    unlockAchievement: "MONO_NORMAL",
+    signatureMoves: {
+      [SpeciesId.MILTANK]: [MoveId.MILK_DRINK, MoveId.ROLLOUT, MoveId.DEFENSE_CURL],
+    },
+    startingStarters: [
+      { speciesId: SpeciesId.MILTANK },
+      { speciesId: SpeciesId.LICKITUNG },
+      { speciesId: SpeciesId.GIRAFARIG },
+      { speciesId: SpeciesId.BIDOOF },
+      { speciesId: SpeciesId.SKITTY },
+      { speciesId: SpeciesId.IGGLYBUFF },
+      { speciesId: SpeciesId.AIPOM },
+      { speciesId: SpeciesId.TEDDIURSA },
+      { speciesId: SpeciesId.TAUROS },
+      { speciesId: SpeciesId.BUNEARY },
+      { speciesId: SpeciesId.HAPPINY },
+      { speciesId: SpeciesId.CINCCINO },
+      { speciesId: SpeciesId.WATCHOG },
+      { speciesId: SpeciesId.DODRIO },
+      { speciesId: SpeciesId.STANTLER },
+      { speciesId: SpeciesId.MEOWTH },
+      { speciesId: SpeciesId.DEERLING },
+      { speciesId: SpeciesId.DITTO },
+    ],
+  },
+  sabrina: {
+    key: "sabrina",
+    name: "Sabrina",
+    starterSpeciesId: SpeciesId.ABRA,
+    starterNature: Nature.MODEST,
+    trainerSprite: PlayerTrainerSprite.SABRINA,
+    trainerGender: PlayerGender.FEMALE,
+    roles: ["ace", "physical", "special", "bulk", "speed", "balanced"],
+    personalityTypes: [PokemonType.PSYCHIC],
+    monotype: PokemonType.PSYCHIC,
+ //   requiresUnlock: true,
+ //   unlockAchievement: "MONO_PSYCHIC",
+    startingStarters: [
+      { speciesId: SpeciesId.ABRA },
+      { speciesId: SpeciesId.MR_MIME },
+      { speciesId: SpeciesId.WOBBUFFET },
+      { speciesId: SpeciesId.JYNX },
+      { speciesId: SpeciesId.RALTS },
+      { speciesId: SpeciesId.DROWZEE },
+      { speciesId: SpeciesId.SLOWBRO },
+      { speciesId: SpeciesId.BELDUM },
+      { speciesId: SpeciesId.SIGILYPH },
+      { speciesId: SpeciesId.EXEGGUTOR },
+      { speciesId: SpeciesId.MEWTWO },
+      { speciesId: SpeciesId.WOOBAT },
+      { speciesId: SpeciesId.SLOWPOKE },
+    ],
+  },
 };
 
 export const COMPUTER_PARTNER_KEYS = Object.keys(COMPUTER_PARTNER_PROFILES) as ComputerPartnerKey[];
@@ -447,17 +517,21 @@ export function getComputerPartnerChallengeProfile(
   playerIndex: PlayerIndex,
   progress?: ComputerPartnerProgressData,
 ): ComputerPartnerProfile {
-  if (!globalScene.gameMode.hasChallenge(Challenges.SINGLE_TYPE, playerIndex)) {
+  if (profile.monotype === undefined && !globalScene.gameMode.hasChallenge(Challenges.SINGLE_TYPE, playerIndex)) {
     return profile;
   }
   const candidates = profile.startingStarters ?? (profile.starterSpeciesId
     ? [{ speciesId: profile.starterSpeciesId, points: 0, moveset: profile.starterMoveset }]
     : []);
+  const restrictions = getChallengesForPlayer(playerIndex);
+  if (profile.monotype !== undefined) {
+    restrictions.push(createMonotypeRestriction(profile.monotype));
+  }
   const starters = candidates.filter(config => {
     const starter = createComputerPartnerStarterData(profile, config, progress);
     return checkStarterValidForChallenge(getPokemonSpecies(starter.speciesId), {
       shiny: starter.shiny, female: !!starter.female, variant: starter.variant, formIndex: starter.formIndex,
-    }, false, playerIndex);
+    }, profile.monotype !== undefined, playerIndex, restrictions);
   });
   const result = { ...profile, startingStarters: starters };
   delete result.starterSpeciesId;
@@ -699,7 +773,7 @@ function debugComputerPartnerStarterSelection(
 }
 
 function getComputerPartnerStarterBasePoints(starter: ComputerPartnerStarterConfig): number {
-  return starter.points ?? speciesDataRegistry.getStarterCost(starter.speciesId);
+  return starter.points ?? speciesDataRegistry.getStarterCost(getComputerPartnerProgressSpeciesId(starter.speciesId));
 }
 
 function reduceComputerPartnerStarterPoints(basePoints: number, valueReduction: number): number {
@@ -1254,15 +1328,35 @@ export function isComputerPartnerCandidateAllowed(
   candidate: ComputerPartnerScoringPokemon,
   playerIndex?: PlayerIndex,
 ): boolean {
-  if (playerIndex !== undefined && getChallengesForPlayer(playerIndex).some(challenge => {
-    if (!isSingleTypeChallenge(challenge.id) || !challenge.value) {
+  if (profile.monotype !== undefined) {
+    const restrictions = playerIndex === undefined ? [] : getChallengesForPlayer(playerIndex);
+    restrictions.push(createMonotypeRestriction(profile.monotype));
+    const species = "species" in candidate ? candidate.species : candidate;
+    const props = "species" in candidate
+      ? {
+          shiny: candidate.shiny,
+          female: candidate.gender === Gender.FEMALE,
+          variant: candidate.variant,
+          formIndex: candidate.formIndex,
+        }
+      : { shiny: false, female: false, variant: 0 as const, formIndex: 0 };
+    if (!checkStarterValidForChallenge(species, props, true, playerIndex, restrictions)) {
       return false;
     }
-    const type = challenge.value - 1;
-    return "species" in candidate
-      ? !candidate.isOfType(type, { includeTeraType: false, bypassSummonData: true, ignoreThirdType: true })
-      : ![candidate.type1, candidate.type2].includes(type);
-  })) {
+  }
+  if (
+    profile.monotype === undefined
+    && playerIndex !== undefined
+    && getChallengesForPlayer(playerIndex).some(challenge => {
+      if (!isSingleTypeChallenge(challenge.id) || !challenge.value) {
+        return false;
+      }
+      const type = challenge.value - 1;
+      return "species" in candidate
+        ? !candidate.isOfType(type, { includeTeraType: false, bypassSummonData: true, ignoreThirdType: true })
+        : ![candidate.type1, candidate.type2].includes(type);
+    })
+  ) {
     return false;
   }
   const allowedSpeciesIds = profile.allowedReplacementSpeciesIds;

@@ -46,6 +46,7 @@ export interface TwoPlayerRunBootstrap {
 
 export interface TwoPlayerTitleStart {
   action: "new-run" | "load-session";
+  mysteryEncounterFrequency?: number;
   gameMode?: number;
   challenges?: { id: number; value: number; severity: number }[];
   partySize?: 3 | 6;
@@ -265,6 +266,9 @@ function isValidTitleStart(titleStart: unknown): titleStart is TwoPlayerTitleSta
 
   const data = titleStart as Partial<TwoPlayerTitleStart>;
   return (data.action === "new-run" || data.action === "load-session")
+    && (data.mysteryEncounterFrequency === undefined
+      || (Number.isInteger(data.mysteryEncounterFrequency)
+        && data.mysteryEncounterFrequency >= 0 && data.mysteryEncounterFrequency <= 6))
     && (data.gameMode === undefined || typeof data.gameMode === "number")
     && (data.challenges === undefined
       || (Array.isArray(data.challenges)
@@ -500,6 +504,11 @@ export class TwoPlayerInputTransport {
   }
 
   public getInputReadinessBlockReason(checkpoint = this.getInputCheckpoint()): string | undefined {
+    // Only the host operates its private save menu; guests deliberately have a different UI.
+    if (this.onlineSession && onlineSaveSession.localMenu && this.networkRole === "host"
+      && this.onlineAuthenticated && this.webSocket?.readyState === WebSocket.OPEN) {
+      return undefined;
+    }
     if (this.onlineSession && onlineSaveSession.loading) {
       return "online-save-loading";
     }
@@ -1057,7 +1066,7 @@ export class TwoPlayerInputTransport {
           /* Normal transport validation handles malformed frames. */
         }
         if (control?.protocol === ONLINE_PROTOCOL && typeof control.type === "string") {
-          if (control.type.startsWith("load-") || control.type === "title-reset") {
+          if (control.type.startsWith("load-") || control.type.startsWith("start-") || control.type === "title-reset") {
             onlineSaveSession.receive?.(control);
             return;
           }
@@ -1291,6 +1300,10 @@ export class TwoPlayerInputTransport {
   }
 
   private handleInputRequest(message: TwoPlayerInputMessage): void {
+    if (this.onlineSession && (onlineSaveSession.localMenu || onlineSaveSession.loading)) {
+      this.logIgnoredMessage(message, "online-private-save-menu");
+      return;
+    }
     if (this.networkRole !== "host") {
       this.logIgnoredMessage(message, "input-request-received-by-non-host");
       return;

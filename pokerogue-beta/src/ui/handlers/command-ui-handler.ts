@@ -366,7 +366,7 @@ export class CommandUiHandler extends UiHandler {
 
   private shouldShowTriplePokemonMenu(): boolean {
     return (
-      !globalScene.twoPlayerVsMode
+      !globalScene.isVsLaneBattle()
       && globalScene.getBattleFieldSlotCount() > 2
       && (globalScene.currentBattle?.getBattlerCount() ?? 1) > 2
     );

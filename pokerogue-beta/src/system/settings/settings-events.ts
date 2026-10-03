@@ -1,9 +1,21 @@
+import { WEIGHT_INCREMENT_ON_SPAWN_MISS } from "#app/constants";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
+import { normalizeMysteryEncounterFrequency } from "#mystery-encounters/mystery-encounter-save-data";
 import type { Setting } from "#system/settings";
 import { SettingType } from "#system/settings";
 import i18next from "i18next";
 
 const EVENT_SETTING_PREFIX = "MYSTERY_ENCOUNTER_";
+export const MYSTERY_ENCOUNTER_FREQUENCY_SETTING = "MYSTERY_ENCOUNTER_FREQUENCY";
+
+export function getMysteryEncounterFrequencySetting(): number {
+  try {
+    const settings = JSON.parse(localStorage.getItem("settings") ?? "{}");
+    return normalizeMysteryEncounterFrequency(settings?.[MYSTERY_ENCOUNTER_FREQUENCY_SETTING]);
+  } catch {
+    return WEIGHT_INCREMENT_ON_SPAWN_MISS;
+  }
+}
 
 const EVENT_SETTING_OPTIONS = [
   {
@@ -67,7 +79,7 @@ export function getMysteryEncounterSettingKey(encounterType: MysteryEncounterTyp
 }
 
 export function getMysteryEncounterEventSettings(): Setting[] {
-  return Object.values(MysteryEncounterType)
+  const eventSettings = Object.values(MysteryEncounterType)
     .filter((value): value is MysteryEncounterType => typeof value === "number")
     .map(encounterType => ({
       key: getMysteryEncounterSettingKey(encounterType),
@@ -79,6 +91,16 @@ export function getMysteryEncounterEventSettings(): Setting[] {
       default: 1,
       type: SettingType.EVENTS,
     }));
+  return [
+    {
+      key: MYSTERY_ENCOUNTER_FREQUENCY_SETTING,
+      label: "Frequency (New Runs)",
+      options: Array.from({ length: 7 }, (_, value) => ({ value: String(value), label: String(value) })),
+      default: WEIGHT_INCREMENT_ON_SPAWN_MISS,
+      type: SettingType.EVENTS,
+    },
+    ...eventSettings,
+  ];
 }
 
 export function isMysteryEncounterEnabledBySettings(encounterType: MysteryEncounterType): boolean {

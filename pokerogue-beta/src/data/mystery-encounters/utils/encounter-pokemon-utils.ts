@@ -41,6 +41,7 @@ import { applyChallenges } from "#utils/challenge-utils";
 import { BooleanHolder, randSeedInt } from "#utils/common";
 import { getBestComputerPartnerReplacementSlot, getComputerPartnerProfile } from "#utils/computer-partner-profile";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
+import { playTrainerThrowAnimation } from "#utils/trainer-throw-animation";
 import i18next from "i18next";
 
 /** Will give +1 level every 10 waves */
@@ -487,17 +488,12 @@ export function trainerThrowPokeball(
     }
     trainerSprite.setVisible(true);
     trainerSprite.setTexture(globalScene.getTrainerBackTextureKey(playerIndex, true));
+    playTrainerThrowAnimation(trainerSprite, { releaseDelay: 512, windupDelay: 512, frameDuration: 256 });
+    globalScene.time.delayedCall(512 + 256 + 768, () => {
+      trainerSprite.setTexture(globalScene.getTrainerBackTextureKey(playerIndex));
+    });
     globalScene.time.delayedCall(512, () => {
       audioManager.playSound("se/pb_throw");
-
-      // Trainer throw frames
-      trainerSprite.setFrame("2");
-      globalScene.time.delayedCall(256, () => {
-        trainerSprite.setFrame("3");
-        globalScene.time.delayedCall(768, () => {
-          trainerSprite.setTexture(globalScene.getTrainerBackTextureKey(playerIndex));
-        });
-      });
 
       // Pokeball move and catch logic
       globalScene.tweens.add({

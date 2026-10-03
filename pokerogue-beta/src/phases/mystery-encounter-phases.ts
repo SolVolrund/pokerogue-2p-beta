@@ -538,7 +538,7 @@ export class MysteryEncounterBattlePhase extends Phase {
     const playerFieldOwners = globalScene.getPlayerFieldOwners();
     const availablePartyMemberEntries = globalScene.twoPlayerMode
       ? playerFieldOwners
-          .map((playerIndex, fieldIndex) => ({ fieldIndex, pokemon: globalScene.getPlayerParty(playerIndex)[0] }))
+          .map((_playerIndex, fieldIndex) => ({ fieldIndex, pokemon: globalScene.getPlayerPokemonForFieldSlot(fieldIndex) }))
           .filter((entry): entry is { fieldIndex: number; pokemon: PlayerPokemon } => !!entry.pokemon?.isAllowedInBattle())
       : globalScene
           .getPlayerParty()
@@ -554,7 +554,7 @@ export class MysteryEncounterBattlePhase extends Phase {
       const coveredPlayerIndexes = new Set(availablePartyMemberEntries.map(entry =>
         globalScene.getPlayerIndexForFieldSlot(entry.fieldIndex),
       ));
-      playerFieldOwners.forEach(playerIndex => {
+      [...new Set(playerFieldOwners)].forEach(playerIndex => {
         if (!coveredPlayerIndexes.has(playerIndex) && globalScene.hasEonFluteProtection(playerIndex)) {
           globalScene.phaseManager.pushNew("EonFluteSummonPhase", playerIndex);
         }
@@ -566,7 +566,7 @@ export class MysteryEncounterBattlePhase extends Phase {
     if (globalScene.currentBattle.double) {
       if (availablePartyMembers.length > 1) {
         globalScene.phaseManager.pushNew("ToggleDoublePositionPhase", true);
-        for (const entry of availablePartyMemberEntries.slice(1)) {
+        for (const entry of availablePartyMemberEntries.slice(1, globalScene.currentBattle.getBattlerCount())) {
           if (!entry.pokemon.isOnField()) {
             globalScene.phaseManager.pushNew("SummonPhase", entry.fieldIndex);
           }
@@ -753,7 +753,13 @@ export class PostMysteryEncounterPhase extends Phase {
    */
   continueEncounter() {
     const endPhase = () => {
+      const finishedSoloTrial = globalScene.currentBattle.mysteryEncounterSoloPlayerIndex !== undefined;
       globalScene.clearMysteryEncounterBattlePlayerFieldOwners();
+
+      if (finishedSoloTrial && globalScene.queueVsModeVictoryIfDecided()) {
+        this.end();
+        return;
+      }
 
       if (globalScene.gameMode.hasRandomBiomes || globalScene.isNewBiome()) {
         globalScene.phaseManager.pushNew("SelectBiomePhase");

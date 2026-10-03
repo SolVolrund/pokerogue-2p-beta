@@ -27,7 +27,8 @@ import { StatusEffect } from "#enums/status-effect";
 import { MoveUsedEvent } from "#events/battle-scene";
 import type { Pokemon } from "#field/pokemon";
 import { applyMoveAttrs } from "#moves/apply-attrs";
-import { frenzyMissFunc, isVsLaneTargetLegal } from "#moves/move-utils";
+import { frenzyMissFunc, isVsLaneTargetLegal, resolveAbsentMoveTarget } from "#moves/move-utils";
+import { beginRollingMove, clearRollingMove, isRollingMove, type RollingMoveExecution } from "#moves/rolling-move";
 import type { PokemonMove } from "#moves/pokemon-move";
 import type { Move, PreUseInterruptAttr } from "#types/move-types";
 import type { TurnMove } from "#types/turn-move";
@@ -53,6 +54,7 @@ export class MovePhase extends PokemonPhase {
   protected failed = false;
   /** Whether the current move should fail and retain PP. */
   protected cancelled = false;
+  private rollingMoveExecution?: RollingMoveExecution;
 
   /** Flag set to `true` during {@linkcode checkFreeze} that indicates that the pokemon will thaw if it passes the failure conditions */
   private declare thaw?: boolean;
@@ -99,7 +101,7 @@ export class MovePhase extends PokemonPhase {
     super(pokemon.getBattlerIndex());
 
     this.pokemon = pokemon;
-    this.targets = targets;
+    this.targets = [...targets];
     this.move = move;
     this.useMode = useMode;
     this.timingModifier = timingModifier;
@@ -122,6 +124,7 @@ export class MovePhase extends PokemonPhase {
     // TODO: Cancel the user's queued `MovePhase`s when they leave the field -
     // force switching a pokemon out and back in should not let them use a move
     if (!user.isActive(true)) {
+      clearRollingMove(user);
       this.end();
       return;
     }
@@ -146,6 +149,13 @@ export class MovePhase extends PokemonPhase {
     const override = encoreTag?.tryOverrideMove(user);
     if (override) {
       [this.move, this.targets] = override;
+    }
+
+    if (isRollingMove(this.move.moveId) && this.targets.length === 1 && user.status?.effect !== StatusEffect.SLEEP) {
+      this.rollingMoveExecution = beginRollingMove(user, this.move.moveId, this.targets[0]);
+      this.targets = [this.rollingMoveExecution.state.target];
+    } else if (user.summonData.rollingMove) {
+      clearRollingMove(user);
     }
 
     user.turnData.zMovePower = this.move.zMovePower;
@@ -195,6 +205,10 @@ export class MovePhase extends PokemonPhase {
     // Pokerogue's current implementation applies these effects during the move effect phase
     // as there is not (yet) a notion of a move-in-flight for determinations to occur
 
+    if (this.targets.length === 1) {
+      const target = resolveAbsentMoveTarget(user, this.move.getMove(), this.targets[0]);
+      this.targets = target === undefined ? [] : [target];
+    }
     this.resolveRedirectTarget();
     this.resolveCounterAttackTarget();
 
@@ -952,6 +966,7 @@ export class MovePhase extends PokemonPhase {
       this.pokemon.getBattlerIndex(),
       this.getActiveTargetPokemon(),
       isVirtual(this.useMode),
+      this.rollingMoveExecution,
     );
 
     super.end();

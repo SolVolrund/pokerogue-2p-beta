@@ -40,6 +40,7 @@ export class SaveSlotSelectUiHandler extends MessageUiHandler {
 
   private uiMode: SaveSlotUiMode;
   private saveSlotSelectCallback: SaveSlotSelectCallback | null;
+  private deferOverwrite = false;
   protected manageDataConfig: OptionSelectConfig;
 
   private scrollCursor = 0;
@@ -98,6 +99,7 @@ export class SaveSlotSelectUiHandler extends MessageUiHandler {
 
     this.uiMode = args[0] as SaveSlotUiMode;
     this.saveSlotSelectCallback = args[1] as SaveSlotSelectCallback;
+    this.deferOverwrite = args[2] === true;
 
     this.saveSlotSelectContainer.setVisible(true);
     this.populateSessionSlots();
@@ -241,6 +243,11 @@ export class SaveSlotSelectUiHandler extends MessageUiHandler {
                   ui.setOverlayMode(
                     UiMode.CONFIRM,
                     () => {
+                      // Online startup keeps the old run until everyone commits and the new run autosaves.
+                      if (this.deferOverwrite) {
+                        saveAndCallback();
+                        return;
+                      }
                       globalScene.gameData.deleteSession(cursor).then(response => {
                         if (response === false) {
                           globalScene.reset(true);

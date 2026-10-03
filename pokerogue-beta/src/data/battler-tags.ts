@@ -2632,6 +2632,7 @@ export class RoostedTag extends BattlerTag {
   // This breaks Soak -> Roost and similar interactions.
   // Instead, a much easier approach would be to cache the original types in their entirety.
   private isBasePureFlying = false;
+  private aceOnlyFlying = false;
 
   constructor() {
     super(BattlerTagType.ROOSTED, BattlerTagLapseType.TURN_END, 1, MoveId.ROOST);
@@ -2643,8 +2644,12 @@ export class RoostedTag extends BattlerTag {
   }
 
   onRemove(pokemon: Pokemon): void {
-    const currentTypes = pokemon.getTypes();
-    const baseTypes = pokemon.getTypes({ includeTeraType: false, bypassSummonData: true, ignoreThirdType: true });
+    if (this.aceOnlyFlying) {
+      pokemon.updateInfo();
+      return;
+    }
+    const currentTypes = pokemon.getTypes({ ignoreAceType: true, ignoreThirdType: pokemon.getAceType() !== undefined });
+    const baseTypes = pokemon.getTypes({ includeTeraType: false, bypassSummonData: true, ignoreThirdType: true, ignoreAceType: true });
 
     // TODO: this is very wrong
     const forestsCurseApplied: boolean =
@@ -2669,11 +2674,17 @@ export class RoostedTag extends BattlerTag {
   }
 
   onAdd(pokemon: Pokemon): void {
-    const currentTypes = pokemon.getTypes();
-    const baseTypes = pokemon.getTypes({ includeTeraType: false, bypassSummonData: true, ignoreThirdType: true });
+    const currentTypes = pokemon.getTypes({ ignoreAceType: true, ignoreThirdType: pokemon.getAceType() !== undefined });
+    this.aceOnlyFlying = pokemon.getAceType() === PokemonType.FLYING && !currentTypes.includes(PokemonType.FLYING);
+    if (this.aceOnlyFlying) {
+      pokemon.updateInfo();
+      return;
+    }
+    const baseTypes = pokemon.getTypes({ includeTeraType: false, bypassSummonData: true, ignoreThirdType: true, ignoreAceType: true });
 
     const isOriginallyDualType = baseTypes.length === 2;
-    const isCurrentlyDualType = currentTypes.length === 2;
+    const isCurrentlyDualType = currentTypes.length === 2
+      || (pokemon.getAceType() !== undefined && pokemon.getTypes().some(type => type !== PokemonType.FLYING));
     this.isBasePureFlying = baseTypes[0] === PokemonType.FLYING && baseTypes.length === 1;
 
     let modifiedTypes: PokemonType[];
@@ -3329,7 +3340,8 @@ export class TormentTag extends MoveRestrictionBattlerTag {
     // This checks for locking / momentum moves like Rollout and Hydro Cannon + if the user is under the influence of BattlerTagType.FRENZY
     // Because Uproar's unique behavior is not implemented, it does not check for Uproar. Torment has been marked as partial in moves.ts
     const moveObj = allMoves[lastMove.move];
-    const isUnaffected = moveObj.hasAttr("ConsecutiveUseDoublePowerAttr") || user.getTag(BattlerTagType.FRENZY);
+    const isUnaffected = moveObj.hasAttr("ConsecutiveUseDoublePowerAttr")
+      || !!user.summonData.rollingMove || user.getTag(BattlerTagType.FRENZY);
     const validLastMoveResult = lastMove.result === MoveResult.SUCCESS || lastMove.result === MoveResult.MISS;
     return lastMove.move === move && validLastMoveResult && lastMove.move !== MoveId.STRUGGLE && !isUnaffected;
   }

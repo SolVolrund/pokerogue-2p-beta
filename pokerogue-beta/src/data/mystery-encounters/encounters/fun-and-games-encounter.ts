@@ -37,6 +37,7 @@ import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encou
 import { MoneyRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import { updateWindowType } from "#ui/ui-theme";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
+import { playTrainerThrowAnimation } from "#utils/trainer-throw-animation";
 import i18next from "i18next";
 
 /** the i18n namespace for the encounter */
@@ -457,12 +458,7 @@ async function summonFunAndGamesPlayerPokemon(
       const trainerSprite = getFunAndGamesTrainerSprite(choice.playerIndex);
       globalScene.pbTray.hide();
       trainerSprite.setTexture(globalScene.getTrainerBackTextureKey(choice.playerIndex, true));
-      globalScene.time.delayedCall(562, () => {
-        trainerSprite.setFrame("2");
-        globalScene.time.delayedCall(64, () => {
-          trainerSprite.setFrame("3");
-        });
-      });
+      playTrainerThrowAnimation(trainerSprite);
       globalScene.tweens.add({
         targets: trainerSprite,
         x: -36,
@@ -685,12 +681,7 @@ async function summonPlayerPokemon() {
     );
     globalScene.pbTray.hide();
     globalScene.trainer.setTexture(globalScene.getTrainerBackTextureKey(0, true));
-    globalScene.time.delayedCall(562, () => {
-      globalScene.trainer.setFrame("2");
-      globalScene.time.delayedCall(64, () => {
-        globalScene.trainer.setFrame("3");
-      });
-    });
+    playTrainerThrowAnimation(globalScene.trainer);
     globalScene.tweens.add({
       targets: globalScene.trainer,
       x: -36,

@@ -393,7 +393,7 @@ export function getPlannerRepositionTarget(
   installPlannerDebugConsoleHelper();
 
   if (
-    globalScene.twoPlayerVsMode
+    globalScene.isVsLaneBattle()
     || (globalScene.currentBattle?.getBattlerCount() ?? 1) < 3
     || getAiRelevantOpponents(activePokemon).length === 0
   ) {

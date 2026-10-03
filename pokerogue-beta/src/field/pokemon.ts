@@ -18,6 +18,7 @@ import type { SpeciesFormEvolution } from "#balance/pokemon-evolutions";
 import { FusionSpeciesFormEvolution, validateShedinjaEvo } from "#balance/pokemon-evolutions";
 import { BASE_HIDDEN_ABILITY_RATE, BASE_SHINY_CHANCE, SHINY_EPIC_CHANCE, SHINY_VARIANT_CHANCE } from "#balance/rates";
 import { getStarterValueFriendshipCap, TRAINER_MAX_FRIENDSHIP_WAVE, TRAINER_MIN_FRIENDSHIP } from "#balance/starters";
+import { normalizeAceType } from "#data/ace-type";
 import type { SuppressAbilitiesTag } from "#data/arena-tag";
 import { NoCritTag, WeakenMoveScreenTag } from "#data/arena-tag";
 import {
@@ -346,6 +347,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   public pauseEvolutions: boolean;
   public pokerus: boolean;
   public ace: boolean;
+  public aceType: PokemonType | undefined;
   public accessoryOutfit: PokemonAccessoryOutfitItem[];
   public aceEvs: AceEvSpread;
   /**
@@ -499,6 +501,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       this.pauseEvolutions = dataSource.pauseEvolutions;
       this.pokerus = !!dataSource.pokerus;
       this.ace = !!dataSource.ace;
+      this.aceType = normalizeAceType(dataSource.aceType);
       this.accessoryOutfit = dataSource.accessoryOutfit?.map(item => ({ ...item })) ?? [];
       this.aceEvs = normalizeAceEvSpread(dataSource.aceEvs);
       this.fusionSpecies =
@@ -566,6 +569,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       this.metWave = globalScene.currentBattle ? globalScene.currentBattle.waveIndex : -1;
       this.pokerus = false;
       this.ace = false;
+      this.aceType = undefined;
       this.accessoryOutfit = [];
       this.aceEvs = createEmptyAceEvSpread();
 
@@ -856,6 +860,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
         hp: pokemon.hp,
         maxHp: pokemon.getMaxHp(),
         moveset: pokemon.getMoveset().map(move => move.moveId),
+        types: pokemon.getTypes({ includeTeraType: false, ignoreThirdType: true, ignoreAceType: true }),
+        aceType: pokemon.getAceType(),
         fusionFormIndex: pokemon.fusionFormIndex,
         fusionSpecies: pokemon.fusionSpecies || undefined,
         fusionGender: pokemon.fusionGender,
@@ -2637,6 +2643,11 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     return learnableMoves;
   }
 
+  /** The permanent bonus typing, independent of temporary battle overrides. */
+  public getAceType(): PokemonType | undefined {
+    return this.ace && isSettingEnabled(SettingKeys.Ace_Mechanics) ? normalizeAceType(this.aceType) : undefined;
+  }
+
   /**
    * Evaluate and return this Pokemon's typing.
    * @param includeTeraType - (Default `true`) Whether to use this Pokemon's Tera type if Terastallized
@@ -2644,6 +2655,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * @param bypassSummonData - (Default `false`) Whether to ignore any overrides caused by Transform and similar effects
    * @param useIllusion - (Default `false`) Whether to consider an active illusion
    * @param ignoreThirdType - (Default `false`) Whether to ignore the typing added by Forest's Curse or Trick-or-Treat
+   * @param ignoreAceType - (Default `false`) Whether to exclude the permanent Ace bonus typing
    * @returns A non-empty array of {@linkcode PokemonType}s corresponding to this Pokemon's typing (real or perceived).
    */
   public getTypes({
@@ -2652,12 +2664,14 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     bypassSummonData = false,
     useIllusion = false,
     ignoreThirdType = false,
+    ignoreAceType = false,
   }: {
     includeTeraType?: boolean;
     returnOriginalTypesIfStellar?: boolean;
     bypassSummonData?: boolean;
     useIllusion?: boolean;
     ignoreThirdType?: boolean;
+    ignoreAceType?: boolean;
   } = {}): Mutable<NonEmptyTuple<PokemonType>> {
     const teraType = this.getTeraType();
     // Stellar tera does nothing defensively (uses original types)
@@ -2667,7 +2681,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       return [teraType];
     }
 
-    const types = new Set(this.getBaseTypes(bypassSummonData, useIllusion));
+    const illusion = useIllusion && !bypassSummonData ? this.summonData.illusion : null;
+    const types = new Set(illusion?.types ?? this.getBaseTypes(bypassSummonData, useIllusion));
 
     // become UNKNOWN if no types are present, or remove it if other types are present.
     // TODO: Move this after the added type checks once Roost is refactored to check removed types correctly
@@ -2678,8 +2693,22 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     }
 
     // check type added to Pokemon from moves like Forest's Curse or Trick Or Treat.
-    if (!ignoreThirdType && this.summonData.addedType) {
+    if (!ignoreThirdType && this.summonData.addedType != null) {
       types.add(this.summonData.addedType);
+    } else if (!ignoreAceType) {
+      // Temporary added types take precedence without changing the saved Ace choice.
+      const aceType = illusion
+        ? (isSettingEnabled(SettingKeys.Ace_Mechanics) ? normalizeAceType(illusion.aceType) : undefined)
+        : this.getAceType();
+      const suppressed = !bypassSummonData && ((!illusion && this.summonData.aceTypeSuppressed)
+        || (aceType === PokemonType.FLYING && this.getTag(BattlerTagType.ROOSTED)));
+      if (aceType !== undefined && !suppressed) {
+        types.add(aceType);
+      }
+    }
+
+    if (types.size > 1) {
+      types.delete(PokemonType.UNKNOWN);
     }
 
     return Array.from(types) as Mutable<NonEmptyTuple<PokemonType>>;
@@ -7027,7 +7056,7 @@ export class PlayerPokemon extends Pokemon {
   switchOut(switchType: SwitchType = SwitchType.SWITCH): Promise<void> {
     return new Promise(resolve => {
       this.leaveField(switchType === SwitchType.SWITCH);
-      const activePartySlotCount = globalScene.twoPlayerMode ? 1 : globalScene.currentBattle.getBattlerCount();
+      const activePartySlotCount = globalScene.getPlayerActiveSlotCount(globalScene.getPlayerIndexForPokemon(this));
 
       globalScene.ui.setMode(
         UiMode.PARTY,

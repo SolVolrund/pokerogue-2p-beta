@@ -1034,7 +1034,7 @@ export class Arena {
   }
 
   private getVsLaneForTag(tagType: ArenaTagType, sourceId: number, side: ArenaTagSide): number | undefined {
-    if (!globalScene.twoPlayerVsMode || side === ArenaTagSide.BOTH || !vsLaneScopedArenaTags.has(tagType)) {
+    if (!globalScene.isVsLaneBattle() || side === ArenaTagSide.BOTH || !vsLaneScopedArenaTags.has(tagType)) {
       return undefined;
     }
 
@@ -1046,7 +1046,7 @@ export class Arena {
       return false;
     }
 
-    if (!globalScene.twoPlayerVsMode || vsLane === undefined || !vsLaneScopedArenaTags.has(tag.tagType)) {
+    if (!globalScene.isVsLaneBattle() || vsLane === undefined || !vsLaneScopedArenaTags.has(tag.tagType)) {
       return true;
     }
 

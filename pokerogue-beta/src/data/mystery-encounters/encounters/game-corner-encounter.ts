@@ -38,6 +38,16 @@ interface GameCornerVisitData {
   rocketHqDiscovered?: boolean;
 }
 
+class GameCornerSlotMachineRequirement extends EncounterSceneRequirement {
+  override meetsRequirement(): boolean {
+    return false;
+  }
+
+  override getDialogueToken(): [string, string] {
+    return ["availability", i18next.t(`${namespace}:option.2.tooltip`)];
+  }
+}
+
 class RocketHqVisitRequirement extends EncounterSceneRequirement {
   override meetsRequirement(): boolean {
     return !globalScene.mysteryEncounterSaveData.rocketHqVisited;
@@ -66,7 +76,11 @@ function getVisitData(): GameCornerVisitData {
 
 function buildGameCornerOption(playerIndex: PlayerIndex, optionIndex: number) {
   const builder = MysteryEncounterOptionBuilder.newOptionWithMode(
-    optionIndex === 2 ? MysteryEncounterOptionMode.DISABLED_OR_SPECIAL : MysteryEncounterOptionMode.DEFAULT,
+    optionIndex === 1
+      ? MysteryEncounterOptionMode.DISABLED_OR_DEFAULT
+      : optionIndex === 2
+        ? MysteryEncounterOptionMode.DISABLED_OR_SPECIAL
+        : MysteryEncounterOptionMode.DEFAULT,
   )
     .withDialogue({
       buttonLabel: `${namespace}:option.${optionIndex + 1}.label`,
@@ -75,6 +89,9 @@ function buildGameCornerOption(playerIndex: PlayerIndex, optionIndex: number) {
     .withPreOptionPhase(() => recordGameCornerChoice(playerIndex, optionIndex))
     .withOptionPhase(startGameCornerVisits)
     .withPostOptionPhase(enterDiscoveredRocketHq);
+  if (optionIndex === 1) {
+    builder.withSceneRequirement(new GameCornerSlotMachineRequirement());
+  }
   if (optionIndex === 2) {
     builder.withSceneRequirement(new RocketHqVisitRequirement());
     builder.withPrimaryPokemonRequirement(new GameCornerMoveRequirement(playerIndex));
@@ -83,7 +100,7 @@ function buildGameCornerOption(playerIndex: PlayerIndex, optionIndex: number) {
 }
 
 async function recordGameCornerChoice(playerIndex: PlayerIndex, optionIndex: number): Promise<boolean> {
-  if (optionIndex === 2 && globalScene.mysteryEncounterSaveData.rocketHqVisited) {
+  if (optionIndex === 1 || (optionIndex === 2 && globalScene.mysteryEncounterSaveData.rocketHqVisited)) {
     return false;
   }
   const data = getVisitData();
@@ -148,15 +165,17 @@ async function enterDiscoveredRocketHq(): Promise<void> {
 export const GameCornerEncounter: MysteryEncounter = MysteryEncounterBuilder.withEncounterType(
   MysteryEncounterType.GAME_CORNER,
 )
-  .withEncounterTier(MysteryEncounterTier.COMMON)
+  .withEncounterTier(MysteryEncounterTier.GREAT)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withIntroSpriteConfigs([
     {
-      spriteKey: "worker_f",
-      fileRoot: "trainer",
-      hasShadow: true,
-      y: 4,
-      alpha: 1,
+      spriteKey: "dealer",
+      fileRoot: "game_corner",
+      disableAnimation: true,
+      hasShadow: false,
+      scale: 1.5,
+      x: 5,
+      y: 8,
     },
   ])
   .withOnVisualsStart(() => {

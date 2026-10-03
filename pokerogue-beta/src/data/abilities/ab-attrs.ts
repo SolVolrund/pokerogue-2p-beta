@@ -5936,7 +5936,7 @@ export class TerrainEventTypeChangeAbAttr extends PostSummonAbAttr {
         typeChange.push(PokemonType.PSYCHIC);
         break;
       default:
-        pokemon.getTypes({ includeTeraType: false, bypassSummonData: true, ignoreThirdType: true }).forEach(t => {
+        pokemon.getTypes({ includeTeraType: false, bypassSummonData: true, ignoreThirdType: true, ignoreAceType: true }).forEach(t => {
           typeChange.push(t);
         });
         break;

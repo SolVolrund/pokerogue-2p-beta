@@ -1,5 +1,5 @@
 import { pokerogueApi } from "#api/api";
-import { loggedInUser } from "#app/account";
+import { GUEST_SAVE_SLOT, loggedInUser } from "#app/account";
 import type { PlayerIndex } from "#app/battle-scene";
 import { GameMode, getGameMode } from "#app/game-mode";
 import { audioManager } from "#app/global-audio-manager";
@@ -22,14 +22,15 @@ import { Unlockables } from "#enums/unlockables";
 import { getBiomeAssetKey } from "#field/arena";
 import type { Modifier } from "#modifiers/modifier";
 import { getDailyRunStarterModifiers, regenerateModifierPoolThresholds } from "#modifiers/modifier-type";
+import { normalizeMysteryEncounterFrequency } from "#mystery-encounters/mystery-encounter-save-data";
 import { ChallengeData } from "#system/challenge-data";
+import { getMysteryEncounterFrequencySetting } from "#system/settings-events";
 import { vouchers } from "#system/voucher";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import type { ChallengeSelectConfig } from "#ui/challenges-select-ui-handler";
 import { SaveSlotUiMode } from "#ui/save-slot-select-ui-handler";
 import { isLocalServerConnected, randomString } from "#utils/common";
 import {
-  COMPUTER_PARTNER_KEYS,
   type ComputerPartnerKey,
   type ComputerPartnerRole,
   type ComputerPartnerRolePreferences,
@@ -71,6 +72,39 @@ const TWO_PLAYER_LOBBY_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const TWO_PLAYER_WS_PORT = "8787";
 const COMPUTER_PARTNER_MENU_ROWS = 6;
 const COMPUTER_PARTNER_MENU_MIN_SLOT_COUNT = 30;
+// Profile keys and display-only placeholders, in column-major order.
+const COMPUTER_PARTNER_MENU_ENTRIES = [
+  "alex",
+  "cheryl",
+  "riley",
+  "mira",
+  "buck",
+  "marley",
+  "dawn_zorua",
+  "bianca_latias",
+  "duplica_ditto",
+  "molly_hale",
+  "Amber2",
+  "Joy",
+  "Burgh",
+  "Nanu",
+  "Raihan",
+  "Iono",
+  "Valerie",
+  "Korrina",
+  "Blaine",
+  "Winona",
+  "Acerola",
+  "Gardenia",
+  "Clay",
+  "Grusha",
+  "whitney",
+  "Roxie",
+  "sabrina",
+  "Brock",
+  "Jasmine",
+  "Misty",
+];
 type MultiplayerLobbyPlayerCount = 1 | 2 | 3;
 type MultiplayerGuestSeat = 1 | 2 | "ep";
 
@@ -92,6 +126,7 @@ export class TitlePhase extends Phase {
   private onlineLoadAnnounceInterval: ReturnType<typeof setInterval> | undefined;
   private remoteTitleStartApplied = false;
   private selectedChallenges: ChallengeData[] = [];
+  private mysteryEncounterFrequency: number | undefined;
   private profileStartupAnnounceInterval: ReturnType<typeof globalThis.setInterval> | undefined;
   // TODO: Make `end` take a `GameModes` as a parameter rather than storing it on the class itself
   public gameMode: GameModes;
@@ -1542,7 +1577,7 @@ export class TitlePhase extends Phase {
       return;
     }
 
-    const options: OptionSelectItem[] = COMPUTER_PARTNER_KEYS.map(key => {
+    const options = this.createComputerPartnerMenuOptions(key => {
       const profile = getComputerPartnerProfile(key);
       const enabled = globalScene.gameData.isComputerPartnerUnlocked(key) && !profile.usesPlayerSelectedStarters;
       return {
@@ -1602,10 +1637,11 @@ export class TitlePhase extends Phase {
         : firstPartnerPlayerIndex;
     const partnerSlotCount = Math.max(
       COMPUTER_PARTNER_MENU_MIN_SLOT_COUNT,
-      Math.ceil(COMPUTER_PARTNER_KEYS.length / COMPUTER_PARTNER_MENU_ROWS) * COMPUTER_PARTNER_MENU_ROWS,
+      Math.ceil(COMPUTER_PARTNER_MENU_ENTRIES.length / COMPUTER_PARTNER_MENU_ROWS)
+        * COMPUTER_PARTNER_MENU_ROWS,
     );
     const playerLabel = `Player ${currentPartnerPlayerIndex + 1}`;
-    const options: OptionSelectItem[] = COMPUTER_PARTNER_KEYS.map(key => {
+    const options = this.createComputerPartnerMenuOptions(key => {
       const profile = getComputerPartnerProfile(key);
       const enabled = key !== firstPartnerKey && globalScene.gameData.isComputerPartnerUnlocked(key);
       return {
@@ -1696,6 +1732,12 @@ export class TitlePhase extends Phase {
         },
       },
     );
+  }
+
+  private createComputerPartnerMenuOptions(createOption: (key: ComputerPartnerKey) => OptionSelectItem): OptionSelectItem[] {
+    return COMPUTER_PARTNER_MENU_ENTRIES.map(entry => isKnownComputerPartnerKey(entry)
+      ? createOption(entry)
+      : { label: entry, handler: () => false, disabled: true, style: TextStyle.SETTINGS_LOCKED });
   }
 
   private getComputerPartnerSelectionIndexes(
@@ -1901,8 +1943,10 @@ export class TitlePhase extends Phase {
     const runSeed = activeOverrides.SEED_OVERRIDE || getTwoPlayerRunSeedOverride() || randomString(24);
     globalScene.setSeed(runSeed);
     globalScene.resetSeed();
+    this.mysteryEncounterFrequency = getMysteryEncounterFrequencySetting();
     const titleStart: TwoPlayerTitleStart = {
       action: "new-run",
+      mysteryEncounterFrequency: this.mysteryEncounterFrequency,
       gameMode,
       ...(gameMode === GameModes.CHALLENGE ? { challenges: this.selectedChallenges } : {}),
       partySize,
@@ -2048,16 +2092,7 @@ export class TitlePhase extends Phase {
       globalScene.uiInputs?.broadcastTwoPlayerProfileSnapshot();
       let localSlot = this.onlineHostLoadSlot;
       if (member.seat !== "p1") {
-        localSlot = NO_SAVE_SLOT;
-        for (let slot = 0; slot < 5; slot++) {
-          if (!(await globalScene.gameData.getSession(slot))) {
-            localSlot = slot;
-            break;
-          }
-        }
-        if (localSlot < 0) {
-          throw new Error("A guest has no empty save slot. Free a slot and create a new lobby.");
-        }
+        localSlot = GUEST_SAVE_SLOT;
       }
       if (this.onlineLoadId !== loadId) {
         return;
@@ -2168,6 +2203,8 @@ export class TitlePhase extends Phase {
         gameMode === GameModes.CHALLENGE
           ? (titleStart.challenges ?? []).map(challenge => new ChallengeData(challenge))
           : [];
+
+      this.mysteryEncounterFrequency = normalizeMysteryEncounterFrequency(titleStart.mysteryEncounterFrequency);
 
       const playerCount = titleStart.playerCount ?? 2;
       const computerPartnerPlayerIndexes = this.getTitleStartComputerPartnerPlayerIndexes(titleStart, playerCount);
@@ -2482,6 +2519,8 @@ export class TitlePhase extends Phase {
     }
 
     if (!this.loaded && !globalScene.gameMode.isDaily) {
+      globalScene.mysteryEncounterSaveData.frequency =
+        this.mysteryEncounterFrequency ?? getMysteryEncounterFrequencySetting();
       globalScene.gameMode = getGameMode(this.gameMode);
       this.applySelectedChallenges();
       const players = globalScene.getActivePlayerIndexes();

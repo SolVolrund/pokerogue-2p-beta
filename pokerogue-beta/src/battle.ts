@@ -112,6 +112,8 @@ export class Battle {
   /** If the current battle is a Mystery Encounter, this will always be defined */
   public mysteryEncounter?: MysteryEncounter | undefined;
   public playerFieldOwners: PlayerIndex[] | undefined;
+  /** A temporary doubles field controlled by one mystery-encounter participant. */
+  public mysteryEncounterSoloPlayerIndex: PlayerIndex | undefined;
   public mysteryEncounterBattlerCount?: number | undefined;
   public mysteryEncounterEnemySidePlayerIndexes: PlayerIndex[] | undefined;
   public computerPartnerCaptureClaims: Array<{ playerIndex: PlayerIndex; targetId: number }> = [];

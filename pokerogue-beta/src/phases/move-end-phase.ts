@@ -3,6 +3,7 @@ import { globalScene } from "#app/global-scene";
 import type { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagLapseType } from "#enums/battler-tag-lapse-type";
 import type { Pokemon } from "#field/pokemon";
+import { finishRollingMove, type RollingMoveExecution } from "#moves/rolling-move";
 import { PokemonPhase } from "#phases/pokemon-phase";
 
 export class MoveEndPhase extends PokemonPhase {
@@ -15,7 +16,12 @@ export class MoveEndPhase extends PokemonPhase {
 
   /** Targets from the preceding MovePhase */
   private readonly targets: Pokemon[];
-  constructor(battlerIndex: BattlerIndex, targets: Pokemon[], wasFollowUp = false) {
+  constructor(
+    battlerIndex: BattlerIndex,
+    targets: Pokemon[],
+    wasFollowUp = false,
+    private readonly rollingMoveExecution?: RollingMoveExecution,
+  ) {
     super(battlerIndex);
 
     this.targets = targets;
@@ -26,6 +32,10 @@ export class MoveEndPhase extends PokemonPhase {
     super.start();
 
     const pokemon = this.getPokemon();
+
+    if (this.rollingMoveExecution) {
+      finishRollingMove(this.rollingMoveExecution);
+    }
 
     // Reset hit-related temporary data.
     // TODO: These properties should be stored inside a "move in flight" object,

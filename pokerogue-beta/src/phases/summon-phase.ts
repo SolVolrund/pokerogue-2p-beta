@@ -11,6 +11,7 @@ import { MysteryEncounterMode } from "#enums/mystery-encounter-mode";
 import { getTrainerSlotForFieldIndex } from "#enums/trainer-slot";
 import type { Pokemon } from "#field/pokemon";
 import { PartyMemberPokemonPhase } from "#phases/party-member-pokemon-phase";
+import { playTrainerThrowAnimation } from "#utils/trainer-throw-animation";
 import i18next from "i18next";
 
 export class SummonPhase extends PartyMemberPokemonPhase {
@@ -21,11 +22,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
 
   constructor(fieldIndex: number, player = true, loaded = false) {
     const partyMemberIndex =
-      player && globalScene.twoPlayerMode
-        ? globalScene.twoPlayerEnemyPlayerMode && globalScene.multiplayerPlayerCount === 1
-          ? fieldIndex
-          : 0
-        : fieldIndex;
+      player ? globalScene.getPlayerPartyIndexForFieldSlot(fieldIndex) : fieldIndex;
     super(partyMemberIndex, player);
 
     this.fieldIndex = fieldIndex;
@@ -162,12 +159,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
         .setTexture(globalScene.getTrainerBackTextureKey(playerIndex, true))
         .setY(globalScene.getTrainerBackSpriteY(playerIndex))
         .setX(trainerStartX);
-      globalScene.time.delayedCall(562, () => {
-        trainerSprite.setFrame("2");
-        globalScene.time.delayedCall(64, () => {
-          trainerSprite.setFrame("3");
-        });
-      });
+      playTrainerThrowAnimation(trainerSprite);
       globalScene.tweens.add({
         targets: trainerSprite,
         x: -36,

@@ -12,6 +12,7 @@ import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { StatusEffect } from "#enums/status-effect";
+import { Pokemon } from "#field/pokemon";
 import { AttackTypeBoosterModifier, PokemonHeldItemModifier } from "#modifiers/modifier";
 import * as EncounterPhaseUtils from "#mystery-encounters/encounter-phase-utils";
 import { FieryFalloutEncounter } from "#mystery-encounters/fiery-fallout-encounter";
@@ -47,6 +48,9 @@ describe("Fiery Fallout - Mystery Encounter", () => {
   beforeEach(async () => {
     game = new GameManager(phaserGame);
     scene = game.scene;
+    // Headless sprites have no animation frame for accessory rendering.
+    vi.spyOn(Pokemon.prototype, "playAnim").mockImplementation(() => {});
+    vi.spyOn(Pokemon.prototype, "refreshAccessoryOutfitSprites").mockImplementation(() => {});
     game.override
       .mysteryEncounterChance(100)
       .startingWave(defaultWave)
@@ -124,6 +128,7 @@ describe("Fiery Fallout - Mystery Encounter", () => {
           },
         ],
         doubleBattle: true,
+        battlerCountOverride: 2,
         disableSwitch: true,
       },
     ]);

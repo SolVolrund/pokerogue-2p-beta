@@ -302,6 +302,14 @@ export abstract class Move implements Localizable {
     return this._category;
   }
 
+  /** Create an attack-local category without changing the shared move or rerunning category attributes. */
+  withResolvedCategory(category: MoveCategory): Move {
+    return Object.assign(Object.create(Object.getPrototypeOf(this)), this, {
+      _category: category,
+      attrs: this.attrs.filter(attr => !(attr instanceof VariableMoveCategoryAttr)),
+    });
+  }
+
   localize(): void {
     const i18nKey = toCamelCase(MoveId[this.id]);
 
@@ -914,6 +922,9 @@ export abstract class Move implements Localizable {
       case MoveFlags.MAKES_CONTACT:
         if (user.hasAbilityWithAttr("IgnoreContactAbAttr") || this.hitsSubstitute(user, target)) {
           return false;
+        }
+        if (target && this.hasAttr("ShellSideArmCategoryAttr")) {
+          return user.getMoveCategory(target, this) === MoveCategory.PHYSICAL;
         }
         break;
       case MoveFlags.IGNORE_ABILITIES:
@@ -2106,7 +2117,7 @@ export class CounterDamageAttr extends FixedDamageAttr {
   apply(user: Pokemon, _target: Pokemon, _move: Move, args: any[]): boolean {
     const damage =
       user.turnData.attacksReceived.find(ar => {
-        const category = allMoves[ar.move].category;
+        const category = ar.category ?? allMoves[ar.move].category;
         return (
           category !== MoveCategory.STATUS
           && !areAllies(user.getBattlerIndex(), ar.sourceBattlerIndex)
@@ -5167,6 +5178,30 @@ export class ConsecutiveUseDoublePowerAttr extends ConsecutiveUsePowerMultiplier
   }
 }
 
+export class RollingMovePowerAttr extends MovePowerMultiplierAttr {
+  constructor() {
+    super((user, _target, move) => {
+      const state = user.summonData.rollingMove;
+      const count = state?.move === move.id ? state.count : 0;
+      return 2 ** count * (user.summonData.defenseCurled ? 2 : 1);
+    });
+  }
+}
+
+export class DefenseCurlAttr extends MoveEffectAttr {
+  constructor() {
+    super(true);
+  }
+
+  override apply(user: Pokemon, target: Pokemon, move: Move, args: any[]): boolean {
+    if (!super.apply(user, target, move, args)) {
+      return false;
+    }
+    user.summonData.defenseCurled = true;
+    return true;
+  }
+}
+
 export class ConsecutiveUseMultiBasePowerAttr extends ConsecutiveUsePowerMultiplierAttr {
   getMultiplier(count: number): number {
     return count + 1;
@@ -6067,37 +6102,32 @@ export class TeraBlastPowerAttr extends VariablePowerAttr {
 export class ShellSideArmCategoryAttr extends VariableMoveCategoryAttr {
   apply(user: Pokemon, target: Pokemon, move: Move, args: any[]): boolean {
     const category = args[0] as NumberHolder;
+    const resolveTie = args[1] === true;
+    // Forecast only raw in-battle stats and stages, not abilities, items, weather, or damage modifiers.
+    const stagedStat = (pokemon: Pokemon, stat: Stat.ATK | Stat.DEF | Stat.SPATK | Stat.SPDEF): number => {
+      const stage = pokemon.getStatStage(stat);
+      const multiplier = Math.max(2, 2 + stage) / Math.max(2, 2 - stage);
+      return Math.max(1, Math.floor(pokemon.getStat(stat, false) * multiplier));
+    };
+    const levelPower = Math.floor(2 * user.level / 5 + 2) * move.power;
+    const forecast = (attack: number, defense: number): number =>
+      Math.floor(Math.floor(levelPower * attack / defense) / 50);
+    const physical = forecast(stagedStat(user, Stat.ATK), stagedStat(target, Stat.DEF));
+    const special = forecast(stagedStat(user, Stat.SPATK), stagedStat(target, Stat.SPDEF));
+    // AI/UI forecasts must not consume battle RNG. Resolve a tie once when the actual attack begins.
+    const isPhysical = physical > special || (physical === special && resolveTie && user.randBattleSeedInt(2) === 0);
+    category.value = isPhysical ? MoveCategory.PHYSICAL : MoveCategory.SPECIAL;
+    return isPhysical;
+  }
 
-    const predictedPhysDmg = target.getBaseDamage({
-      source: user,
-      move,
-      moveCategory: MoveCategory.PHYSICAL,
-      ignoreAbility: true,
-      ignoreSourceAbility: true,
-      ignoreAllyAbility: true,
-      ignoreSourceAllyAbility: true,
-      simulated: true,
-    });
-    const predictedSpecDmg = target.getBaseDamage({
-      source: user,
-      move,
-      moveCategory: MoveCategory.SPECIAL,
-      ignoreAbility: true,
-      ignoreSourceAbility: true,
-      ignoreAllyAbility: true,
-      ignoreSourceAllyAbility: true,
-      simulated: true,
-    });
-
-    if (predictedPhysDmg > predictedSpecDmg) {
-      category.value = MoveCategory.PHYSICAL;
-      return true;
+  resolveMove(user: Pokemon, target: Pokemon, move: Move): Move {
+    const category = new NumberHolder(move.category);
+    this.apply(user, target, move, [category, true]);
+    const resolved = move.withResolvedCategory(category.value);
+    if (category.value === MoveCategory.PHYSICAL) {
+      resolved.makesContact();
     }
-    if (predictedPhysDmg === predictedSpecDmg && user.randBattleSeedInt(2) === 0) {
-      category.value = MoveCategory.PHYSICAL;
-      return true;
-    }
-    return false;
+    return resolved;
   }
 }
 
@@ -7633,7 +7663,7 @@ function getVsLaneForArenaTags(
   side: ArenaTagSide,
 ): number | undefined {
   if (
-    !globalScene.twoPlayerVsMode
+    !globalScene.isVsLaneBattle()
     || !tagTypes.some(tagType => (vsLaneScopedArenaTags as readonly ArenaTagType[]).includes(tagType))
   ) {
     return undefined;
@@ -8164,8 +8194,14 @@ export class RemoveTypeAttr extends MoveEffectAttr {
       return false;
     }
 
-    const userTypes = user.getTypes();
+    const userTypes = user.getTypes({ ignoreAceType: true, ignoreThirdType: true });
     const modifiedTypes = userTypes.filter(type => type !== this.removedType);
+    if (user.getAceType() === this.removedType) {
+      user.summonData.aceTypeSuppressed = true;
+    }
+    if (user.summonData.addedType === this.removedType) {
+      user.summonData.addedType = null;
+    }
     if (modifiedTypes.length === 0) {
       modifiedTypes.push(PokemonType.UNKNOWN);
     }
@@ -8191,7 +8227,11 @@ export class CopyTypeAttr extends MoveEffectAttr {
       return false;
     }
 
-    const targetTypes = target.getTypes({ returnOriginalTypesIfStellar: true });
+    const targetTypes = target.getTypes({
+      returnOriginalTypesIfStellar: true,
+      ignoreAceType: user.getAceType() !== undefined,
+      ignoreThirdType: user.getAceType() !== undefined,
+    });
     // Replace UNKNOWN with grass type
     // TODO: `getTypes` arguably shouldn't include `UNKNOWN` if a type was added anyways,
     // and this should DEFNINITELY get its own helper function for Roost and co.
@@ -9904,6 +9944,8 @@ const MoveAttrs = Object.freeze({
   DoublePowerChanceAttr,
   ConsecutiveUsePowerMultiplierAttr,
   ConsecutiveUseDoublePowerAttr,
+  RollingMovePowerAttr,
+  DefenseCurlAttr,
   ConsecutiveUseMultiBasePowerAttr,
   WeightPowerAttr,
   ElectroBallPowerAttr,
@@ -10365,7 +10407,8 @@ export function initMoves() {
     new SelfStatusMove(MoveId.WITHDRAW, PokemonType.WATER, -1, 40, -1, 0, 1) //
       .attr(StatStageChangeAttr, [Stat.DEF], 1, true),
     new SelfStatusMove(MoveId.DEFENSE_CURL, PokemonType.NORMAL, -1, 40, -1, 0, 1) //
-      .attr(StatStageChangeAttr, [Stat.DEF], 1, true),
+      .attr(StatStageChangeAttr, [Stat.DEF], 1, true)
+      .attr(DefenseCurlAttr),
     new SelfStatusMove(MoveId.BARRIER, PokemonType.PSYCHIC, -1, 20, -1, 0, 1) //
       .attr(StatStageChangeAttr, [Stat.DEF], 2, true),
     new StatusMove(MoveId.LIGHT_SCREEN, PokemonType.PSYCHIC, -1, 30, -1, 0, 1)
@@ -10688,8 +10731,7 @@ export function initMoves() {
       .attr(StatStageChangeAttr, [Stat.ATK], -2)
       .reflectable(),
     new AttackMove(MoveId.ROLLOUT, PokemonType.ROCK, MoveCategory.PHYSICAL, 30, 90, 20, -1, 0, 2)
-      .partial() // Does not lock the user, also does not increase damage properly
-      .attr(ConsecutiveUseDoublePowerAttr, 5, true, true, MoveId.DEFENSE_CURL),
+      .attr(RollingMovePowerAttr),
     new AttackMove(MoveId.FALSE_SWIPE, PokemonType.NORMAL, MoveCategory.PHYSICAL, 40, 100, 40, -1, 0, 2) //
       .attr(SurviveDamageAttr),
     new StatusMove(MoveId.SWAGGER, PokemonType.NORMAL, 85, 15, -1, 0, 2)
@@ -11059,8 +11101,7 @@ export function initMoves() {
       .attr(AddArenaTagAttr, ArenaTagType.MUD_SPORT, 5)
       .target(MoveTarget.BOTH_SIDES),
     new AttackMove(MoveId.ICE_BALL, PokemonType.ICE, MoveCategory.PHYSICAL, 30, 90, 20, -1, 0, 3)
-      .partial() // Does not lock the user properly, does not increase damage correctly
-      .attr(ConsecutiveUseDoublePowerAttr, 5, true, true, MoveId.DEFENSE_CURL)
+      .attr(RollingMovePowerAttr)
       .ballBombMove(),
     new AttackMove(MoveId.NEEDLE_ARM, PokemonType.GRASS, MoveCategory.PHYSICAL, 60, 100, 15, 30, 0, 3) //
       .attr(FlinchAttr),
@@ -12769,8 +12810,7 @@ export function initMoves() {
       .chargeAttr(StatStageChangeAttr, [Stat.SPATK], 1, true),
     new AttackMove(MoveId.SHELL_SIDE_ARM, PokemonType.POISON, MoveCategory.SPECIAL, 90, 100, 10, 20, 0, 8)
       .attr(ShellSideArmCategoryAttr)
-      .attr(StatusEffectAttr, StatusEffect.POISON)
-      .partial(), // Physical version of the move does not make contact
+      .attr(StatusEffectAttr, StatusEffect.POISON),
     new AttackMove(MoveId.MISTY_EXPLOSION, PokemonType.FAIRY, MoveCategory.SPECIAL, 100, 100, 5, -1, 0, 8)
       .attr(SacrificialAttr)
       .target(MoveTarget.ALL_NEAR_OTHERS)

@@ -3,6 +3,7 @@ import { BattlerIndex } from "#enums/battler-index";
 import { MoveId } from "#enums/move-id";
 import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
+import { Pokemon } from "#field/pokemon";
 import { GameManager } from "#test/framework/game-manager";
 import Phaser from "phaser";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,6 +20,8 @@ describe("Moves - Tera Starstorm", () => {
 
   beforeEach(() => {
     game = new GameManager(phaserGame);
+    vi.spyOn(Pokemon.prototype, "playAnim").mockImplementation(() => {});
+    vi.spyOn(Pokemon.prototype, "refreshAccessoryOutfitSprites").mockImplementation(() => {});
     game.override
       .moveset([MoveId.TERA_STARSTORM, MoveId.SPLASH])
       .battleStyle("double")

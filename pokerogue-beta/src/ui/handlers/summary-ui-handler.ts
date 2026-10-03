@@ -3,7 +3,7 @@ import { loggedInUser } from "#app/account";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
-import { starterColors } from "#app/global-vars/starter-colors";
+import { getStarterColors } from "#app/global-vars/starter-colors";
 import { getStarterValueFriendshipCap } from "#balance/starters";
 import { getContestSpectacularEffect } from "#data/contests/contest-spectacular-effects";
 import { getContestSpectacularMove } from "#data/contests/contest-spectacular-moves";
@@ -394,7 +394,7 @@ export class SummaryUiHandler extends UiHandler {
 
     this.shinyOverlay.setVisible(this.pokemon.isShiny());
 
-    const colorScheme = starterColors[this.pokemon.species.getRootSpeciesId()];
+    const colorScheme = getStarterColors(this.pokemon.species.getRootSpeciesId());
     this.candyIcon.setTint(argbFromRgba(rgbHexToRgba(colorScheme[0])));
     this.candyOverlay.setTint(argbFromRgba(rgbHexToRgba(colorScheme[1])));
 
@@ -935,8 +935,13 @@ export class SummaryUiHandler extends UiHandler {
         typeLabel.setOrigin(0, 0);
         profileContainer.add(typeLabel);
 
+        const types = this.pokemon!.getTypes({
+          includeTeraType: false,
+          bypassSummonData: true,
+          ignoreThirdType: true,
+        });
         const getTypeIcon = (index: number, type: PokemonType, tera = false) => {
-          const xCoord = typeLabel.width * typeLabel.scale + 9 + 34 * index;
+          const xCoord = typeLabel.width * typeLabel.scale + 9 + (types.length > 2 ? 27 : 34) * index;
           const typeIcon = tera
             ? globalScene.add.sprite(xCoord, 42, "type_tera")
             : globalScene.add.sprite(xCoord, 42, getLocalizedSpriteKey("types"), PokemonType[type].toLowerCase());
@@ -944,20 +949,14 @@ export class SummaryUiHandler extends UiHandler {
             typeIcon.setScale(0.5);
             const typeRgb = getTypeRgb(type);
             typeIcon.setTint(Phaser.Display.Color.GetColor(typeRgb[0], typeRgb[1], typeRgb[2]));
+          } else if (types.length > 2) {
+            typeIcon.setScale(0.8);
           }
           typeIcon.setOrigin(0, 1);
           return typeIcon;
         };
 
-        const types = this.pokemon?.getTypes({
-          includeTeraType: false,
-          bypassSummonData: true,
-          ignoreThirdType: true,
-        })!; // TODO: is this bang correct?
-        profileContainer.add(getTypeIcon(0, types[0]));
-        if (types.length > 1) {
-          profileContainer.add(getTypeIcon(1, types[1]));
-        }
+        types.forEach((type, index) => profileContainer.add(getTypeIcon(index, type)));
 
         if (this.pokemon?.getLuck()) {
           const luckLabelText = addTextObject(

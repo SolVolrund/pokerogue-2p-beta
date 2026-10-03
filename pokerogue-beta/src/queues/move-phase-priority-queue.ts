@@ -2,6 +2,8 @@ import type { Pokemon } from "#app/field/pokemon";
 import { globalScene } from "#app/global-scene";
 import type { MovePhase } from "#app/phases/move-phase";
 import { DynamicPhasePriorityQueue } from "#app/queues/pokemon-phase-priority-queue";
+import { resolveAbsentMoveTarget } from "#moves/move-utils";
+import { isRollingMove } from "#moves/rolling-move";
 import type { MovePhaseTimingModifier } from "#enums/move-phase-timing-modifier";
 import type { MovePriorityInBracket } from "#enums/move-priority-in-bracket";
 import type { PhaseConditionFunc } from "#types/phase-types";
@@ -46,27 +48,26 @@ export class MovePhasePriorityQueue extends DynamicPhasePriorityQueue<MovePhase>
     }
   }
 
-  public redirectMoves(removedPokemon: Pokemon, allyPokemon: Pokemon): void {
+  public redirectMoves(removedPokemon: Pokemon, _allyPokemon: Pokemon): void {
     // failsafe: if not a double battle just return
     if (!globalScene.currentBattle.double) {
       return;
     }
 
-    // TODO: simplify later
-    if (allyPokemon?.isActive(true)) {
-      this.queue
-        .filter(
-          mp =>
-            mp.targets.length === 1
-            && mp.targets[0] === removedPokemon.getBattlerIndex()
-            && mp.pokemon.isOpponent(allyPokemon),
-        )
-        .forEach(targetingMovePhase => {
-          // TODO: this shouldn't ever be falsy
-          if (targetingMovePhase && targetingMovePhase.targets[0] !== allyPokemon.getBattlerIndex()) {
-            targetingMovePhase.targets[0] = allyPokemon.getBattlerIndex();
-          }
-        });
+    for (const phase of this.queue) {
+      // Rolling moves resolve at execution time without changing their preferred slot.
+      if (
+        phase.targets.length !== 1
+        || phase.targets[0] !== removedPokemon.getBattlerIndex()
+        || !phase.pokemon.isOpponent(removedPokemon)
+        || isRollingMove(phase.move.moveId)
+      ) {
+        continue;
+      }
+      const replacement = resolveAbsentMoveTarget(phase.pokemon, phase.move.getMove(), phase.targets[0]);
+      if (replacement !== undefined) {
+        phase.targets[0] = replacement;
+      }
     }
   }
 

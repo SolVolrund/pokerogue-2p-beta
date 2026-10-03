@@ -70,7 +70,8 @@ export class EnemyCommandPhase extends FieldPhase {
       return;
     }
 
-    if (!globalScene.twoPlayerVsMode && !this.skipTurn && shouldAiRepositionToCenter(enemyPokemon)) {
+    const moveLocked = enemyPokemon.getMoveQueue().length > 0;
+    if (!moveLocked && !globalScene.isVsLaneBattle() && !this.skipTurn && shouldAiRepositionToCenter(enemyPokemon)) {
       battle.turnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = {
         command: Command.REPOSITION,
         cursor: FieldPosition.CENTER,
@@ -81,7 +82,7 @@ export class EnemyCommandPhase extends FieldPhase {
     }
 
     const usePlannerAi = globalScene.plannerAiEnabled && enemyPokemon.aiType === AiType.PLANNER;
-    if (!globalScene.twoPlayerVsMode && !this.skipTurn && usePlannerAi) {
+    if (!moveLocked && !globalScene.isVsLaneBattle() && !this.skipTurn && usePlannerAi) {
       const allyAlreadyRepositioning = globalScene.getEnemyField().some((fieldPokemon, fieldIndex) => {
         if (fieldPokemon === enemyPokemon) {
           return false;
@@ -112,7 +113,7 @@ export class EnemyCommandPhase extends FieldPhase {
      */
     if (
       trainer
-      && !globalScene.twoPlayerVsMode
+      && !globalScene.isVsLaneBattle()
       && enemyPokemon.getMoveQueue().length === 0
       && !isMysteryEncounterSwitchProtectedPokemon(enemyPokemon)
     ) {

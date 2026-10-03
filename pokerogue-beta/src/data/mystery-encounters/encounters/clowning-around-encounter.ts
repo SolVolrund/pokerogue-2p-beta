@@ -1,3 +1,4 @@
+import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
@@ -95,6 +96,10 @@ interface ClowningAroundData {
   ability: AbilityId;
   choices: ClowningAroundChoice[];
   battlePlayers: PlayerIndex[];
+  trialPlayers?: PlayerIndex[];
+  trialIndex?: number;
+  winningPlayers?: PlayerIndex[];
+  suppressVsModeVictory?: boolean;
   skipSelectedDialogueOnce?: boolean;
 }
 
@@ -436,6 +441,9 @@ function chooseComputerPartnerAbilityPokemon(playerIndex: PlayerIndex): PlayerPo
 function queueClowningAroundStartOfBattleEffects(battlePlayers: PlayerIndex[]): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const blacephalonBattlerIndex = battlePlayers.length > 2 ? BattlerIndex.ENEMY_3 : BattlerIndex.ENEMY_2;
+  const playerSlotCount = globalScene.twoPlayerMode ? globalScene.getPlayerFieldOwners().length : 2;
+  encounter.startOfBattleEffects = [];
+  encounter.startOfBattleEffectsComplete = false;
   encounter.startOfBattleEffects.push(
     {
       sourceBattlerIndex: BattlerIndex.ENEMY,
@@ -443,18 +451,14 @@ function queueClowningAroundStartOfBattleEffects(battlePlayers: PlayerIndex[]): 
       move: new PokemonMove(MoveId.ROLE_PLAY),
       useMode: MoveUseMode.IGNORE_PP,
     },
-    {
-      sourceBattlerIndex: blacephalonBattlerIndex,
-      targets: [BattlerIndex.PLAYER],
-      move: new PokemonMove(MoveId.TAUNT),
-      useMode: MoveUseMode.IGNORE_PP,
-    },
-    ...battlePlayers.slice(1).map((_playerIndex, fieldIndex) => ({
-      sourceBattlerIndex: blacephalonBattlerIndex,
-      targets: [globalScene.getPlayerBattlerIndex(fieldIndex + 1)],
-      move: new PokemonMove(MoveId.TAUNT),
-      useMode: MoveUseMode.IGNORE_PP,
-    })),
+    ...Array.from({ length: playerSlotCount }, (_, fieldIndex) => fieldIndex)
+      .filter(fieldIndex => globalScene.getPlayerPokemonForFieldSlot(fieldIndex)?.isAllowedInBattle())
+      .map(fieldIndex => ({
+        sourceBattlerIndex: blacephalonBattlerIndex,
+        targets: [globalScene.getPlayerBattlerIndex(fieldIndex)],
+        move: new PokemonMove(MoveId.TAUNT),
+        useMode: MoveUseMode.IGNORE_PP,
+      })),
   );
 }
 
@@ -469,7 +473,7 @@ function createMrMimeEnemyConfig(): EnemyPokemonConfig {
 function createClowningAroundBattleConfig(battlePlayers: PlayerIndex[]): EnemyPartyConfig {
   const config = globalScene.currentBattle.mysteryEncounter!.enemyPartyConfigs[0];
   if (battlePlayers.length <= 2) {
-    return config;
+    return { ...config, battlerCountOverride: 2 };
   }
 
   const [firstMrMimeConfig, blacephalonConfig] = config.pokemonConfigs ?? [];
@@ -479,6 +483,7 @@ function createClowningAroundBattleConfig(battlePlayers: PlayerIndex[]): EnemyPa
 
   return {
     ...config,
+    battlerCountOverride: 3,
     pokemonConfigs: [
       firstMrMimeConfig,
       {
@@ -493,6 +498,68 @@ function createClowningAroundBattleConfig(battlePlayers: PlayerIndex[]): EnemyPa
   };
 }
 
+function prepareClowningAroundPlayers(battlePlayers: PlayerIndex[]): void {
+  globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers, true);
+  for (const playerIndex of battlePlayers) {
+    const party = globalScene.getPlayerParty(playerIndex);
+    // Reserve distinct legal leads for both slots, even when the old lead has fainted.
+    party.sort((a, b) => Number(b.isAllowedInBattle()) - Number(a.isAllowedInBattle()));
+  }
+  globalScene.waitForPlayerInput(battlePlayers[0]);
+}
+
+function clearClowningAroundTrialField(): void {
+  for (const pokemon of globalScene.getPlayerField()) {
+    pokemon.leaveField(true, true);
+  }
+  globalScene.arena.resetArenaEffects();
+  const battle = globalScene.currentBattle;
+  battle.playerParticipantIds.clear();
+  battle.enemyParty = [];
+  battle.enemyFaints = 0;
+  battle.playerFaintsHistory = [];
+  battle.enemyFaintsHistory = [];
+  battle.enemyTeraUsedTrainerSlots.clear();
+  battle.enemyZMoveUsedTrainerSlots.clear();
+  battle.moneyScattered = 0;
+  battle.lastMove = MoveId.NONE;
+  battle.turn = 0;
+  battle.incrementTurn();
+}
+
+async function startClowningAroundTrial(): Promise<void> {
+  const data = getClowningAroundData();
+  const playerIndex = data.trialPlayers![data.trialIndex!];
+  prepareClowningAroundPlayers([playerIndex]);
+  for (const pokemon of globalScene.getPlayerParty(playerIndex)) {
+    pokemon.resetBattleAndWaveData();
+    applyAbAttrs("PostBattleInitAbAttr", { pokemon });
+  }
+  queueClowningAroundStartOfBattleEffects([playerIndex]);
+  await initBattleWithEnemyConfig(createClowningAroundBattleConfig([playerIndex]));
+}
+
+async function continueClowningAroundTrials(): Promise<void> {
+  const data = getClowningAroundData();
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  const playerIndex = data.trialPlayers![data.trialIndex!];
+  if (globalScene.getEnemyParty().every(pokemon => pokemon.hp <= 0)) {
+    data.winningPlayers!.push(playerIndex);
+    setEncounterRewards({ fillRemaining: true }, undefined, undefined, playerIndex);
+  }
+
+  clearClowningAroundTrialField();
+  data.trialIndex = data.trialIndex! + 1;
+  if (data.trialIndex! < data.trialPlayers!.length) {
+    await startClowningAroundTrial();
+  } else {
+    encounter.doContinueEncounter = undefined;
+    // Queue final rewards directly: the currently running rewards phase owns this continuation.
+    globalScene.phaseManager.pushNew("MysteryEncounterRewardsPhase");
+    globalScene.phaseManager.pushNew("EggLapsePhase");
+  }
+}
+
 async function runMultiplayerClowningAroundChoices(): Promise<boolean> {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const data = getClowningAroundData();
@@ -505,7 +572,6 @@ async function runMultiplayerClowningAroundChoices(): Promise<boolean> {
     await showEncounterDialogue(`${namespace}:option.${choice.optionIndex}.selected`, `${namespace}:speaker`);
 
     if (choice.optionIndex === 1) {
-      setEncounterRewards({ fillRemaining: true }, undefined, undefined, choice.playerIndex);
       battlePlayers.push(choice.playerIndex);
       continue;
     }
@@ -528,12 +594,28 @@ async function runMultiplayerClowningAroundChoices(): Promise<boolean> {
     return true;
   }
 
-  globalScene.waitForPlayerInput(battlePlayers[0]);
-  globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
-  queueClowningAroundStartOfBattleEffects(battlePlayers);
   await transitionMysteryEncounterIntroVisuals();
   await hideClowningAroundNonBattleTrainers(battlePlayers);
-  await initBattleWithEnemyConfig(createClowningAroundBattleConfig(battlePlayers));
+  data.winningPlayers = [];
+  if (globalScene.twoPlayerVsMode) {
+    data.trialPlayers = battlePlayers;
+    data.trialIndex = 0;
+    data.suppressVsModeVictory = true;
+    encounter.doContinueEncounter = continueClowningAroundTrials;
+    await startClowningAroundTrial();
+  } else {
+    prepareClowningAroundPlayers(battlePlayers);
+    queueClowningAroundStartOfBattleEffects(battlePlayers);
+    encounter.onRewards = async () => {
+      if (globalScene.getEnemyParty().every(pokemon => pokemon.hp <= 0)) {
+        data.winningPlayers = [...battlePlayers];
+        for (const playerIndex of battlePlayers) {
+          setEncounterRewards({ fillRemaining: true }, undefined, undefined, playerIndex);
+        }
+      }
+    };
+    await initBattleWithEnemyConfig(createClowningAroundBattleConfig(battlePlayers));
+  }
   return true;
 }
 
@@ -766,7 +848,7 @@ export const ClowningAroundEncounter: MysteryEncounter = MysteryEncounterBuilder
 
 async function runClowningAroundPostOptionPhase(): Promise<boolean> {
   const data = getClowningAroundData();
-  for (const playerIndex of data.battlePlayers) {
+  for (const playerIndex of data.winningPlayers ?? data.battlePlayers) {
     globalScene.waitForPlayerInput(playerIndex);
     const abilityWasSwapped = await handleSwapAbility(playerIndex);
     if (abilityWasSwapped) {
@@ -785,16 +867,26 @@ async function runClowningAroundPostOptionPhase(): Promise<boolean> {
     });
   }
 
+  const animationPokemon = globalScene.getPlayerPokemon()
+    ?? globalScene.getPlayerParty(data.battlePlayers[0] ?? 0)[0];
   const background = new EncounterBattleAnim(
     EncounterAnim.SMOKESCREEN,
-    globalScene.getPlayerPokemon()!,
-    globalScene.getPlayerPokemon(),
+    animationPokemon,
+    animationPokemon,
   );
   background.playWithoutTargets(230, 40, 2);
 
   if (data.battlePlayers.length === 0) {
     await transitionMysteryEncounterIntroVisuals(true, true, 200);
   }
+
+  if (globalScene.currentBattle.mysteryEncounterSoloPlayerIndex !== undefined) {
+    // Do not leave the second party member on the field when normal multiplayer resumes.
+    for (const pokemon of globalScene.getPlayerField()) {
+      pokemon.leaveField(true, true);
+    }
+  }
+  data.suppressVsModeVictory = false;
 
   globalScene.waitForPlayerInput(0);
   return true;

@@ -44,6 +44,7 @@ import {
   getComputerPartnerProfileWithRolePreferences,
 } from "#utils/computer-partner-profile";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
+import { playTrainerThrowAnimation } from "#utils/trainer-throw-animation";
 
 /** the i18n namespace for the encounter */
 const namespace = "mysteryEncounters/safariZone";
@@ -1164,19 +1165,17 @@ async function throwBait(pokemon: EnemyPokemon, playerIndex: PlayerIndex = globa
   return new Promise(resolve => {
     trainerSprite.setVisible(true);
     trainerSprite.setTexture(globalScene.getTrainerBackTextureKey(playerIndex, true));
+    playTrainerThrowAnimation(trainerSprite, {
+      releaseDelay: TRAINER_THROW_ANIMATION_TIMES[0],
+      windupDelay: TRAINER_THROW_ANIMATION_TIMES[0],
+      frameDuration: TRAINER_THROW_ANIMATION_TIMES[1],
+    });
+    globalScene.time.delayedCall(
+      TRAINER_THROW_ANIMATION_TIMES[0] + TRAINER_THROW_ANIMATION_TIMES[1] + TRAINER_THROW_ANIMATION_TIMES[2],
+      () => trainerSprite.setTexture(globalScene.getTrainerBackTextureKey(playerIndex)),
+    );
     globalScene.time.delayedCall(TRAINER_THROW_ANIMATION_TIMES[0], () => {
       audioManager.playSound("se/pb_throw");
-
-      // Trainer throw frames
-      trainerSprite.setFrame("2");
-      globalScene.time.delayedCall(TRAINER_THROW_ANIMATION_TIMES[1], () => {
-        trainerSprite.setFrame("3");
-        globalScene.time.delayedCall(TRAINER_THROW_ANIMATION_TIMES[2], () => {
-          trainerSprite.setTexture(
-            globalScene.getTrainerBackTextureKey(playerIndex),
-          );
-        });
-      });
 
       // Pokeball move and catch logic
       globalScene.tweens.add({
@@ -1234,19 +1233,17 @@ async function throwMud(pokemon: EnemyPokemon, playerIndex: PlayerIndex = global
   return new Promise(resolve => {
     trainerSprite.setVisible(true);
     trainerSprite.setTexture(globalScene.getTrainerBackTextureKey(playerIndex, true));
+    playTrainerThrowAnimation(trainerSprite, {
+      releaseDelay: TRAINER_THROW_ANIMATION_TIMES[0],
+      windupDelay: TRAINER_THROW_ANIMATION_TIMES[0],
+      frameDuration: TRAINER_THROW_ANIMATION_TIMES[1],
+    });
+    globalScene.time.delayedCall(
+      TRAINER_THROW_ANIMATION_TIMES[0] + TRAINER_THROW_ANIMATION_TIMES[1] + TRAINER_THROW_ANIMATION_TIMES[2],
+      () => trainerSprite.setTexture(globalScene.getTrainerBackTextureKey(playerIndex)),
+    );
     globalScene.time.delayedCall(TRAINER_THROW_ANIMATION_TIMES[0], () => {
       audioManager.playSound("se/pb_throw");
-
-      // Trainer throw frames
-      trainerSprite.setFrame("2");
-      globalScene.time.delayedCall(TRAINER_THROW_ANIMATION_TIMES[1], () => {
-        trainerSprite.setFrame("3");
-        globalScene.time.delayedCall(TRAINER_THROW_ANIMATION_TIMES[2], () => {
-          trainerSprite.setTexture(
-            globalScene.getTrainerBackTextureKey(playerIndex),
-          );
-        });
-      });
 
       // Mud throw and splat
       globalScene.tweens.add({

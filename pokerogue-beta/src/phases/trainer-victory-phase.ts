@@ -81,9 +81,16 @@ export class TrainerVictoryPhase extends BattlePhase {
       playerIndexes.forEach(playerIndex => globalScene.validateAchvForPlayer(achvs.BREEDERS_IN_SPACE, playerIndex));
     }
 
-    const computerPartnerUnlockKey = COMPUTER_PARTNER_UNLOCKS_BY_TRAINER_TYPE[trainerType];
-    if (computerPartnerUnlockKey) {
-      this.unlockComputerPartner(computerPartnerUnlockKey);
+    const defeatedTrainer = globalScene.currentBattle.trainer;
+    const computerPartnerUnlockKeys = new Set<ComputerPartnerKey>();
+    for (const type of [trainerType, defeatedTrainer?.partnerTrainerType, defeatedTrainer?.partnerTrainerType2]) {
+      const key = type == null ? undefined : COMPUTER_PARTNER_UNLOCKS_BY_TRAINER_TYPE[type];
+      if (key) {
+        computerPartnerUnlockKeys.add(key);
+      }
+    }
+    for (const key of computerPartnerUnlockKeys) {
+      this.unlockComputerPartner(key);
     }
 
     globalScene.ui.showText(

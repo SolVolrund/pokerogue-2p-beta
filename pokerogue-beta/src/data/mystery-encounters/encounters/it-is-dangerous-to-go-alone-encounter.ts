@@ -29,6 +29,8 @@ const PARTNER_TRAINER_TYPES: Partial<Record<ComputerPartnerKey, TrainerType>> = 
   bianca_latias: TrainerType.BIANCA_LATIAS,
   duplica_ditto: TrainerType.DUPLICA_DITTO,
   molly_hale: TrainerType.MOLLY_HALE,
+  whitney: TrainerType.WHITNEY,
+  sabrina: TrainerType.SABRINA,
 };
 const ELIGIBLE_PARTNER_KEYS = COMPUTER_PARTNER_KEYS.filter(
   key => key !== "alex" && PARTNER_TRAINER_TYPES[key] !== undefined,

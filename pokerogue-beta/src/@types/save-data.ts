@@ -188,6 +188,7 @@ export interface StarterAttributes {
   shiny?: boolean | undefined;
   favorite?: boolean | undefined;
   ace?: boolean | undefined;
+  aceType?: PokemonType | undefined;
   accessoryOutfit?: PokemonAccessoryOutfitItem[] | undefined;
   aceEvTotal?: number | undefined;
   aceEvs?: AceEvSpread | undefined;
@@ -201,6 +202,8 @@ export interface DexAttrProps {
   female: boolean;
   variant: Variant;
   formIndex: number;
+  /** Validated permanent Ace type, when checking a particular starter or party member. */
+  aceType?: PokemonType | undefined;
 }
 
 export interface Starter {
@@ -219,6 +222,7 @@ export interface Starter {
   teraType?: PokemonType | undefined;
   spindaPid?: number | undefined;
   ace?: boolean | undefined;
+  aceType?: PokemonType | undefined;
   accessoryOutfit?: PokemonAccessoryOutfitItem[] | undefined;
   aceEvTotal?: number | undefined;
   aceEvs?: AceEvSpread | undefined;

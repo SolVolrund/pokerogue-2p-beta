@@ -13,6 +13,7 @@ import type { SpeciesId } from "#enums/species-id";
 import type { PermanentStat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
 import type { Pokemon } from "#field/pokemon";
+import type { RollingMoveState } from "#moves/rolling-move";
 import type { ObtainStatusEffectPhase } from "#phases/obtain-status-effect-phase";
 import type { AttackMoveResult } from "#types/attack-move-result";
 import type { IllusionData } from "#types/illusion-data";
@@ -35,6 +36,7 @@ export class CustomPokemonData {
   public types: (RegularPokemonType | null)[];
   public alphBaseStatBoosts: Partial<Record<PermanentStat, number>>;
   public eventVariant: string | undefined;
+  public finalBossBulkBonusApplied: boolean;
   /** Shared move objects retain PP and PP Ups while a form's moves are hidden. */
   public bioInstabilityMoves: PokemonMove[];
 
@@ -46,6 +48,7 @@ export class CustomPokemonData {
     this.types = data?.types ?? [];
     this.alphBaseStatBoosts = { ...(data?.alphBaseStatBoosts ?? {}) };
     this.eventVariant = data?.eventVariant;
+    this.finalBossBulkBonusApplied = data?.finalBossBulkBonusApplied ?? false;
     this.bioInstabilityMoves = data?.bioInstabilityMoves?.map(move => PokemonMove.loadMove(move)) ?? [];
   }
 }
@@ -79,6 +82,8 @@ interface SerializedIllusionData extends Omit<IllusionData, "fusionSpecies"> {
 }
 
 interface SerializedPokemonSummonData {
+  rollingMove?: RollingMoveState | undefined;
+  defenseCurled?: boolean;
   statStages: number[];
   moveQueue: TurnMove[];
   tags: BattlerTag[];
@@ -94,6 +99,7 @@ interface SerializedPokemonSummonData {
   moveset?: PokemonMove[] | undefined;
   types: PokemonType[];
   addedType?: PokemonType | undefined;
+  aceTypeSuppressed?: boolean;
   illusion?: SerializedIllusionData | undefined;
   berriesEatenLast: BerryType[];
   moveHistory: TurnMove[];
@@ -117,6 +123,8 @@ export class PokemonSummonData {
    */
   // TODO: Clean up a lot of the code surrounding the move queue.
   public moveQueue: TurnMove[] = [];
+  public rollingMove: RollingMoveState | undefined;
+  public defenseCurled = false;
   public tags: BattlerTag[] = [];
   public abilitySuppressed = false;
   public abilitiesApplied: Set<AbilityId> = new Set();
@@ -146,6 +154,7 @@ export class PokemonSummonData {
   public types: PokemonType[] = [];
   /** The "third" type added from Trick-or-Treat or Forest's Curse, if present. */
   public addedType: PokemonType | null = null;
+  public aceTypeSuppressed = false;
 
   /** Data pertaining to this pokemon's Illusion, if it has one. */
   public illusion: IllusionData | null = null;
@@ -193,6 +202,11 @@ export class PokemonSummonData {
           }
         }
         this[key] = illusionData as IllusionData;
+        continue;
+      }
+
+      if (key === "rollingMove") {
+        this.rollingMove = value == null ? undefined : { ...value };
         continue;
       }
 

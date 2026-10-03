@@ -27,6 +27,7 @@ import {
   PERMANENT_STAT_ORDER,
   type AceEvSpread,
 } from "#data/ace-evs";
+import { getUnlockedAceType } from "#data/ace-type";
 import { allAbilities, allMoves } from "#data/data-lists";
 import { Egg } from "#data/egg";
 import { GrowthRate, getGrowthRateColor } from "#data/exp";
@@ -50,7 +51,7 @@ import { AbilityAttr } from "#enums/ability-attr";
 import { AbilityId } from "#enums/ability-id";
 import { Button } from "#enums/buttons";
 import { ChallengeType } from "#enums/challenge-type";
-import { Challenges } from "#enums/challenges";
+import { Challenges, isSingleTypeChallenge } from "#enums/challenges";
 import { Device } from "#enums/devices";
 import { DexAttr } from "#enums/dex-attr";
 import { DropDownColumn } from "#enums/drop-down-column";
@@ -86,7 +87,7 @@ import { SettingKeyboard } from "#system/settings-keyboard";
 import type { Pokemon } from "#field/pokemon";
 import type { DexEntry } from "#types/dex-data";
 import type { LevelMoves } from "#types/pokemon-species";
-import type { Starter, StarterAttributes, StarterDataEntry, StarterMoveset } from "#types/save-data";
+import type { DexAttrProps, Starter, StarterAttributes, StarterDataEntry, StarterMoveset } from "#types/save-data";
 import type { OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { DropDown, DropDownLabel, DropDownOption, DropDownState, DropDownType, SortCriteria } from "#ui/dropdown";
 import { FilterBar } from "#ui/filter-bar";
@@ -99,7 +100,8 @@ import { StarterContainer } from "#ui/starter-container";
 import { StatsContainer } from "#ui/stats-container";
 import { addBBCodeTextObject, addTextObject, getTextColor, updateCandyCountTextStyle } from "#ui/text";
 import { addWindow } from "#ui/ui-theme";
-import { applyChallenges, checkStarterValidForChallenge } from "#utils/challenge-utils";
+import { applyChallenges, checkStarterValidForChallenge, getChallengesForPlayer } from "#utils/challenge-utils";
+import { getPokemonTypeLocaleKey } from "#utils/i18n";
 import { argbFromRgba, rgbHexToRgba } from "#utils/color-utils";
 import {
   BooleanHolder,
@@ -1396,6 +1398,10 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       return {};
     }
 
+    starterAttributes.aceType = getUnlockedAceType(
+      starterAttributes.aceType,
+      globalScene.getPlayerGameData(globalScene.activePlayerIndex).achvUnlocks,
+    );
     const caughtAttr = dexEntry.caughtAttr;
 
     const hasShiny = caughtAttr & DexAttr.SHINY;
@@ -1944,7 +1950,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
             const species = starter.species;
             const [isDupe] = this.isInParty(species);
             const starterCost = globalScene.gameData.getSpeciesStarterValue(species.speciesId);
-            const isValidForChallenge = checkStarterValidForChallenge(
+            const isValidForChallenge = this.checkStarterChallenge(
               species,
               globalScene.gameData.getSpeciesDexAttrProps(species, this.getCurrentDexProps(species.speciesId)),
               this.isPartyValid(),
@@ -2063,7 +2069,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
           const [isDupe, removeIndex]: [boolean, number] = this.isInParty(this.lastSpecies);
 
           const isPartyValid = this.isPartyValid();
-          const isValidForChallenge = checkStarterValidForChallenge(
+          const isValidForChallenge = this.checkStarterChallenge(
             this.lastSpecies,
             globalScene.gameData.getSpeciesDexAttrProps(
               this.lastSpecies,
@@ -3088,6 +3094,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     const isAce = starterAttributes.ace ?? false;
     const hasOutfit = !!starterAttributes.accessoryOutfit?.length;
     const aceMechanicsEnabled = isSettingEnabled(SettingKeys.Ace_Mechanics);
+    const aceLocked = this.getPartyAce() !== undefined;
     const aceEvState = normalizeAceEvState(starterAttributes.aceEvTotal, starterAttributes.aceEvs);
     const assignedEvs = getAceEvAssignedTotal(aceEvState.spread);
 
@@ -3098,8 +3105,12 @@ export class StarterSelectUiHandler extends MessageUiHandler {
           options: [
             {
               label: isAce ? "Selected Ace" : "Select Ace",
+              disabled: aceLocked,
+              style: aceLocked ? TextStyle.SETTINGS_LOCKED : TextStyle.WINDOW,
               handler: () => {
-                this.setAceSpecies(this.lastSpecies, starterAttributes, originalStarterAttributes);
+                if (!this.setAceSpecies(this.lastSpecies, starterAttributes, originalStarterAttributes)) {
+                  return false;
+                }
                 this.clearText();
                 ui.setMode(UiMode.STARTER_SELECT);
                 this.blockInput = false;
@@ -3124,6 +3135,19 @@ export class StarterSelectUiHandler extends MessageUiHandler {
                   return false;
                 }
                 this.showAceEvOptions(starterAttributes, originalStarterAttributes);
+                return true;
+              },
+            },
+            {
+              label: `Ace Type: ${starterAttributes.aceType != null
+                ? i18next.t(getPokemonTypeLocaleKey(starterAttributes.aceType)) : "None"}`,
+              disabled: !aceMechanicsEnabled || aceLocked,
+              style: aceMechanicsEnabled && !aceLocked ? TextStyle.WINDOW : TextStyle.SETTINGS_LOCKED,
+              handler: () => {
+                if (!isSettingEnabled(SettingKeys.Ace_Mechanics) || this.getPartyAce()) {
+                  return false;
+                }
+                this.showAceTypeOptions(starterAttributes, originalStarterAttributes);
                 return true;
               },
             },
@@ -3153,6 +3177,92 @@ export class StarterSelectUiHandler extends MessageUiHandler {
           maxOptions: 8,
           yOffset: 19,
         });
+        this.blockInput = false;
+      });
+    });
+  }
+
+  private getPartyAce(): Starter | undefined {
+    return this.starters.find(starter => starter.ace);
+  }
+
+  private getSelectedAceType(speciesId: SpeciesId): PokemonType | undefined {
+    const partyAce = this.getPartyAce();
+    if (partyAce) {
+      return partyAce.speciesId === speciesId && isSettingEnabled(SettingKeys.Ace_Mechanics)
+        ? getUnlockedAceType(partyAce.aceType, globalScene.getPlayerGameData(globalScene.activePlayerIndex).achvUnlocks)
+        : undefined;
+    }
+    const preferences = this.starterPreferences[speciesId];
+    return preferences?.ace && isSettingEnabled(SettingKeys.Ace_Mechanics)
+      ? getUnlockedAceType(preferences.aceType, globalScene.getPlayerGameData(globalScene.activePlayerIndex).achvUnlocks)
+      : undefined;
+  }
+
+  private checkStarterChallenge(
+    species: PokemonSpecies,
+    props: DexAttrProps,
+    soft: boolean,
+    allowPotentialAce = false,
+  ): boolean {
+    let aceType = this.getSelectedAceType(species.speciesId);
+    // Keep off-type species browsable so they can be made the player's Ace.
+    if (allowPotentialAce && !this.getPartyAce() && isSettingEnabled(SettingKeys.Ace_Mechanics)) {
+      const mono = getChallengesForPlayer().find(challenge => challenge.value && isSingleTypeChallenge(challenge.id));
+      aceType = getUnlockedAceType(
+        mono ? mono.value - 1 : undefined,
+        globalScene.getPlayerGameData(globalScene.activePlayerIndex).achvUnlocks,
+      ) ?? aceType;
+    }
+    return checkStarterValidForChallenge(species, { ...props, aceType }, soft);
+  }
+
+  private setAceType(
+    species: PokemonSpecies,
+    attributes: StarterAttributes,
+    original: StarterAttributes,
+    type: PokemonType | undefined,
+  ): boolean {
+    const achievements = globalScene.getPlayerGameData(globalScene.activePlayerIndex).achvUnlocks;
+    if (this.getPartyAce() || !isSettingEnabled(SettingKeys.Ace_Mechanics)
+      || (type !== undefined && getUnlockedAceType(type, achievements) === undefined)) {
+      return false;
+    }
+    attributes.aceType = original.aceType = type;
+    return this.setAceSpecies(species, attributes, original);
+  }
+
+  private showAceTypeOptions(attributes: StarterAttributes, original: StarterAttributes): void {
+    if (this.getPartyAce() || !isSettingEnabled(SettingKeys.Ace_Mechanics)) {
+      return;
+    }
+    const ui = this.getUi();
+    this.blockInput = true;
+    const achievements = globalScene.getPlayerGameData(globalScene.activePlayerIndex).achvUnlocks;
+    const choose = (type: PokemonType | undefined): boolean => {
+      if (!this.setAceType(this.lastSpecies, attributes, original, type)) {
+        return false;
+      }
+      this.showAceOptions(attributes, original);
+      return true;
+    };
+    const options: OptionSelectItem[] = [{ label: "None", handler: () => choose(undefined) }];
+    for (let type = PokemonType.NORMAL; type <= PokemonType.FAIRY; type++) {
+      const unlocked = getUnlockedAceType(type, achievements) !== undefined;
+      options.push({
+        label: i18next.t(getPokemonTypeLocaleKey(type)),
+        disabled: !unlocked,
+        style: unlocked ? TextStyle.WINDOW : TextStyle.SETTINGS_LOCKED,
+        handler: () => choose(type),
+      });
+    }
+    options.push({ label: i18next.t("menu:cancel"), handler: () => {
+      this.showAceOptions(attributes, original);
+      return true;
+    } });
+    ui.setMode(UiMode.STARTER_SELECT).then(() => {
+      ui.showText("Choose an Ace type.", null, () => {
+        ui.setModeWithoutClear(UiMode.OPTION_SELECT, { options, maxOptions: 8, yOffset: 19 });
         this.blockInput = false;
       });
     });
@@ -3917,7 +4027,10 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     species: PokemonSpecies,
     starterAttributes: StarterAttributes,
     originalStarterAttributes: StarterAttributes,
-  ): void {
+  ): boolean {
+    if (this.getPartyAce()) {
+      return false;
+    }
     for (const preferences of [this.starterPreferences, this.originalStarterPreferences]) {
       for (const attributes of Object.values(preferences)) {
         if (attributes?.ace) {
@@ -3932,8 +4045,43 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     this.originalStarterPreferences[species.speciesId] ??= originalStarterAttributes;
     this.starterPreferences[species.speciesId]!.ace = true;
     this.originalStarterPreferences[species.speciesId]!.ace = true;
+    // Resolve the choice before marking an already-selected starter as the locked Ace.
+    const aceType = this.getSelectedAceType(species.speciesId);
+    for (const starter of this.starters) {
+      starter.ace = starter.speciesId === species.speciesId;
+      starter.aceType = starter.ace ? aceType : undefined;
+      const preferences = this.starterPreferences[starter.speciesId];
+      const evState = starter.ace ? normalizeAceEvState(preferences?.aceEvTotal, preferences?.aceEvs) : undefined;
+      starter.aceEvTotal = evState?.total;
+      starter.aceEvs = evState?.spread;
+      starter.accessoryOutfit = starter.ace ? preferences?.accessoryOutfit?.map(item => ({ ...item })) : undefined;
+    }
     globalScene.savePlayerStarterPreferences(this.originalStarterPreferences, globalScene.activePlayerIndex);
     this.updateScroll();
+    this.refreshAceStarterList();
+    this.tryUpdateValue();
+    return true;
+  }
+
+  private refreshAceStarterList(): void {
+    if (!this.starterSelectContainer.visible
+      || !getChallengesForPlayer().some(challenge => challenge.value && isSingleTypeChallenge(challenge.id))) {
+      return;
+    }
+    const highlightedSpecies = this.lastSpecies?.speciesId;
+    const gridFocused = this.cursorObj.visible && !this.filterMode && !this.starterIconsCursorObj.visible;
+    this.updateStarters();
+    this.cursor = Math.max(0, this.filteredStarterContainers.findIndex(c => c.species.speciesId === highlightedSpecies));
+    const lastScrollRow = Math.max(0, Math.ceil(this.filteredStarterContainers.length / 9) - 9);
+    this.scrollCursor = Math.min(Math.floor(this.cursor / 9), lastScrollRow);
+    this.updateScroll();
+    if (gridFocused) {
+      if (this.filteredStarterContainers.length) {
+        this.setCursor(this.cursor);
+      } else {
+        this.setFilterMode(true);
+      }
+    }
   }
 
   private clearAccessoryPreview(): void {
@@ -4204,6 +4352,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       teraType,
       ivs: dexEntry.ivs,
       ace: starterAttributes?.ace,
+      aceType: this.getSelectedAceType(species.speciesId),
       accessoryOutfit,
       aceEvTotal: aceEvState?.total,
       aceEvs: aceEvState?.spread,
@@ -4214,6 +4363,10 @@ export class StarterSelectUiHandler extends MessageUiHandler {
 
     this.starters.push(starter);
     this.starterSpecies.push(species);
+    if (starter.ace) {
+      this.refreshAceStarterList();
+      this.tryUpdateValue();
+    }
     if (this.speciesLoaded.get(species.speciesId) || randomSelection) {
       getPokemonSpeciesForm(species.speciesId, props.formIndex).cry();
     }
@@ -4497,20 +4650,22 @@ export class StarterSelectUiHandler extends MessageUiHandler {
               continue;
             }
             const tempFormProps = BigInt(Math.pow(2, i)) * DexAttr.DEFAULT_FORM;
-            const isValidForChallenge = checkStarterValidForChallenge(
+            const isValidForChallenge = this.checkStarterChallenge(
               container.species,
               globalScene.gameData.getSpeciesDexAttrProps(species, tempFormProps),
+              true,
               true,
             );
             allFormsValid ||= isValidForChallenge;
           }
         } else {
-          const isValidForChallenge = checkStarterValidForChallenge(
+          const isValidForChallenge = this.checkStarterChallenge(
             container.species,
             globalScene.gameData.getSpeciesDexAttrProps(
               species,
               globalScene.gameData.getSpeciesDefaultDexAttr(container.species, false, true),
             ),
+            true,
             true,
           );
           allFormsValid = isValidForChallenge;
@@ -5803,6 +5958,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   }
 
   popStarter(index: number): void {
+    const removedAce = !!this.starters[index]?.ace;
     this.starterSpecies.splice(index, 1);
     this.starters.splice(index, 1);
 
@@ -5850,6 +6006,9 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       }
     }
 
+    if (removedAce) {
+      this.refreshAceStarterList();
+    }
     this.tryUpdateValue();
   }
 
@@ -5909,7 +6068,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     let isPartyValid = this.isPartyValid();
     if (addingToParty) {
       const species = this.filteredStarterContainers[this.cursor].species;
-      const isNewPokemonValid = checkStarterValidForChallenge(
+      const isNewPokemonValid = this.checkStarterChallenge(
         species,
         globalScene.gameData.getSpeciesDexAttrProps(species, this.getCurrentDexProps(species.speciesId)),
         false,
@@ -5938,7 +6097,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
        * If speciesStarterDexEntry?.caughtAttr is true, this species registered in stater.
        * we change to can AddParty value to true since the user has enough cost to choose this pokemon and this pokemon registered too.
        */
-      const isValidForChallenge = checkStarterValidForChallenge(
+      const isValidForChallenge = this.checkStarterChallenge(
         this.allSpecies[s],
         globalScene.gameData.getSpeciesDexAttrProps(
           this.allSpecies[s],
@@ -6068,7 +6227,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     for (let s = 0; s < this.starterSpecies.length; s++) {
       const species = this.starterSpecies[s];
       const starter = this.starters[s];
-      const isValidForChallenge = checkStarterValidForChallenge(
+      const isValidForChallenge = this.checkStarterChallenge(
         species,
         {
           formIndex: starter.formIndex,

@@ -14,7 +14,7 @@ import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { TrainerType } from "#enums/trainer-type";
 import { UiMode } from "#enums/ui-mode";
-import type { Pokemon } from "#field/pokemon";
+import { Pokemon } from "#field/pokemon";
 import type { PokemonHeldItemModifier } from "#modifiers/modifier";
 import type { PokemonHeldItemModifierType } from "#modifiers/modifier-type";
 import { PokemonMove } from "#moves/pokemon-move";
@@ -47,6 +47,8 @@ describe("Clowning Around - Mystery Encounter", () => {
 
   beforeEach(async () => {
     game = new GameManager(phaserGame);
+    vi.spyOn(Pokemon.prototype, "playAnim").mockImplementation(() => {});
+    vi.spyOn(Pokemon.prototype, "refreshAccessoryOutfitSprites").mockImplementation(() => {});
     scene = game.scene;
     game.override
       .mysteryEncounterChance(100)

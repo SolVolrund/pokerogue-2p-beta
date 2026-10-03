@@ -121,7 +121,7 @@ export class CommandPhase extends FieldPhase {
   }
 
   private shouldComputerPartnerSwitch(): number | undefined {
-    if (globalScene.twoPlayerVsMode || !globalScene.plannerAiEnabled) {
+    if (globalScene.isVsLaneBattle() || !globalScene.plannerAiEnabled) {
       return;
     }
 
@@ -141,7 +141,7 @@ export class CommandPhase extends FieldPhase {
   }
 
   private shouldComputerPartnerReposition(): FieldPosition | undefined {
-    if (globalScene.twoPlayerVsMode || !globalScene.plannerAiEnabled) {
+    if (globalScene.isVsLaneBattle() || !globalScene.plannerAiEnabled) {
       return;
     }
 
@@ -392,7 +392,7 @@ export class CommandPhase extends FieldPhase {
 
   private getVsModeCaptureTargetsForPokemon(playerPokemon: PlayerPokemon): EnemyPokemon[] {
     const enemyField = globalScene.getEnemyField();
-    if (!globalScene.twoPlayerVsMode) {
+    if (!globalScene.isVsLaneBattle()) {
       return enemyField;
     }
 
@@ -405,7 +405,7 @@ export class CommandPhase extends FieldPhase {
   }
 
   private shouldAutoSkipClearedVsModeLane(playerPokemon: PlayerPokemon): boolean {
-    return globalScene.twoPlayerVsMode && !playerPokemon.status?.isPostTurn() && !this.hasActiveVsModeLaneOpponent(playerPokemon);
+    return globalScene.isVsLaneBattle() && !playerPokemon.status?.isPostTurn() && !this.hasActiveVsModeLaneOpponent(playerPokemon);
   }
 
   private queueSkippedFightCommand(): void {
@@ -454,7 +454,7 @@ export class CommandPhase extends FieldPhase {
   }
 
   private getComputerPartnerBlockedCaptureTargetIds(playerIndex: PlayerIndex): number[] {
-    if (globalScene.twoPlayerVsMode) {
+    if (globalScene.isVsLaneBattle()) {
       return [];
     }
 
@@ -586,7 +586,7 @@ export class CommandPhase extends FieldPhase {
     playerPokemon: PlayerPokemon,
     turnMove: TurnMove,
   ): TurnMove {
-    if (globalScene.twoPlayerVsMode) {
+    if (globalScene.isVsLaneBattle()) {
       return turnMove;
     }
 
@@ -1499,7 +1499,7 @@ export class CommandPhase extends FieldPhase {
     const targets = globalScene
       .getEnemyField()
       .filter(p => p.isActive(true))
-      .filter(p => !globalScene.twoPlayerVsMode || p.getFieldIndex() === this.fieldIndex)
+      .filter(p => !globalScene.isVsLaneBattle() || p.getFieldIndex() === this.fieldIndex)
       .map(p => p.getBattlerIndex());
 
     if (isCloneBall ? !this.checkCanUseCloneBall() : !this.checkCanUseBall()) {
@@ -1687,7 +1687,7 @@ export class CommandPhase extends FieldPhase {
   private handleRepositionCommand(targetPosition: FieldPosition): boolean {
     const playerPokemon = this.getPokemon();
     if (
-      globalScene.twoPlayerVsMode
+      globalScene.isVsLaneBattle()
       || globalScene.getBattleFieldSlotCount() < 3
       || globalScene.currentBattle.getBattlerCount() < 3
       || playerPokemon.fieldPosition === targetPosition
@@ -1767,6 +1767,11 @@ export class CommandPhase extends FieldPhase {
         success = this.handleBallCommand(cursor);
         break;
       case Command.POKEMON:
+        if (globalScene.isPlayerSwitchReserved(
+          globalScene.getPlayerIndexForFieldSlot(this.fieldIndex), cursor, this.fieldIndex,
+        )) {
+          return false;
+        }
         this.isSwitch = true;
         success = this.tryLeaveField(cursor, typeof useMode === "boolean" ? useMode : undefined);
         this.isSwitch = false;

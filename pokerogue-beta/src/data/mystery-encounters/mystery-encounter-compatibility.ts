@@ -254,6 +254,7 @@ export const TWO_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryE
 ];
 
 export const THREE_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.UNCOMMON_BREED,
   MysteryEncounterType.MYSTERIOUS_CHEST,
   MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
   MysteryEncounterType.DARK_DEAL,

@@ -5,6 +5,9 @@ import { randomString } from "#utils/common";
 
 export let loggedInUser: UserInfo | null = null;
 
+/** Local-only Online guest autosave; never listed among the five personal run slots. */
+export const GUEST_SAVE_SLOT = 5;
+
 /** A random, 32-length alphanumeric string used to identify the current client session. */
 // TODO: This should arguably be inside its own file
 export const clientSessionId = randomString(32);
@@ -63,5 +66,7 @@ export function getSessionDataLocalStorageKey(slotId: number): string {
 
   // TODO: Default to `Guest` as a fallback for no logged in username
   // rather than leaving a trailing underscore
-  return `sessionData${slotId || ""}_${loggedInUser?.username}`;
+  return slotId === GUEST_SAVE_SLOT
+    ? `guestSessionData_${loggedInUser?.username}`
+    : `sessionData${slotId || ""}_${loggedInUser?.username}`;
 }

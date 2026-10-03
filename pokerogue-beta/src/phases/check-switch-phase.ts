@@ -42,7 +42,7 @@ export class CheckSwitchPhase extends BattlePhase {
     const playerIndex = pokemon
       ? globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex)
       : globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
-    const activePartySlotCount = globalScene.twoPlayerMode ? 1 : globalScene.currentBattle.getBattlerCount();
+    const activePartySlotCount = globalScene.getPlayerActiveSlotCount(playerIndex);
 
     // End this phase early...
 

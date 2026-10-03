@@ -2,9 +2,10 @@ import { AbilityId } from "#enums/ability-id";
 import { BattleType } from "#enums/battle-type";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";
+import { Pokemon } from "#field/pokemon";
 import { GameManager } from "#test/framework/game-manager";
 import Phaser from "phaser";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("Ability - Contact Damage (Rough Skin, Iron Barbs)", () => {
   let phaserGame: Phaser.Game;
@@ -18,6 +19,8 @@ describe("Ability - Contact Damage (Rough Skin, Iron Barbs)", () => {
 
   beforeEach(() => {
     game = new GameManager(phaserGame);
+    vi.spyOn(Pokemon.prototype, "playAnim").mockImplementation(() => {});
+    vi.spyOn(Pokemon.prototype, "refreshAccessoryOutfitSprites").mockImplementation(() => {});
     game.override
       .battleStyle("single")
       .battleType(BattleType.TRAINER)

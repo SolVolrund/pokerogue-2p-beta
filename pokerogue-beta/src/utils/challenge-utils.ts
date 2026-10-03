@@ -2,17 +2,20 @@ import type { FixedBattleConfig } from "#app/battle";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
+import { type Challenge, SingleTypeChallenge } from "#data/challenge";
 import type { PokemonSpecies } from "#data/pokemon-species";
 import { ChallengeType } from "#enums/challenge-type";
 import { Challenges } from "#enums/challenges";
 import type { MoveId } from "#enums/move-id";
 import type { MoveSourceType } from "#enums/move-source-type";
+import type { PokemonType } from "#enums/pokemon-type";
 import type { SpeciesId } from "#enums/species-id";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
 import type { ModifierTypeOption } from "#modifiers/modifier-type";
 import type { DexEntry } from "#types/dex-data";
 import type { DexAttrProps, StarterDataEntry } from "#types/save-data";
 import { BooleanHolder, type NumberHolder } from "./common";
+import { getComputerPartnerProfile } from "./computer-partner-profile";
 import { getPokemonSpecies } from "./pokemon-utils";
 
 /**
@@ -279,7 +282,7 @@ export function applyChallenges(challengeType: ChallengeType, ...args: any[]): b
     : challengeType === ChallengeType.STARTER_CHOICE || challengeType === ChallengeType.STARTER_SELECT_MODIFY
       ? args[3] ?? globalScene.activePlayerIndex
       : globalScene.activePlayerIndex;
-  getChallengesForPlayer(playerIndex).forEach(c => {
+  getChallengesForPlayer(playerIndex, true).forEach(c => {
     if (c.value !== 0) {
       switch (challengeType) {
         case ChallengeType.STARTER_CHOICE:
@@ -357,8 +360,25 @@ export function applyChallenges(challengeType: ChallengeType, ...args: any[]): b
   return ret;
 }
 
-export function getChallengesForPlayer(playerIndex: PlayerIndex = globalScene.activePlayerIndex) {
-  return globalScene.gameMode.challenges.filter(c => c.appliesToPlayer(playerIndex));
+export function createMonotypeRestriction(type: PokemonType): SingleTypeChallenge {
+  const restriction = new SingleTypeChallenge();
+  restriction.value = type + 1;
+  return restriction;
+}
+
+/** Partner restrictions are used for legality, but never saved as run challenges or awarded ribbons. */
+export function getChallengesForPlayer(
+  playerIndex: PlayerIndex = globalScene.activePlayerIndex,
+  includePartnerRestrictions = false,
+): Challenge[] {
+  const challenges = globalScene.gameMode.challenges.filter(c => c.appliesToPlayer(playerIndex));
+  if (includePartnerRestrictions && globalScene.isComputerPartnerPlayer(playerIndex)) {
+    const type = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex)).monotype;
+    if (type !== undefined) {
+      challenges.push(createMonotypeRestriction(type));
+    }
+  }
+  return challenges;
 }
 
 /**
@@ -374,11 +394,10 @@ export function checkStarterValidForChallenge(
   props: DexAttrProps,
   soft: boolean,
   playerIndex: PlayerIndex = globalScene.activePlayerIndex,
+  restrictions?: Challenge[],
 ) {
   if (!soft) {
-    const isValidForChallenge = new BooleanHolder(true);
-    applyChallenges(ChallengeType.STARTER_CHOICE, species, isValidForChallenge, props, playerIndex);
-    return isValidForChallenge.value;
+    return checkSpeciesValidForChallenge(species, props, false, playerIndex, restrictions);
   }
   // We check the validity of every evolution and form change, and require that at least one is valid
   const speciesToCheck = [species.speciesId];
@@ -389,7 +408,7 @@ export function checkStarterValidForChallenge(
       return false;
     }
     const checkingSpecies = getPokemonSpecies(checking);
-    if (checkSpeciesValidForChallenge(checkingSpecies, props, true, playerIndex)) {
+    if (checkSpeciesValidForChallenge(checkingSpecies, props, true, playerIndex, restrictions)) {
       return true;
     }
     if (checking && speciesDataRegistry.hasEvolutions(checking)) {
@@ -418,9 +437,11 @@ export function checkSpeciesValidForChallenge(
   props: DexAttrProps,
   soft: boolean,
   playerIndex: PlayerIndex = globalScene.activePlayerIndex,
+  restrictions?: Challenge[],
 ) {
   const isValidForChallenge = new BooleanHolder(true);
-  applyChallenges(ChallengeType.STARTER_CHOICE, species, isValidForChallenge, props, playerIndex);
+  const challenges = restrictions ?? getChallengesForPlayer(playerIndex, true);
+  challenges.filter(c => c.value !== 0).forEach(c => c.applyStarterChoice(species, isValidForChallenge, props));
   if (!soft || !speciesDataRegistry.hasFormChanges(species.speciesId)) {
     return isValidForChallenge.value;
   }
@@ -439,7 +460,7 @@ export function checkSpeciesValidForChallenge(
       if (f1.formKey === f2.formKey) {
         const formProps = { ...props, formIndex };
         const isFormValidForChallenge = new BooleanHolder(true);
-        applyChallenges(ChallengeType.STARTER_CHOICE, species, isFormValidForChallenge, formProps, playerIndex);
+        challenges.filter(c => c.value !== 0).forEach(c => c.applyStarterChoice(species, isFormValidForChallenge, formProps));
         return isFormValidForChallenge.value;
       }
       return false;

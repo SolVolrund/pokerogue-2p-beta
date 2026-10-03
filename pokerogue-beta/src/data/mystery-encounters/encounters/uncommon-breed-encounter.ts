@@ -1,5 +1,5 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
-import type { PlayerIndex, TwoPlayerIndex } from "#app/battle-scene";
+import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { BattlerIndex } from "#enums/battler-index";
@@ -11,7 +11,6 @@ import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { PokeballType } from "#enums/pokeball";
 import { Stat } from "#enums/stat";
-import { UiMode } from "#enums/ui-mode";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
 import { BerryModifier } from "#modifiers/modifier";
 import { PokemonMove } from "#moves/pokemon-move";
@@ -29,6 +28,11 @@ import {
   getHighestLevelPlayerPokemon,
   getSpriteKeysFromPokemon,
 } from "#mystery-encounters/encounter-pokemon-utils";
+import {
+  getMysteryEncounterPlayerIndexes,
+  getNextMysteryEncounterPlayerIndex,
+  showMysteryEncounterPlayerMenu,
+} from "#mystery-encounters/encounter-player-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
@@ -57,7 +61,7 @@ interface UncommonBreedChoice {
 
 interface UncommonBreedData {
   choices: UncommonBreedChoice[];
-  pokemonDataByPlayer: Record<TwoPlayerIndex, PokemonData>;
+  pokemonDataByPlayer: Partial<Record<PlayerIndex, PokemonData>>;
   eggMoveByPlayer: Partial<Record<PlayerIndex, MoveId>>;
   skipSelectedDialogueOnce?: boolean;
 }
@@ -104,14 +108,12 @@ function getUncommonBreedData(): UncommonBreedData {
     encounter.misc = {
       ...(encounter.misc ?? {}),
       choices: [],
-      pokemonDataByPlayer: encounter.misc?.pokemonDataByPlayer ?? {
-        0: new PokemonData(encounter.misc?.pokemon),
-        1: new PokemonData(encounter.misc?.pokemon),
-      },
-      eggMoveByPlayer: encounter.misc?.eggMoveByPlayer ?? {
-        0: encounter.misc?.eggMove,
-        1: encounter.misc?.eggMove,
-      },
+      pokemonDataByPlayer: encounter.misc?.pokemonDataByPlayer ?? Object.fromEntries(
+        getMysteryEncounterPlayerIndexes().map(playerIndex => [playerIndex, new PokemonData(encounter.misc?.pokemon)]),
+      ),
+      eggMoveByPlayer: encounter.misc?.eggMoveByPlayer ?? Object.fromEntries(
+        getMysteryEncounterPlayerIndexes().map(playerIndex => [playerIndex, encounter.misc?.eggMove]),
+      ),
     } satisfies UncommonBreedData;
   }
 
@@ -148,19 +150,20 @@ function createUncommonBreedPokemon(playerIndex: PlayerIndex): { pokemon: EnemyP
 }
 
 function getUncommonBreedPokemon(playerIndex: PlayerIndex): EnemyPokemon {
-  return getUncommonBreedData().pokemonDataByPlayer[playerIndex].toPokemon() as EnemyPokemon;
+  return getUncommonBreedData().pokemonDataByPlayer[playerIndex]!.toPokemon() as EnemyPokemon;
 }
 
 function getUncommonBreedBattleConfig(enemyOwnerIndexes: PlayerIndex[]): EnemyPartyConfig {
   return {
     doubleBattle: enemyOwnerIndexes.length > 1,
+    battlerCountOverride: enemyOwnerIndexes.length,
     pokemonConfigs: enemyOwnerIndexes.map(playerIndex => getUncommonBreedPokemonConfig(playerIndex)),
   };
 }
 
 function getUncommonBreedPokemonConfig(playerIndex: PlayerIndex): EnemyPokemonConfig {
   const data = getUncommonBreedData();
-  const pokemon = data.pokemonDataByPlayer[playerIndex].toPokemon() as EnemyPokemon;
+  const pokemon = data.pokemonDataByPlayer[playerIndex]!.toPokemon() as EnemyPokemon;
   const statChangesForBattle: (Stat.ATK | Stat.DEF | Stat.SPATK | Stat.SPDEF | Stat.SPD | Stat.ACC | Stat.EVA)[] =
     globalScene.currentBattle.waveIndex < 50
       ? [Stat.DEF, Stat.SPDEF, Stat.SPD]
@@ -168,7 +171,7 @@ function getUncommonBreedPokemonConfig(playerIndex: PlayerIndex): EnemyPokemonCo
 
   return {
     species: pokemon.species,
-    dataSource: data.pokemonDataByPlayer[playerIndex],
+    dataSource: data.pokemonDataByPlayer[playerIndex]!,
     isBoss: false,
     tags: [BattlerTagType.MYSTERY_ENCOUNTER_POST_SUMMON],
     mysteryEncounterBattleEffects: (battlePokemon: Pokemon) => {
@@ -182,12 +185,11 @@ function getUncommonBreedPokemonConfig(playerIndex: PlayerIndex): EnemyPokemonCo
   };
 }
 
-function queueUncommonBreedStartOfBattleEffects(
-  battlePlayers: PlayerIndex[],
-  enemyOwnerIndexes: PlayerIndex[],
-): void {
+function queueUncommonBreedStartOfBattleEffects(enemyOwnerIndexes: PlayerIndex[]): void {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   const data = getUncommonBreedData();
+  encounter.startOfBattleEffects = [];
+  encounter.startOfBattleEffectsComplete = false;
   for (const [enemyIndex, playerIndex] of enemyOwnerIndexes.entries()) {
     const eggMove = data.eggMoveByPlayer[playerIndex];
     if (eggMove == null) {
@@ -196,17 +198,11 @@ function queueUncommonBreedStartOfBattleEffects(
 
     const pokemonMove = new PokemonMove(eggMove);
     const move = pokemonMove.getMove();
-    const target =
-      move.is("SelfStatusMove")
-        ? enemyIndex === 0
-          ? BattlerIndex.ENEMY
-          : BattlerIndex.ENEMY_2
-        : battlePlayers.length > 1 && enemyIndex === 1
-          ? BattlerIndex.PLAYER_2
-          : BattlerIndex.PLAYER;
+    const source = globalScene.getEnemyBattlerIndex(enemyIndex);
+    const target = move.is("SelfStatusMove") ? source : globalScene.getPlayerBattlerIndex(enemyIndex);
 
     encounter.startOfBattleEffects.push({
-      sourceBattlerIndex: enemyIndex === 0 ? BattlerIndex.ENEMY : BattlerIndex.ENEMY_2,
+      sourceBattlerIndex: source,
       targets: [target],
       move: pokemonMove,
       useMode: MoveUseMode.IGNORE_PP,
@@ -216,7 +212,7 @@ function queueUncommonBreedStartOfBattleEffects(
 
 function setUncommonBreedPlayerOptionTokens(playerIndex: PlayerIndex): void {
   const data = getUncommonBreedData();
-  const pokemon = data.pokemonDataByPlayer[playerIndex].toPokemon() as EnemyPokemon;
+  const pokemon = data.pokemonDataByPlayer[playerIndex]!.toPokemon() as EnemyPokemon;
   const helperPokemon = new MoveRequirement(CHARMING_MOVES, true).queryParty(globalScene.getPlayerParty(playerIndex))[0];
   const helperMove = helperPokemon?.moveset.find(move => move && CHARMING_MOVES.includes(move.getMove().id));
   const encounter = globalScene.currentBattle.mysteryEncounter!;
@@ -225,23 +221,31 @@ function setUncommonBreedPlayerOptionTokens(playerIndex: PlayerIndex): void {
   encounter.setDialogueToken("option3PrimaryMove", helperMove?.getName() ?? "");
 }
 
-function showUncommonBreedPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): void {
-  globalScene.setActivePlayerIndex(playerIndex);
-  updateWindowType(playerIndex + 1);
+async function showUncommonBreedPlayerMenu(playerIndex: PlayerIndex, startingCursorIndex = 0): Promise<boolean> {
   setUncommonBreedPlayerOptionTokens(playerIndex);
-
-  globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
-      slideInDescription: false,
-      overrideTitle: globalScene.getPlayerDisplayName(playerIndex),
-      overrideQuery: i18next.t(`${namespace}:query`),
-      overrideOptions: buildUncommonBreedPlayerOptions(playerIndex),
-      startingCursorIndex,
-    });
+  const result = await showMysteryEncounterPlayerMenu({
+    playerIndex,
+    overrideQuery: i18next.t(`${namespace}:query`),
+    overrideOptions: buildUncommonBreedPlayerOptions(playerIndex),
+    startingCursorIndex,
+    computerPartnerOption: {
+      chooseOptionIndex: owner => {
+        if (new PlayerCharmMoveRequirement(owner).meetsRequirement()) {
+          return 3;
+        }
+        return getPlayerBerryCount(owner) >= 4 ? 2 : 1;
+      },
+      onOptionChosen: (optionIndex, owner) => storeUncommonBreedChoice({
+        playerIndex: owner,
+        optionIndex: optionIndex as UncommonBreedOptionIndex,
+        helperPokemon: new MoveRequirement(CHARMING_MOVES, true).queryParty(globalScene.getPlayerParty(owner))[0],
+      }, optionIndex - 1),
+    },
   });
+  return result ?? false;
 }
 
-function storeUncommonBreedChoice(choice: UncommonBreedChoice, startingCursorIndex: number): boolean {
+function storeUncommonBreedChoice(choice: UncommonBreedChoice, startingCursorIndex: number): boolean | Promise<boolean> {
   if (!globalScene.twoPlayerMode) {
     return true;
   }
@@ -250,9 +254,9 @@ function storeUncommonBreedChoice(choice: UncommonBreedChoice, startingCursorInd
   data.choices = data.choices.filter(existing => existing.playerIndex !== choice.playerIndex);
   data.choices.push(choice);
 
-  if (choice.playerIndex === 0) {
-    showUncommonBreedPlayerMenu(1, startingCursorIndex);
-    return false;
+  const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(choice.playerIndex);
+  if (nextPlayerIndex != null) {
+    return showUncommonBreedPlayerMenu(nextPlayerIndex, startingCursorIndex);
   }
 
   data.skipSelectedDialogueOnce = true;
@@ -281,7 +285,7 @@ async function recruitUncommonBreedPokemon(choice: UncommonBreedChoice): Promise
   setUncommonBreedPlayerOptionTokens(choice.playerIndex);
 
   const data = getUncommonBreedData();
-  const pokemon = data.pokemonDataByPlayer[choice.playerIndex].toPokemon() as EnemyPokemon;
+  const pokemon = data.pokemonDataByPlayer[choice.playerIndex]!.toPokemon() as EnemyPokemon;
   givePokemonExtraEggMove(pokemon, data.eggMoveByPlayer[choice.playerIndex]);
 
   if (choice.optionIndex === 3) {
@@ -298,12 +302,14 @@ async function recruitUncommonBreedPokemon(choice: UncommonBreedChoice): Promise
   setEncounterRewards({ fillRemaining: true }, undefined, undefined, choice.playerIndex);
 }
 
-async function runTwoPlayerUncommonBreedChoices(): Promise<boolean> {
+async function runMultiplayerUncommonBreedChoices(): Promise<boolean> {
   const choices = getUncommonBreedData().choices.toSorted((a, b) => a.playerIndex - b.playerIndex);
   const battleChoices = choices.filter(choice => choice.optionIndex === 1);
-  const recruitChoices = choices.filter(choice => choice.optionIndex !== 1);
 
   for (const choice of choices) {
+    globalScene.waitForPlayerSideProgressionInput(
+      globalScene.isComputerPartnerPlayer(choice.playerIndex) ? 0 : choice.playerIndex,
+    );
     globalScene.setActivePlayerIndex(choice.playerIndex);
     updateWindowType(choice.playerIndex + 1);
     setUncommonBreedPlayerOptionTokens(choice.playerIndex);
@@ -318,24 +324,25 @@ async function runTwoPlayerUncommonBreedChoices(): Promise<boolean> {
   }
 
   if (battleChoices.length === 0) {
-    globalScene.setActivePlayerIndex(0);
+    globalScene.waitForPlayerSideProgressionInput(0);
     updateWindowType(1);
     leaveEncounterWithoutBattle(true);
     return true;
   }
 
-  const recruitedPlayerSet = new Set(recruitChoices.map(choice => choice.playerIndex));
-  const enemyOwnerIndexes = ([0, 1] as PlayerIndex[]).filter(playerIndex => !recruitedPlayerSet.has(playerIndex));
   const battlePlayers = battleChoices.map(choice => choice.playerIndex);
   for (const playerIndex of battlePlayers) {
     setEncounterRewards({ fillRemaining: true }, undefined, undefined, playerIndex);
   }
 
+  globalScene.waitForPlayerSideProgressionInput(
+    globalScene.isComputerPartnerPlayer(battlePlayers[0]) ? 0 : battlePlayers[0],
+  );
   globalScene.setActivePlayerIndex(battlePlayers[0]);
   updateWindowType(battlePlayers[0] + 1);
   globalScene.setMysteryEncounterBattlePlayerFieldOwners(battlePlayers);
-  queueUncommonBreedStartOfBattleEffects(battlePlayers, enemyOwnerIndexes);
-  await initBattleWithEnemyConfig(getUncommonBreedBattleConfig(enemyOwnerIndexes));
+  queueUncommonBreedStartOfBattleEffects(battlePlayers);
+  await initBattleWithEnemyConfig(getUncommonBreedBattleConfig(battlePlayers));
   return true;
 }
 
@@ -397,7 +404,7 @@ function buildUncommonBreedBattleOption(playerIndex: PlayerIndex): MysteryEncoun
     })
     .withPreOptionPhase(async () => storeUncommonBreedChoice({ playerIndex, optionIndex: 1 }, 0))
     .withOptionPhase(async () =>
-      globalScene.twoPlayerMode ? runTwoPlayerUncommonBreedChoices() : runOnePlayerBattleUncommonBreed(),
+      globalScene.twoPlayerMode ? runMultiplayerUncommonBreedChoices() : runOnePlayerBattleUncommonBreed(),
     )
     .build();
 }
@@ -417,7 +424,7 @@ function buildUncommonBreedFoodOption(playerIndex: PlayerIndex): MysteryEncounte
     })
     .withPreOptionPhase(async () => storeUncommonBreedChoice({ playerIndex, optionIndex: 2 }, 1))
     .withOptionPhase(async () =>
-      globalScene.twoPlayerMode ? runTwoPlayerUncommonBreedChoices() : runOnePlayerFoodUncommonBreed(),
+      globalScene.twoPlayerMode ? runMultiplayerUncommonBreedChoices() : runOnePlayerFoodUncommonBreed(),
     )
     .build();
 }
@@ -440,7 +447,7 @@ function buildUncommonBreedBefriendOption(playerIndex: PlayerIndex): MysteryEnco
       return storeUncommonBreedChoice({ playerIndex, optionIndex: 3, helperPokemon }, 2);
     })
     .withOptionPhase(async () =>
-      globalScene.twoPlayerMode ? runTwoPlayerUncommonBreedChoices() : runOnePlayerBefriendUncommonBreed(),
+      globalScene.twoPlayerMode ? runMultiplayerUncommonBreedChoices() : runOnePlayerBefriendUncommonBreed(),
     )
     .build();
 }
@@ -474,20 +481,18 @@ export const UncommonBreedEncounter: MysteryEncounter = MysteryEncounterBuilder.
   ])
   .withOnInit(() => {
     const encounter = globalScene.currentBattle.mysteryEncounter!;
-    const primary = createUncommonBreedPokemon(0);
-    const secondary = globalScene.twoPlayerMode ? createUncommonBreedPokemon(1) : primary;
-    const pokemonDataByPlayer: Record<TwoPlayerIndex, PokemonData> = {
-      0: new PokemonData(primary.pokemon),
-      1: new PokemonData(secondary.pokemon),
-    };
+    const playerIndexes = getMysteryEncounterPlayerIndexes();
+    const generated = playerIndexes.map(playerIndex => createUncommonBreedPokemon(playerIndex));
+    const primary = generated[0];
+    const pokemonDataByPlayer: Partial<Record<PlayerIndex, PokemonData>> = {};
     const eggMoveByPlayer: Partial<Record<PlayerIndex, MoveId>> = {};
-    if (primary.eggMove != null) {
-      eggMoveByPlayer[0] = primary.eggMove;
+    for (const [index, playerIndex] of playerIndexes.entries()) {
+      const { pokemon, eggMove } = generated[index];
+      pokemonDataByPlayer[playerIndex] = new PokemonData(pokemon);
+      if (eggMove != null) {
+        eggMoveByPlayer[playerIndex] = eggMove;
+      }
     }
-    if (secondary.eggMove != null) {
-      eggMoveByPlayer[1] = secondary.eggMove;
-    }
-    const visualPlayerIndexes = globalScene.twoPlayerMode ? ([0, 1] as PlayerIndex[]) : ([0] as PlayerIndex[]);
 
     const misc: UncommonBreedData & { pokemon: EnemyPokemon; eggMove?: MoveId } = {
       choices: [],
@@ -501,14 +506,13 @@ export const UncommonBreedEncounter: MysteryEncounter = MysteryEncounterBuilder.
     encounter.misc = misc;
     encounter.enemyPartyConfigs = [getUncommonBreedBattleConfig([0])];
 
-    encounter.spriteConfigs = visualPlayerIndexes.map((playerIndex, spriteIndex) => {
-      const pokemon = playerIndex === 0 ? primary.pokemon : secondary.pokemon;
+    encounter.spriteConfigs = generated.map(({ pokemon }, spriteIndex) => {
       const { spriteKey, fileRoot } = getSpriteKeysFromPokemon(pokemon);
       return {
         spriteKey,
         fileRoot,
         hasShadow: true,
-        x: visualPlayerIndexes.length > 1 ? (spriteIndex === 0 ? -28 : 28) : -5,
+        x: generated.length > 1 ? (spriteIndex - (generated.length - 1) / 2) * 56 : -5,
         repeat: true,
         isPokemon: true,
         isShiny: pokemon.shiny,

@@ -150,12 +150,44 @@ export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: Move
   };
 }
 
+/** Resolve an absent single opponent without crossing the move's range or a Vs lane. */
+export function resolveAbsentMoveTarget(user: Pokemon, move: Move, targetIndex: BattlerIndex): BattlerIndex | undefined {
+  if (
+    ![MoveTarget.NEAR_OTHER, MoveTarget.OTHER, MoveTarget.NEAR_ENEMY, MoveTarget.RANDOM_NEAR_ENEMY, MoveTarget.CURSE]
+      .includes(move.moveTarget)
+  ) {
+    return targetIndex;
+  }
+  const target = globalScene.getField()[targetIndex];
+  // Explicit ally targets do not redirect to opponents when that ally faints.
+  if (target ? user.isAlly(target) : areBattlerIndexesAllies(user.getBattlerIndex(), targetIndex)) {
+    return targetIndex;
+  }
+  const targetSet = getMoveTargets(
+    user,
+    move.id,
+    move.moveTarget === MoveTarget.RANDOM_NEAR_ENEMY ? MoveTarget.NEAR_ENEMY : undefined,
+  );
+  if (targetSet.multiple) {
+    return targetIndex;
+  }
+  const legalTargets = targetSet.targets;
+  if (target?.isActive(true)) {
+    return legalTargets.includes(targetIndex) ? targetIndex : undefined;
+  }
+  const opponents = legalTargets.filter(index => {
+    const candidate = globalScene.getField()[index];
+    return candidate && user.isOpponent(candidate);
+  });
+  return opponents.length ? opponents[user.randBattleSeedInt(opponents.length)] : undefined;
+}
+
 function filterVsLaneTargets(user: Pokemon, targets: Pokemon[]): Pokemon[] {
-  return globalScene.twoPlayerVsMode ? targets.filter(target => isVsLaneTargetLegal(user, target)) : targets;
+  return globalScene.isVsLaneBattle() ? targets.filter(target => isVsLaneTargetLegal(user, target)) : targets;
 }
 
 export function isVsLaneTargetLegal(user: Pokemon, target: Pokemon): boolean {
-  if (!globalScene.twoPlayerVsMode) {
+  if (!globalScene.isVsLaneBattle()) {
     return true;
   }
 
@@ -410,7 +442,7 @@ function getPokePoachersDuelRelation(user: Pokemon, target: Pokemon): "ally" | "
     return "ally";
   }
 
-  if (globalScene.twoPlayerVsMode && (userIsPoacher || targetIsPoacher)) {
+  if (globalScene.isVsLaneBattle() && (userIsPoacher || targetIsPoacher)) {
     if (
       (userIsPoacher && targetIsProtectedLegendary)
       || (targetIsPoacher && userIsProtectedLegendary)
@@ -466,7 +498,7 @@ export const frenzyMissFunc: UserMoveConditionFunc = (user: Pokemon, move: Move)
 export function getCounterAttackTarget(user: Pokemon, damageCategory?: MoveDamageCategory): BattlerIndex | null {
   for (const attackRecord of user.turnData.attacksReceived) {
     // check if the attacker was an ally
-    const moveCategory = allMoves[attackRecord.move].category;
+    const moveCategory = attackRecord.category ?? allMoves[attackRecord.move].category;
     const sourceBattlerIndex = attackRecord.sourceBattlerIndex;
     if (
       moveCategory !== MoveCategory.STATUS

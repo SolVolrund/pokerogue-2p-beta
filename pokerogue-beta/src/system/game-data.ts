@@ -1,5 +1,5 @@
 import { pokerogueApi } from "#api/api";
-import { clientSessionId, getSessionDataLocalStorageKey, loggedInUser, updateUserInfo } from "#app/account";
+import { clientSessionId, getSessionDataLocalStorageKey, GUEST_SAVE_SLOT, loggedInUser, updateUserInfo } from "#app/account";
 import type { MultiplayerPlayerCount, PlayerIndex } from "#app/battle-scene";
 import { defaultStarterSpecies, saveKey } from "#app/constants";
 import { getGameMode } from "#app/game-mode";
@@ -102,6 +102,7 @@ import type {
 } from "#utils/computer-partner-profile";
 import {
   COMPUTER_PARTNER_KEYS,
+  getComputerPartnerProfile,
   isComputerPartnerLockedByDefault,
   isComputerPartnerKey as isKnownComputerPartnerKey,
 } from "#utils/computer-partner-profile";
@@ -303,11 +304,15 @@ export class GameData {
   }
 
   public isComputerPartnerUnlocked(key: ComputerPartnerKey): boolean {
+    const achievement = getComputerPartnerProfile(key).unlockAchievement;
+    if (achievement) {
+      return Object.hasOwn(this.achvUnlocks, achievement);
+    }
     return !isComputerPartnerLockedByDefault(key) || Object.hasOwn(this.computerPartnerUnlocks, key);
   }
 
   public unlockComputerPartner(key: ComputerPartnerKey): boolean {
-    if (!isComputerPartnerLockedByDefault(key) || this.isComputerPartnerUnlocked(key)) {
+    if (getComputerPartnerProfile(key).unlockAchievement || !isComputerPartnerLockedByDefault(key) || this.isComputerPartnerUnlocked(key)) {
       return false;
     }
 
@@ -1579,7 +1584,7 @@ export class GameData {
     console.log("Getting Session Slot id: %d", slotId);
 
     // Check local storage for the cached session data
-    if (bypassLogin || localStorage.getItem(getSessionDataLocalStorageKey(slotId))) {
+    if (bypassLogin || slotId === GUEST_SAVE_SLOT || localStorage.getItem(getSessionDataLocalStorageKey(slotId))) {
       const sessionData = localStorage.getItem(getSessionDataLocalStorageKey(slotId));
       if (!sessionData) {
         console.error("No session data found!");
@@ -1623,7 +1628,7 @@ export class GameData {
     const secretId = this.secretId;
     const trainerId = this.trainerId;
 
-    if (bypassLogin) {
+    if (bypassLogin || slotId === GUEST_SAVE_SLOT) {
       localStorage.setItem(getSessionDataLocalStorageKey(slotId), encrypt(updatedDataStr, bypassLogin));
       return true;
     }
@@ -1662,8 +1667,17 @@ export class GameData {
     await this.initSessionFromData(this.parseSessionData(snapshot));
   }
 
-  // TODO: This needs a giant refactor and overhaul
   private async initSessionFromData(fromSession: SessionSaveData): Promise<void> {
+    globalScene.isRestoringSession = true;
+    try {
+      await this.restoreSessionData(fromSession);
+    } finally {
+      globalScene.isRestoringSession = false;
+    }
+  }
+
+  // TODO: This needs a giant refactor and overhaul
+  private async restoreSessionData(fromSession: SessionSaveData): Promise<void> {
     if (isBeta || isDev) {
       try {
         console.debug(
@@ -1692,6 +1706,7 @@ export class GameData {
     globalScene.lastSavePlayTime = 0;
 
     const loadPokemonAssets: Promise<void>[] = [];
+    const savedHp = new Map<Pokemon, number>();
 
     const loadPlayerParty = (playerIndex: PlayerIndex, partyData: PokemonData[]) => {
       const party = globalScene.getPlayerParty(playerIndex);
@@ -1699,6 +1714,7 @@ export class GameData {
 
       for (const p of partyData) {
         const pokemon = p.toPokemon() as PlayerPokemon;
+        savedHp.set(pokemon, p.hp);
         pokemon.setVisible(false);
         loadPokemonAssets.push(pokemon.loadAssets(false));
         party.push(pokemon);
@@ -1781,6 +1797,7 @@ export class GameData {
         fromSession.trainer?.variant === TrainerVariant.DOUBLE,
       ) as EnemyPokemon;
       battle.enemyParty[e] = enemyPokemon;
+      savedHp.set(enemyPokemon, enemyData.hp);
       if (battleType === BattleType.WILD) {
         battle.seenEnemyPartyMemberIds.add(enemyPokemon.id);
       }
@@ -1854,7 +1871,6 @@ export class GameData {
         }
       }
       globalScene.setActivePlayerIndex(0);
-      globalScene.updateModifiers(true);
     } else {
       if (globalScene.modifiers.length > 0) {
         console.warn("Existing modifiers not cleared on session load, deleting...");
@@ -1866,7 +1882,6 @@ export class GameData {
           globalScene.addModifier(modifier, true);
         }
       }
-      globalScene.updateModifiers(true);
     }
 
     if (globalScene.findModifiers(() => true, false).length > 0) {
@@ -1897,10 +1912,19 @@ export class GameData {
       globalScene.refreshPlayerModifierBar();
     }
 
-    globalScene.updateModifiers(false);
-
     await Promise.all(loadPokemonAssets);
     await this.reloadShinyBadgeHolderAssets();
+
+    // Settings may arrive during asset loading. Rebuild every party only after all
+    // items are present, without treating restored stat increases as healing.
+    for (const playerIndex of globalScene.getActivePlayerIndexes()) {
+      globalScene.updateModifiers(true, true, playerIndex);
+    }
+    globalScene.updateModifiers(false, true);
+    await Promise.all([...savedHp].map(([pokemon, hp]) => {
+      pokemon.hp = Math.min(hp, pokemon.getMaxHp());
+      return pokemon.updateInfo(true);
+    }));
   }
 
   private async reloadShinyBadgeHolderAssets(): Promise<void> {
@@ -2117,7 +2141,7 @@ export class GameData {
    * @returns A Promise that resolves with whether the session deletion succeeded
    */
   async deleteSession(slotId: number): Promise<boolean> {
-    if (bypassLogin) {
+    if (bypassLogin || slotId === GUEST_SAVE_SLOT) {
       localStorage.removeItem(getSessionDataLocalStorageKey(slotId));
       return true;
     }
@@ -2180,7 +2204,7 @@ export class GameData {
       return [false, false];
     }
 
-    if (bypassLogin) {
+    if (bypassLogin || slotId === GUEST_SAVE_SLOT) {
       localStorage.removeItem(getSessionDataLocalStorageKey(slotId));
       return [true, true];
     }
@@ -2397,7 +2421,12 @@ export class GameData {
       return verified;
     }
 
-    const saveError = await pokerogueApi.savedata.updateAll(request);
+    // Guest run snapshots stay on this device, but permanent profile progress still syncs.
+    const saveError = globalScene.sessionSlotId === GUEST_SAVE_SLOT
+      ? await pokerogueApi.savedata.system.update({ clientSessionId }, JSON.stringify(systemData, (_key, value) =>
+          typeof value === "bigint" ? (value <= maxIntAttrValue ? Number(value) : value.toString()) : value,
+        ))
+      : await pokerogueApi.savedata.updateAll(request);
     if (sync) {
       globalScene.lastSavePlayTime = 0;
       globalScene.ui.savingIcon.hide();

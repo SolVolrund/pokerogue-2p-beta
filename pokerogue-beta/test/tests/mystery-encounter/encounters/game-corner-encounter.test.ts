@@ -4,6 +4,7 @@ import { BiomeId } from "#enums/biome-id";
 import { Button } from "#enums/buttons";
 import { ModifierTier } from "#enums/modifier-tier";
 import { MoveId } from "#enums/move-id";
+import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { SpeciesId } from "#enums/species-id";
 import { UiMode } from "#enums/ui-mode";
@@ -90,6 +91,36 @@ describe("Game Corner multiplayer visits and CPU rewards", () => {
       jackpot: true,
     });
   }
+
+  it.each([false, true])("disables Slot Machine without advancing the visit (multiplayer: %s)", async multiplayer => {
+    game.scene.twoPlayerMode = multiplayer;
+    const encounter = game.scene.currentBattle.mysteryEncounter!;
+    const menu = vi.spyOn(PlayerMenus, "showMysteryEncounterPlayerMenu").mockResolvedValue(undefined);
+    const option = encounter.options[1];
+    expect(option.optionMode).toBe(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT);
+    expect(option.meetsRequirements()).toBe(false);
+    expect(await option.onPreOptionPhase!()).toBe(false);
+    expect(encounter.misc?.gameCornerChoices).toBeUndefined();
+    expect(menu).not.toHaveBeenCalled();
+    expect(encounter.options[0].meetsRequirements()).toBe(true);
+    expect(encounter.options[3].meetsRequirements()).toBe(true);
+  });
+
+  it("also disables Slot Machine in P2 and P3's individual menus", async () => {
+    const encounter = game.scene.currentBattle.mysteryEncounter!;
+    const menu = vi.spyOn(PlayerMenus, "showMysteryEncounterPlayerMenu").mockResolvedValue(undefined);
+    await encounter.options[0].onPreOptionPhase!();
+    for (const player of [1, 2] as const) {
+      const options = menu.mock.calls[player - 1][0].overrideOptions!;
+      expect(options[1].optionMode).toBe(MysteryEncounterOptionMode.DISABLED_OR_DEFAULT);
+      expect(options[1].meetsRequirements()).toBe(false);
+      expect(await options[1].onPreOptionPhase!()).toBe(false);
+      expect(encounter.misc.gameCornerChoices[player]).toBeUndefined();
+      expect(menu).toHaveBeenCalledTimes(player);
+      await options[0].onPreOptionPhase!();
+    }
+    expect(encounter.misc.gameCornerChoices).toEqual({ 0: 0, 1: 0, 2: 0 });
+  });
 
   async function startFullPartyPurchase(player: PlayerIndex, multiplayer = true) {
     game.scene.twoPlayerMode = multiplayer;

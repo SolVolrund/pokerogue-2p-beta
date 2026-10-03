@@ -1,6 +1,6 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import type { PlayerIndex } from "#app/battle-scene";
-import { PLAYER_PARTY_MAX_SIZE, WEIGHT_INCREMENT_ON_SPAWN_MISS } from "#app/constants";
+import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
@@ -45,6 +45,7 @@ import { BattlePhase } from "#phases/battle-phase";
 import { achvs } from "#system/achv";
 import { PokemonData } from "#system/pokemon-data";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
+import { applyClassicFinalBossBulkBonus } from "#utils/classic-final-boss-bulk";
 import {
   CLASSIC_FINAL_BOSS_MULTIPLAYER_SCALING_STATS,
   CLASSIC_FINAL_BOSS_VITAMIN_STACKS_PER_EXTRA_PLAYER,
@@ -673,6 +674,9 @@ export class EncounterPhase extends BattlePhase {
           overrideHeldItems(enemy, false);
           if (battle.isClassicFinalBoss && enemy.isBoss()) {
             this.applyClassicFinalBossMultiplayerScaling(enemy);
+            if (applyClassicFinalBossBulkBonus(enemy)) {
+              enemy.hp = enemy.getMaxHp();
+            }
           }
         }
       }
@@ -714,7 +718,7 @@ export class EncounterPhase extends BattlePhase {
     ) {
       // Increment ME spawn chance if an ME could have spawned but did not
       // Only do this AFTER session has been saved to avoid duplicating increments
-      globalScene.mysteryEncounterSaveData.encounterSpawnChance += WEIGHT_INCREMENT_ON_SPAWN_MISS;
+      globalScene.mysteryEncounterSaveData.encounterSpawnChance += globalScene.mysteryEncounterSaveData.frequency;
     }
   }
 

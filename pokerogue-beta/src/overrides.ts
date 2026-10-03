@@ -54,6 +54,7 @@ import type { IntClosedRange, TupleOf } from "type-fest";
 //const overrides = {} satisfies Partial<InstanceType<OverridesType>>;
 
 const overrides: Partial<InstanceType<OverridesType>> = {
+//  BATTLE_STYLE_OVERRIDE: "triple",
 //  STARTING_WAVE_OVERRIDE: 2,
 //  MYSTERY_ENCOUNTER_RATE_OVERRIDE: 256,
 //  MYSTERY_ENCOUNTER_OVERRIDE: MysteryEncounterType.GAME_CORNER,
@@ -127,6 +128,10 @@ class DefaultOverrides {
    *
    * If `"double"`, set every battle (_including trainer battles that are normally singles-only_)
    * to be a double battle.
+   *
+   * If `"triple"`, force solo wild battles to use three slots. Pair with
+   * {@linkcode BATTLE_TYPE_OVERRIDE} set to WILD for repeated local testing.
+   * Fixed trainer encounters retain their normal setup.
    *
    * If `"even-doubles"`, follow the `"double"` rule on even wave numbers,
    * and the `"single"` rule on odd wave numbers.
@@ -411,7 +416,7 @@ export const defaultOverrides = new DefaultOverrides();
 
 export const activeOverrides = { ...defaultOverrides, ...overrides } satisfies InstanceType<OverridesType>;
 
-export type BattleStyleOverride = "double" | "single" | "even-doubles" | "odd-doubles";
+export type BattleStyleOverride = "double" | "triple" | "single" | "even-doubles" | "odd-doubles";
 
 export type RandomTrainerOverride = {
   /** The Type of trainer to force */

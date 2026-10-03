@@ -5,6 +5,7 @@ import { MoveId } from "#enums/move-id";
 import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { Stat } from "#enums/stat";
+import { Pokemon } from "#field/pokemon";
 import type { Move, TeraMoveCategoryAttr } from "#moves/move";
 import { GameManager } from "#test/framework/game-manager";
 import Phaser from "phaser";
@@ -27,6 +28,8 @@ describe("Moves - Tera Blast", () => {
 
   beforeEach(() => {
     game = new GameManager(phaserGame);
+    vi.spyOn(Pokemon.prototype, "playAnim").mockImplementation(() => {});
+    vi.spyOn(Pokemon.prototype, "refreshAccessoryOutfitSprites").mockImplementation(() => {});
 
     game.override
       .battleStyle("single")

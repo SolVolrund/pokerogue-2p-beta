@@ -48,6 +48,7 @@ describe("Online transport handshake", () => {
   afterEach(() => {
     TestSocket.latest?.close();
     onlineSaveSession.loading = false;
+    onlineSaveSession.localMenu = false;
     onlineSaveSession.receive = undefined;
     vi.useRealTimers();
     vi.unstubAllGlobals();
@@ -95,6 +96,25 @@ describe("Online transport handshake", () => {
     socket.receive({ protocol: ONLINE_PROTOCOL, type: "peer-joined" });
     expect(socket.sent.some(m => m.kind === "profile-snapshot")).toBe(true);
     expect(socket.sent.some(m => m.kind === "state-checkpoint")).toBe(true);
+  });
+
+  it("allows only the host's private save menu while startup is waiting", () => {
+    const transport = create();
+    const socket = TestSocket.latest;
+    socket.open();
+    socket.receive({ protocol: ONLINE_PROTOCOL, type: "authenticated" });
+    socket.receive({ protocol: ONLINE_PROTOCOL, type: "status", ready: false });
+    onlineSaveSession.loading = true;
+    expect(transport.getInputReadinessBlockReason()).toBe("online-save-loading");
+    onlineSaveSession.localMenu = true;
+    expect(transport.getInputReadinessBlockReason()).toBeUndefined();
+    const receive = vi.fn();
+    onlineSaveSession.receive = receive;
+    const prepare = { protocol: ONLINE_PROTOCOL, type: "start-prepare", startId: "start-1" };
+    socket.receive(prepare);
+    expect(receive).toHaveBeenCalledWith(prepare);
+    socket.close();
+    expect(transport.getInputReadinessBlockReason()).toBeDefined();
   });
 
   it("routes saved-run controls through the authenticated socket and preserves load failure details", () => {

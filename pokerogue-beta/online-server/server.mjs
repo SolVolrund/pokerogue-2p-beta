@@ -28,7 +28,7 @@ const normalizeName = value =>
 
 /** In-memory directory and authenticated, room-scoped relay. No game saves are persisted. */
 export function createOnlineServer({
-  buildId = process.env.ONLINE_BUILD_ID || "local-dev-v3",
+  buildId = process.env.ONLINE_BUILD_ID || "local-dev-v4",
   origins = (process.env.ONLINE_ORIGINS || "http://localhost:8000,http://127.0.0.1:8000").split(","),
   reservationMs = 120_000,
   heartbeatMs = 15_000,
@@ -82,6 +82,7 @@ export function createOnlineServer({
   const closeRoom = (room, reason) => {
     if (!rooms.delete(room.id)) return;
     clearTimeout(room.load?.timeout);
+    clearTimeout(room.start?.timeout);
     for (const member of room.members.values()) {
       tickets.delete(member.token);
       send(member.ws, { protocol: CONTROL_PROTOCOL, type: "closed", message: reason });
@@ -275,6 +276,54 @@ export function createOnlineServer({
       if (!rooms.has(room.id)) return;
       const host = member.seat === "p1";
       if (msg.protocol === CONTROL_PROTOCOL) {
+        if (msg.type === "start-wait") {
+          const start = room.start;
+          if (!start || start.committed || msg.seed !== start.seed || room.load || room.resumed) return;
+          if (!start.timeout) {
+            start.timeout = setTimeout(
+              () => closeRoom(room, "New-run startup timed out. Leave and create a new lobby."),
+              loadTimeoutMs,
+            );
+          }
+          start.waiting.add(member.seat);
+          room.ready = false;
+          publish(room);
+          send(ws, { protocol: CONTROL_PROTOCOL, type: "start-prepare", startId: start.id });
+          return;
+        }
+        if (msg.type === "start-ready" || msg.type === "start-cancel") {
+          const start = room.start;
+          if (!start || start.committed || msg.startId !== start.id) return;
+          if (msg.type === "start-cancel") {
+            if (!host) {
+              ws.close(1008, "Only the host can cancel startup");
+              return;
+            }
+            clearTimeout(start.timeout);
+            room.start = undefined;
+            room.runMode = undefined;
+            room.ready = false;
+            room.status = "starting";
+            for (const peer of room.members.values()) {
+              peer.atTitle = false;
+              send(peer.ws, { protocol: CONTROL_PROTOCOL, type: "start-cancel", startId: start.id, seed: start.seed });
+            }
+            publish(room);
+            return;
+          }
+          if (!start.waiting.has(member.seat)) return;
+          start.acknowledgements.add(member.seat);
+          if (requiredSeats(room).every(seat => start.acknowledgements.has(seat))) {
+            clearTimeout(start.timeout);
+            start.committed = true;
+            room.ready = true;
+            room.status = "in-progress";
+            for (const peer of room.members.values())
+              send(peer.ws, { protocol: CONTROL_PROTOCOL, type: "start-commit", startId: start.id });
+            publish(room);
+          }
+          return;
+        }
         if (
           msg.type === "title-reset"
           && host
@@ -448,6 +497,7 @@ export function createOnlineServer({
         }
         if (!room.runMode) {
           room.runMode = runMode;
+          room.start = { id: randomUUID(), seed: start.seed, waiting: new Set(), acknowledgements: new Set(), committed: false };
           publish(room);
         }
       }
@@ -463,6 +513,7 @@ export function createOnlineServer({
         if (
           !room.ready
           && !room.load
+          && !room.start?.waiting.size
           && requiredSeats(room).every(
             seat => room.members.get(seat)?.atTitle && room.members.get(seat)?.ws?.readyState === WebSocket.OPEN,
           )
@@ -525,7 +576,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const app = createOnlineServer();
   const address = await app.listen(Number(process.env.ONLINE_PORT || 8788), process.env.ONLINE_HOST || "127.0.0.1");
   console.log(
-    `Online lobby service: http://${address.address}:${address.port} (build: ${process.env.ONLINE_BUILD_ID || "local-dev-v3"})`,
+    `Online lobby service: http://${address.address}:${address.port} (build: ${process.env.ONLINE_BUILD_ID || "local-dev-v4"})`,
   );
   for (const signal of ["SIGINT", "SIGTERM"])
     process.once(signal, () => {
