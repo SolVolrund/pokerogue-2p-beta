@@ -26,11 +26,14 @@ import type { MewtwoFinalBossState, UnownFinalBossState } from "#utils/classic-f
 import type { AceEvSpread } from "#data/ace-evs";
 import type { SerializedDailyRunConfig } from "./daily-run";
 import type { DexData } from "./dex-data";
+import type { RunPlayerAppearances } from "#utils/player-card";
 
 export interface SystemSaveData {
   trainerId: number;
   secretId: number;
   playerDisplayName?: string;
+  playerCharacterId?: string;
+  localGuestCharacterIds?: [string, string];
   gender: PlayerGender;
   dexData: DexData;
   starterData: StarterData;
@@ -100,6 +103,7 @@ export interface PlayerSessionSaveData {
 }
 
 export interface SessionSaveData {
+  playerAppearances?: RunPlayerAppearances;
   seed: string;
   playTime: number;
   gameMode: GameModes;

@@ -28,7 +28,7 @@ const normalizeName = value =>
 
 /** In-memory directory and authenticated, room-scoped relay. No game saves are persisted. */
 export function createOnlineServer({
-  buildId = process.env.ONLINE_BUILD_ID || "local-dev-v4",
+  buildId = process.env.ONLINE_BUILD_ID || "local-dev-v5",
   origins = (process.env.ONLINE_ORIGINS || "http://localhost:8000,http://127.0.0.1:8000").split(","),
   reservationMs = 120_000,
   heartbeatMs = 15_000,
@@ -461,9 +461,15 @@ export function createOnlineServer({
         || (msg.kind !== "input-accepted" && msg.playerIndex !== ownIndex)
         || (msg.kind === "input-accepted" && !requiredSeats(room).some(seat => seatIndex(seat) === msg.playerIndex))
         || (msg.kind === "profile-snapshot"
-          && (ownIndex === "ep"
-            || msg.profileSnapshot?.playerIndex !== ownIndex
-            || typeof msg.profileSnapshot?.systemSave !== "string"))
+          && (msg.profileSnapshot?.playerIndex !== ownIndex
+            || (ownIndex === "ep"
+              ? typeof msg.profileSnapshot?.identity?.name !== "string"
+                || msg.profileSnapshot.identity.name.length > 40
+                || typeof msg.profileSnapshot.identity.characterId !== "string"
+                || msg.profileSnapshot.identity.characterId.length > 80
+                || msg.profileSnapshot.systemSave !== undefined
+                || msg.profileSnapshot.starterPreferences !== undefined
+              : typeof msg.profileSnapshot?.systemSave !== "string")))
       ) {
         ws.close(1008, "Message does not match reserved seat");
         return;
@@ -576,7 +582,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const app = createOnlineServer();
   const address = await app.listen(Number(process.env.ONLINE_PORT || 8788), process.env.ONLINE_HOST || "127.0.0.1");
   console.log(
-    `Online lobby service: http://${address.address}:${address.port} (build: ${process.env.ONLINE_BUILD_ID || "local-dev-v4"})`,
+    `Online lobby service: http://${address.address}:${address.port} (build: ${process.env.ONLINE_BUILD_ID || "local-dev-v5"})`,
   );
   for (const signal of ["SIGINT", "SIGTERM"])
     process.once(signal, () => {

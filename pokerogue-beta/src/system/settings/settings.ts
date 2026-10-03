@@ -17,6 +17,7 @@ import { CandyUpgradeNotificationChangedEvent } from "#events/battle-scene";
 import { updateWindowType } from "#ui/ui-theme";
 import i18next from "i18next";
 import { languageOptions } from "./settings-language";
+import { LEGACY_PLAYER_APPEARANCE_SETTINGS } from "#utils/player-card";
 
 const VOLUME_OPTIONS: SettingOption[] = [
   {
@@ -981,6 +982,9 @@ export function resetSettings() {
  * @returns true if successful, false if not
  */
 export function setSetting(setting: string, value: number): boolean {
+  if (LEGACY_PLAYER_APPEARANCE_SETTINGS.has(setting) && globalScene.gameData?.playerCharacterId) {
+    return true;
+  }
   const index: number = settingIndex(setting);
   if (index === -1) {
     return false;

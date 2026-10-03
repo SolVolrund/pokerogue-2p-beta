@@ -7,7 +7,7 @@ import { isMobile } from "#app/touch-controls";
 import { loadPokemonAccessoryAnchors } from "#data/pokemon-accessory-anchors";
 import { BiomeId } from "#enums/biome-id";
 import { GachaType } from "#enums/gacha-types";
-import { getPlayerTrainerSpriteBackTextureKey, PLAYER_TRAINER_SPRITE_OPTIONS } from "#enums/player-trainer-sprite";
+import { getPlayerTrainerSpriteBackTextureKey, getPlayerTrainerSpriteFrontTextureKey, PLAYER_TRAINER_SPRITE_OPTIONS } from "#enums/player-trainer-sprite";
 import { getBiomeAssetKey, getBiomeHasProps } from "#field/arena";
 import { CacheBustedLoaderPlugin } from "#plugins/cache-busted-loader-plugin";
 import { getWindowVariantSuffix, WindowVariant } from "#ui/ui-theme";
@@ -219,10 +219,15 @@ export class LoadingScene extends SceneBase {
       .loadAtlas("items", "");
 
     for (const option of PLAYER_TRAINER_SPRITE_OPTIONS) {
-      this.loadAtlas(getPlayerTrainerSpriteBackTextureKey(option.sprite), "trainer", option.atlasKey).loadAtlas(
+      this.loadAtlas(getPlayerTrainerSpriteFrontTextureKey(option.sprite), "trainer");
+      this.loadAtlas(
+        getPlayerTrainerSpriteBackTextureKey(option.sprite),
+        "trainer",
+        option.backAtlasFile ?? option.atlasKey,
+      ).loadAtlas(
         getPlayerTrainerSpriteBackTextureKey(option.sprite, true),
         "trainer",
-        `${option.atlasKey}_pb`,
+        option.pokeballAtlasFile ?? `${option.atlasKey}_pb`,
       );
     }
 

@@ -55,11 +55,14 @@ describe("Trainer throw animation", () => {
   });
 
   it.each([
+    "bianca_pb",
+    "duplica_back_mid117_pb",
     "bianca_latias_back_pb",
     "duplica_ditto_back_mid117_pb",
     "molly_hale_back_pb",
     "whitney_back_pb",
     "sabrina_back_pb",
+    "amber_two_back_pb",
   ])("plays every pose of %s with frame 4 at ball release", key => {
     const trainer = createTrainer(readTrainerFrames(key));
     playTrainerThrowAnimation(trainer.sprite);
@@ -74,6 +77,33 @@ describe("Trainer throw animation", () => {
     trainer.advanceTo(1000);
     expect(trainer.changes.at(-1)).toEqual({ at: 814, frame: "5" });
     expect(trainer.changes).toHaveLength(5);
+  });
+
+  it("cuts Dawn?'s packed poses at their actual boundaries and aligns their bottoms", () => {
+    const atlas = JSON.parse(readFileSync("assets/images/trainer/dawn_zorua_back_pb.json", "utf8"));
+    const frames = atlas.textures[0].frames;
+    expect(frames.map(({ frame }) => frame)).toEqual([
+      { x: 3, y: 0, w: 56, h: 71 },
+      { x: 3, y: 71, w: 54, h: 68 },
+      { x: 3, y: 139, w: 77, h: 69 },
+    ]);
+    for (const { frame, spriteSourceSize, sourceSize } of frames) {
+      expect(spriteSourceSize.y + spriteSourceSize.h).toBe(sourceSize.h);
+      expect(spriteSourceSize.h).toBe(frame.h);
+      expect(sourceSize).toEqual({ w: 80, h: 80 });
+    }
+  });
+
+  it("uses AmberTwo's five fixed cells without borders or the empty sixth cell", () => {
+    const atlas = JSON.parse(readFileSync("assets/images/trainer/amber_two_back_pb.json", "utf8"));
+    expect(atlas.textures[0].size).toEqual({ w: 164, h: 246 });
+    expect(atlas.textures[0].frames.map(({ frame }) => frame)).toEqual([
+      { x: 1, y: 1, w: 80, h: 80 },
+      { x: 83, y: 1, w: 80, h: 80 },
+      { x: 1, y: 83, w: 80, h: 80 },
+      { x: 83, y: 83, w: 80, h: 80 },
+      { x: 1, y: 165, w: 80, h: 80 },
+    ]);
   });
 
   it.each([184, 256])("aligns five-frame event throws without delaying the event: %d ms poses", frameDuration => {

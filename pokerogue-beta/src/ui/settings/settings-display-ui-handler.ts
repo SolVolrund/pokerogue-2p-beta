@@ -1,6 +1,7 @@
 import type { UiMode } from "#enums/ui-mode";
 import { SettingKeys, SettingType } from "#system/settings";
 import { BaseSettingsUiHandler } from "#ui/base-settings-ui-handler";
+import { LEGACY_PLAYER_APPEARANCE_SETTINGS } from "#utils/player-card";
 
 export class SettingsDisplayUiHandler extends BaseSettingsUiHandler {
   /**
@@ -10,6 +11,7 @@ export class SettingsDisplayUiHandler extends BaseSettingsUiHandler {
    */
   constructor(mode: UiMode | null = null) {
     super(SettingType.DISPLAY, mode);
+    this.settings = this.settings.filter(setting => !LEGACY_PLAYER_APPEARANCE_SETTINGS.has(setting.key));
     this.title = "Display";
 
     /**

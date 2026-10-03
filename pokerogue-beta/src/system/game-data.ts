@@ -111,6 +111,7 @@ import { getEnumKeys } from "#utils/enums";
 import type { MewtwoFinalBossState } from "#utils/classic-final-boss-utils";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import { getPlayerDisplayName, normalizePlayerDisplayName } from "#utils/player-display-name";
+import { getLegacyPlayerCharacterId, getPlayerCharacter, readLegacyAppearanceSettings } from "#utils/player-card";
 import { toCamelCase } from "#utils/strings";
 import { AES, enc } from "crypto-js";
 import i18next from "i18next";
@@ -178,6 +179,23 @@ export class GameData {
   public trainerId: number;
   public secretId: number;
   public playerDisplayName = "";
+  public playerCharacterId: string | undefined;
+  public localGuestCharacterIds: [string, string] | undefined;
+
+  public initializePlayerCard(settings: Record<string, unknown> = {}): void {
+    this.playerCharacterId ??= getLegacyPlayerCharacterId(settings, 0, this.gender);
+    const character = getPlayerCharacter(this.playerCharacterId);
+    if (!character) {
+      throw new Error(`Unknown Player Card character '${this.playerCharacterId}'. Please use the same game build.`);
+    }
+    this.gender = character.gender;
+    this.localGuestCharacterIds ??= [getLegacyPlayerCharacterId(settings, 1), getLegacyPlayerCharacterId(settings, 2)];
+    // Guest preferences are local-only; never use them to interpret a remote player's card.
+    this.localGuestCharacterIds = ([1, 2] as const).map(seat => {
+      const id = this.localGuestCharacterIds?.[seat - 1];
+      return getPlayerCharacter(id) ? id! : getLegacyPlayerCharacterId(settings, seat);
+    }) as [string, string];
+  }
 
   public gender: PlayerGender;
 
@@ -256,6 +274,8 @@ export class GameData {
       trainerId: this.trainerId,
       secretId: this.secretId,
       playerDisplayName: normalizePlayerDisplayName(this.playerDisplayName),
+      ...(this.playerCharacterId ? { playerCharacterId: this.playerCharacterId } : {}),
+      ...(this.localGuestCharacterIds ? { localGuestCharacterIds: [...this.localGuestCharacterIds] as [string, string] } : {}),
       gender: this.gender,
       dexData: this.dexData,
       starterData: this.starterData,
@@ -403,10 +423,9 @@ export class GameData {
     this.playerDisplayName = normalizePlayerDisplayName(systemData.playerDisplayName);
 
     this.gender = systemData.gender;
-
-    if (updateSettings) {
-      this.saveSetting(SettingKeys.Player_Gender, systemData.gender === PlayerGender.FEMALE ? 1 : 0);
-    }
+    this.playerCharacterId = systemData.playerCharacterId;
+    this.localGuestCharacterIds = systemData.localGuestCharacterIds?.slice() as [string, string] | undefined;
+    this.initializePlayerCard(updateSettings ? readLegacyAppearanceSettings() : {});
 
     if (systemData.starterData) {
       this.starterData = systemData.starterData;
@@ -1449,6 +1468,7 @@ export class GameData {
 
     return {
       seed: globalScene.seed,
+      playerAppearances: globalScene.getRunPlayerAppearances(),
       playTime: globalScene.sessionPlayTime,
       gameMode: globalScene.gameMode.modeId,
       dailyConfig: getSerializedDailyRunConfig(),
@@ -1694,6 +1714,7 @@ export class GameData {
     }
 
     this.configureSessionPlayerMode(fromSession);
+    globalScene.restoreRunPlayerAppearances(fromSession.playerAppearances);
 
     globalScene.setSeed(fromSession.seed || globalScene.game.config.seed[0]);
     globalScene.resetSeed();

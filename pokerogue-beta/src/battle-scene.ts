@@ -231,6 +231,16 @@ import {
 import { getEnumValues } from "#utils/enums";
 import { cachedFetch } from "#utils/fetch-utils";
 import { getModifierPoolForType, getModifierType } from "#utils/modifier-utils";
+import {
+  consumePlayerCardHandoff,
+  getPlayerCharacter,
+  LEGACY_PLAYER_APPEARANCE_SETTINGS,
+  type PlayerCardIdentity,
+  readLegacyAppearanceSettings,
+  type RunPlayerAppearances,
+  validateRunPlayerAppearances,
+} from "#utils/player-card";
+import { normalizePlayerDisplayName } from "#utils/player-display-name";
 import { decodeNickname, getPokemonSpecies } from "#utils/pokemon-utils";
 import { capitalizeFirstLetterOnly } from "#utils/strings";
 import i18next from "i18next";
@@ -702,6 +712,9 @@ export class BattleScene extends SceneBase {
   public threePlayerLocalMode =
     this.twoPlayerMode && this.multiplayerPlayerCount === 3 && this.twoPlayerLocalInputSeat === "both";
   public playerTrainerSprite: PlayerTrainerSprite = PlayerTrainerSprite.BASE_BOY;
+  private runPlayerAppearances: RunPlayerAppearances = {};
+  private enemyPlayerIdentity: PlayerCardIdentity | undefined;
+  public playerCardCompatibilityError: string | undefined;
   public twoPlayerGuestGender: PlayerGender = PlayerGender.FEMALE;
   public twoPlayerGuestTrainerSprite: PlayerTrainerSprite = PlayerTrainerSprite.BASE_GIRL;
   public threePlayerGuestGender: PlayerGender = PlayerGender.MALE;
@@ -1333,8 +1346,21 @@ export class BattleScene extends SceneBase {
   }
 
   public markLocalPlayerSystemSaveLoaded(): void {
+    const handoff = consumePlayerCardHandoff();
+    if (handoff) {
+      this.gameData.playerCharacterId = handoff.characterId;
+      this.gameData.playerDisplayName = handoff.name;
+    }
+    this.gameData.initializePlayerCard(readLegacyAppearanceSettings());
     this.localPlayerSystemSaveLoaded = true;
     this.localPlayerSystemSave = this.gameData;
+    if (handoff) {
+      try {
+        this.gameData.saveSystemLocal();
+      } catch (error) {
+        console.warn("The Player Card is available for this lobby but could not be saved locally.", error);
+      }
+    }
 
     if (this.twoPlayerMode) {
       this.syncLocalPlayerSystemSaveSlot();
@@ -1373,18 +1399,23 @@ export class BattleScene extends SceneBase {
       return;
     }
 
+    const profile = this.getLocalPlayerSystemSave();
+    profile.initializePlayerCard(readLegacyAppearanceSettings());
     const localSeat = this.getLocalSystemSaveSeat();
     if (localSeat === "host-and-guest-local") {
       return;
     }
     if (localSeat === "enemy-player") {
-      return;
+      this.enemyPlayerIdentity = { name: profile.playerDisplayName, characterId: profile.playerCharacterId! };
+      this.resolveTwoPlayerProfileReadyWaiters();
+      return { playerIndex: "ep", identity: { ...this.enemyPlayerIdentity } };
     }
 
     this.syncLocalPlayerSystemSaveSlot();
 
     return {
       playerIndex: localSeat,
+      playerCardVersion: 1,
       systemSave: this.getLocalPlayerSystemSave().getSystemSaveDataString(),
       starterPreferences: getStarterPreferencesDataString(loadStarterPreferences()),
     };
@@ -1433,7 +1464,9 @@ export class BattleScene extends SceneBase {
 
   private getTwoPlayerSyncedSettingKeys(): string[] {
     return [
-      ...Setting.filter(setting => TWO_PLAYER_SYNC_SETTING_TYPES.has(setting.type)).map(setting => setting.key),
+      ...Setting.filter(
+        setting => TWO_PLAYER_SYNC_SETTING_TYPES.has(setting.type) && !LEGACY_PLAYER_APPEARANCE_SETTINGS.has(setting.key),
+      ).map(setting => setting.key),
       ...getMysteryEncounterEventSettings().map(setting => setting.key),
     ];
   }
@@ -1484,7 +1517,31 @@ export class BattleScene extends SceneBase {
   }
 
   public applyTwoPlayerProfileSnapshot(profileSnapshot: TwoPlayerProfileSnapshot): boolean {
+    if (profileSnapshot.playerIndex === "ep") {
+      if (
+        !this.twoPlayerMode || !this.twoPlayerEnemyPlayerMode
+        || this.twoPlayerLocalInputSeat === "ep" || this.twoPlayerLocalInputSeat === "both"
+      ) {
+        return false;
+      }
+      if (!getPlayerCharacter(profileSnapshot.identity.characterId)) {
+        this.enemyPlayerIdentity = undefined;
+        this.playerCardCompatibilityError = "Unknown EP character. All players need the same game build.";
+        return false;
+      }
+      this.enemyPlayerIdentity = {
+        ...profileSnapshot.identity,
+        name: normalizePlayerDisplayName(profileSnapshot.identity.name),
+      };
+      this.resolveTwoPlayerProfileReadyWaiters();
+      return true;
+    }
     if (!this.twoPlayerMode || this.threePlayerLocalMode || this.isLocalSystemSaveOwner(profileSnapshot.playerIndex)) {
+      return false;
+    }
+    if (profileSnapshot.playerCardVersion !== 1) {
+      this.twoPlayerProfileSlotsReady[profileSnapshot.playerIndex] = false;
+      this.playerCardCompatibilityError = "This player has an older Player Card format. Please use the same game build.";
       return false;
     }
 
@@ -1492,6 +1549,8 @@ export class BattleScene extends SceneBase {
     try {
       gameData = GameData.fromRawSystem(profileSnapshot.systemSave, false, profileSnapshot.playerIndex);
     } catch (err) {
+      this.twoPlayerProfileSlotsReady[profileSnapshot.playerIndex] = false;
+      this.playerCardCompatibilityError = "Could not read a player profile. All players need the same game build.";
       console.warn(`Failed to import 2P profile snapshot for player ${profileSnapshot.playerIndex}.`, err);
       return false;
     }
@@ -1551,6 +1610,8 @@ export class BattleScene extends SceneBase {
   }
 
   public resetTwoPlayerProfileExchangeForRun(): void {
+    this.playerCardCompatibilityError = undefined;
+    this.enemyPlayerIdentity = undefined;
     if (!this.twoPlayerMode) {
       return;
     }
@@ -1559,7 +1620,9 @@ export class BattleScene extends SceneBase {
   }
 
   public isTwoPlayerProfileExchangeComplete(): boolean {
-    return !this.twoPlayerMode || this.twoPlayerProfileSlotsReady.every(Boolean);
+    const enemyReady =
+      !this.twoPlayerEnemyPlayerMode || this.twoPlayerLocalInputSeat === "both" || !!this.enemyPlayerIdentity;
+    return !this.twoPlayerMode || (this.twoPlayerProfileSlotsReady.every(Boolean) && enemyReady);
   }
 
   public waitForTwoPlayerProfileExchange(timeoutMs = 15000): Promise<boolean> {
@@ -1630,6 +1693,10 @@ export class BattleScene extends SceneBase {
     }
 
     this.syncLocalPlayerSystemSaveSlot();
+    return this.getLocalPlayerSystemSave();
+  }
+
+  public getLocalPlayerCardProfile(): GameData {
     return this.getLocalPlayerSystemSave();
   }
 
@@ -2157,24 +2224,36 @@ export class BattleScene extends SceneBase {
   }
 
   public getTrainerGender(playerIndex: PlayerIndex = 0): PlayerGender {
-    if (playerIndex === 0 && this.isComputerPartnerPlayer(0)) {
-      const gender = getComputerPartnerProfile(this.getComputerPartnerKey(0)).trainerGender;
-      if (gender !== undefined) {
-        return gender;
-      }
-    }
-    if (playerIndex === 2) {
-      return this.threePlayerGuestGender;
-    }
-
-    return playerIndex === 1 ? this.twoPlayerGuestGender : this.getPlayerGameData(0).gender;
+    return getPlayerTrainerSpriteOption(this.getTrainerSprite(playerIndex)).gender;
   }
 
   public getTrainerSprite(playerIndex: PlayerIndex = 0): PlayerTrainerSprite {
-    if (playerIndex === 0 && this.isComputerPartnerPlayer(0)) {
-      const sprite = getComputerPartnerProfile(this.getComputerPartnerKey(0)).trainerSprite;
+    if (this.isComputerPartnerPlayer(playerIndex)) {
+      const sprite = getComputerPartnerProfile(this.getComputerPartnerKey(playerIndex)).trainerSprite;
       if (sprite !== undefined) {
         return sprite;
+      }
+    }
+    const saved = getPlayerCharacter(this.runPlayerAppearances[playerIndex]);
+    if (saved) {
+      return saved.sprite;
+    }
+    if (this.isComputerPartnerPlayer(playerIndex)) {
+      // Alex has no fixed costume. Resolve his default from the synchronized lead,
+      // not from the guest settings that happened to load on this computer.
+      return playerIndex === 0 || this.getTrainerGender(0) === PlayerGender.FEMALE
+        ? PlayerTrainerSprite.BASE_BOY
+        : PlayerTrainerSprite.BASE_GIRL;
+    }
+    if (this.gameData) {
+      const local = this.getLocalPlayerSystemSave();
+      const id =
+        this.twoPlayerLocalInputSeat === "both" && playerIndex > 0
+          ? local?.localGuestCharacterIds?.[playerIndex - 1]
+          : this.getPlayerGameData(playerIndex)?.playerCharacterId;
+      const character = getPlayerCharacter(id);
+      if (character) {
+        return character.sprite;
       }
     }
     if (playerIndex === 2) {
@@ -2182,6 +2261,43 @@ export class BattleScene extends SceneBase {
     }
 
     return playerIndex === 1 ? this.twoPlayerGuestTrainerSprite : this.playerTrainerSprite;
+  }
+
+  public startRunPlayerAppearances(): void {
+    this.runPlayerAppearances = {};
+    this.runPlayerAppearances = Object.fromEntries(
+      this.getActivePlayerIndexes().map(index => [index, getPlayerTrainerSpriteOption(this.getTrainerSprite(index)).atlasKey]),
+    );
+    if (this.twoPlayerEnemyPlayerMode) {
+      const enemyId = this.enemyPlayerIdentity?.characterId ?? this.getLocalPlayerSystemSave().playerCharacterId;
+      if (enemyId) {
+        this.runPlayerAppearances.ep = enemyId;
+      }
+    }
+    this.refreshRunTrainerAppearances();
+  }
+
+  public getRunPlayerAppearances(): RunPlayerAppearances {
+    if (Object.keys(this.runPlayerAppearances).length === 0) {
+      this.startRunPlayerAppearances();
+    }
+    return { ...this.runPlayerAppearances };
+  }
+
+  public restoreRunPlayerAppearances(appearances?: RunPlayerAppearances): void {
+    this.runPlayerAppearances = validateRunPlayerAppearances(appearances ?? {});
+    // Legacy saves have no snapshot. TitlePhase freezes their cards after the profile handshake.
+    this.refreshRunTrainerAppearances();
+  }
+
+  private refreshRunTrainerAppearances(): void {
+    [this.trainer, this.trainerPartner, this.trainerGuest2].forEach((sprite, index) => {
+      if (sprite) {
+        const playerIndex = index as PlayerIndex;
+        sprite.setTexture(this.getTrainerBackTextureKey(playerIndex));
+        this.setTrainerBackSpritePosition(sprite, playerIndex, sprite.x);
+      }
+    });
   }
 
   public getTrainerBackTextureKey(playerIndex: PlayerIndex = 0, pokeball = false): string {
@@ -3594,6 +3710,7 @@ export class BattleScene extends SceneBase {
 
   // TODO: Break up function - this does far too much in 1 sitting
   reset(clearScene = false, clearData = false, reloadI18n = false): void {
+    this.runPlayerAppearances = {};
     if (clearData) {
       this.gameData = new GameData();
       this.localPlayerSystemSave = this.gameData;

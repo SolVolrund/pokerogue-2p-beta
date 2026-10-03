@@ -145,6 +145,25 @@ describe("Online saved-run handoff", () => {
     expect(read).not.toHaveBeenCalled();
   });
 
+  it("restores saved Player Card appearances even when current profiles have changed", async () => {
+    game.scene.restoreRunPlayerAppearances({ 0: "sabrina_back", 1: "riley_back" });
+    const saved = snapshot();
+    game.scene.getLocalPlayerCardProfile().playerCharacterId = "whitney_back";
+    game.scene.restoreRunPlayerAppearances({ 0: "buck_back", 1: "cheryl_back" });
+    await prepare(saved);
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ type: "load-ready" }));
+    expect(game.scene.getRunPlayerAppearances()).toEqual({ 0: "sabrina_back", 1: "riley_back" });
+    expect(game.scene.getTrainerBackTextureKey(0)).toBe("sabrina_back");
+    expect(game.scene.getTrainerBackTextureKey(1)).toBe("riley_back");
+  });
+
+  it("fails saved-run preparation clearly for an unknown Player Card character", async () => {
+    const saved = JSON.parse(snapshot());
+    saved.playerAppearances = { 0: "future-character" };
+    await prepare(JSON.stringify(saved));
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ type: "load-failed", message: expect.stringContaining("same game build") }));
+  });
+
   it.each(["none", "settings", "intermediate-recalculation"])("preserves all three parties' vitamin stats and HP during %s", async interruption => {
     const originalSeat = game.scene.twoPlayerLocalInputSeat;
     game.scene.configureTwoPlayerMode(true, 6, false, 3);

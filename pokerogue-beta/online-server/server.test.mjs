@@ -7,6 +7,22 @@ import { createOnlineServer } from "./server.mjs";
 
 const protocol = "pokerogue-online-v1";
 const buildId = "test-build";
+
+test("EP can share its Player Card but cannot send a progression profile", async t => {
+  const f = await fixture(t);
+  const { member, client: host } = await f.host(1, true);
+  const epMember = await f.request(`/lobbies/${member.lobby.id}/join`, { seat: "ep" });
+  const ep = await f.connect(epMember);
+  await ep.next(m => m.type === "authenticated");
+  const identity = { name: "Opponent", characterId: "sabrina_back" };
+  ep.send("profile-snapshot", { profileSnapshot: { playerIndex: "ep", identity } });
+  const message = await host.next(m => m.kind === "profile-snapshot");
+  assert.deepEqual(message.profileSnapshot, { playerIndex: "ep", identity });
+  const closed = once(ep.socket, "close");
+  ep.send("profile-snapshot", { profileSnapshot: { playerIndex: "ep", identity, systemSave: "not-an-EP-profile" } });
+  const [code] = await closed;
+  assert.equal(code, 1008);
+});
 async function fixture(t, options = {}) {
   const app = createOnlineServer({ buildId, ...options });
   const address = await app.listen(0);

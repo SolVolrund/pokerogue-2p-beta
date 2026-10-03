@@ -28,6 +28,7 @@ import { getMysteryEncounterFrequencySetting } from "#system/settings-events";
 import { vouchers } from "#system/voucher";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import type { ChallengeSelectConfig } from "#ui/challenges-select-ui-handler";
+import type { PlayerCharacterSelectConfig } from "#ui/player-character-ui-handler";
 import { SaveSlotUiMode } from "#ui/save-slot-select-ui-handler";
 import { isLocalServerConnected, randomString } from "#utils/common";
 import {
@@ -63,6 +64,7 @@ import {
   onlineSaveSession,
   validateOnlineSessionSave,
 } from "#utils/online-save-session";
+import { getPlayerCharacter, readLegacyAppearanceSettings, withPlayerCardForLobby } from "#utils/player-card";
 import { normalizePlayerDisplayName } from "#utils/player-display-name";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
@@ -261,12 +263,12 @@ export class TitlePhase extends Phase {
         ...(isOnlineSession() ? { disabled: true, style: TextStyle.SETTINGS_LOCKED } : {}),
       },
       {
-        label: "Player Name",
+        label: "Player Card",
         handler: () => {
           if (globalScene.twoPlayerMode && globalScene.twoPlayerLocalInputSeat !== "both") {
             return false;
           }
-          this.showPlayerNameForm(lastSessionSlot);
+          this.showPlayerCard(lastSessionSlot);
           return true;
         },
         ...(globalScene.twoPlayerMode && globalScene.twoPlayerLocalInputSeat !== "both"
@@ -373,9 +375,80 @@ export class TitlePhase extends Phase {
     ]);
   }
 
-  private showPlayerNameForm(lastSessionSlot: number): void {
-    const profile = globalScene.getLocalPlayerGameData();
-    const returnToTitle = () => void this.showOptions(lastSessionSlot);
+  private showPlayerCard(lastSessionSlot: number): void {
+    this.showOptionSelectWithText("Player Card", [
+      {
+        label: "Player Name",
+        handler: () => {
+          this.showPlayerNameForm(lastSessionSlot, true);
+          return true;
+        },
+        keepOpen: true,
+      },
+      ...([0, 1, 2] as const).map(seat => ({
+        label: seat === 0 ? "Player Sprite" : `Local P${seat + 1} Sprite`,
+        handler: () => {
+          this.showPlayerCharacterSelect(lastSessionSlot, seat);
+          return true;
+        },
+        keepOpen: true,
+      })),
+      {
+        label: "Back",
+        handler: () => {
+          void this.showOptions(lastSessionSlot);
+          return true;
+        },
+        keepOpen: true,
+      },
+    ]);
+  }
+
+  private showPlayerCharacterSelect(lastSessionSlot: number, seat: PlayerIndex): void {
+    const profile = globalScene.getLocalPlayerCardProfile();
+    profile.initializePlayerCard(readLegacyAppearanceSettings());
+    const returnToCard = () => void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showPlayerCard(lastSessionSlot));
+    const config: PlayerCharacterSelectConfig = {
+      characterId: seat === 0 ? profile.playerCharacterId! : profile.localGuestCharacterIds![seat - 1],
+      onCancel: returnToCard,
+      onConfirm: characterId => {
+        const character = getPlayerCharacter(characterId);
+        if (!character) {
+          returnToCard();
+          return;
+        }
+        const previousId = profile.playerCharacterId;
+        const previousGender = profile.gender;
+        const previousGuests = [...profile.localGuestCharacterIds!] as [string, string];
+        if (seat === 0) {
+          profile.playerCharacterId = characterId;
+          profile.gender = character.gender;
+        } else {
+          profile.localGuestCharacterIds![seat - 1] = characterId;
+        }
+        try {
+          profile.saveSystemLocal();
+        } catch {
+          profile.playerCharacterId = previousId;
+          profile.gender = previousGender;
+          profile.localGuestCharacterIds = previousGuests;
+          void globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+            globalScene.ui.showText("Your character could not be saved. Please try again.", null, returnToCard);
+          });
+          return;
+        }
+        returnToCard();
+      },
+    };
+    void globalScene.ui.setMode(UiMode.PLAYER_CHARACTER, config);
+  }
+
+  private showPlayerNameForm(lastSessionSlot: number, fromCard = false): void {
+    const profile = globalScene.getLocalPlayerCardProfile();
+    const returnToTitle = () =>
+      fromCard
+        ? void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showPlayerCard(lastSessionSlot))
+        : void this.showOptions(lastSessionSlot);
     void globalScene.ui.setMode(
       UiMode.PLAYER_NAME_FORM,
       {
@@ -912,7 +985,7 @@ export class TitlePhase extends Phase {
           if (enemyPlayerUrl) {
             console.info(`[PokeRogue 2P] Enemy Player lobby link: ${enemyPlayerUrl}`);
           }
-          void globalScene.ui.setMode(UiMode.MESSAGE).then(() => window.location.assign(hostLaunchUrl));
+          this.launchLanLobby(hostLaunchUrl);
         },
         () => {
           void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showLanMultiplayerSelect());
@@ -930,7 +1003,7 @@ export class TitlePhase extends Phase {
             void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showLanMultiplayerSelect());
             return;
           }
-          void globalScene.ui.setMode(UiMode.MESSAGE).then(() => window.location.assign(lobbyUrl));
+          this.launchLanLobby(lobbyUrl);
         },
         () => {
           void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.showLanMultiplayerSelect());
@@ -1166,6 +1239,16 @@ export class TitlePhase extends Phase {
 
   private isLocalJoinHost(hostname: string): boolean {
     return !hostname || hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  }
+
+  private launchLanLobby(target: string): void {
+    const profile = globalScene.getLocalPlayerCardProfile();
+    profile.initializePlayerCard(readLegacyAppearanceSettings());
+    const url = withPlayerCardForLobby(target, window.location.origin, {
+      name: profile.playerDisplayName,
+      characterId: profile.playerCharacterId!,
+    });
+    void globalScene.ui.setMode(UiMode.MESSAGE).then(() => window.location.assign(url));
   }
 
   private applyLobbyHostAddress(url: URL, lanAddress?: string): void {
@@ -2101,7 +2184,7 @@ export class TitlePhase extends Phase {
         throw new Error("The host's selected save slot was lost.");
       }
       if (!(await globalScene.waitForTwoPlayerProfileExchange(30000))) {
-        throw new Error("Player profile exchange timed out.");
+        throw new Error(globalScene.playerCardCompatibilityError ?? "Player profile exchange timed out.");
       }
       if (this.onlineLoadId !== loadId) {
         return;
@@ -2360,10 +2443,10 @@ export class TitlePhase extends Phase {
           return;
         }
 
-        const retryMessage =
-          globalScene.multiplayerPlayerCount > 2
+        const retryMessage = globalScene.playerCardCompatibilityError
+          ?? (globalScene.multiplayerPlayerCount > 2
             ? "Still waiting for the other player profiles."
-            : "Still waiting for the other player profile.";
+            : "Still waiting for the other player profile.");
         globalScene.ui.showText(retryMessage, null, () => this.waitForTwoPlayerProfilesBeforeRun(onReady));
       });
     });
@@ -2508,6 +2591,11 @@ export class TitlePhase extends Phase {
 
   // TODO: Refactor this
   end(): void {
+    if (!this.loaded) {
+      globalScene.startRunPlayerAppearances();
+    } else {
+      globalScene.getRunPlayerAppearances();
+    }
     clearInterval(this.onlineLoadAnnounceInterval);
     if (isOnlineSession()) {
       onlineSaveSession.receive = undefined;

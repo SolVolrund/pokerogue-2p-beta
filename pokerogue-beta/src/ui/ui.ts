@@ -1,4 +1,5 @@
 import { audioManager } from "#app/global-audio-manager";
+import { PlayerCharacterUiHandler } from "#ui/player-character-ui-handler";
 import { globalScene } from "#app/global-scene";
 import type { Button } from "#enums/buttons";
 import { Device } from "#enums/devices";
@@ -124,6 +125,7 @@ const noTransitionModes = [
   UiMode.LOBBY_JOIN_FORM,
   UiMode.PLAYER_NAME_FORM,
   UiMode.ONLINE_LOBBY,
+  UiMode.PLAYER_CHARACTER,
   UiMode.TEST_DIALOGUE,
   UiMode.AUTO_COMPLETE,
   UiMode.ADMIN,
@@ -221,6 +223,7 @@ export class UI extends Phaser.GameObjects.Container {
       new SettingsItemsUiHandler(),
       new PlayerNameFormUiHandler(UiMode.PLAYER_NAME_FORM),
       new OnlineLobbyUiHandler(),
+      new PlayerCharacterUiHandler(),
     ];
   }
 

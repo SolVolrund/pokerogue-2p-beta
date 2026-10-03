@@ -1,5 +1,6 @@
 import type { InputOwner, InputSeat, LocalInputSeat, PlayerIndex } from "#app/battle-scene";
 import { Button } from "#enums/buttons";
+import type { PlayerCardIdentity } from "#utils/player-card";
 import { onlineSaveSession, type OnlineSaveControl } from "#utils/online-save-session";
 import type { ComputerPartnerKey, ComputerPartnerRolePreferences } from "#utils/computer-partner-profile";
 import {
@@ -60,11 +61,19 @@ export interface TwoPlayerTitleStart {
   seed?: string;
 }
 
-export interface TwoPlayerProfileSnapshot {
+export type TwoPlayerProfileSnapshot = {
   playerIndex: PlayerIndex;
   systemSave: string;
   starterPreferences?: string;
-}
+  playerCardVersion?: 1;
+  identity?: never;
+} | {
+  playerIndex: "ep";
+  identity: PlayerCardIdentity;
+  systemSave?: never;
+  starterPreferences?: never;
+  playerCardVersion?: never;
+};
 
 export interface TwoPlayerSettingsSnapshot {
   settings: Record<string, number>;
@@ -149,7 +158,7 @@ export interface TwoPlayerInputDebugEvent {
   localInputContextId?: string;
   remoteInputContextId?: string;
   checkpointSummary?: Record<string, unknown>;
-  profilePlayerIndex?: PlayerIndex;
+  profilePlayerIndex?: InputSeat;
   settingsKeys?: string[];
 }
 
@@ -319,6 +328,12 @@ function isTitlePhaseCheckpoint(checkpoint: TwoPlayerStateCheckpoint | undefined
 }
 
 function isValidProfileSnapshot(profileSnapshot: unknown): profileSnapshot is TwoPlayerProfileSnapshot {
+  const snapshot = profileSnapshot as Partial<TwoPlayerProfileSnapshot> | undefined;
+  if (snapshot?.playerIndex === "ep") {
+    return typeof snapshot.identity?.name === "string" && snapshot.identity.name.length <= 40
+      && typeof snapshot.identity.characterId === "string" && snapshot.identity.characterId.length <= 80
+      && snapshot.systemSave === undefined && snapshot.starterPreferences === undefined;
+  }
   return !!profileSnapshot
     && typeof profileSnapshot === "object"
     && isValidPlayerIndex((profileSnapshot as Partial<TwoPlayerProfileSnapshot>).playerIndex)
@@ -1593,7 +1608,7 @@ export class TwoPlayerInputTransport {
 
   private handleProfileSnapshot(message: TwoPlayerInputMessage): void {
     const profileSnapshot = message.profileSnapshot;
-    if (!profileSnapshot) {
+    if (!profileSnapshot || profileSnapshot.playerIndex !== message.playerIndex) {
       this.logIgnoredMessage(message, "missing-profile-snapshot");
       return;
     }

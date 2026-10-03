@@ -1,7 +1,7 @@
 import type { OnlineLobbySeat, OnlineLobbySetup, OnlineLobbySummary } from "#utils/online-lobby";
 
 export const ONLINE_PROTOCOL = "pokerogue-online-v1";
-export const ONLINE_BUILD_ID = import.meta.env.VITE_ONLINE_BUILD_ID || "local-dev-v4";
+export const ONLINE_BUILD_ID = import.meta.env.VITE_ONLINE_BUILD_ID || "local-dev-v5";
 const MEMBERSHIP_KEY = "pokerogue-online-membership-v1";
 
 export interface OnlineMembership {

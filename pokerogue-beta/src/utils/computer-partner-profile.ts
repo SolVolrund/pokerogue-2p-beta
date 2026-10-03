@@ -395,8 +395,8 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
     roles: ["ace", "physical", "special", "bulk", "speed", "balanced"],
     personalityTypes: [PokemonType.NORMAL],
     monotype: PokemonType.NORMAL,
-//    requiresUnlock: true,
-//    unlockAchievement: "MONO_NORMAL",
+    requiresUnlock: true,
+    unlockAchievement: "MONO_NORMAL",
     signatureMoves: {
       [SpeciesId.MILTANK]: [MoveId.MILK_DRINK, MoveId.ROLLOUT, MoveId.DEFENSE_CURL],
     },
@@ -431,8 +431,8 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
     roles: ["ace", "physical", "special", "bulk", "speed", "balanced"],
     personalityTypes: [PokemonType.PSYCHIC],
     monotype: PokemonType.PSYCHIC,
- //   requiresUnlock: true,
- //   unlockAchievement: "MONO_PSYCHIC",
+    requiresUnlock: true,
+    unlockAchievement: "MONO_PSYCHIC",
     startingStarters: [
       { speciesId: SpeciesId.ABRA },
       { speciesId: SpeciesId.MR_MIME },
