@@ -20,9 +20,12 @@ import { HealingBoosterModifier } from "#modifiers/modifier";
 import type { HealAttr, Move } from "#moves/move";
 import { getMoveTargets } from "#moves/move-utils";
 import type { PokemonMove } from "#moves/pokemon-move";
+import { getVeeveeAnteOutcomes } from "#moves/veevee-ante";
 import type { TurnMove } from "#types/turn-move";
 import { getAiMoveTargetData, getAiRelevantOpponents } from "#utils/ai-targeting";
+import { withBioInstabilityForecast } from "#utils/bio-instability-ai";
 import { BooleanHolder, NumberHolder } from "#utils/common";
+import { evaluateItemSuppression, isItemSuppressionMove } from "#utils/held-item-suppression-ai";
 
 const FAIL_SCORE = -100_000;
 const KO_SCORE = 220;
@@ -139,6 +142,11 @@ interface PlannerSearchAction {
   move: Move;
   targets: PlannerSearchTarget[];
   priority: number;
+  formChangeForecast?: {
+    baselineIncoming: number;
+    damageBeforeAction: number;
+    laterThreats: PlannerIncomingThreat[];
+  };
 }
 
 interface PlannerSearchTarget {
@@ -884,6 +892,38 @@ function scorePlannerMoveCandidates(user: Pokemon, pokemonMove: PokemonMove): Pl
   const { targetSet } = targetData;
   const targets = targetSet.multiple ? targetData.allTargets : targetData.selectableTargets;
 
+  if (isItemSuppressionMove(move)) {
+    // Room effects are one field-wide decision, not a benefit repeated for every target.
+    const choices = move.id === MoveId.MAGIC_ROOM ? [user] : targets;
+    return choices
+      .filter(target => doesMoveWork(user, target, move))
+      .map(target => {
+        const evaluation = evaluateItemSuppression(user, target, move);
+        const score = Math.abs(evaluation.score) < 0.01 ? -20 : evaluation.score;
+        const breakdown = createEmptyPlannerMoveScoreBreakdown();
+        breakdown.healing = evaluation.healingScore;
+        breakdown.sideSupport = score - breakdown.healing;
+        breakdown.status = score;
+        return {
+          move: pokemonMove,
+          targets:
+            move.id === MoveId.MAGIC_ROOM
+              ? targets.map(pokemon => pokemon.getBattlerIndex())
+              : [target.getBattlerIndex()],
+          score,
+          breakdown,
+        };
+      });
+  }
+
+  if (move.id === MoveId.VEEVEE_ANTE) {
+    return targets.map(target => ({
+      move: pokemonMove,
+      targets: [target.getBattlerIndex()],
+      ...getVeeveeAntePlannerEvaluation(user, target),
+    }));
+  }
+
   if (targetSet.multiple) {
     const targetIndexes = targets.map(fieldTarget => fieldTarget.getBattlerIndex());
     const scores = targets.map(fieldTarget => scoreMoveAgainstTargetDetailed(user, fieldTarget, move));
@@ -947,7 +987,7 @@ function scorePlannerMoveCandidates(user: Pokemon, pokemonMove: PokemonMove): Pl
 
 function scorePlannerChoiceByOneTurnSearch(user: Pokemon, choice: PlannerMoveChoice): PlannerMoveChoice {
   const move = choice.move.getMove();
-  if (!move) {
+  if (!move || move.id === MoveId.VEEVEE_ANTE || isItemSuppressionMove(move)) {
     return choice;
   }
 
@@ -976,6 +1016,97 @@ function scorePlannerChoiceByOneTurnSearch(user: Pokemon, choice: PlannerMoveCho
   } catch {
     return choice;
   }
+}
+
+/** Evaluate each branch before averaging, so a possible KO never becomes a guaranteed KO. */
+export function getVeeveeAntePlannerEvaluation(user: Pokemon, target: Pokemon): {
+  score: number;
+  debug?: PlannerMoveDebugEvaluation;
+} {
+  const ante = allMoves[MoveId.VEEVEE_ANTE];
+  if (!doesMoveWork(user, target, ante)) {
+    return { score: FAIL_SCORE };
+  }
+  const originalMaxHp = user.getMaxHp();
+  const incomingBefore = estimateIncomingDamageDetailed(user);
+  // Turn order and early hits use the original form, not the hypothetical result.
+  const actsBefore = new Map(
+    getAiRelevantOpponents(user).map(opponent => [
+      opponent.id,
+      doesMoveActBeforeThreat(
+        user,
+        opponent,
+        ante,
+        incomingBefore.threats.find(threat => threat.attacker === opponent)?.move ?? allMoves[MoveId.TACKLE],
+      ),
+    ]),
+  );
+  const damageBefore = incomingBefore.threats
+    .filter(threat => !actsBefore.get(threat.attacker.id))
+    .reduce((total, threat) => total + threat.damage, 0);
+  const canAct = damageBefore < user.hp;
+  let baseScore = 0;
+  const expected: PlannerSearchEvaluation = {
+    score: 0,
+    preventedThreatScore: 0,
+    survivalScore: 0,
+    objectiveSurvivalScore: 0,
+    spreadFollowupScore: 0,
+    wastedTurnPenalty: 0,
+  };
+  const outcomes = getVeeveeAnteOutcomes(getPlannerVisibleTypes(user, target));
+  for (const outcome of outcomes) {
+    const move = allMoves[outcome.move];
+    withBioInstabilityForecast(user, move, () => {
+      // A failed branch is a wasted attempt, not a reason to discard the entire lottery.
+      const works = doesMoveWork(user, target, move);
+      const base = canAct ? (works ? scoreMoveAgainstTargetDetailed(user, target, move).score : -20) : 0;
+      baseScore += outcome.probability * base;
+      const state = createPlannerSearchState(user);
+      const choice = {
+        move: user.getMoveset().find(candidate => candidate.moveId === MoveId.VEEVEE_ANTE)!,
+        targets: [target.getBattlerIndex()],
+        score: base,
+      };
+      const action = createPlannerSearchAction(user, choice, move);
+      for (const entry of action.targets) {
+        entry.actsBeforeUser = !actsBefore.get(entry.pokemon.id);
+        if (!canAct || !works) {
+          entry.damage = 0;
+          entry.hpAfterAction = getPlannerHp(entry.pokemon, user);
+        }
+      }
+      const hpScale = user.getMaxHp() / originalMaxHp;
+      action.formChangeForecast = {
+        baselineIncoming: incomingBefore.incomingDamage * hpScale,
+        damageBeforeAction: damageBefore * hpScale,
+        laterThreats: estimateIncomingDamageDetailed(user).threats.filter(threat => actsBefore.get(threat.attacker.id)),
+      };
+      const evaluation = evaluatePlannerSearchAction(state, action);
+      if (!canAct) {
+        evaluation.score -= 150;
+        evaluation.wastedTurnPenalty += 150;
+      }
+      for (const key of Object.keys(expected) as (keyof PlannerSearchEvaluation)[]) {
+        expected[key] += outcome.probability * evaluation[key];
+      }
+    });
+  }
+  return {
+    score: baseScore + expected.score,
+    debug: {
+      baseScore,
+      outcomeScore: expected.score,
+      totalScore: baseScore + expected.score,
+      preventedThreatScore: expected.preventedThreatScore,
+      survivalScore: expected.survivalScore,
+      objectiveSurvivalScore: expected.objectiveSurvivalScore,
+      spreadFollowupScore: expected.spreadFollowupScore,
+      wastedTurnPenalty: expected.wastedTurnPenalty,
+      result: "Expected value of VeeVee-Ante outcomes",
+      projectedHpByBattler: {},
+    },
+  };
 }
 
 function installPlannerDebugConsoleHelper(): void {
@@ -1676,7 +1807,9 @@ function getSearchSurvivalScore(
   opponentTargets: PlannerSearchTarget[],
 ): number {
   const residualDamage = estimateEndOfTurnResidualDamage(state.user.pokemon);
-  const incomingBefore = estimateIncomingDamageDetailed(state.user.pokemon).incomingDamage + residualDamage;
+  const incomingBefore =
+    (action.formChangeForecast?.baselineIncoming ?? estimateIncomingDamageDetailed(state.user.pokemon).incomingDamage)
+    + residualDamage;
   const incomingTimeline = estimateIncomingTimelineAfterSearchAction(state, action, opponentTargets);
   const incomingAfter = incomingTimeline.totalDamage + residualDamage;
   const preventedIncoming = Math.max(0, incomingBefore - incomingAfter);
@@ -1732,7 +1865,9 @@ function getObjectiveSurvivalScore(
   const residualDamage = estimateEndOfTurnResidualDamage(pokemon);
   const nextResidualDamage = estimateNextEndOfTurnResidualDamage(pokemon);
   const incomingTimeline = estimateIncomingTimelineAfterSearchAction(state, action, opponentTargets);
-  const incomingBefore = estimateIncomingDamageDetailed(pokemon).incomingDamage + residualDamage;
+  const incomingBefore =
+    (action.formChangeForecast?.baselineIncoming ?? estimateIncomingDamageDetailed(pokemon).incomingDamage)
+    + residualDamage;
   const projectedUserHp = getProjectedHpAfterDirectHealing(pokemon, pokemon, action.move, action.targets);
   const directHeal = Math.max(0, projectedUserHp - state.user.hp);
   const survivesUntilAction = incomingTimeline.damageBeforeAction < state.user.hp;
@@ -1812,6 +1947,14 @@ function estimateIncomingTimelineAfterSearchAction(
   action: PlannerSearchAction,
   opponentTargets: PlannerSearchTarget[],
 ): PlannerIncomingTimeline {
+  if (action.formChangeForecast) {
+    const damageAfterAction = action.formChangeForecast.laterThreats.reduce(
+      (total, threat) => total + getIncomingThreatDamageAfterPlannerAction(threat, state, action, opponentTargets, true),
+      0,
+    );
+    const damageBeforeAction = action.formChangeForecast.damageBeforeAction;
+    return { damageBeforeAction, damageAfterAction, totalDamage: damageBeforeAction + damageAfterAction };
+  }
   const incoming = estimateIncomingDamageDetailed(state.user.pokemon);
   return incoming.threats.reduce<PlannerIncomingTimeline>(
     (timeline, threat) => {

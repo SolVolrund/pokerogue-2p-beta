@@ -59,6 +59,7 @@ import { SpeciesFormChange } from "#data/pokemon-forms";
 import type { PokemonSpecies, PokemonSpeciesFilter } from "#data/pokemon-species";
 import { getTypeDamageMultiplier, getTypeRgb } from "#data/type";
 import { AiType } from "#enums/ai-type";
+import { ArenaTagType } from "#enums/arena-tag-type";
 import { BattleStyle } from "#enums/battle-style";
 import { BattleType } from "#enums/battle-type";
 import type { BattlerIndex } from "#enums/battler-index";
@@ -193,6 +194,7 @@ import { addTextObject, getTextColor, RAINBOW_TINT } from "#ui/text";
 import { UI } from "#ui/ui";
 import { addUiThemeOverrides, updateWindowType } from "#ui/ui-theme";
 import { playTween } from "#utils/anim-utils";
+import { removeHeldItemForBattle } from "#utils/battle-held-items";
 import { getEnemyBattlerIndex, getFieldIndexFromBattlerIndex, getPlayerBattlerIndex } from "#utils/battler-index-utils";
 import {
   isClassicFinalBossPhaseTwo,
@@ -752,7 +754,6 @@ export class BattleScene extends SceneBase {
 
   public modifiers: PersistentModifier[];
   private enemyModifiers: PersistentModifier[];
-  private flungRecoverableBattleItems: PokemonHeldItemModifier[] = [];
   private vsEnemyModifiersByPlayer: Record<PlayerIndex, PersistentModifier[]> = {
     0: [],
     1: [],
@@ -2064,6 +2065,7 @@ export class BattleScene extends SceneBase {
       seed: this.seed ?? null,
       waveSeed: this.waveSeed ?? null,
       biome: this.arena?.biomeId ?? null,
+      magicRoomTurns: this.arena?.getTag(ArenaTagType.MAGIC_ROOM)?.turnCount ?? null,
       phase: currentPhase?.phaseName ?? null,
       uiMode,
       uiModeName: uiMode === null ? null : UiMode[uiMode],
@@ -2196,6 +2198,9 @@ export class BattleScene extends SceneBase {
       variant: pokemon.variant,
       isActive: pokemon.isActive(),
       switchOutStatus: pokemon.switchOutStatus,
+      embargoTurns: pokemon.getTag(BattlerTagType.EMBARGO)?.turnCount ?? null,
+      consumedHeldItems: pokemon.battleData.consumedHeldItems ?? null,
+      removedHeldItems: pokemon.battleData.removedHeldItems,
       moves: pokemon.getMoveset(true).map(move => ({
         moveId: move.moveId,
         ppUsed: move.ppUsed,
@@ -2212,6 +2217,7 @@ export class BattleScene extends SceneBase {
       iconImage: modifier.type.iconImage,
       stackCount: modifier.stackCount,
       args: modifier.getArgs(),
+      recoverableBattleTransfer: modifier instanceof PokemonHeldItemModifier ? modifier.recoverableBattleTransfer ?? null : null,
     };
   }
 
@@ -5458,7 +5464,10 @@ export class BattleScene extends SceneBase {
       itemModifier.stackCount -= countTaken;
       newItemModifier.stackCount = matchingModifier.stackCount + countTaken;
     } else {
-      const countTaken = Math.min(transferQuantity, itemModifier.stackCount);
+      const countTaken = Math.min(transferQuantity, itemModifier.stackCount, newItemModifier.getMaxStackCount());
+      if (countTaken <= 0) {
+        return false;
+      }
       itemModifier.stackCount -= countTaken;
       newItemModifier.stackCount = countTaken;
     }
@@ -5519,21 +5528,15 @@ export class BattleScene extends SceneBase {
         this.findModifiersForPlayer(
           m => m instanceof PokemonHeldItemModifier && !!m.recoverableBattleTransfer,
           playerIndex,
-        ).map(modifier => ({ modifier: modifier as PokemonHeldItemModifier, playerIndex, transient: false })),
+        ).map(modifier => ({ modifier: modifier as PokemonHeldItemModifier, playerIndex })),
       ),
       ...this.findModifiers(m => m instanceof PokemonHeldItemModifier && !!m.recoverableBattleTransfer, false).map(
-        modifier => ({ modifier: modifier as PokemonHeldItemModifier, playerIndex: undefined, transient: false }),
+        modifier => ({ modifier: modifier as PokemonHeldItemModifier, playerIndex: undefined }),
       ),
-      ...this.flungRecoverableBattleItems.map(modifier => ({
-        modifier,
-        playerIndex: undefined,
-        transient: true,
-      })),
     ];
-    this.flungRecoverableBattleItems = [];
     const recoveredPokemon = new Set<Pokemon>();
 
-    for (const { modifier, playerIndex, transient } of trackedItems) {
+    for (const { modifier, playerIndex } of trackedItems) {
       const transferSource = modifier.recoverableBattleTransfer;
       if (!transferSource) {
         continue;
@@ -5557,8 +5560,7 @@ export class BattleScene extends SceneBase {
       ) as PokemonHeldItemModifier | undefined;
       const originalCanHoldMore =
         !existingOriginalItem || existingOriginalItem.getStackCount() < existingOriginalItem.getMaxStackCount();
-      const removed =
-        transient || this.removeModifier(modifier, currentHolder?.isEnemy() ?? playerIndex === undefined, playerIndex);
+      const removed = this.removeModifier(modifier, currentHolder?.isEnemy() ?? playerIndex === undefined, playerIndex);
 
       if (!removed) {
         continue;
@@ -5593,17 +5595,11 @@ export class BattleScene extends SceneBase {
       return false;
     }
 
-    const sourcePlayerIndex = source.isPlayer() ? this.getPlayerIndexForPokemon(source) : undefined;
-    const recoverable = recoverAfterBattle && source.isPlayer() && sourcePlayerIndex !== undefined;
-    const flungModifier = itemModifier.clone() as PokemonHeldItemModifier;
-    flungModifier.pokemonId = -1;
-    flungModifier.stackCount = 1;
-    if (recoverable) {
-      flungModifier.recoverableBattleTransfer = {
-        pokemonId: source.id,
-        playerIndex: sourcePlayerIndex,
-      };
+    if (recoverAfterBattle) {
+      return removeHeldItemForBattle(source, itemModifier);
     }
+
+    const sourcePlayerIndex = source.isPlayer() ? this.getPlayerIndexForPokemon(source) : undefined;
 
     itemModifier.stackCount--;
     const removed =
@@ -5612,13 +5608,15 @@ export class BattleScene extends SceneBase {
       return false;
     }
 
-    if (recoverable) {
-      this.flungRecoverableBattleItems.push(flungModifier);
-    }
-
     applyAbAttrs("PostItemLostAbAttr", { pokemon: source });
     this.updateModifiers(source.isPlayer(), true, sourcePlayerIndex);
     return true;
+  }
+
+  /** Recovery must not convert an over-cap item into a reward or play acquisition effects. */
+  addRecoveredHeldItem(item: PokemonHeldItemModifier, pokemon: Pokemon): boolean {
+    const playerIndex = pokemon.isPlayer() ? this.getPlayerIndexForPokemon(pokemon) : undefined;
+    return item.add(this.getModifierList(pokemon.isPlayer(), playerIndex), false);
   }
 
   /**
@@ -5676,7 +5674,11 @@ export class BattleScene extends SceneBase {
       const countTaken = Math.min(transferQuantity, mod.stackCount, maxStackCount - matchingModifier.stackCount);
       mod.stackCount -= countTaken;
     } else {
-      const countTaken = Math.min(transferQuantity, mod.stackCount);
+      mod.pokemonId = target.id;
+      const countTaken = Math.min(transferQuantity, mod.stackCount, mod.getMaxStackCount());
+      if (countTaken <= 0) {
+        return false;
+      }
       mod.stackCount -= countTaken;
     }
 

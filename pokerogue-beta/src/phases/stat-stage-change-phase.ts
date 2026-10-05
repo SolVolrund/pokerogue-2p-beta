@@ -15,6 +15,7 @@ import type { ConditionalUserFieldProtectStatAbAttrParams, PreStatStageChangeAbA
 import type { StatChange, StatStageChangePhaseOptions } from "#types/stat-change";
 import type { Mutable } from "#types/type-helpers";
 import { playTween } from "#utils/anim-utils";
+import { recordConsumedHeldItem } from "#utils/battle-held-items";
 import { BooleanHolder } from "#utils/common";
 import { deepCopy } from "#utils/data";
 import { ValueHolder } from "#utils/value-holder";
@@ -301,15 +302,19 @@ export class StatStageChangePhase extends PokemonPhase {
       return;
     }
 
-    const whiteHerb = globalScene.applyModifier(
+    const whiteHerb = globalScene.applyModifierForPokemon(
       ResetNegativeStatStageModifier,
-      this.player,
+      pokemon,
       pokemon,
     ) as ResetNegativeStatStageModifier;
 
-    if (whiteHerb) {
-      pokemon.loseHeldItem(whiteHerb);
-      globalScene.updateModifiers(this.player);
+    if (whiteHerb && pokemon.loseHeldItem(whiteHerb)) {
+      recordConsumedHeldItem(pokemon, whiteHerb);
+      globalScene.updateModifiers(
+        this.player,
+        undefined,
+        pokemon.isPlayer() ? globalScene.getPlayerIndexForPokemon(pokemon) : undefined,
+      );
     }
   }
 
@@ -329,8 +334,8 @@ export class StatStageChangePhase extends PokemonPhase {
       if (mirrorHerb) {
         const preserve = new BooleanHolder(false);
         globalScene.applyModifiersForPokemon(PreserveBerryModifier, opponent, opponent, preserve);
-        if (!preserve.value) {
-          opponent.loseHeldItem(mirrorHerb);
+        if (!preserve.value && opponent.loseHeldItem(mirrorHerb)) {
+          recordConsumedHeldItem(opponent, mirrorHerb);
         }
         const playerIndex = opponent.isPlayer() ? globalScene.getPlayerIndexForPokemon(opponent) : undefined;
         globalScene.updateModifiers(opponent.isPlayer(), undefined, playerIndex);

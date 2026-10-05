@@ -105,6 +105,7 @@ import type { StatChange, StatStageChangeCallback } from "#types/stat-change";
 import type { AbstractConstructor, Mutable } from "#types/type-helpers";
 import { coerceArray } from "#utils/array";
 import { BooleanHolder, getFrameMs, toDmgValue } from "#utils/common";
+import { refreshSuppressedHeldItemStats, restoreBoosterEnergy } from "#utils/held-item-suppression";
 import { getPokemonTypeLocaleKey } from "#utils/i18n";
 import { groupStatChange } from "#utils/stat-change";
 import i18next from "i18next";
@@ -2208,6 +2209,41 @@ export class SlowStartTag extends AbilityBattlerTag {
   }
 }
 
+export class EmbargoTag extends SerializableBattlerTag {
+  public declare readonly tagType: BattlerTagType.EMBARGO;
+  #beingRemoved = false;
+
+  public get beingRemoved(): boolean {
+    return this.#beingRemoved;
+  }
+
+  constructor(turnCount: number, sourceId?: number) {
+    // Lapsed after end-of-turn item effects, so the fifth turn is suppressed too.
+    super(BattlerTagType.EMBARGO, BattlerTagLapseType.CUSTOM, turnCount, MoveId.EMBARGO, sourceId, true);
+  }
+
+  override onAdd(pokemon: Pokemon): void {
+    refreshSuppressedHeldItemStats(pokemon);
+    globalScene.phaseManager.queueMessage(
+      i18next.t("battlerTags:embargoOnAdd", {
+        pokemonNameWithAffix: getPokemonNameWithAffix(pokemon),
+      }),
+    );
+  }
+
+  override onRemove(pokemon: Pokemon): void {
+    // onRemove is called before the tag is detached from its owner.
+    this.#beingRemoved = true;
+    refreshSuppressedHeldItemStats(pokemon);
+    restoreBoosterEnergy(pokemon);
+    globalScene.phaseManager.queueMessage(
+      i18next.t("battlerTags:embargoOnRemove", {
+        pokemonNameWithAffix: getPokemonNameWithAffix(pokemon),
+      }),
+    );
+  }
+}
+
 export class HighestStatBoostTag extends AbilityBattlerTag {
   public declare readonly tagType: HighestStatBoostTagType;
   public stat: EffectiveStat = Stat.ATK;
@@ -3965,6 +4001,8 @@ export function getBattlerTag(
       return new TormentTag(sourceId);
     case BattlerTagType.TAUNT:
       return new TauntTag();
+    case BattlerTagType.EMBARGO:
+      return new EmbargoTag(turnCount, sourceId);
     case BattlerTagType.IMPRISON:
       return new ImprisonTag(sourceId);
     case BattlerTagType.SYRUP_BOMB:
@@ -4111,6 +4149,7 @@ export type BattlerTagTypeMap = {
   [BattlerTagType.HEAL_BLOCK]: HealBlockTag;
   [BattlerTagType.TORMENT]: TormentTag;
   [BattlerTagType.TAUNT]: TauntTag;
+  [BattlerTagType.EMBARGO]: EmbargoTag;
   [BattlerTagType.IMPRISON]: ImprisonTag;
   [BattlerTagType.SYRUP_BOMB]: SyrupBombTag;
   [BattlerTagType.TELEKINESIS]: TelekinesisTag;

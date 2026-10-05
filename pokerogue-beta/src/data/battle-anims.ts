@@ -459,7 +459,8 @@ export function initMoveAnim(move: MoveId): Promise<void> {
           : MoveId.TAIL_WHIP;
 
       const fetchAnimAndResolve = (move: MoveId) => {
-        cachedFetch(`./battle-anims/${toKebabCase(MoveId[move])}.json`)
+        const animationMove = move === MoveId.VEEVEE_ANTE ? MoveId.METRONOME : move;
+        cachedFetch(`./battle-anims/${toKebabCase(MoveId[animationMove])}.json`)
           .then(response => {
             const contentType = response.headers.get("content-type");
             if (!response.ok || contentType?.indexOf("application/json") === -1) {

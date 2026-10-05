@@ -11,6 +11,8 @@ import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import { WeatherType } from "#enums/weather-type";
 import { Pokemon, type PlayerPokemon } from "#field/pokemon";
+import { PokemonMove } from "#moves/pokemon-move";
+import * as ante from "#moves/veevee-ante";
 import { GameCornerRewardPhase } from "#phases/game-corner-reward-phase";
 import { PokemonData } from "#system/pokemon-data";
 import { GameManager } from "#test/framework/game-manager";
@@ -73,6 +75,20 @@ describe("Bio-Instability jackpot Eevee", () => {
     );
   }
 
+  it("provides the configured four-move loadouts with Ante last in every form", () => {
+    expect(BIO_INSTABILITY_FORMS.map(form => form.moves)).toEqual([
+      [MoveId.VEEVEE_VOLLEY, MoveId.LAST_RESORT, MoveId.PROTECT, MoveId.VEEVEE_ANTE],
+      [MoveId.BOUNCY_BUBBLE, MoveId.AQUA_RING, MoveId.MUDDY_WATER, MoveId.VEEVEE_ANTE],
+      [MoveId.BUZZY_BUZZ, MoveId.ELECTRO_BALL, MoveId.ELECTROWEB, MoveId.VEEVEE_ANTE],
+      [MoveId.SIZZLY_SLIDE, MoveId.MAGMA_STORM, MoveId.FLARE_BLITZ, MoveId.VEEVEE_ANTE],
+      [MoveId.BADDY_BAD, MoveId.POWER_TRIP, MoveId.HONE_CLAWS, MoveId.VEEVEE_ANTE],
+      [MoveId.GLITZY_GLOW, MoveId.STORED_POWER, MoveId.CALM_MIND, MoveId.VEEVEE_ANTE],
+      [MoveId.FREEZY_FROST, MoveId.SHEER_COLD, MoveId.BLIZZARD, MoveId.VEEVEE_ANTE],
+      [MoveId.SAPPY_SEED, MoveId.INGRAIN, MoveId.LEAF_BLADE, MoveId.VEEVEE_ANTE],
+      [MoveId.SPARKLY_SWIRL, MoveId.FLORAL_HEALING, MoveId.DAZZLING_GLEAM, MoveId.VEEVEE_ANTE],
+    ]);
+  });
+
   it("changes before damage and activates the new passive without replacing the selected attack", async () => {
     const pokemon = await createJackpot();
     const enemy = game.field.getEnemyPokemon();
@@ -83,6 +99,7 @@ describe("Bio-Instability jackpot Eevee", () => {
       expect(game.scene.arena.weather?.weatherType).toBe(WeatherType.RAIN);
       return damage(...args);
     });
+    pokemon.moveset = [new PokemonMove(MoveId.BOUNCY_BUBBLE)];
     game.move.select(MoveId.BOUNCY_BUBBLE);
     await game.toNextTurn();
     expect(pokemon.getFormKey()).toBe("bio-vaporeon");
@@ -99,7 +116,7 @@ describe("Bio-Instability jackpot Eevee", () => {
 
   it("preserves hidden PP and PP Ups through form cycling, save/load and full recovery", async () => {
     const pokemon = await createJackpot();
-    const bubble = pokemon.moveset.find(move => move.moveId === MoveId.BOUNCY_BUBBLE)!;
+    const bubble = pokemon.customPokemonData.bioInstabilityMoves.find(move => move.moveId === MoveId.BOUNCY_BUBBLE)!;
     bubble.ppUp = 2;
     bubble.ppUsed = 7;
     await changeForm(pokemon, "bio-espeon");
@@ -120,8 +137,10 @@ describe("Bio-Instability jackpot Eevee", () => {
     restored.destroy();
   });
 
-  it("follows every junction and returns to Eevee using Veevee Volley", async () => {
+  it("calls every signature with Ante and returns to Eevee using Veevee Volley", async () => {
     const pokemon = await createJackpot();
+    const roll = vi.spyOn(ante, "rollVeeveeAnte");
+    pokemon.moveset.find(move => move.moveId === MoveId.VEEVEE_ANTE)!.ppUp = 3;
     game.field.getEnemyPokemon().hp = game.field.getEnemyPokemon().getMaxHp();
     const route: [MoveId, string][] = [
       [MoveId.BOUNCY_BUBBLE, "bio-vaporeon"],
@@ -139,14 +158,20 @@ describe("Bio-Instability jackpot Eevee", () => {
     ];
     for (const [moveId, formKey] of route) {
       game.field.getEnemyPokemon().hp = game.field.getEnemyPokemon().getMaxHp();
-      game.move.select(moveId);
+      roll.mockReturnValue(moveId);
+      game.move.select(MoveId.VEEVEE_ANTE);
       await game.toNextTurn();
       expect(pokemon.getFormKey()).toBe(formKey);
       const config = BIO_INSTABILITY_FORMS.find(form => form.key === formKey)!;
       expect(pokemon.getPassiveAbility().id).toBe(config.passive);
       expect(pokemon.moveset.map(move => move.moveId)).toEqual(config.moves);
     }
-    expect(pokemon.customPokemonData.bioInstabilityMoves.find(move => move.moveId === MoveId.VEEVEE_VOLLEY)?.ppUsed).toBe(3);
+    expect(pokemon.moveset.find(move => move.moveId === MoveId.VEEVEE_ANTE)?.ppUsed).toBe(route.length);
+    expect(
+      pokemon.customPokemonData.bioInstabilityMoves
+        .filter(move => move.moveId !== MoveId.VEEVEE_ANTE)
+        .every(move => move.ppUsed === 0),
+    ).toBe(true);
   });
 
   it("preserves HP proportion, persistent identity and passives after purification", async () => {

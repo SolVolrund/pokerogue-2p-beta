@@ -15,7 +15,7 @@ export const BIO_INSTABILITY_FORMS = [
     stats: [55, 55, 50, 45, 65, 55],
     height: 0.3,
     weight: 6.5,
-    moves: [MoveId.LAST_RESORT, MoveId.BOUNCY_BUBBLE, MoveId.GLITZY_GLOW, MoveId.SPARKLY_SWIRL],
+    moves: [MoveId.VEEVEE_VOLLEY, MoveId.LAST_RESORT, MoveId.PROTECT, MoveId.VEEVEE_ANTE],
   },
   {
     key: "bio-vaporeon",
@@ -25,7 +25,7 @@ export const BIO_INSTABILITY_FORMS = [
     stats: [130, 65, 60, 110, 95, 65],
     height: 1,
     weight: 29,
-    moves: [MoveId.BOUNCY_BUBBLE, MoveId.AQUA_RING, MoveId.BUZZY_BUZZ, MoveId.VEEVEE_VOLLEY],
+    moves: [MoveId.BOUNCY_BUBBLE, MoveId.AQUA_RING, MoveId.MUDDY_WATER, MoveId.VEEVEE_ANTE],
   },
   {
     key: "bio-jolteon",
@@ -35,7 +35,7 @@ export const BIO_INSTABILITY_FORMS = [
     stats: [65, 65, 60, 110, 95, 130],
     height: 0.8,
     weight: 24.5,
-    moves: [MoveId.BUZZY_BUZZ, MoveId.ELECTRO_BALL, MoveId.SIZZLY_SLIDE, MoveId.VEEVEE_VOLLEY],
+    moves: [MoveId.BUZZY_BUZZ, MoveId.ELECTRO_BALL, MoveId.ELECTROWEB, MoveId.VEEVEE_ANTE],
   },
   {
     key: "bio-flareon",
@@ -45,7 +45,7 @@ export const BIO_INSTABILITY_FORMS = [
     stats: [65, 130, 60, 95, 110, 65],
     height: 0.9,
     weight: 25,
-    moves: [MoveId.SIZZLY_SLIDE, MoveId.MAGMA_STORM, MoveId.BOUNCY_BUBBLE, MoveId.VEEVEE_VOLLEY],
+    moves: [MoveId.SIZZLY_SLIDE, MoveId.MAGMA_STORM, MoveId.FLARE_BLITZ, MoveId.VEEVEE_ANTE],
   },
   {
     key: "bio-umbreon",
@@ -55,7 +55,7 @@ export const BIO_INSTABILITY_FORMS = [
     stats: [95, 65, 110, 60, 130, 65],
     height: 1,
     weight: 27,
-    moves: [MoveId.BADDY_BAD, MoveId.POWER_TRIP, MoveId.GLITZY_GLOW, MoveId.VEEVEE_VOLLEY],
+    moves: [MoveId.BADDY_BAD, MoveId.POWER_TRIP, MoveId.HONE_CLAWS, MoveId.VEEVEE_ANTE],
   },
   {
     key: "bio-espeon",
@@ -65,7 +65,7 @@ export const BIO_INSTABILITY_FORMS = [
     stats: [65, 65, 60, 130, 95, 110],
     height: 0.9,
     weight: 26.5,
-    moves: [MoveId.GLITZY_GLOW, MoveId.STORED_POWER, MoveId.BADDY_BAD, MoveId.VEEVEE_VOLLEY],
+    moves: [MoveId.GLITZY_GLOW, MoveId.STORED_POWER, MoveId.CALM_MIND, MoveId.VEEVEE_ANTE],
   },
   {
     key: "bio-glaceon",
@@ -75,7 +75,7 @@ export const BIO_INSTABILITY_FORMS = [
     stats: [65, 60, 110, 130, 95, 65],
     height: 0.8,
     weight: 25.9,
-    moves: [MoveId.FREEZY_FROST, MoveId.SHEER_COLD, MoveId.SAPPY_SEED, MoveId.VEEVEE_VOLLEY],
+    moves: [MoveId.FREEZY_FROST, MoveId.SHEER_COLD, MoveId.BLIZZARD, MoveId.VEEVEE_ANTE],
   },
   {
     key: "bio-leafeon",
@@ -85,7 +85,7 @@ export const BIO_INSTABILITY_FORMS = [
     stats: [65, 110, 130, 60, 65, 95],
     height: 1,
     weight: 25.5,
-    moves: [MoveId.SAPPY_SEED, MoveId.INGRAIN, MoveId.SPARKLY_SWIRL, MoveId.VEEVEE_VOLLEY],
+    moves: [MoveId.SAPPY_SEED, MoveId.INGRAIN, MoveId.LEAF_BLADE, MoveId.VEEVEE_ANTE],
   },
   {
     key: "bio-sylveon",
@@ -95,7 +95,7 @@ export const BIO_INSTABILITY_FORMS = [
     stats: [95, 65, 65, 110, 130, 60],
     height: 1,
     weight: 23.5,
-    moves: [MoveId.SPARKLY_SWIRL, MoveId.FLORAL_HEALING, MoveId.FREEZY_FROST, MoveId.VEEVEE_VOLLEY],
+    moves: [MoveId.SPARKLY_SWIRL, MoveId.FLORAL_HEALING, MoveId.DAZZLING_GLEAM, MoveId.VEEVEE_ANTE],
   },
 ] as const;
 

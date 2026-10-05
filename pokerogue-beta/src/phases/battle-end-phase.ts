@@ -3,6 +3,7 @@ import { globalScene } from "#app/global-scene";
 import { BerryPotModifier, LapsingPersistentModifier, LapsingPokemonHeldItemModifier } from "#modifiers/modifier";
 import { clearRollingMove } from "#moves/rolling-move";
 import { BattlePhase } from "#phases/battle-phase";
+import { restoreBattleRemovedHeldItems } from "#utils/battle-held-items";
 
 export class BattleEndPhase extends BattlePhase {
   public readonly phaseName = "BattleEndPhase";
@@ -64,6 +65,13 @@ export class BattleEndPhase extends BattlePhase {
     }
 
     globalScene.recoverBattleTransferredHeldItems(playerIndexes);
+    for (const pokemon of [
+      ...globalScene.getActivePlayerIndexes().flatMap(index => globalScene.getPlayerParty(index)),
+      ...globalScene.getEonFluteGuests(),
+      ...globalScene.getEnemyParty(),
+    ]) {
+      restoreBattleRemovedHeldItems(pokemon);
+    }
     globalScene.clearEnemyHeldItemModifiers();
     for (const p of globalScene.getEnemyParty()) {
       try {

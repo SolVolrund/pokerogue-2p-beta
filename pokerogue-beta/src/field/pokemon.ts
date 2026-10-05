@@ -219,6 +219,8 @@ import { getEnumValues } from "#utils/enums";
 import { cachedFetch } from "#utils/fetch-utils";
 import { decodeNickname, getFusedSpeciesName, getPokemonSpecies } from "#utils/pokemon-utils";
 import { weightedPick } from "#utils/random";
+import { isHighestStatBoosterActive, refreshSuppressedHeldItemStats } from "#utils/held-item-suppression";
+import { createBattleHeldItem, recordConsumedBerry } from "#utils/battle-held-items";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import { ValueHolder } from "#utils/value-holder";
 import { QuantizerCelebi } from "@material/material-color-utilities";
@@ -1688,6 +1690,19 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     ) as PokemonHeldItemModifier[];
   }
 
+  /** Effects only: inventory, transfers and item-loss checks must use getHeldItems instead. */
+  getActiveHeldItems(): PokemonHeldItemModifier[] {
+    return this.getHeldItems().filter(item => item.isEffectActive(this));
+  }
+
+  /** The holder owns reservations; item classes need not import save/recovery machinery. */
+  getReservedHeldItemCount(item: PokemonHeldItemModifier): number {
+    return this.battleData.removedHeldItems.reduce((count, data) => {
+      const removed = createBattleHeldItem(this, data);
+      return count + (removed && item.matchType(removed) ? data.stackCount : 0);
+    }, 0);
+  }
+
   updateScale(): void {
     this.setScale(this.getSpriteScale());
   }
@@ -2171,7 +2186,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     const highestStatBoost = this.findTag(
       t => t instanceof HighestStatBoostTag && (t as HighestStatBoostTag).stat === stat,
     ) as HighestStatBoostTag;
-    if (highestStatBoost) {
+    if (highestStatBoost && isHighestStatBoosterActive(this, highestStatBoost.tagType)) {
       ret *= highestStatBoost.multiplier;
     }
 
@@ -3209,7 +3224,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   public isGrounded(): boolean {
     const isLevitating = new ValueHolder(false);
     applyAbAttrs("LevitatingAbAttr", { pokemon: this, isLevitating });
-    const hasIronBall = this.getHeldItems().some(
+    const hasIronBall = this.getActiveHeldItems().some(
       item => item instanceof IronBallModifier && !isHeldItemEffectIgnoredByKlutz(this, item.type.id),
     );
 
@@ -3788,13 +3803,18 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     return [...new Set([...this.customPokemonData.bioInstabilityMoves, ...this.getMoveset()])];
   }
 
-  public queueBioInstabilityFormChange(moveType: PokemonType): boolean {
+  public getBioInstabilityFormChange(moveType: PokemonType) {
     if (!this.isBioInstabilityEevee() || this.isTransformed() || this.isFusion()
       || !this.hasAbility(AbilityId.BIO_INSTABILITY)) {
-      return false;
+      return undefined;
     }
     const form = BIO_INSTABILITY_FORMS.find(candidate => candidate.type === moveType);
-    if (!form || form.key === this.getFormKey()) {
+    return form?.key !== this.getFormKey() ? form : undefined;
+  }
+
+  public queueBioInstabilityFormChange(moveType: PokemonType): boolean {
+    const form = this.getBioInstabilityFormChange(moveType);
+    if (!form) {
       return false;
     }
     globalScene.phaseManager.unshiftNew("QuietFormChangePhase", this, new SpeciesFormChange({
@@ -5371,6 +5391,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       this.summonData.tags.push(tag);
     }
 
+    refreshSuppressedHeldItemStats(this);
     this.updateInfo();
   }
 
@@ -6255,6 +6276,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     if (resetSummonData) {
       this.resetSummonData();
     }
+    refreshSuppressedHeldItemStats(this);
   }
 
   /**
@@ -6269,6 +6291,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     }
     this.summonData = new PokemonSummonData();
     this.tempSummonData = new PokemonTempSummonData();
+    refreshSuppressedHeldItemStats(this);
     this.applySpritePipelineData();
     this.updateInfo();
   }
@@ -6796,6 +6819,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     // Trigger abilities that activate upon leaving the field
     applyAbAttrs("PreLeaveFieldAbAttr", { pokemon: this });
     this.switchOutStatus = true;
+    refreshSuppressedHeldItemStats(this);
     globalScene.triggerPokemonFormChange(this, SpeciesFormChangeActiveTrigger, true);
     globalScene.field.remove(this, destroy);
   }
@@ -6860,9 +6884,14 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       return false;
     }
 
+    if (heldItem.stackCount <= 0 || !this.getHeldItems().includes(heldItem)) {
+      return false;
+    }
+
     heldItem.stackCount--;
     if (heldItem.stackCount <= 0) {
-      globalScene.removeModifier(heldItem, this.isEnemy());
+      globalScene.removeModifier(heldItem, this.isEnemy(),
+        this.isPlayer() ? globalScene.getPlayerIndexForPokemon(this) : undefined);
     }
     if (forBattle) {
       applyAbAttrs("PostItemLostAbAttr", { pokemon: this });
@@ -6880,6 +6909,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   public recordEatenBerry(berryType: BerryType, updateHarvest = true) {
     this.battleData.hasEatenBerry = true;
     if (updateHarvest) {
+      recordConsumedBerry(this, berryType);
       // Only track for harvest if we actually consumed the berry
       this.battleData.berriesEaten.push(berryType);
     }
@@ -8369,6 +8399,11 @@ export class EnemyPokemon extends Pokemon {
 
       // Hide the Pokemon since it is not on the field
       newPokemon.setVisible(false);
+
+      // Capture transfers recovery claims to the new player-side instance, never both copies.
+      this.battleData.removedHeldItems = [];
+      this.battleData.consumedHeldItems = [];
+      this.battleData.berriesEaten = [];
 
       ret = newPokemon;
       globalScene.triggerPokemonFormChange(newPokemon, SpeciesFormChangeActiveTrigger, true);

@@ -118,6 +118,7 @@ import {
   getMoveTargets,
 } from "#moves/move-utils";
 import { PokemonMove } from "#moves/pokemon-move";
+import { rollVeeveeAnte } from "#moves/veevee-ante";
 import type { MovePhase } from "#phases/move-phase";
 import type { Constructor } from "#types/common";
 import type { Localizable } from "#types/locales";
@@ -133,6 +134,7 @@ import type { GetEffectiveStatParams } from "#types/pokemon-common";
 import type { TurnMove } from "#types/turn-move";
 import type { AbstractConstructor } from "#types/type-helpers";
 import { coerceArray } from "#utils/array";
+import { getVeeveeAnteLegacyScore } from "#utils/bio-instability-ai";
 import { applyChallenges } from "#utils/challenge-utils";
 import {
   BooleanHolder,
@@ -144,6 +146,9 @@ import {
   toDmgValue,
 } from "#utils/common";
 import { getEnumValues } from "#utils/enums";
+import { areHeldItemEffectsSuppressed } from "#utils/held-item-suppression-state";
+import { getItemSuppressionLegacyScore } from "#utils/held-item-suppression-ai";
+import { getRecycleItemIndex, removeHeldItemForBattle, restoreConsumedHeldItem } from "#utils/battle-held-items";
 import { getPokemonTypeLocaleKey } from "#utils/i18n";
 import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
 import { areAllies, canSpeciesTera, willTerastallize } from "#utils/pokemon-utils";
@@ -1151,7 +1156,7 @@ export abstract class Move implements Localizable {
       && power.value < 60
       && this.priority <= 0
       && !this.hasAttr("MultiHitAttr")
-      && !globalScene.findModifier(m => m instanceof PokemonMultiHitModifier && m.pokemonId === source.id)
+      && !source.getActiveHeldItems().some(m => m instanceof PokemonMultiHitModifier)
     ) {
       power.value = 60;
     }
@@ -1327,7 +1332,7 @@ export abstract class Move implements Localizable {
         const loadedDice =
           !!pokemon
           && isLoadedDiceBoostedMove(this)
-          && pokemon.getHeldItems().some(modifier => modifier instanceof LoadedDiceModifier);
+          && pokemon.getActiveHeldItems().some(modifier => modifier instanceof LoadedDiceModifier);
         effectivePower =
           multiHitAttr.calculateExpectedHitCount(this, {
             accMultiplier: accMult,
@@ -2047,7 +2052,7 @@ export class TargetHalfHpDamageAttr extends FixedDamageAttr {
     // first, determine if the hit is coming from multi lens or not
     const lensCount =
       user
-        .getHeldItems()
+        .getActiveHeldItems()
         .find(i => i instanceof PokemonMultiHitModifier)
         ?.getStackCount() ?? 0;
     if (lensCount <= 0) {
@@ -3532,6 +3537,9 @@ function isFlingEligibleItem(item: PokemonHeldItemModifier): boolean {
 }
 
 function getFlingHeldItems(user: Pokemon): PokemonHeldItemModifier[] {
+  if (areHeldItemEffectsSuppressed(user)) {
+    return [];
+  }
   return user.getHeldItems().filter(isFlingEligibleItem);
 }
 
@@ -3646,36 +3654,50 @@ export class FlingAttr extends MoveEffectAttr {
   }
 }
 
-/**
- * Removes a random held item (or berry) from target.
- * Used for Incinerate and Knock Off.
- * Not Implemented Cases: (Same applies for Thief)
- * "If the user faints due to the target's Ability (Rough Skin or Iron Barbs) or held Rocky Helmet, it cannot remove the target's held item."
- * "If the Pokémon is knocked out by the attack, Sticky Hold does not protect the held item."
- */
+/** Restores the newest eligible consumable unit used during this battle. */
+export class RecycleAttr extends MoveEffectAttr {
+  constructor() {
+    super(true);
+  }
+
+  apply(user: Pokemon): boolean {
+    const item = restoreConsumedHeldItem(user, getRecycleItemIndex(user));
+    if (!item) {
+      return false;
+    }
+    globalScene.phaseManager.queueMessage(
+      i18next.t("moveTriggers:recycledItem", {
+        pokemonName: getPokemonNameWithAffix(user),
+        itemName: item.type.name,
+      }),
+    );
+    return true;
+  }
+
+  getUserBenefitScore(user: Pokemon): number {
+    return getRecycleItemIndex(user) >= 0 ? 6 : -20;
+  }
+}
+
+/** Knock Off and Corrosive Gas remove one unit until battle end; Incinerate destroys a berry. */
 export class RemoveHeldItemAttr extends MoveEffectAttr {
   /** Optional restriction for item pool to berries only; i.e. Incinerate */
   private readonly berriesOnly: boolean;
 
   constructor(berriesOnly = false) {
-    super(false);
+    super(false, { firstHitOnly: !berriesOnly });
     this.berriesOnly = berriesOnly;
   }
 
   /**
-   * Attempt to permanently remove a held
+   * Attempt to remove one eligible held item unit.
    * @param user - The {@linkcode Pokemon} that used the move
    * @param target - The {@linkcode Pokemon} targeted by the move
-   * @param move - N/A
+   * @param move - The move responsible for removal.
    * @param args N/A
    * @returns `true` if an item was able to be removed
    */
-  apply(user: Pokemon, target: Pokemon, _move: Move, _args: any[]): boolean {
-    if (!this.berriesOnly && target.isPlayer()) {
-      // "Wild Pokemon cannot knock off Player Pokemon's held items" (See Bulbapedia)
-      return false;
-    }
-
+  apply(user: Pokemon, target: Pokemon, move: Move, _args: any[]): boolean {
     // Check for abilities that block item theft
     // TODO: This should not trigger if the target would faint beforehand
     const cancelled = new BooleanHolder(false);
@@ -3700,8 +3722,16 @@ export class RemoveHeldItemAttr extends MoveEffectAttr {
     const removedItem = heldItems[user.randBattleSeedInt(heldItems.length)];
 
     // Decrease item amount and update icon
-    target.loseHeldItem(removedItem);
-    globalScene.updateModifiers(target.isPlayer());
+    if (this.berriesOnly) {
+      target.loseHeldItem(removedItem);
+      globalScene.updateModifiers(
+        target.isPlayer(),
+        undefined,
+        target.isPlayer() ? globalScene.getPlayerIndexForPokemon(target) : undefined,
+      );
+    } else if (!removeHeldItemForBattle(target, removedItem)) {
+      return false;
+    }
 
     if (this.berriesOnly) {
       globalScene.phaseManager.queueMessage(
@@ -3713,7 +3743,7 @@ export class RemoveHeldItemAttr extends MoveEffectAttr {
       );
     } else {
       globalScene.phaseManager.queueMessage(
-        i18next.t("moveTriggers:knockedOffItem", {
+        i18next.t(move.id === MoveId.CORROSIVE_GAS ? "moveTriggers:corrosiveGasItem" : "moveTriggers:knockedOffItem", {
           pokemonName: getPokemonNameWithAffix(user),
           targetName: getPokemonNameWithAffix(target),
           itemName: removedItem.type.name,
@@ -3725,13 +3755,13 @@ export class RemoveHeldItemAttr extends MoveEffectAttr {
   }
 
   getTargetHeldItems(target: Pokemon): PokemonHeldItemModifier[] {
-    return globalScene.findModifiers(
-      m => m instanceof PokemonHeldItemModifier && m.pokemonId === target.id,
-      target.isPlayer(),
-    ) as PokemonHeldItemModifier[];
+    return target.getHeldItems().filter(item => item.isTransferable && item.stackCount > 0);
   }
 
-  getUserBenefitScore(_user: Pokemon, target: Pokemon, _move: Move): number {
+  getUserBenefitScore(_user: Pokemon, target: Pokemon, move: Move): number {
+    if (move.id === MoveId.CORROSIVE_GAS) {
+      return 0;
+    }
     const heldItems = this.getTargetHeldItems(target);
     return heldItems.length > 0 ? 5 : 0;
   }
@@ -7201,6 +7231,9 @@ export class AddBattlerTagAttr extends MoveEffectAttr {
   }
 
   getTargetBenefitScore(user: Pokemon, target: Pokemon, move: Move): number {
+    if (this.tagType === BattlerTagType.EMBARGO) {
+      return getItemSuppressionLegacyScore(user, target, move) * (user.isOpponent(target) ? -1 : 1);
+    }
     let moveChance = this.getMoveChance(user, target, move, this.selfTarget, false);
     if (moveChance < 0) {
       moveChance = 100;
@@ -7555,6 +7588,13 @@ export class AddArenaTagAttr extends MoveEffectAttr {
             getVsLaneForArenaTags([this.tagType], _user, target, target.isPlayer() ? ArenaTagSide.PLAYER : ArenaTagSide.ENEMY),
           )
       : null;
+  }
+
+  override getUserBenefitScore(user: Pokemon, target: Pokemon, move: Move): number {
+    if (this.tagType !== ArenaTagType.MAGIC_ROOM) {
+      return 0;
+    }
+    return getItemSuppressionLegacyScore(user, target, move);
   }
 }
 
@@ -8758,6 +8798,29 @@ export class CopyMoveAttr extends CallMoveAttrWithBanlist {
   }
 }
 
+/** Roll a signature move, then transform before executing it against the selected opponent. */
+export class VeeveeAnteAttr extends OverrideMoveEffectAttr {
+  override apply(user: Pokemon, target: Pokemon, _move: Move, [overridden]: [BooleanHolder, MoveUseMode]): boolean {
+    const calledMove = allMoves[rollVeeveeAnte(user, target)];
+    overridden.value = true;
+    user.queueBioInstabilityFormChange(calledMove.type);
+    globalScene.phaseManager.unshiftNew("LoadMoveAnimPhase", calledMove.id);
+    globalScene.phaseManager.unshiftNew(
+      "MovePhase",
+      user,
+      [target.getBattlerIndex()],
+      new PokemonMove(calledMove.id),
+      MoveUseMode.FOLLOW_UP,
+      MovePhaseTimingModifier.FIRST,
+    );
+    return true;
+  }
+
+  override getTargetBenefitScore(user: Pokemon, target: Pokemon): number {
+    return -getVeeveeAnteLegacyScore(user, target);
+  }
+}
+
 /**
  * Attribute to call a random move among moves not in a banlist.
  * @see {@link https://bulbapedia.bulbagarden.net/wiki/Metronome_(move)}
@@ -9908,6 +9971,7 @@ const MoveAttrs = Object.freeze({
   BestowHeldItemAttr,
   SwitchHeldItemAttr,
   RemoveHeldItemAttr,
+  RecycleAttr,
   EatBerryAttr,
   StealEatBerryAttr,
   HealStatusEffectAttr,
@@ -10051,6 +10115,7 @@ const MoveAttrs = Object.freeze({
   FirstMoveTypeAttr,
   CallMoveAttr,
   RandomMoveAttr,
+  VeeveeAnteAttr,
   RandomMovesetMoveAttr,
   NaturePowerAttr,
   CopyMoveAttr,
@@ -11012,7 +11077,8 @@ export function initMoves() {
       // Should reflect moves that would otherwise fail
       .edgeCase(),
     new SelfStatusMove(MoveId.RECYCLE, PokemonType.NORMAL, -1, 10, -1, 0, 3) //
-      .unimplemented(),
+      .attr(RecycleAttr)
+      .condition(user => getRecycleItemIndex(user) >= 0),
     new AttackMove(MoveId.REVENGE, PokemonType.FIGHTING, MoveCategory.PHYSICAL, 60, 100, 10, -1, -4, 3) //
       .attr(TurnDamagedDoublePowerAttr),
     new AttackMove(MoveId.BRICK_BREAK, PokemonType.FIGHTING, MoveCategory.PHYSICAL, 75, 100, 15, -1, 0, 3) //
@@ -11341,8 +11407,8 @@ export function initMoves() {
     new AttackMove(MoveId.ASSURANCE, PokemonType.DARK, MoveCategory.PHYSICAL, 60, 100, 10, -1, 0, 4) //
       .attr(MovePowerMultiplierAttr, (_user, target, _move) => (target.turnData.damageTaken > 0 ? 2 : 1)),
     new StatusMove(MoveId.EMBARGO, PokemonType.DARK, 100, 15, -1, 0, 4) //
-      .reflectable()
-      .unimplemented(),
+      .attr(AddBattlerTagAttr, BattlerTagType.EMBARGO, false, true, 5)
+      .reflectable(),
     new AttackMove(MoveId.FLING, PokemonType.DARK, MoveCategory.PHYSICAL, -1, 100, 10, -1, 0, 4)
       .makesContact(false)
       .attr(FlingPowerAttr)
@@ -11677,9 +11743,9 @@ export function initMoves() {
       .attr(AddBattlerTagAttr, BattlerTagType.FLOATING, false, true, 3)
       .reflectable(),
     new StatusMove(MoveId.MAGIC_ROOM, PokemonType.PSYCHIC, -1, 10, -1, 0, 5)
+      .attr(AddArenaTagAttr, ArenaTagType.MAGIC_ROOM, 5)
       .ignoresProtect()
-      .target(MoveTarget.BOTH_SIDES)
-      .unimplemented(),
+      .target(MoveTarget.BOTH_SIDES),
     new AttackMove(MoveId.SMACK_DOWN, PokemonType.ROCK, MoveCategory.PHYSICAL, 50, 100, 15, -1, 0, 5)
       .attr(FallDownAttr)
       .attr(AddBattlerTagAttr, BattlerTagType.INTERRUPTED)
@@ -12846,9 +12912,14 @@ export function initMoves() {
       .attr(PreMoveMessageAttr, attackedByItemMessageFunc)
       .makesContact(false),
     new StatusMove(MoveId.CORROSIVE_GAS, PokemonType.POISON, 100, 40, -1, 0, 8)
+      .attr(RemoveHeldItemAttr)
+      .condition((user, _target, move) =>
+        getMoveTargets(user, move.id).targets.some(index =>
+          globalScene.getField()[index]?.getHeldItems().some(item => item.isTransferable && item.stackCount > 0),
+        ),
+      )
       .target(MoveTarget.ALL_NEAR_OTHERS)
-      .reflectable()
-      .unimplemented(),
+      .reflectable(),
     new StatusMove(MoveId.COACHING, PokemonType.FIGHTING, -1, 10, -1, 0, 8)
       .attr(StatStageChangeAttr, [Stat.ATK, Stat.DEF], 1)
       .target(MoveTarget.NEAR_ALLY)
@@ -13361,5 +13432,9 @@ export function initMoves() {
       .attr(NihilLightAttr)
       .target(MoveTarget.ALL_NEAR_ENEMIES)
       .edgeCase(), // Needs to replace the user's Core Enforcer if mega evolved (Zygarde-Complete to Mega Zygarde)
+    new StatusMove(MoveId.VEEVEE_ANTE, PokemonType.NORMAL, -1, 10, -1, 0, 9)
+      .attr(VeeveeAnteAttr)
+      .condition(user => user.isBioInstabilityEevee())
+      .target(MoveTarget.NEAR_ENEMY),
   );
 }

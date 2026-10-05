@@ -9,7 +9,7 @@ export class MockSprite implements MockGameObject {
   public pipelineData;
   public texture;
   public key;
-  public frame;
+  public frame = { name: "__BASE" };
   public textureManager;
   public scene;
   public anims;
@@ -34,6 +34,7 @@ export class MockSprite implements MockGameObject {
     this.pipelineData = {};
     this.texture = {
       key: texture || "",
+      getFrameNames: () => [],
     };
     this.anims = {
       pause: () => null,

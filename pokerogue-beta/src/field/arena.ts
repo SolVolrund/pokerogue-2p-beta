@@ -52,6 +52,7 @@ import type { TypedEventTarget } from "#types/typed-event-target";
 import { coerceArray } from "#utils/array";
 import { isUnownCrystalEndWave } from "#utils/classic-final-boss-utils";
 import { NumberHolder, randSeedInt, randSeedItem } from "#utils/common";
+import { refreshSuppressedHeldItemStats } from "#utils/held-item-suppression";
 import { enumValueToKey, getEnumValues } from "#utils/enums";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import { weightedPick } from "#utils/random";
@@ -61,7 +62,7 @@ import type { NonEmptyTuple } from "type-fest";
 function hasBoosterEnergySustainedHighestStatTag(pokemon: Pokemon, tagType: BattlerTagType): boolean {
   return (
     (tagType === BattlerTagType.PROTOSYNTHESIS || tagType === BattlerTagType.QUARK_DRIVE)
-    && !!globalScene.findModifiersForPokemon(m => m instanceof BoosterEnergyModifier, pokemon).length
+    && pokemon.getActiveHeldItems().some(m => m instanceof BoosterEnergyModifier)
   );
 }
 
@@ -880,6 +881,13 @@ export class Arena {
 
     newTag.onAdd(quiet);
     this.tags.push(newTag);
+
+    // Cached stat effects must be recalculated after Magic Room is attached.
+    if (tagType === ArenaTagType.MAGIC_ROOM) {
+      for (const pokemon of globalScene.getField(true)) {
+        refreshSuppressedHeldItemStats(pokemon);
+      }
+    }
 
     this.eventTarget.dispatchEvent(new ArenaTagAddedEvent(tagType, side, turnCount));
     return true;

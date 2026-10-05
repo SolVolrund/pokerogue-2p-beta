@@ -228,7 +228,7 @@ export class TurnStartPhase extends FieldPhase {
     initialPositions: FieldPositionSnapshot,
     finalPositions: FieldPositionSnapshot,
   ): void {
-    if (!pokemon.getHeldItems().some(item => item instanceof BerserkGeneModifier)) {
+    if (!pokemon.getActiveHeldItems().some(item => item instanceof BerserkGeneModifier)) {
       return;
     }
 

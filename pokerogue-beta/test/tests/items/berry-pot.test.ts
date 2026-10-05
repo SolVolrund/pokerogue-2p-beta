@@ -7,6 +7,7 @@ import { ModifierTypeOption } from "#modifiers/modifier-type";
 import { BerryModifier, BerryPotModifier } from "#modifiers/modifier";
 import { GameManager } from "#test/framework/game-manager";
 import { chooseComputerPartnerRewardOption } from "#utils/computer-partner-reward-ai";
+import { getEnumValues } from "#utils/enums";
 import { getModifierType } from "#utils/modifier-utils";
 import Phaser from "phaser";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -76,37 +77,10 @@ describe("Items - Berry Pot", () => {
   });
 
   it("does not grow capped berries", async () => {
+    const berryTypes = getEnumValues(BerryType);
     game.override.startingHeldItems([
       { name: "BERRY_POT", count: 5 },
-      { name: "BERRY", type: BerryType.SITRUS, count: 2 },
-      { name: "BERRY", type: BerryType.LUM, count: 2 },
-      { name: "BERRY", type: BerryType.ENIGMA, count: 2 },
-      { name: "BERRY", type: BerryType.LIECHI, count: 3 },
-      { name: "BERRY", type: BerryType.GANLON, count: 3 },
-      { name: "BERRY", type: BerryType.PETAYA, count: 3 },
-      { name: "BERRY", type: BerryType.APICOT, count: 3 },
-      { name: "BERRY", type: BerryType.SALAC, count: 3 },
-      { name: "BERRY", type: BerryType.LANSAT, count: 3 },
-      { name: "BERRY", type: BerryType.STARF, count: 3 },
-      { name: "BERRY", type: BerryType.LEPPA, count: 2 },
-      { name: "BERRY", type: BerryType.OCCA, count: 3 },
-      { name: "BERRY", type: BerryType.PASSHO, count: 3 },
-      { name: "BERRY", type: BerryType.WACAN, count: 3 },
-      { name: "BERRY", type: BerryType.RINDO, count: 3 },
-      { name: "BERRY", type: BerryType.YACHE, count: 3 },
-      { name: "BERRY", type: BerryType.CHOPLE, count: 3 },
-      { name: "BERRY", type: BerryType.KEBIA, count: 3 },
-      { name: "BERRY", type: BerryType.SHUCA, count: 3 },
-      { name: "BERRY", type: BerryType.COBA, count: 3 },
-      { name: "BERRY", type: BerryType.PAYAPA, count: 3 },
-      { name: "BERRY", type: BerryType.TANGA, count: 3 },
-      { name: "BERRY", type: BerryType.CHARTI, count: 3 },
-      { name: "BERRY", type: BerryType.KASIB, count: 3 },
-      { name: "BERRY", type: BerryType.HABAN, count: 3 },
-      { name: "BERRY", type: BerryType.COLBUR, count: 3 },
-      { name: "BERRY", type: BerryType.BABIRI, count: 3 },
-      { name: "BERRY", type: BerryType.CHILAN, count: 3 },
-      { name: "BERRY", type: BerryType.ROSELI, count: 3 },
+      ...berryTypes.map(type => ({ name: "BERRY" as const, type })),
     ]);
 
     await game.classicMode.startBattle(SpeciesId.FEEBAS);
@@ -114,7 +88,14 @@ describe("Items - Berry Pot", () => {
     const player = game.field.getPlayerPokemon();
     const berryPot = player.getHeldItems().find(item => item instanceof BerryPotModifier) as BerryPotModifier;
 
+    const berries = player.getHeldItems().filter((item): item is BerryModifier => item instanceof BerryModifier);
+    expect(new Set(berries.map(berry => berry.berryType))).toEqual(new Set(berryTypes));
+    for (const berry of berries) {
+      berry.stackCount = berry.getMaxHeldItemCount(player);
+    }
+
     expect(berryPot.tryGrowBerry(player)).toBe(false);
+    expect(berries.every(berry => berry.stackCount === berry.getMaxHeldItemCount(player))).toBe(true);
   });
 
   it("computer partner chooses a Symbiosis Pokemon that can hold Berry Pot", async () => {

@@ -313,6 +313,10 @@ export class AttemptCapturePhase extends PokemonPhase {
 
   private async addCloneToParty(pokemon: EnemyPokemon, slotIndex?: number): Promise<void> {
     const dataSource = new PokemonData(pokemon);
+    // A Clone Ball copies current equipment, not claims on items removed from the original.
+    dataSource.battleData.removedHeldItems = [];
+    dataSource.battleData.consumedHeldItems = [];
+    dataSource.battleData.berriesEaten = [];
     dataSource.player = true;
     dataSource.boss = false;
     dataSource.bossSegments = 0;

@@ -45,6 +45,7 @@ import {
 } from "#utils/classic-final-boss-utils";
 import { getModifierType } from "#utils/modifier-utils";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
+import { areHeldItemEffectsSuppressed } from "#utils/held-item-suppression-state";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import i18next from "i18next";
 
@@ -99,21 +100,19 @@ export class FaintPhase extends PokemonPhase {
       return;
     }
 
+    const heldItemsSuppressed = areHeldItemEffectsSuppressed(faintPokemon);
     faintPokemon.resetSummonData();
 
-    const shinyBadgeModifier = globalScene.applyModifierForPokemon(
-      ShinyBadgeModifier,
-      faintPokemon,
-      faintPokemon,
-      "revive",
-    );
+    const shinyBadgeModifier =
+      !heldItemsSuppressed
+      && globalScene.applyModifierForPokemon(ShinyBadgeModifier, faintPokemon, faintPokemon, "revive");
 
     if (shinyBadgeModifier) {
       this.end();
       return;
     }
 
-    if (!this.preventInstantRevive) {
+    if (!this.preventInstantRevive && !heldItemsSuppressed) {
       const instantReviveModifier = globalScene.applyModifier(
         PokemonInstantReviveModifier,
         this.player,

@@ -1875,4 +1875,5 @@ export enum MoveId {
   MALIGNANT_CHAIN,
   /**{@link https://bulbapedia.bulbagarden.net/wiki/Nihil_Light_(move) | Source} */
   NIHIL_LIGHT,
+  VEEVEE_ANTE,
 }

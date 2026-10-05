@@ -23,6 +23,7 @@ const moveCallingMoves = [
   MoveId.NATURE_POWER,
   MoveId.SLEEP_TALK,
   MoveId.SNATCH,
+  MoveId.VEEVEE_ANTE,
 ] as const;
 
 /** Set of moves that cannot be called by {@linkcode MoveId.METRONOME | Metronome}. */

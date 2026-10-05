@@ -71,6 +71,7 @@ import { addModifierIconSprite } from "#ui/modifier-icon";
 import { addTextObject } from "#ui/text";
 import { hslToHex } from "#utils/color-utils";
 import { BooleanHolder, NumberHolder, randSeedFloat, toDmgValue } from "#utils/common";
+import { areHeldItemEffectsSuppressed } from "#utils/held-item-suppression-state";
 import { getEnumValues } from "#utils/enums";
 import { getModifierType } from "#utils/modifier-utils";
 import type { ValueHolder } from "#utils/value-holder";
@@ -818,6 +819,17 @@ export abstract class PokemonHeldItemModifier extends PersistentModifier {
 
   abstract matchType(_modifier: Modifier): boolean;
 
+  override add(modifiers: PersistentModifier[], virtual: boolean): boolean {
+    if (!this.getPokemon()?.battleData.removedHeldItems.length) {
+      return super.add(modifiers, virtual);
+    }
+    const existing = modifiers.find(modifier => this.match(modifier));
+    if (this.stackCount + (existing?.getStackCount() ?? 0) > this.getMaxStackCount()) {
+      return false;
+    }
+    return super.add(modifiers, virtual);
+  }
+
   match(modifier: Modifier) {
     return this.matchType(modifier) && (modifier as PokemonHeldItemModifier).pokemonId === this.pokemonId;
   }
@@ -844,7 +856,29 @@ export abstract class PokemonHeldItemModifier extends PersistentModifier {
    * @returns if {@linkcode PokemonHeldItemModifier} should be applied
    */
   override shouldApply(pokemon?: Pokemon, ..._args: unknown[]): boolean {
-    return !!pokemon && (this.pokemonId === -1 || pokemon.id === this.pokemonId);
+    return !!pokemon && (this.pokemonId === -1 || pokemon.id === this.pokemonId) && this.isEffectActive(pokemon);
+  }
+
+  /** Permanent investments, progression and transformation items are not combat equipment. */
+  public get ignoresItemSuppression(): boolean {
+    return (
+      this instanceof BaseStatModifier
+      || this instanceof PokemonBaseStatTotalModifier
+      || this instanceof PokemonBaseStatFlatModifier
+      || this instanceof PokemonIncrementingStatModifier
+      || this instanceof EvoTrackerModifier
+      || this instanceof PokemonFormChangeItemModifier
+      || this instanceof ZCrystalModifier
+      || this instanceof PokemonExpBoosterModifier
+      || this instanceof PokemonFriendshipBoosterModifier
+      || this instanceof DamageMoneyRewardModifier
+      || this instanceof BerryPotModifier
+      || this instanceof UnownBoxModifier
+    );
+  }
+
+  public isEffectActive(pokemon: Pokemon): boolean {
+    return this.ignoresItemSuppression || !areHeldItemEffectsSuppressed(pokemon);
   }
 
   isIconVisible(): boolean {
@@ -903,7 +937,7 @@ export abstract class PokemonHeldItemModifier extends PersistentModifier {
         .map(p => this.getMaxHeldItemCount(p))
         .reduce((stackCount: number, maxStackCount: number) => Math.max(stackCount, maxStackCount), 0);
     }
-    return this.getMaxHeldItemCount(pokemon);
+    return Math.max(0, this.getMaxHeldItemCount(pokemon) - pokemon.getReservedHeldItemCount(this));
   }
 
   getSpecies(): SpeciesId | null {

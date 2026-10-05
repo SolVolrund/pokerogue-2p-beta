@@ -8,10 +8,11 @@ import { BerryUsedEvent } from "#events/battle-scene";
 import type { Pokemon } from "#field/pokemon";
 import { BerryModifier, PreserveBerryModifier } from "#modifiers/modifier";
 import { BooleanHolder } from "#utils/common";
+import { areHeldItemEffectsSuppressed } from "#utils/held-item-suppression-state";
 import i18next from "i18next";
 
 export function canUseBerry(pokemon: Pokemon, queueBlockedMessage = true): boolean {
-  if (!pokemon.isActive(true) || pokemon.isFainted()) {
+  if (!pokemon.isActive(true) || pokemon.isFainted() || areHeldItemEffectsSuppressed(pokemon)) {
     return false;
   }
 

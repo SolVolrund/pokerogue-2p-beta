@@ -62,6 +62,7 @@ import type { Move, MoveConditionFunc, StatusEffectAttr } from "#types/move-type
 import type { StatChange } from "#types/stat-change";
 import type { Closed, Exact, Mutable } from "#types/type-helpers";
 import { coerceArray } from "#utils/array";
+import { canRestoreConsumedHeldItem, getConsumedHeldItems, restoreConsumedHeldItem } from "#utils/battle-held-items";
 import { BooleanHolder, NumberHolder, randSeedFloat, randSeedInt, randSeedItem, toDmgValue } from "#utils/common";
 import { getPokemonTypeLocaleKey } from "#utils/i18n";
 import { inSpeedOrder } from "#utils/speed-order-generator";
@@ -4220,10 +4221,10 @@ export class PostTurnResetStatusAbAttr extends PostTurnAbAttr {
  */
 export class PostTurnRestoreBerryAbAttr extends PostTurnAbAttr {
   /**
-   * Array containing all {@linkcode BerryType | BerryTypes} that are under cap and able to be restored.
+   * Consumption-history indexes of berries that are under cap and able to be restored.
    * Stored inside the class for a minor performance boost
    */
-  private berriesUnderCap: readonly BerryType[];
+  private berriesUnderCap: readonly number[];
   private readonly procChance: (pokemon: Pokemon) => number;
 
   /**
@@ -4236,15 +4237,9 @@ export class PostTurnRestoreBerryAbAttr extends PostTurnAbAttr {
   }
 
   override canApply({ pokemon }: AbAttrBaseParams): boolean {
-    // Ensure we have at least 1 recoverable berry (at least 1 berry in berriesEaten is not capped)
-    const cappedBerries = new Set(
-      globalScene
-        .getModifiers(BerryModifier, pokemon.isPlayer())
-        .filter(bm => bm.pokemonId === pokemon.id && bm.getCountUnderMax() < 1)
-        .map(bm => bm.berryType),
+    this.berriesUnderCap = getConsumedHeldItems(pokemon).flatMap((item, index) =>
+      item.className === "BerryModifier" && canRestoreConsumedHeldItem(pokemon, item) ? [index] : [],
     );
-
-    this.berriesUnderCap = pokemon.battleData.berriesEaten.filter(bt => !cappedBerries.has(bt));
 
     if (this.berriesUnderCap.length === 0) {
       return false;
@@ -4269,32 +4264,14 @@ export class PostTurnRestoreBerryAbAttr extends PostTurnAbAttr {
   private createEatenBerry(pokemon: Pokemon): boolean {
     // Pick a random available berry to yoink
     const randomIdx = randSeedInt(this.berriesUnderCap.length);
-    const chosenBerryType = this.berriesUnderCap[randomIdx];
-    pokemon.battleData.berriesEaten.splice(randomIdx, 1); // Remove berry from memory
-    const chosenBerry = new BerryModifierType(chosenBerryType);
-
-    // Add the randomly chosen berry or update the existing one
-    const berryModifier = globalScene.findModifier(
-      m => m instanceof BerryModifier && m.berryType === chosenBerryType && m.pokemonId === pokemon.id,
-      pokemon.isPlayer(),
-    ) as BerryModifier | undefined;
-
-    if (berryModifier) {
-      berryModifier.stackCount++;
-    } else {
-      const newBerry = new BerryModifier(chosenBerry, pokemon.id, chosenBerryType, 1);
-      if (pokemon.isPlayer()) {
-        globalScene.addModifier(newBerry);
-      } else {
-        globalScene.addEnemyModifier(newBerry);
-      }
+    const restored = restoreConsumedHeldItem(pokemon, this.berriesUnderCap[randomIdx]);
+    if (!restored) {
+      return false;
     }
-
-    globalScene.updateModifiers(pokemon.isPlayer());
     globalScene.phaseManager.queueMessage(
       i18next.t("abilityTriggers:postTurnLootCreateEatenBerry", {
         pokemonNameWithAffix: getPokemonNameWithAffix(pokemon),
-        berryName: chosenBerry.name,
+        berryName: restored.type.name,
       }),
     );
     return true;
@@ -6218,7 +6195,7 @@ export class SummonTerrainAiMovegenMoveStatsAbAttr extends AiMovegenMoveStatsAbA
  * @returns The amount of health recovered by Shell Bell.
  */
 function calculateShellBellRecovery(pokemon: Pokemon): number {
-  const shellBellModifier = pokemon.getHeldItems().find(m => m instanceof HitHealModifier);
+  const shellBellModifier = pokemon.getActiveHeldItems().find(m => m instanceof HitHealModifier);
   if (shellBellModifier) {
     return toDmgValue(pokemon.turnData.totalDamageDealt / 8) * shellBellModifier.stackCount;
   }
@@ -6344,7 +6321,7 @@ export function getWeatherCondition(...weatherTypes: WeatherType[]): AbAttrCondi
 
 export function getBoosterEnergyCondition(): AbAttrCondition {
   return (pokemon: Pokemon) =>
-    !!globalScene.findModifiersForPokemon(m => m instanceof BoosterEnergyModifier, pokemon).length;
+    pokemon.getActiveHeldItems().some(m => m instanceof BoosterEnergyModifier);
 }
 
 /** Map of all ability attribute constructors, for use with the `.is` method. */

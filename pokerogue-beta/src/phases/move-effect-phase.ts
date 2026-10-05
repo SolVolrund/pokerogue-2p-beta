@@ -43,6 +43,7 @@ import type { nil } from "#types/common";
 import type { DamageResult } from "#types/damage-result";
 import type { TurnMove } from "#types/turn-move";
 import { tryEatBerries } from "#utils/berry-use-utils";
+import { recordConsumedHeldItem } from "#utils/battle-held-items";
 import { BooleanHolder, NumberHolder } from "#utils/common";
 import i18next from "i18next";
 
@@ -322,6 +323,7 @@ export class MoveEffectPhase extends PokemonPhase {
     ) as TypeGemModifier | undefined;
 
     if (typeGem && user.loseHeldItem(typeGem)) {
+      recordConsumedHeldItem(user, typeGem);
       const playerIndex = user.isPlayer() ? globalScene.getPlayerIndexForPokemon(user) : undefined;
       globalScene.updateModifiers(user.isPlayer(), undefined, playerIndex);
     }

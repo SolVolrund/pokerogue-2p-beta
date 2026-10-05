@@ -787,7 +787,7 @@ export class CommandPhase extends FieldPhase {
   }
 
   private hasBerserkGene(playerPokemon = this.getPokemon()): boolean {
-    return playerPokemon.getHeldItems().some(item => item instanceof BerserkGeneModifier);
+    return playerPokemon.getActiveHeldItems().some(item => item instanceof BerserkGeneModifier);
   }
 
   private shouldAutoSelectFightMove(playerPokemon = this.getPokemon()): boolean {

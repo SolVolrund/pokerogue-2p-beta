@@ -232,7 +232,7 @@ export class MovePhase extends PokemonPhase {
       // Struggle's "There are no more moves it can use" message
 
       // Use the move actually being executed, including Encore and extra actions.
-      if (!user.queueBioInstabilityFormChange(move.type)) {
+      if (move.id !== MoveId.VEEVEE_ANTE && !user.queueBioInstabilityFormChange(move.type)) {
         globalScene.triggerPokemonFormChange(user, SpeciesFormChangePreMoveTrigger);
       }
       // TODO: apply gorilla tactics here instead of in the move effect phase

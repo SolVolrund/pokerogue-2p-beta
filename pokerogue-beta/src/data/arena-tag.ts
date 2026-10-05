@@ -78,6 +78,7 @@ import type {
 import type { StatChange } from "#types/stat-change";
 import type { Mutable } from "#types/type-helpers";
 import { BooleanHolder, type NumberHolder, toDmgValue } from "#utils/common";
+import { refreshSuppressedHeldItemStats, restoreBoosterEnergy } from "#utils/held-item-suppression";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import { ValueHolder } from "#utils/value-holder";
 import i18next from "i18next";
@@ -1216,6 +1217,39 @@ abstract class RoomArenaTag extends SerializableArenaTag {
 }
 
 /**
+ * Suppresses combat held-item effects on both sides until expiry or a second use.
+ */
+export class MagicRoomTag extends RoomArenaTag {
+  public readonly tagType = ArenaTagType.MAGIC_ROOM;
+  #beingRemoved = false;
+
+  public get beingRemoved(): boolean {
+    return this.#beingRemoved;
+  }
+
+  constructor(turnCount: number, sourceId?: number) {
+    super(turnCount, MoveId.MAGIC_ROOM, sourceId);
+  }
+
+  protected override get onAddMessageKey(): string {
+    return "arenaTag:magicRoomOnAdd";
+  }
+
+  protected override get onRemoveMessageKey(): string {
+    return "arenaTag:magicRoomOnRemove";
+  }
+
+  override onRemove(quiet = false): void {
+    this.#beingRemoved = true;
+    super.onRemove(quiet);
+    for (const pokemon of globalScene.getField(true)) {
+      refreshSuppressedHeldItemStats(pokemon);
+      restoreBoosterEnergy(pokemon);
+    }
+  }
+}
+
+/**
  * Arena Tag class for {@link https://bulbapedia.bulbagarden.net/wiki/Trick_Room_(move) Trick Room}.
  * Reverses the Speed stats for all Pokémon on the field as long as this arena tag is up,
  * also reversing the turn order for all Pokémon on the field as well.
@@ -1804,6 +1838,8 @@ export function getArenaTag(
       return new StickyWebTag(sourceId, side);
     case ArenaTagType.TRICK_ROOM:
       return new TrickRoomTag(turnCount, sourceId);
+    case ArenaTagType.MAGIC_ROOM:
+      return new MagicRoomTag(turnCount, sourceId);
     case ArenaTagType.GRAVITY:
       return new GravityTag(turnCount, sourceId);
     case ArenaTagType.REFLECT:
@@ -1867,6 +1903,7 @@ export type ArenaTagTypeMap = {
   [ArenaTagType.STEALTH_ROCK]: StealthRockTag;
   [ArenaTagType.STICKY_WEB]: StickyWebTag;
   [ArenaTagType.TRICK_ROOM]: TrickRoomTag;
+  [ArenaTagType.MAGIC_ROOM]: MagicRoomTag;
   [ArenaTagType.GRAVITY]: GravityTag;
   [ArenaTagType.REFLECT]: ReflectTag;
   [ArenaTagType.LIGHT_SCREEN]: LightScreenTag;

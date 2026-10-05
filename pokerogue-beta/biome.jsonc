@@ -39,6 +39,8 @@
       ".github/**/*.ts",
       ".github/**/*.mts",
       "!!assets",
+      // Capacitor's copied/minified web build is output, not source for the module scanner.
+      "!!android/app/src/main/assets/public",
       "!!coverage",
       "!!dist*",
       "!!docs",

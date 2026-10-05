@@ -15,6 +15,7 @@ import { StatusEffect } from "#enums/status-effect";
 import type { Pokemon } from "#field/pokemon";
 import type { RollingMoveState } from "#moves/rolling-move";
 import type { ObtainStatusEffectPhase } from "#phases/obtain-status-effect-phase";
+import type { ModifierData } from "#system/modifier-data";
 import type { AttackMoveResult } from "#types/attack-move-result";
 import type { IllusionData } from "#types/illusion-data";
 import type { SerializedSpeciesForm } from "#types/pokemon-common";
@@ -296,11 +297,21 @@ export class PokemonTempSummonData {
   waveTurnCount = 1;
 }
 
-/**
- * Persistent data for a {@linkcode Pokemon}.
- *
- * Resets at the start of a new battle (but not on switch).
- */
+export interface BattleHeldItem
+  extends Pick<ModifierData, "player" | "typeId" | "typePregenArgs" | "args" | "stackCount" | "className"> {
+  waveIndex: number;
+  eonFluteGuestItem?: boolean;
+}
+
+function copyBattleHeldItem(item: BattleHeldItem): BattleHeldItem {
+  return {
+    ...item,
+    args: [...item.args],
+    typePregenArgs: item.typePregenArgs ? [...item.typePregenArgs] : item.typePregenArgs,
+  };
+}
+
+/** Persistent battle data, reset on an arena transition but not on switch. */
 export class PokemonBattleData {
   /**
    * Whether this Pokemon has eaten a berry this battle
@@ -312,11 +323,17 @@ export class PokemonBattleData {
    * @see {@link https://bulbapedia.bulbagarden.net/wiki/Harvest_(Ability)}
    */
   public berriesEaten: BerryType[] = [];
+  /** Undefined in older saves; their berry history is migrated lazily. */
+  public consumedHeldItems: BattleHeldItem[] | undefined;
+  /** Actual item units set aside until battle end, not eligible for Recycle. */
+  public removedHeldItems: BattleHeldItem[] = [];
 
   constructor(source?: PokemonBattleData | Partial<PokemonBattleData>) {
     if (source != null) {
       this.hasEatenBerry = source.hasEatenBerry ?? false;
-      this.berriesEaten = source.berriesEaten ?? [];
+      this.berriesEaten = [...(source.berriesEaten ?? [])];
+      this.consumedHeldItems = source.consumedHeldItems?.map(copyBattleHeldItem);
+      this.removedHeldItems = (source.removedHeldItems ?? []).map(copyBattleHeldItem);
     }
   }
 }

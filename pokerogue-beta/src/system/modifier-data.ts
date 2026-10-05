@@ -1,5 +1,5 @@
 import { globalScene } from "#app/global-scene";
-import { PersistentModifier } from "#modifiers/modifier";
+import { PersistentModifier, PokemonHeldItemModifier } from "#modifiers/modifier";
 import type { GeneratedPersistentModifierType, ModifierType } from "#modifiers/modifier-type";
 import { getModifierTypeFuncById, ModifierTypeGenerator } from "#modifiers/modifier-type";
 
@@ -11,6 +11,7 @@ export class ModifierData {
   public stackCount: number;
 
   public className: string;
+  public recoverableBattleTransfer: { pokemonId: number; playerIndex: number } | undefined;
 
   constructor(source: PersistentModifier | any, player: boolean) {
     const sourceModifier = source instanceof PersistentModifier ? (source as PersistentModifier) : null;
@@ -26,12 +27,15 @@ export class ModifierData {
     this.args = sourceModifier ? sourceModifier.getArgs() : source.args || [];
     this.stackCount = source.stackCount;
     this.className = sourceModifier ? sourceModifier.constructor.name : source.className;
+    this.recoverableBattleTransfer = source.recoverableBattleTransfer
+      ? { ...source.recoverableBattleTransfer }
+      : undefined;
     if (this.className === "ZCrystalModifier" && this.typeId === "Z_CRYSTAL" && this.args?.[1] !== undefined) {
       this.typePregenArgs = [this.args[1]];
     }
   }
 
-  toModifier(_constructor: any): PersistentModifier | null {
+  toModifier(_constructor: any, clampStack = true): PersistentModifier | null {
     const typeFunc = getModifierTypeFuncById(this.typeId);
     if (!typeFunc) {
       return null;
@@ -58,7 +62,13 @@ export class ModifierData {
         ([type] as any[]).concat(this.args).concat(this.stackCount),
       ) as PersistentModifier;
 
-      if (ret.stackCount > ret.getMaxStackCount()) {
+      if (ret instanceof PokemonHeldItemModifier) {
+        ret.recoverableBattleTransfer = this.recoverableBattleTransfer
+          ? { ...this.recoverableBattleTransfer }
+          : undefined;
+      }
+
+      if (clampStack && ret.stackCount > ret.getMaxStackCount()) {
         ret.stackCount = ret.getMaxStackCount();
       }
 

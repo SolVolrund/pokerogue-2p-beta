@@ -3,6 +3,7 @@ import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { TerrainType } from "#data/terrain";
 import { BattlerTagLapseType } from "#enums/battler-tag-lapse-type";
+import { BattlerTagType } from "#enums/battler-tag-type";
 import { HitResult } from "#enums/hit-result";
 import { WeatherType } from "#enums/weather-type";
 import { TurnEndEvent } from "#events/battle-scene";
@@ -72,6 +73,8 @@ export class TurnEndPhase extends FieldPhase {
       globalScene.applyModifiersForPokemon(StickyBarbModifier, pokemon, pokemon);
       globalScene.applyModifiersForPokemon(TurnHeldItemTransferModifier, pokemon, pokemon);
       globalScene.applyModifiersForPokemon(GammaRayBurstModifier, pokemon, pokemon);
+
+      pokemon.lapseTag(BattlerTagType.EMBARGO);
 
       pokemon.tempSummonData.turnCount++;
       pokemon.tempSummonData.waveTurnCount++;
