@@ -29,6 +29,7 @@ const PARTNER_TRAINER_TYPES: Partial<Record<ComputerPartnerKey, TrainerType>> = 
   bianca_latias: TrainerType.BIANCA_LATIAS,
   duplica_ditto: TrainerType.DUPLICA_DITTO,
   molly_hale: TrainerType.MOLLY_HALE,
+  amber_two: TrainerType.AMBER_TWO,
   whitney: TrainerType.WHITNEY,
   sabrina: TrainerType.SABRINA,
 };

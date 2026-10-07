@@ -60,6 +60,7 @@ import { EggData } from "#system/egg-data";
 import { GameStats } from "#system/game-stats";
 import { ModifierData as PersistentModifierData } from "#system/modifier-data";
 import { PokemonData } from "#system/pokemon-data";
+import type { PokeballType } from "#enums/pokeball";
 import { RibbonData } from "#system/ribbons/ribbon-data";
 import { resetSettings, SettingKeys, setSetting } from "#system/settings";
 import { SettingGamepad, setSettingGamepad, settingGamepadDefaults } from "#system/settings-gamepad";
@@ -1462,6 +1463,8 @@ export class GameData {
             money: Math.floor(player.money),
             alphTiles: player.alphTiles,
             alphLegendaryHelpersUsed: player.alphLegendaryHelpersUsed,
+            lastCrystalRecruitmentWave: player.lastCrystalRecruitmentWave,
+            lastCloneBallAllowanceWave: player.lastCloneBallAllowanceWave,
           };
         })
       : undefined;
@@ -1763,8 +1766,11 @@ export class GameData {
           ? activeOverrides.POKEBALL_OVERRIDE.pokeballs
           : (playerSave?.pokeballCounts ?? fromSession.pokeballCounts);
         Object.keys(player.pokeballCounts).forEach((key: string) => {
-          player.pokeballCounts[key] = pokeballCounts?.[key] || 0;
+          player.pokeballCounts[key] = globalScene.canPlayerUsePokeballs(playerIndex, Number(key) as PokeballType)
+            ? (pokeballCounts?.[key] || 0) : 0;
         });
+        player.lastCrystalRecruitmentWave = playerSave?.lastCrystalRecruitmentWave ?? 0;
+        player.lastCloneBallAllowanceWave = playerSave?.lastCloneBallAllowanceWave ?? 0;
         player.money = Math.floor(playerSave?.money ?? fromSession.money ?? 0);
         player.modifiers = [];
         player.alphTiles = {

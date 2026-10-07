@@ -22,7 +22,6 @@ import { MoveId } from "#enums/move-id";
 import { isIgnorePP, isVirtual, MoveUseMode } from "#enums/move-use-mode";
 import { MysteryEncounterMode } from "#enums/mystery-encounter-mode";
 import { PokeballType } from "#enums/pokeball";
-import { TrainerType } from "#enums/trainer-type";
 import { UiMode } from "#enums/ui-mode";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
 import { BerserkGeneModifier } from "#modifiers/modifier";
@@ -33,6 +32,7 @@ import type { TurnMove } from "#types/turn-move";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { shouldAiRepositionToCenter } from "#utils/ai-targeting";
 import { getPlannerRepositionTarget } from "#utils/battle-planner-ai";
+import { getCloneBallBattleBlockMessage, getCloneBallTargets, getComputerPartnerCloneTarget } from "#utils/clone-ball";
 import { getComputerPartnerImprovedSwitchIndex, isComputerPartnerFieldIndex } from "#utils/computer-partner-ai";
 import { getZMoveForPokemonMove, shouldSpendZMoveForTurnMove } from "#utils/z-move-utils";
 import {
@@ -279,12 +279,24 @@ export class CommandPhase extends FieldPhase {
   }
 
   private handleComputerPartnerCaptureCommand(playerPokemon: PlayerPokemon): boolean {
+    const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
+    const cloneTarget = getComputerPartnerCloneTarget(playerIndex);
+    if (cloneTarget) {
+      this.setTurnCommand({
+        command: Command.BALL,
+        cursor: PokeballType.CLONE_BALL,
+        playerIndex,
+        targets: [cloneTarget.getBattlerIndex()],
+        cloneTargetId: cloneTarget.id,
+      });
+      this.end();
+      return true;
+    }
     if (!this.canComputerPartnerCaptureInCurrentBattle()) {
       return false;
     }
 
-    const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
-    if (this.shouldSkipComputerPartnerCaptureCommand(playerIndex)) {
+    if (!globalScene.canPlayerUsePokeballs(playerIndex) || this.shouldSkipComputerPartnerCaptureCommand(playerIndex)) {
       return false;
     }
 
@@ -1430,18 +1442,10 @@ export class CommandPhase extends FieldPhase {
     return false;
   }
 
-  private isRivalTrainerBattle(): boolean {
-    return globalScene.currentBattle.trainer?.config.getDerivedType() === TrainerType.RIVAL;
-  }
-
   private checkCanUseCloneBall(): boolean {
-    if (globalScene.currentBattle.isClassicFinalBoss) {
-      this.queueShowText("battle:noCloneBallFinalBoss");
-      return false;
-    }
-
-    if (this.isRivalTrainerBattle()) {
-      this.queueShowText("battle:noCloneBallRival");
+    const blockMessage = getCloneBallBattleBlockMessage();
+    if (blockMessage) {
+      this.queueShowText(blockMessage);
       return false;
     }
 
@@ -1496,22 +1500,27 @@ export class CommandPhase extends FieldPhase {
    */
   private handleBallCommand(cursor: number): boolean {
     const isCloneBall = cursor === PokeballType.CLONE_BALL;
-    const targets = globalScene
-      .getEnemyField()
-      .filter(p => p.isActive(true))
-      .filter(p => !globalScene.isVsLaneBattle() || p.getFieldIndex() === this.fieldIndex)
-      .map(p => p.getBattlerIndex());
+    const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
+    if (!globalScene.canPlayerUsePokeballs(playerIndex, cursor)) {
+      return false;
+    }
+    const targets = isCloneBall
+      ? getCloneBallTargets(playerIndex).map(p => p.getBattlerIndex())
+      : globalScene.getEnemyField()
+          .filter(p => p.isActive(true))
+          .filter(p => !globalScene.isVsLaneBattle() || p.getFieldIndex() === this.fieldIndex)
+          .map(p => p.getBattlerIndex());
 
     if (isCloneBall ? !this.checkCanUseCloneBall() : !this.checkCanUseBall()) {
       return false;
     }
 
-    if (targets.length > 1 && !globalScene.twoPlayerMode) {
+    if (!isCloneBall && targets.length > 1 && !globalScene.twoPlayerMode) {
       this.queueShowText("battle:noPokeballMulti");
       return false;
     }
 
-    if (cursor in globalScene.getPlayerPokeballCounts(globalScene.getPlayerIndexForFieldSlot(this.fieldIndex))) {
+    if (globalScene.getPlayerPokeballCounts(playerIndex)[cursor] > 0) {
       const validTargets = targets.filter(target => {
         const targetPokemon = globalScene.getField()[target] as EnemyPokemon | undefined;
         return targetPokemon && !this.getBallTargetBlockMessage(targetPokemon, cursor);
@@ -1532,7 +1541,8 @@ export class CommandPhase extends FieldPhase {
       this.setTurnCommand({
         command: Command.BALL,
         cursor,
-        playerIndex: globalScene.getPlayerIndexForFieldSlot(this.fieldIndex),
+        playerIndex,
+        ...(isCloneBall ? { cloneTargetId: globalScene.getField()[validTargets[0]].id } : {}),
       });
       this.getTurnCommand()!.targets = validTargets;
       if (validTargets.length > 1) {

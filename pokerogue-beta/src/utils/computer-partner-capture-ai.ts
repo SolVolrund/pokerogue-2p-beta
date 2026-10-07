@@ -115,6 +115,9 @@ export function getComputerPartnerCaptureInterests(
   options: ComputerPartnerCaptureDecisionOptions = {},
 ): ComputerPartnerCaptureInterest[] {
   const profile = getComputerPartnerProfileWithRolePreferences(partnerKey, rolePreferences);
+  if (profile.recruitment) {
+    return [];
+  }
   const reservedTargetIdSet = new Set(
     Array.isArray(reservedTargetIds)
       ? reservedTargetIds

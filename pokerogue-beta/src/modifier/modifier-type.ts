@@ -156,6 +156,7 @@ import { getEnumKeys, getEnumValues } from "#utils/enums";
 import { areResistBerriesEnabled, isModifierAllowedByItemSettings } from "#utils/item-settings-utils";
 import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
 import { getModifierPoolForType, getModifierType } from "#utils/modifier-utils";
+import { rollRewardTier } from "#utils/reward-tier";
 import { toCamelCase } from "#utils/strings";
 import {
   getReceivableZCrystalsForParty,
@@ -3173,7 +3174,12 @@ export function regenerateModifierPoolThresholds(
               : weightedModifierType.modifierType;
           const allowedBySettings =
             isModifierAllowedByItemSettings(weightedModifierType.modifierType.id)
-            && isGeneratedModifierAllowedByItemSettings(itemModifierType);
+            && isGeneratedModifierAllowedByItemSettings(itemModifierType)
+            && !(
+              poolType === ModifierPoolType.PLAYER
+              && itemModifierType instanceof AddPokeballModifierType
+              && !globalScene.canPlayerReceivePokeballRewards(playerIndex ?? globalScene.activePlayerIndex)
+            );
           const weight =
             allowedBySettings
             && (existingModifiers.length === 0
@@ -3612,35 +3618,9 @@ function getNewModifierTypeOption(
       break;
   }
   if (tier === undefined) {
-    const tierValue = randSeedInt(1024);
-    if (!upgradeCount) {
-      upgradeCount = 0;
-    }
-    if (player && tierValue && allowLuckUpgrades) {
-      const partyLuckValue = getPartyLuckValue(party);
-      const upgradeOdds = Math.floor(128 / ((partyLuckValue + 4) / 4));
-      let upgraded = false;
-      do {
-        upgraded = randSeedInt(upgradeOdds) < 4;
-        if (upgraded) {
-          upgradeCount++;
-        }
-      } while (upgraded);
-    }
-
-    if (tierValue > 255) {
-      tier = ModifierTier.COMMON;
-    } else if (tierValue > 60) {
-      tier = ModifierTier.GREAT;
-    } else if (tierValue > 12) {
-      tier = ModifierTier.ULTRA;
-    } else if (tierValue) {
-      tier = ModifierTier.ROGUE;
-    } else {
-      tier = ModifierTier.MASTER;
-    }
-
-    tier += upgradeCount;
+    const roll = rollRewardTier(player && allowLuckUpgrades ? getPartyLuckValue(party) : undefined, upgradeCount);
+    tier = roll.tier;
+    upgradeCount = roll.upgradeCount;
     while (tier && (!Object.hasOwn(pool, tier) || pool[tier].length === 0)) {
       tier--;
       if (upgradeCount) {

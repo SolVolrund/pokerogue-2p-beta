@@ -4,6 +4,7 @@ import { Trainer } from "#field/trainer";
 import { TrainerVictoryPhase } from "#phases/trainer-victory-phase";
 import { GameManager } from "#test/framework/game-manager";
 import { trainerConfigs } from "#trainers/trainer-config";
+import * as PartnerProfiles from "#utils/computer-partner-profile";
 import Phaser from "phaser";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -51,6 +52,16 @@ describe("CPU unlocks from defeated trainer teams", () => {
   ])("unlocks Bianca from the team %j / %j / %j", (primary, second, third) => {
     win(primary!, second, third);
     expect(game.scene.gameData.isComputerPartnerUnlocked("bianca_latias")).toBe(true);
+    expect(game.scene.savePlayerSystemSaveLocal).toHaveBeenCalledWith(0);
+  });
+
+  it("unlocks AmberTwo when her Life Is Wonderful trainer team is defeated", () => {
+    const isLocked = PartnerProfiles.isComputerPartnerLockedByDefault;
+    vi.spyOn(PartnerProfiles, "isComputerPartnerLockedByDefault")
+      .mockImplementation(key => key === "amber_two" || isLocked(key));
+    expect(game.scene.gameData.isComputerPartnerUnlocked("amber_two")).toBe(false);
+    win(TrainerType.AMBER_TWO, TrainerType.AMBERS_JOY);
+    expect(game.scene.gameData.isComputerPartnerUnlocked("amber_two")).toBe(true);
     expect(game.scene.savePlayerSystemSaveLocal).toHaveBeenCalledWith(0);
   });
 

@@ -94,6 +94,8 @@ export interface DejaVuGhostData {
 }
 
 export interface PlayerSessionSaveData {
+  lastCrystalRecruitmentWave?: number;
+  lastCloneBallAllowanceWave?: number;
   party: PokemonData[];
   modifiers: ModifierData[];
   pokeballCounts: PokeballCounts;

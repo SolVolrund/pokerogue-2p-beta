@@ -55,6 +55,7 @@ import type { VsEnemyTokenPurchaseState } from "#data/vs-enemy-tokens";
 import type { SpeciesFormChangeTrigger } from "#data/form-change-triggers";
 import { SpeciesFormChangeManualTrigger, SpeciesFormChangeTimeOfDayTrigger } from "#data/form-change-triggers";
 import { Gender } from "#data/gender";
+import { MAX_PER_TYPE_POKEBALLS } from "#data/pokeball";
 import { SpeciesFormChange } from "#data/pokemon-forms";
 import type { PokemonSpecies, PokemonSpeciesFilter } from "#data/pokemon-species";
 import { getTypeDamageMultiplier, getTypeRgb } from "#data/type";
@@ -315,6 +316,8 @@ export interface PlayerRunState {
   modifiers: PersistentModifier[];
   alphTiles: AlphTileCounts;
   alphLegendaryHelpersUsed: AlphLegendaryHelperId[];
+  lastCrystalRecruitmentWave?: number;
+  lastCloneBallAllowanceWave?: number;
   eonFluteGuest?: PlayerPokemon;
   eonFluteGuestSource?: LegendaryHelperSourceId;
 }
@@ -1302,6 +1305,7 @@ export class BattleScene extends SceneBase {
         this.initializePlayerSystemSaves();
       }
       this.syncLocalPlayerSystemSaveSlot();
+      this.applyPlayerPokeballRestrictions();
       this.syncLegacyStateForActivePlayer();
       if (!this.threePlayerLocalMode) {
         this.uiInputs?.broadcastTwoPlayerProfileSnapshot();
@@ -1810,6 +1814,7 @@ export class BattleScene extends SceneBase {
     this.inputOwner = "none";
 
     if (this.twoPlayerMode) {
+      this.applyPlayerPokeballRestrictions();
       this.syncLegacyStateForActivePlayer();
       this.syncActiveSystemSaveForActivePlayer();
     } else {
@@ -2089,6 +2094,8 @@ export class BattleScene extends SceneBase {
       players: this.getActivePlayerIndexes().map(playerIndex => ({
         playerIndex,
         computerPartner: this.isComputerPartnerPlayer(playerIndex),
+        lastCrystalRecruitmentWave: this.getPlayerState(playerIndex).lastCrystalRecruitmentWave ?? 0,
+        lastCloneBallAllowanceWave: this.getPlayerState(playerIndex).lastCloneBallAllowanceWave ?? 0,
         money: this.getPlayerMoney(playerIndex),
         pokeballs: [...Object.entries(this.getPlayerPokeballCounts(playerIndex))].sort(
           ([left], [right]) => Number(left) - Number(right),
@@ -2346,6 +2353,53 @@ export class BattleScene extends SceneBase {
     return playerIndex === 1 ? this.computerPartnerKey : (this.computerPartnerKeys[playerIndex] ?? "alex");
   }
 
+  public canPlayerUsePokeballs(playerIndex: PlayerIndex, ballType?: PokeballType): boolean {
+    if (!this.isComputerPartnerPlayer(playerIndex)) {
+      return true;
+    }
+    const recruitment = getComputerPartnerProfile(this.getComputerPartnerKey(playerIndex)).recruitment;
+    return recruitment !== "crystal"
+      && (recruitment !== "clone" || ballType === undefined || ballType === PokeballType.CLONE_BALL);
+  }
+
+  public canPlayerReceivePokeballRewards(playerIndex: PlayerIndex): boolean {
+    return !this.isComputerPartnerPlayer(playerIndex)
+      || !getComputerPartnerProfile(this.getComputerPartnerKey(playerIndex)).recruitment;
+  }
+
+  private applyPlayerPokeballRestrictions(): void {
+    for (const playerIndex of this.getActivePlayerIndexes()) {
+      // Ally selection can precede multiplayer setup, when the public getter aliases P1.
+      const balls = this.players[playerIndex].pokeballCounts;
+      for (const type of Object.keys(balls)) {
+        if (!this.canPlayerUsePokeballs(playerIndex, Number(type) as PokeballType)) {
+          balls[type] = 0;
+        }
+      }
+    }
+  }
+
+  public grantComputerPartnerCloneBallAllowance(): void {
+    const wave = this.currentBattle?.waveIndex ?? 0;
+    if (wave < 1 || wave % 10 !== 1) {
+      return;
+    }
+    for (const playerIndex of this.getComputerPartnerPlayerIndexes()) {
+      if (getComputerPartnerProfile(this.getComputerPartnerKey(playerIndex)).recruitment !== "clone") {
+        continue;
+      }
+      const player = this.getPlayerState(playerIndex);
+      if ((player.lastCloneBallAllowanceWave ?? 0) >= wave) {
+        continue;
+      }
+      player.pokeballCounts[PokeballType.CLONE_BALL] = Math.min(
+        MAX_PER_TYPE_POKEBALLS,
+        (player.pokeballCounts[PokeballType.CLONE_BALL] ?? 0) + (wave === 1 ? 5 : 1),
+      );
+      player.lastCloneBallAllowanceWave = wave;
+    }
+  }
+
   public setComputerPartnerKey(playerIndex: PlayerIndex, key: ComputerPartnerKey): void {
     this.computerPartnerKeys[playerIndex] = key;
     if (playerIndex === 1) {
@@ -2356,6 +2410,7 @@ export class BattleScene extends SceneBase {
     }
 
     const profile = getComputerPartnerProfile(key);
+    this.applyPlayerPokeballRestrictions();
     const fallbackGender =
       this.getPlayerGameData(0).gender === PlayerGender.FEMALE ? PlayerGender.MALE : PlayerGender.FEMALE;
     const fallbackSprite =
@@ -3947,6 +4002,9 @@ export class BattleScene extends SceneBase {
       this.waveSeed,
     );
     this.currentBattle.incrementTurn();
+    if (!fromSession) {
+      this.grantComputerPartnerCloneBallAllowance();
+    }
 
     if (!fromSession?.waveIndex && lastBattle) {
       this.doPostBattleCleanup(lastBattle, maxExpLevel);

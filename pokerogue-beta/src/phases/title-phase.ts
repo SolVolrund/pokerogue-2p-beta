@@ -86,7 +86,7 @@ const COMPUTER_PARTNER_MENU_ENTRIES = [
   "bianca_latias",
   "duplica_ditto",
   "molly_hale",
-  "Amber2",
+  "amber_two",
   "Joy",
   "Burgh",
   "Nanu",

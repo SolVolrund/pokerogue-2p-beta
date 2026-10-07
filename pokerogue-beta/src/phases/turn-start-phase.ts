@@ -12,6 +12,7 @@ import { MoveTarget } from "#enums/move-target";
 import { MoveId } from "#enums/move-id";
 import { MovePhaseTimingModifier } from "#enums/move-phase-timing-modifier";
 import { MoveUseMode } from "#enums/move-use-mode";
+import { PokeballType } from "#enums/pokeball";
 import { SpeciesId } from "#enums/species-id";
 import { SwitchType } from "#enums/switch-type";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
@@ -157,6 +158,13 @@ export class TurnStartPhase extends FieldPhase {
         this.handleFightCommand(turnCommand, pokemon, initialPositions, finalPositions);
         break;
       case Command.BALL:
+        if (turnCommand.cursor === PokeballType.CLONE_BALL) {
+          const targetId = turnCommand.cloneTargetId ?? globalScene.getField()[turnCommand.targets![0]]?.id;
+          if (targetId !== undefined) {
+            globalScene.phaseManager.unshiftNew("AttemptClonePhase", targetId, turnCommand.playerIndex);
+          }
+          break;
+        }
         globalScene.phaseManager.unshiftNew(
           "AttemptCapturePhase",
           globalScene.getFieldIndexForBattlerIndex(turnCommand.targets![0]),

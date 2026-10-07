@@ -45,6 +45,8 @@ import { randSeedUniqueItem } from "#utils/random";
 import i18next from "i18next";
 
 export interface TurnCommand {
+  /** Clone the selected individual, not a replacement switched into its field slot. */
+  cloneTargetId?: number;
   command: Command;
   cursor?: number | undefined;
   move?: TurnMove;

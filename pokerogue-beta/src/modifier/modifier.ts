@@ -353,9 +353,12 @@ export class AddPokeballModifier extends ConsumableModifier {
   /**
    * Applies {@linkcode AddPokeballModifier}
    * @param battleScene {@linkcode BattleScene}
-   * @returns always `true`
+   * @returns `false` if this player cannot receive Pokeballs; otherwise `true`
    */
   override apply(_scene?: unknown, playerIndex: PlayerIndex = globalScene.activePlayerIndex): boolean {
+    if (!globalScene.canPlayerReceivePokeballRewards(playerIndex)) {
+      return false;
+    }
     const pokeballCounts = globalScene.getPlayerPokeballCounts(playerIndex);
     const currentCount = pokeballCounts[this.pokeballType] ?? 0;
     pokeballCounts[this.pokeballType] = Math.min(

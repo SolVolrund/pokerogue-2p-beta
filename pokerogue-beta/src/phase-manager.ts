@@ -16,6 +16,7 @@ import { MovePhaseTimingModifier } from "#enums/move-phase-timing-modifier";
 import type { Pokemon } from "#field/pokemon";
 import { AddEnemyBuffModifierPhase } from "#phases/add-enemy-buff-modifier-phase";
 import { AttemptCapturePhase } from "#phases/attempt-capture-phase";
+import { AttemptClonePhase } from "#phases/attempt-clone-phase";
 import { AttemptRunPhase } from "#phases/attempt-run-phase";
 import { BattleEndPhase } from "#phases/battle-end-phase";
 import { BerryPhase } from "#phases/berry-phase";
@@ -24,6 +25,7 @@ import { CheckStatusEffectPhase } from "#phases/check-status-effect-phase";
 import { CheckSwitchPhase } from "#phases/check-switch-phase";
 import { CommandPhase } from "#phases/command-phase";
 import { CommonAnimPhase } from "#phases/common-anim-phase";
+import { CrystalRecruitmentPhase } from "#phases/crystal-recruitment-phase";
 import { DamageAnimPhase } from "#phases/damage-anim-phase";
 import { DynamicPhaseMarker } from "#phases/dynamic-phase-marker";
 import { EggHatchPhase } from "#phases/egg-hatch-phase";
@@ -147,6 +149,7 @@ import { ContestStartPhase } from "./phases/contests/contest-start-phase";
 const PHASES = Object.freeze({
   AddEnemyBuffModifierPhase,
   AttemptCapturePhase,
+  AttemptClonePhase,
   AttemptRunPhase,
   BattleEndPhase,
   BerryPhase,
@@ -166,6 +169,7 @@ const PHASES = Object.freeze({
   ContestRoundScoringPhase,
   ContestRoundStartPhase,
   ContestStartPhase,
+  CrystalRecruitmentPhase,
   DamageAnimPhase,
   DynamicPhaseMarker,
   EggHatchPhase,

@@ -2,6 +2,7 @@ import { globalScene } from "#app/global-scene";
 import { allMoves } from "#data/data-lists";
 import type { BattlerIndex } from "#enums/battler-index";
 import { Command } from "#enums/command";
+import { PokeballType } from "#enums/pokeball";
 import { MoveId } from "#enums/move-id";
 import { getMoveTargets } from "#moves/move-utils";
 import { UiMode } from "#enums/ui-mode";
@@ -73,6 +74,9 @@ export class SelectTargetPhase extends PokemonPhase {
           globalScene.phaseManager.unshiftNew("CommandPhase", this.fieldIndex);
         } else {
           turnCommand.targets = targets;
+          if (turnCommand.command === Command.BALL && turnCommand.cursor === PokeballType.CLONE_BALL) {
+            turnCommand.cloneTargetId = fieldSide[targets[0]].id;
+          }
         }
         if (turnCommand.command === Command.BALL && this.fieldIndex && !globalScene.twoPlayerMode) {
           globalScene.currentBattle.turnCommands[globalScene.getPlayerBattlerIndex(this.fieldIndex - 1)]!.skip = true;

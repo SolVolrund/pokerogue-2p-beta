@@ -1266,6 +1266,12 @@ function getRewardTarget(
 }
 
 function shouldIgnoreReward(itemId: string, context: ComputerPartnerRewardContext): boolean {
+  if (
+    context.computerPartnerProfile?.recruitment
+    && ["POKEBALL", "GREAT_BALL", "ULTRA_BALL", "ROGUE_BALL", "MASTER_BALL", "CLONE_BALL"].includes(itemId)
+  ) {
+    return true;
+  }
   if (IGNORED_REWARD_IDS.has(itemId)) {
     return true;
   }

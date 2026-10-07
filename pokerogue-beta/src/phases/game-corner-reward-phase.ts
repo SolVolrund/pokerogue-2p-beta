@@ -40,6 +40,7 @@ import type {
 import { updateWindowType } from "#ui/ui-theme";
 import { randSeedItem } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
+import { getRewardPokemonSpeciesPool } from "#utils/reward-pokemon";
 import { chooseComputerPartnerRewardOption } from "#utils/computer-partner-reward-ai";
 import {
   getComputerPartnerProfileWithRolePreferences,
@@ -383,10 +384,7 @@ export class GameCornerRewardPhase extends Phase {
   }
 
   private rollShadowPrizeSpecies(minStarterCost: number, maxStarterCost: number): SpeciesId {
-    const starters = speciesDataRegistry.getAllStarters().filter(speciesId => {
-      const starterCost = speciesDataRegistry.getStarterCost(speciesId);
-      return starterCost >= minStarterCost && starterCost <= maxStarterCost;
-    });
+    const starters = getRewardPokemonSpeciesPool(minStarterCost, maxStarterCost);
 
     return randSeedItem(starters.length > 0 ? starters : speciesDataRegistry.getAllStarters());
   }

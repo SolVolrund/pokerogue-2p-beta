@@ -9,6 +9,7 @@ import { GameData } from "#system/game-data";
 import { GameManager } from "#test/framework/game-manager";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import type { ModalConfig } from "#ui/modal-ui-handler";
+import * as PartnerProfiles from "#utils/computer-partner-profile";
 import {
   getOnlineLobbyLabel,
   getOnlineLobbySeats,
@@ -76,7 +77,7 @@ describe("Multiplayer menu preparation", () => {
       ["Cheryl", "Bianca?", "Nanu", "Winona", "Roxie"],
       ["Riley", "Duplica?", "Raihan", "Acerola", "Sabrina"],
       ["Mira", "Molly", "Iono", "Gardenia", "Brock"],
-      ["Buck", "Amber2", "Valerie", "Clay", "Jasmine"],
+      ["Buck", "AmberTwo", "Valerie", "Clay", "Jasmine"],
       ["Marley", "Joy", "Korrina", "Grusha", "Misty"],
     ]);
     expect(entries).toHaveLength(31);
@@ -87,7 +88,7 @@ describe("Multiplayer menu preparation", () => {
       slotCount: 30,
       centerLastOption: true,
     });
-    for (const entry of entries.slice(10, 30).filter(entry => !["Whitney", "Sabrina"].includes(entry.label))) {
+    for (const entry of entries.slice(10, 30).filter(entry => !["AmberTwo", "Whitney", "Sabrina"].includes(entry.label))) {
       expect(entry.disabled).toBe(true);
       expect(entry.style).toBe(TextStyle.SETTINGS_LOCKED);
       expect(entry.handler()).toBe(false);
@@ -95,8 +96,24 @@ describe("Multiplayer menu preparation", () => {
     expect(menu).toHaveBeenCalledOnce();
     expect(entries[0].disabled).toBe(picker === "ep" ? true : undefined);
     expect(entries[1].disabled).not.toBe(true);
+    expect(entries[10].disabled).not.toBe(true);
     expect(entries[24].disabled).not.toBe(true);
     expect(entries[26].disabled).not.toBe(true);
+  });
+
+  it("enables AmberTwo in her existing slot after her trainer unlock when the requirement is enabled", () => {
+    const isLocked = PartnerProfiles.isComputerPartnerLockedByDefault;
+    vi.spyOn(PartnerProfiles, "isComputerPartnerLockedByDefault")
+      .mockImplementation(key => key === "amber_two" || isLocked(key));
+    game.scene.gameData.computerPartnerUnlocks = {};
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    expect(options()[10].label).toBe("AmberTwo");
+    expect(options()[10].disabled).toBe(true);
+    game.scene.gameData.unlockComputerPartner("amber_two");
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("AmberTwo");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("amber_two");
   });
 
   it("enables Whitney in her existing slot only after a Normal monotype clear", () => {

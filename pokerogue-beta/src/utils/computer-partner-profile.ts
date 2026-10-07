@@ -60,6 +60,7 @@ export type ComputerPartnerKey =
   | "bianca_latias"
   | "duplica_ditto"
   | "molly_hale"
+  | "amber_two"
   | "whitney"
   | "sabrina";
 
@@ -89,11 +90,13 @@ export interface ComputerPartnerProfile {
   starterMoveset?: Starter["moveset"];
   startingStarters?: ComputerPartnerStarterConfig[];
   aceStarterSpeciesIds?: SpeciesId[];
+  randomizeStarterAce?: boolean;
   allowedReplacementSpeciesIds?: readonly SpeciesId[];
   requiresUnlock?: boolean;
   unlockAchievement?: string;
   monotype?: PokemonType;
   signatureMoves?: Partial<Record<SpeciesId, readonly MoveId[]>>;
+  recruitment?: "crystal" | "clone";
 }
 
 export interface ComputerPartnerStarterConfig {
@@ -366,9 +369,28 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
       { speciesId: SpeciesId.DITTO },
     ],
   },
+  amber_two: {
+    key: "amber_two",
+    name: "AmberTwo",
+    starterNature: Nature.HARDY,
+    trainerSprite: PlayerTrainerSprite.AMBER_TWO,
+    trainerGender: PlayerGender.FEMALE,
+    roles: ["ace", "physical", "special", "bulk", "speed", "balanced"],
+    personalityTypes: [],
+    recruitment: "clone",
+    // requiresUnlock: true, // Restore after AmberTwo playtesting.
+    randomizeStarterAce: true,
+    startingStarters: [
+      { speciesId: SpeciesId.BULBASAUR },
+      { speciesId: SpeciesId.CHARMANDER },
+      { speciesId: SpeciesId.SQUIRTLE },
+      { speciesId: SpeciesId.MEWTWO },
+    ],
+  },
   molly_hale: {
     key: "molly_hale",
     name: "Molly",
+    recruitment: "crystal",
     starterSpeciesId: SpeciesId.ENTEI,
     starterNature: Nature.JOLLY,
     trainerSprite: PlayerTrainerSprite.MOLLY_HALE,
@@ -557,7 +579,7 @@ function getComputerPartnerStartingStarters(
   if (startingStarters && startingStarters.length > 0) {
     return buildComputerPartnerStarterTeam(
       profile,
-      startingStarters,
+      profile.randomizeStarterAce ? randSeedShuffle([...startingStarters]) : startingStarters,
       progress,
       progressBeforeSpending,
       progressAfterSpending,
@@ -1013,7 +1035,7 @@ function spendComputerPartnerPostCoreCandy(
   const progressSpeciesId = getComputerPartnerProgressSpeciesId(starter.speciesId);
   const starterEntry = ensureComputerPartnerStarterProgressEntry(progress, progressSpeciesId);
   const dexEntry = ensureComputerPartnerDexProgressEntry(progress, progressSpeciesId);
-  const isAceStarter = isComputerPartnerStarterAce(profile, starter, starterIndex);
+  const isAceStarter = profile.randomizeStarterAce || isComputerPartnerStarterAce(profile, starter, starterIndex);
   const eggProgressComplete = isComputerPartnerEggProgressComplete(progressSpeciesId, dexEntry, starterEntry);
   const rhythmIndex = (starterEntry.upgradePurchases ?? 0) % COMPUTER_PARTNER_EGG_EV_RHYTHM_LENGTH;
   const preferEv = eggProgressComplete || rhythmIndex === COMPUTER_PARTNER_EV_RHYTHM_INDEX;
