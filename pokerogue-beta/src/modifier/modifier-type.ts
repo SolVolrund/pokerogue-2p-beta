@@ -90,6 +90,8 @@ import {
   MapModifier,
   MirrorHerbModifier,
   OldSeaMapModifier,
+  HauntingSkullModifier,
+  HauntingSpiritModifier,
   MegaEvolutionAccessModifier,
   type Modifier,
   MoneyInterestModifier,
@@ -2466,6 +2468,11 @@ const modifierTypeInitObj = Object.freeze({
   WATERIUM_Z: () => new ZCrystalModifierType("modifierType:ModifierType.WATERIUM_Z", ZCrystal.WATERIUM_Z),
 
   MAP: () => new ModifierType("modifierType:ModifierType.MAP", "map", (type, _args) => new MapModifier(type)),
+  OMINOUS_SKULL: () => new ModifierType("modifierType:ModifierType.OMINOUS_SKULL", "ominous_skull", type => new HauntingSkullModifier(type, "ominous")),
+  PORTENT_SKULL: () => new ModifierType("modifierType:ModifierType.PORTENT_SKULL", "portent_skull", type => new HauntingSkullModifier(type, "portent")),
+  MALEFIC_SKULL: () => new ModifierType("modifierType:ModifierType.MALEFIC_SKULL", "malefic_skull", type => new HauntingSkullModifier(type, "malefic")),
+  LESSER_SPIRIT: () => new ModifierType("modifierType:ModifierType.LESSER_SPIRIT", "lesser_spirit", type => new HauntingSpiritModifier(type, false)),
+  GREATER_SPIRIT: () => new ModifierType("modifierType:ModifierType.GREATER_SPIRIT", "greater_spirit", type => new HauntingSpiritModifier(type, true)),
 
   OLD_SEA_MAP: () =>
     new ModifierType(

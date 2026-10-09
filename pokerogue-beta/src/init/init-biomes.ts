@@ -24,6 +24,7 @@ import { plainsBiome } from "#biomes/plains";
 import { powerPlantBiome } from "#biomes/power-plant";
 import { ruinsBiome } from "#biomes/ruins";
 import { rocketHqBiome } from "#biomes/rocket-hq";
+import { pokemonTowerBiome } from "#biomes/pokemon-tower";
 import { seaBiome } from "#biomes/sea";
 import { farawayIslandBiome } from "#biomes/faraway-island";
 import { seabedBiome } from "#biomes/seabed";
@@ -80,6 +81,7 @@ export function initBiomes(): void {
     altoMareBiome,
     secretGardenBiome,
     rocketHqBiome,
+    pokemonTowerBiome,
     endBiome,
   ];
 

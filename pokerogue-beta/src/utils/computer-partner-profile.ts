@@ -378,7 +378,7 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
     roles: ["ace", "physical", "special", "bulk", "speed", "balanced"],
     personalityTypes: [],
     recruitment: "clone",
-    // requiresUnlock: true, // Restore after AmberTwo playtesting.
+    requiresUnlock: true,
     randomizeStarterAce: true,
     startingStarters: [
       { speciesId: SpeciesId.BULBASAUR },
@@ -397,7 +397,7 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
     trainerGender: PlayerGender.FEMALE,
     roles: ["ace", "speed", "speed", "physical", "special", "bulk"],
     personalityTypes: [PokemonType.FIRE],
-    requiresUnlock: false,
+    requiresUnlock: true,
     startingStarters: [
       { speciesId: SpeciesId.ENTEI, points: 6, crystalized: true },
       { speciesId: SpeciesId.MAREEP, points: 2, crystalized: true },

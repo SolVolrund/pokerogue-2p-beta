@@ -42,9 +42,11 @@ export class SpritePipeline extends FieldSpritePipeline {
 
     // TODO: Add strong typing on this stuff
     const data = sprite.pipelineData;
-    const tone = data["tone"] as number[];
+    const sourceTone = (data["tone"] as number[] | undefined) ?? [0, 0, 0, 0];
     const teraColor = (data["isTerastallized"] as boolean) ? ((data["teraColor"] as number[]) ?? [0, 0, 0]) : [0, 0, 0];
     const pokemonParent = sprite.parentContainer instanceof Pokemon ? sprite.parentContainer : undefined;
+    // Resolve at draw time so switching, form changes and skull ownership cannot leave stale tint data.
+    const tone = pokemonParent?.isHaunted() ? [sourceTone[0], sourceTone[1], sourceTone[2], 1] : sourceTone;
     const isCrystalized = pokemonParent ? pokemonParent.isCrystalized() : (data["isCrystalized"] as boolean);
     const crystalColor = isCrystalized
       ? (pokemonParent?.getCrystalColor() ?? ((data["crystalColor"] as number[]) || [0, 0, 0]))

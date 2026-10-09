@@ -5,6 +5,7 @@ import { signatureSpecies } from "#balance/signature-species";
 import { modifierTypes } from "#data/data-lists";
 import { doubleBattleDialogue } from "#data/double-battle-dialogue";
 import { Gender } from "#data/gender";
+import { towerTrainers, TOWER_GHOST_SPRITE, type TowerTrainerEntry } from "#data/pokemon-tower-encounters";
 import type { PokemonSpecies, PokemonSpeciesFilter } from "#data/pokemon-species";
 import { AbilityId } from "#enums/ability-id";
 import { ClassicFixedBossWaves } from "#enums/fixed-boss-waves";
@@ -54,6 +55,7 @@ import type { Mutable } from "#types/type-helpers";
 import { coerceArray } from "#utils/array";
 import { randSeedInt, randSeedIntRange, randSeedItem } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
+import { applyTowerPokemonIdentity, resolveTowerSpecies } from "#utils/pokemon-tower-utils";
 import { toCamelCase, toTitleCase } from "#utils/strings";
 import i18next from "i18next";
 
@@ -1129,7 +1131,41 @@ function getSpeciesFilterRandomPartyMemberFunc(
 }
 
 let t = 0;
+function getPokemonTowerPlaceholderConfig(type: TrainerType, boss: boolean): TrainerConfig {
+  const config = new TrainerConfig(type)
+    .setName(boss ? "Great Haunt" : "Tower Keeper")
+    .setSpriteKey(TOWER_GHOST_SPRITE)
+    .setPartyTemplates(new TrainerPartyTemplate(boss ? 2 : 1, boss ? PartyMemberStrength.STRONG : PartyMemberStrength.AVERAGE));
+  // Replace this deliberately small test roster when the Tower encounter tables are ready.
+  for (let slot = 0; slot < 2; slot++) {
+    config.setPartyMemberFunc(slot, getRandomPartyMemberFunc([SpeciesId.HAUNTER], TrainerSlot.TRAINER, true, pokemon => {
+      pokemon.nickname = btoa(boss ? "Great Haunt" : "Restless Spirit");
+      if (boss) {
+        pokemon.setBoss(true, 2);
+      }
+    }));
+  }
+  return config;
+}
+
+function getPokemonTowerTrainerConfig(entry: TowerTrainerEntry): TrainerConfig {
+  const config = new TrainerConfig(entry.type)
+    .setName(entry.name)
+    .setSpriteKey(TOWER_GHOST_SPRITE)
+    .setPartyTemplates(new TrainerPartyTemplate(entry.party.length, PartyMemberStrength.AVERAGE));
+  entry.party.forEach((member, slot) => {
+    config.setPartyMemberFunc(slot, (level, strength) => globalScene.addEnemyPokemon(
+      getPokemonSpecies(resolveTowerSpecies(member, level, strength)), level, TrainerSlot.TRAINER,
+      false, false, undefined, pokemon => applyTowerPokemonIdentity(pokemon, member),
+    ));
+  });
+  return config;
+}
+
 export const trainerConfigs: TrainerConfigs = {
+  ...Object.fromEntries(towerTrainers.map(entry => [entry.type, getPokemonTowerTrainerConfig(entry)])),
+  [TrainerType.POKEMON_TOWER_HAUNT]: getPokemonTowerPlaceholderConfig(TrainerType.POKEMON_TOWER_HAUNT, false),
+  [TrainerType.POKEMON_TOWER_GREAT_HAUNT]: getPokemonTowerPlaceholderConfig(TrainerType.POKEMON_TOWER_GREAT_HAUNT, true),
   [TrainerType.UNKNOWN]: new TrainerConfig(0).setHasGenders(),
   [TrainerType.ACE_TRAINER]: new TrainerConfig(++t)
     .setHasGenders("Ace Trainer Female")

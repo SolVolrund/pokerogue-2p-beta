@@ -3,6 +3,7 @@ import { TrainerVariant } from "#enums/trainer-variant";
 import { Trainer } from "#field/trainer";
 
 export class TrainerData {
+  public haunted: boolean;
   public trainerType: TrainerType;
   public variant: TrainerVariant;
   public partyTemplateIndex: number;
@@ -15,6 +16,7 @@ export class TrainerData {
   public partnerVariant2: TrainerVariant | undefined;
 
   constructor(source: Trainer | any) {
+    this.haunted = !!source.haunted;
     const sourceTrainer = source instanceof Trainer ? (source as Trainer) : null;
     this.trainerType = sourceTrainer ? sourceTrainer.config.trainerType : source.trainerType;
     this.variant = Object.hasOwn(source, "variant")
@@ -35,7 +37,7 @@ export class TrainerData {
   }
 
   toTrainer(): Trainer {
-    return new Trainer(
+    const trainer = new Trainer(
       this.trainerType,
       this.variant,
       this.partyTemplateIndex,
@@ -50,5 +52,7 @@ export class TrainerData {
       undefined,
       this.partnerNameKey2,
     );
+    trainer.haunted = this.haunted;
+    return trainer;
   }
 }

@@ -640,4 +640,6 @@ export enum AbilityId {
   /** {@link https://bulbapedia.bulbagarden.net/wiki/Aura_Guard_(Ability) | Source} */
   AURA_GUARD,
   BIO_INSTABILITY,
+  GRAVE_WIND,
+  RESTLESS_SPIRIT,
 }

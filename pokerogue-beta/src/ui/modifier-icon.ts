@@ -1,6 +1,11 @@
 import { globalScene } from "#app/global-scene";
 
 const STANDALONE_ITEM_ICONS = new Set([
+  "ominous_skull",
+  "portent_skull",
+  "malefic_skull",
+  "lesser_spirit",
+  "greater_spirit",
   "shiny_badge",
   "pokeblock_kit_smaller",
   "pokeblock_red",
@@ -20,7 +25,11 @@ const STANDALONE_ITEM_ICONS = new Set([
 
 export function addModifierIconSprite(x: number, y: number, iconImage: string): Phaser.GameObjects.Sprite {
   if (STANDALONE_ITEM_ICONS.has(iconImage) && globalScene.textures.exists(iconImage)) {
-    return globalScene.add.sprite(x, y, iconImage);
+    const sprite = globalScene.add.sprite(x, y, iconImage);
+    if (iconImage === "lesser_spirit" || iconImage === "greater_spirit") {
+      sprite.setScale(2 / 3);
+    }
+    return sprite;
   }
 
   return globalScene.add.sprite(x, y, "items", iconImage);

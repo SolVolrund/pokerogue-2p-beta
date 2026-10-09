@@ -1,4 +1,5 @@
 import type { PlayerIndex } from "#app/battle-scene";
+import type { GreatHauntState } from "#data/great-haunt";
 import type { GameMode } from "#app/game-mode";
 import { globalScene } from "#app/global-scene";
 import { ArenaTagType } from "#enums/arena-tag-type";
@@ -141,6 +142,7 @@ export class Battle {
     glyphIndex: number;
   };
   public mewtwoFinalBossState: MewtwoFinalBossState | undefined;
+  public greatHauntState: GreatHauntState | undefined;
   public unownFinalBossState: UnownFinalBossState | undefined;
 
   public hasEnemyTrainerSlotUsedTera(trainerSlot: TrainerSlot): boolean {
@@ -189,7 +191,7 @@ export class Battle {
 
     this.enemyLevels =
       battleType === BattleType.TRAINER
-        ? trainer?.getPartyLevels(this.waveIndex)
+        ? trainer?.getPartyLevels(globalScene.seasonalEncounters.getTowerDifficultyWave() ?? this.waveIndex)
         : // TODO: Remove array.fill.map
           new Array(this.getBattlerCount()).fill(null).map(() => this.getLevelForWave());
   }
@@ -202,7 +204,7 @@ export class Battle {
   }
 
   public getLevelForWave(): number {
-    const levelWaveIndex = this.gameMode.getWaveForDifficulty(this.waveIndex);
+    const levelWaveIndex = this.gameMode.getWaveForDifficulty(globalScene.seasonalEncounters.getTowerDifficultyWave() ?? this.waveIndex);
     const baseLevel = 1 + levelWaveIndex / 2 + Math.pow(levelWaveIndex / 25, 2);
     const bossMultiplier = 1.2;
 

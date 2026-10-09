@@ -2,6 +2,7 @@ import type { TurnCommand } from "#app/battle";
 import type { PlayerIndex } from "#app/battle-scene";
 import { MAX_TERAS_PER_ARENA } from "#app/constants";
 import { globalScene } from "#app/global-scene";
+import { getGreatHauntCaptureBlock } from "#utils/great-haunt-utils";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { TrappedTag } from "#data/battler-tags";
@@ -1459,6 +1460,10 @@ export class CommandPhase extends FieldPhase {
    * @returns The locale key for the denial message, or `undefined` when the target is valid
    */
   private getBallTargetBlockMessage(targetPokemon: EnemyPokemon, pokeballType: PokeballType): string | undefined {
+    const hauntBlock = getGreatHauntCaptureBlock(targetPokemon, pokeballType);
+    if (hauntBlock) {
+      return hauntBlock;
+    }
     if (pokeballType === PokeballType.CLONE_BALL) {
       return;
     }
@@ -1677,7 +1682,7 @@ export class CommandPhase extends FieldPhase {
   private handleRunCommand(): boolean {
     const { currentBattle, arena } = globalScene;
     const mysteryEncounterFleeAllowed = currentBattle.mysteryEncounter?.fleeAllowed ?? true;
-    if (arena.biomeId === BiomeId.END || !mysteryEncounterFleeAllowed) {
+    if (arena.biomeId === BiomeId.END || globalScene.seasonalEncounters.tower || !mysteryEncounterFleeAllowed) {
       this.queueShowText("battle:noEscapeForce");
       return false;
     }

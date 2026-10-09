@@ -1094,7 +1094,8 @@ export abstract class Move implements Localizable {
       globalScene.applyModifiers(PokemonMoveAccuracyBoosterModifier, user.isPlayer(), user, moveAccuracy);
     }
 
-    if (globalScene.arena.weather?.weatherType === WeatherType.FOG) {
+    const weather = globalScene.arena.weather;
+    if (weather && [WeatherType.FOG, WeatherType.MIASMA].includes(weather.weatherType) && !weather.isEffectSuppressed()) {
       /**
        *  The 0.9 multiplier is PokeRogue-only implementation, Bulbapedia uses 3/5
        *  See Fog {@link https://bulbapedia.bulbagarden.net/wiki/Fog}
@@ -4680,6 +4681,7 @@ export class SecretPowerAttr extends MoveEffectAttr {
       case BiomeId.WASTELAND:
       case BiomeId.GRAVEYARD:
       case BiomeId.ABYSS:
+      case BiomeId.POKEMON_TOWER:
       case BiomeId.SPACE:
         secondaryEffect = new AddBattlerTagAttr(BattlerTagType.FLINCHED, false, true);
         break;
@@ -5491,6 +5493,7 @@ export class AntiSunlightPowerDecreaseAttr extends VariablePowerAttr {
         case WeatherType.HAIL:
         case WeatherType.SNOW:
         case WeatherType.FOG:
+        case WeatherType.MIASMA:
         case WeatherType.HEAVY_RAIN:
           power.value *= 0.5;
           return true;
@@ -8105,6 +8108,9 @@ export class ForceSwitchOutAttr extends MoveEffectAttr {
     return (user, target, move) => {
       const switchOutTarget = this.selfSwitch ? user : target;
       const player = switchOutTarget.isPlayer();
+      if (!player && globalScene.currentBattle.greatHauntState) {
+        return false;
+      }
       const forceSwitchAttr = move
         .getAttrs("ForceSwitchOutAttr")
         .find(attr => attr.switchType === SwitchType.FORCE_SWITCH);
@@ -8397,6 +8403,7 @@ export class CopyBiomeTypeAttr extends MoveEffectAttr {
         return PokemonType.FIRE;
       case BiomeId.GRAVEYARD:
       case BiomeId.TEMPLE:
+      case BiomeId.POKEMON_TOWER:
         return PokemonType.GHOST;
       case BiomeId.DOJO:
       case BiomeId.CONSTRUCTION_SITE:
@@ -8693,6 +8700,7 @@ export class NaturePowerAttr extends CallMoveAttr {
       case BiomeId.VOLCANO:
         return MoveId.LAVA_PLUME;
       case BiomeId.GRAVEYARD:
+      case BiomeId.POKEMON_TOWER:
         return MoveId.SHADOW_BALL;
       case BiomeId.RUINS:
         return MoveId.ANCIENT_POWER;
@@ -9759,6 +9767,7 @@ const sunnyHealRatioFunc = (user: Pokemon): number => {
     case WeatherType.SNOW:
     case WeatherType.HEAVY_RAIN:
     case WeatherType.FOG:
+    case WeatherType.MIASMA:
       return 1 / 4;
     case WeatherType.STRONG_WINDS:
     case WeatherType.NONE:
@@ -11580,6 +11589,7 @@ export function initMoves() {
     new StatusMove(MoveId.DEFOG, PokemonType.FLYING, -1, 15, -1, 0, 4)
       .attr(StatStageChangeAttr, [Stat.EVA], -1)
       .attr(ClearWeatherAttr, WeatherType.FOG)
+      .attr(ClearWeatherAttr, WeatherType.MIASMA)
       .attr(ClearTerrainAttr)
       .attr(RemoveScreensAttr, (_user, target) => (target.isPlayer() ? ArenaTagSide.PLAYER : ArenaTagSide.ENEMY))
       .attr(RemoveArenaTrapAttr, () => ArenaTagSide.BOTH)

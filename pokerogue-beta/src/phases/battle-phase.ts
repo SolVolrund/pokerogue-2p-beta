@@ -21,6 +21,7 @@ export abstract class BattlePhase extends Phase {
         sprite.clearTint();
       });
     }
+    globalScene.currentBattle.trainer.syncHauntedSprites();
     globalScene.tweens.add({
       targets: globalScene.currentBattle.trainer,
       x: "-=16",

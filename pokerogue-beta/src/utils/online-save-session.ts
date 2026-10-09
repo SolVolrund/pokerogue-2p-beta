@@ -69,6 +69,8 @@ export function onlineLoadedState(summary: Record<string, unknown>): string {
         "battleType",
         "double",
         "biome",
+        "seasonalEncounters",
+        "hauntedTrainer",
         "twoPlayerEnemyPlayerMode",
         "twoPlayerVsMode",
         "vsEnemyModifiersByPlayer",

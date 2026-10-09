@@ -19,6 +19,7 @@ import { TrainerAceEvCategory, trainerConfigs, type TrainerConfig } from "#train
 import { TrainerPartyCompoundTemplate, type TrainerPartyTemplate } from "#trainers/trainer-party-template";
 import { getRandomTwoPlayerTrainerPartners } from "#trainers/two-player-trainer-partners";
 import { randSeedInt, randSeedItem } from "#utils/common";
+import { getCachedUrl } from "#utils/fetch-utils";
 import { filterAiRelevantOpponentsForPosition } from "#utils/ai-targeting";
 import { getRandomLocaleEntry } from "#utils/i18n";
 import { isMysteryEncounterSwitchProtectedPokemon } from "#utils/mystery-encounter-switch-protection";
@@ -100,10 +101,14 @@ function getTrainerAceEvTotal(config: TrainerConfig): number {
 }
 
 const TRAINER_ANIMATION_FRAME_SEQUENCES: Partial<Record<string, number[]>> = {
+  tower_ghost_f: Array.from({ length: 21 }, (_, i) => i + 1),
   amber_two: Array.from({ length: 32 }, (_, i) => i + 1),
   ambers_joy: [1],
   molly_hale: [1, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13],
 };
+
+const HAUNTING_SPIRIT_KEY = "haunting_spirit";
+const HAUNTING_SPIRIT_FRAMES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
 
 function getTrainerAnimationFrameNames(trainerKey: string) {
   const frameSequence = TRAINER_ANIMATION_FRAME_SEQUENCES[trainerKey];
@@ -220,6 +225,10 @@ export class Trainer extends Phaser.GameObjects.Container {
   private partnerConfig: TrainerConfig | undefined;
   private partnerConfig2: TrainerConfig | undefined;
   public originalIndexes: { [key: number]: number } = {};
+  public haunted = false;
+  private readonly trainerSprites: Phaser.GameObjects.Sprite[] = [];
+  private readonly trainerTintSprites: Phaser.GameObjects.Sprite[] = [];
+  private readonly hauntedSprites: Phaser.GameObjects.Sprite[] = [];
   private limitedPartyMemberSlots: LimitedPartyMemberSlot[] | undefined;
 
   /**
@@ -451,6 +460,7 @@ export class Trainer extends Phaser.GameObjects.Container {
         tone: [0.0, 0.0, 0.0, 0.0],
         hasShadow: !!hasShadow,
       });
+      (hasShadow ? this.trainerSprites : this.trainerTintSprites).push(ret);
       return ret;
     };
 
@@ -718,6 +728,11 @@ export class Trainer extends Phaser.GameObjects.Container {
    * @returns - The formatted name of the trainer
    */
   getName(trainerSlot: TrainerSlot = TrainerSlot.NONE, includeTitle = false): string {
+    const name = this.getUnhauntedName(trainerSlot, includeTitle);
+    return this.haunted ? i18next.t("battle:hauntedTrainerName", { name }) : name;
+  }
+
+  private getUnhauntedName(trainerSlot: TrainerSlot, includeTitle: boolean): string {
     if (
       this.variant === TrainerVariant.DOUBLE
       && ((this.partnerConfig && this.partnerConfig !== this.config)
@@ -1548,6 +1563,13 @@ export class Trainer extends Phaser.GameObjects.Container {
       for (const trainerKey of trainerKeys) {
         globalScene.loadAtlas(trainerKey, "trainer");
       }
+      if (this.haunted && !globalScene.textures.exists(HAUNTING_SPIRIT_KEY)) {
+        globalScene.load.spritesheet(HAUNTING_SPIRIT_KEY, getCachedUrl("images/trainer/haunting_spirit.png"), {
+          frameWidth: 59,
+          frameHeight: 127,
+          endFrame: 11,
+        });
+      }
       globalScene.load.once(Phaser.Loader.Events.COMPLETE, () => {
         const originalWarn = console.warn;
         console.warn = () => {};
@@ -1578,6 +1600,45 @@ export class Trainer extends Phaser.GameObjects.Container {
   initSprite(): void {
     this.getSprites().map((sprite, i) => sprite.setTexture(this.getSpriteKeyForIndex(i)).setFrame(0));
     this.getTintSprites().map((tintSprite, i) => tintSprite.setTexture(this.getSpriteKeyForIndex(i)).setFrame(0));
+    this.syncHauntedSprites();
+  }
+
+  /** Keep decorations behind the trainer bodies, including individually shown dialogue partners. */
+  syncHauntedSprites(): void {
+    if (!this.haunted) {
+      this.hauntedSprites.splice(0).forEach(sprite => sprite.destroy());
+      return;
+    }
+    // Failed or pending asset loads should never create a missing-texture square.
+    if (!globalScene.textures.exists(HAUNTING_SPIRIT_KEY)) {
+      return;
+    }
+    if (!globalScene.anims.exists(HAUNTING_SPIRIT_KEY)) {
+      globalScene.anims.create({
+        key: HAUNTING_SPIRIT_KEY,
+        frames: HAUNTING_SPIRIT_FRAMES.map(frame => ({ key: HAUNTING_SPIRIT_KEY, frame })),
+        frameRate: 12,
+        repeat: -1,
+      });
+    }
+    this.trainerSprites.forEach((trainerSprite, index) => {
+      let spirit = this.hauntedSprites[index];
+      if (!spirit) {
+        spirit = globalScene.addFieldSprite(0, 0, HAUNTING_SPIRIT_KEY, 0);
+        spirit.setName(HAUNTING_SPIRIT_KEY).setOrigin(0.5, 1);
+        spirit.setPipeline(globalScene.spritePipeline, { tone: [0, 0, 0, 0], hasShadow: false });
+        this.addAt(spirit, index);
+        this.hauntedSprites.push(spirit);
+        spirit.play(HAUNTING_SPIRIT_KEY);
+      }
+      // The final four rows extend the ground shadow below the original foot line.
+      spirit.setPosition(trainerSprite.x, trainerSprite.y + 4);
+      spirit.setScale(trainerSprite.scaleX, trainerSprite.scaleY);
+      spirit.setRotation(trainerSprite.rotation);
+      spirit.setFlip(trainerSprite.flipX, trainerSprite.flipY);
+      spirit.setAlpha(trainerSprite.alpha);
+      spirit.setVisible(trainerSprite.visible);
+    });
   }
 
   /**
@@ -1613,6 +1674,7 @@ export class Trainer extends Phaser.GameObjects.Container {
   }
 
   playAnim(): void {
+    this.syncHauntedSprites();
     const sprites = this.getSprites();
     const tintSprites = this.getTintSprites();
 
@@ -1628,25 +1690,11 @@ export class Trainer extends Phaser.GameObjects.Container {
   }
 
   getSprites(): Phaser.GameObjects.Sprite[] {
-    const ret: Phaser.GameObjects.Sprite[] = [this.getAt(0)];
-    if (this.variant === TrainerVariant.DOUBLE && !this.config.doubleOnly) {
-      ret.push(this.getAt(2));
-      if (this.partnerConfig2) {
-        ret.push(this.getAt(4));
-      }
-    }
-    return ret;
+    return [...this.trainerSprites];
   }
 
   getTintSprites(): Phaser.GameObjects.Sprite[] {
-    const ret: Phaser.GameObjects.Sprite[] = [this.getAt(1)];
-    if (this.variant === TrainerVariant.DOUBLE && !this.config.doubleOnly) {
-      ret.push(this.getAt(3));
-      if (this.partnerConfig2) {
-        ret.push(this.getAt(5));
-      }
-    }
-    return ret;
+    return [...this.trainerTintSprites];
   }
 
   tint(color: number, alpha?: number, duration?: number, ease?: string): void {

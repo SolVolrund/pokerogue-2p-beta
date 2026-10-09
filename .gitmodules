@@ -1,0 +1,8 @@
+[submodule "assets"]
+	path = pokerogue-beta/assets
+	url = https://github.com/SolVolrund/pokerogue-assets.git
+	branch = beta
+[submodule "locales"]
+	path = pokerogue-beta/locales
+	url = https://github.com/SolVolrund/pokerogue-locales.git
+	branch = main

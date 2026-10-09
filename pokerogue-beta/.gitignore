@@ -12,6 +12,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 temp
+/tmp/
 node_modules
 dist
 dist-ssr

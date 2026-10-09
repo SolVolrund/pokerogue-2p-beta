@@ -180,7 +180,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
 
       globalScene.pbTrayEnemy.hide();
       globalScene.ui.showText(message, null, () => this.summon());
-    } else if (globalScene.currentBattle.isBattleMysteryEncounter()) {
+    } else if (globalScene.currentBattle.isBattleMysteryEncounter() || globalScene.currentBattle.greatHauntState) {
       globalScene.pbTrayEnemy.hide();
       this.summonWild();
     }
@@ -331,7 +331,9 @@ export class SummonPhase extends PartyMemberPokemonPhase {
       this.player ? globalScene.getBattleFieldSlotCount() : globalScene.currentBattle.getBattlerCount();
     const fieldSlotCount = this.player ? playerFieldSlotCount : globalScene.currentBattle.getBattlerCount();
 
-    if (fieldSlotCount > 2 && this.fieldIndex === 2) {
+    if (!this.player && globalScene.currentBattle.greatHauntState?.stage === "marowak") {
+      pokemon.setFieldPosition(FieldPosition.CENTER, 0);
+    } else if (fieldSlotCount > 2 && this.fieldIndex === 2) {
       pokemon.setFieldPosition(FieldPosition.CENTER, 0);
     } else if (this.fieldIndex === 1) {
       pokemon.setFieldPosition(FieldPosition.RIGHT, 0);

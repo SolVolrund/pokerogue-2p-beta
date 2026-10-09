@@ -16,6 +16,12 @@ export class AttemptRunPhase extends FieldPhase {
   public start() {
     super.start();
 
+    if (globalScene.seasonalEncounters.tower) {
+      globalScene.phaseManager.queueMessage(i18next.t("battle:runAwayCannotEscape"), null, true, 500);
+      this.end();
+      return;
+    }
+
     // Increment escape attempts count on entry
     const currentAttempts = globalScene.currentBattle.escapeAttempts++;
     const enemyField = globalScene.getEnemyField();

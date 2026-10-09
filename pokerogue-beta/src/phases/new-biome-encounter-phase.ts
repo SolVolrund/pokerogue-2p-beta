@@ -25,6 +25,9 @@ export class NewBiomeEncounterPhase extends EncounterPhase {
 
     const enemyField = globalScene.getEnemyField();
     const moveTargets: any[] = [globalScene.arenaEnemy, enemyField];
+    if (globalScene.seasonalEncounters.tower && globalScene.currentBattle.trainer) {
+      moveTargets.push(globalScene.currentBattle.trainer);
+    }
     const mysteryEncounter = globalScene.currentBattle?.mysteryEncounter?.introVisuals;
     if (mysteryEncounter) {
       moveTargets.push(mysteryEncounter);

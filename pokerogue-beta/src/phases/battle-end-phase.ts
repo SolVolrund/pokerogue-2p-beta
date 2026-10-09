@@ -1,5 +1,6 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { globalScene } from "#app/global-scene";
+import { WeatherType } from "#enums/weather-type";
 import { BerryPotModifier, LapsingPersistentModifier, LapsingPokemonHeldItemModifier } from "#modifiers/modifier";
 import { clearRollingMove } from "#moves/rolling-move";
 import { BattlePhase } from "#phases/battle-phase";
@@ -26,6 +27,10 @@ export class BattleEndPhase extends BattlePhase {
     );
     globalScene.phaseManager.removeAllPhasesOfType("BattleEndPhase");
 
+    if ((globalScene.seasonalEncounters.tower || globalScene.currentBattle.trainer?.haunted) && globalScene.arena.weatherType === WeatherType.MIASMA) {
+      globalScene.arena.trySetWeather(WeatherType.NONE);
+    }
+
     globalScene.gameData.gameStats.battles++;
     if (
       globalScene.gameMode.isEndless
@@ -35,6 +40,7 @@ export class BattleEndPhase extends BattlePhase {
     }
 
     if (this.isVictory) {
+      globalScene.phaseManager.unshiftNew("HauntingRewardPhase");
       globalScene.currentBattle.addBattleScore();
 
       if (globalScene.currentBattle.trainer) {

@@ -43,6 +43,7 @@ export const dailyBiomeWeights = Object.freeze({
   [BiomeId.ALTO_MARE]: 0,
   [BiomeId.SECRET_GARDEN]: 0,
   [BiomeId.ROCKET_HQ]: 0,
+  [BiomeId.POKEMON_TOWER]: 0,
   [BiomeId.TOWN]: 0,
   [BiomeId.END]: 0,
 }) satisfies Readonly<Record<BiomeId, number>>;

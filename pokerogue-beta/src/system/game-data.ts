@@ -25,6 +25,7 @@ import {
   type PartialContestStats,
 } from "#data/contests/contest-stats";
 import { createEmptyAceEvSpread, normalizeAceEvState } from "#data/ace-evs";
+import { SeasonalEncounterState } from "#data/seasonal-encounters";
 import { CONTEST_TYPES, type ContestType } from "#data/contests/contest-type";
 import { getSerializedDailyRunConfig, parseDailySeed } from "#data/daily-seed/daily-seed-utils";
 import { allMoves } from "#data/data-lists";
@@ -1506,6 +1507,7 @@ export class GameData {
       alphLegendaryHelpersUsed: globalScene.getPlayerAlphLegendaryHelpersUsed(0),
       unownCrystalMollyAppeared: globalScene.unownCrystalMollyAppeared,
       mewtwoFinalBossState: globalScene.currentBattle.mewtwoFinalBossState,
+      greatHauntState: globalScene.currentBattle.greatHauntState,
       unownFinalBossState: globalScene.currentBattle.unownFinalBossState,
       players: playerSessionData,
       twoPlayerMode: globalScene.twoPlayerMode,
@@ -1548,6 +1550,7 @@ export class GameData {
       challenges: globalScene.gameMode.challenges.map(c => new ChallengeData(c)),
       mysteryEncounterType: globalScene.currentBattle.mysteryEncounter?.encounterType ?? -1,
       mysteryEncounterSaveData: globalScene.mysteryEncounterSaveData,
+      seasonalEncounters: globalScene.seasonalEncounters,
       playerFaints: globalScene.arena.playerFaints,
     } as SessionSaveData;
   }
@@ -1806,6 +1809,7 @@ export class GameData {
     globalScene.updateScoreText();
 
     globalScene.mysteryEncounterSaveData = new MysteryEncounterSaveData(fromSession.mysteryEncounterSaveData);
+    globalScene.seasonalEncounters = new SeasonalEncounterState(fromSession.seasonalEncounters);
     globalScene.unownCrystalMollyAppeared = fromSession.unownCrystalMollyAppeared ?? false;
     await globalScene.loadBiomeAssets(fromSession.arena.biome);
     globalScene.newArena(fromSession.arena.biome, fromSession.playerFaints);

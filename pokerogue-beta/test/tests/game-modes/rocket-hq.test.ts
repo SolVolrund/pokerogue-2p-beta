@@ -54,8 +54,8 @@ describe("Rocket HQ", () => {
     const enemy = game.scene.arenaEnemy;
     const playerTexture = vi.spyOn(player.base, "setTexture");
     const enemyTexture = vi.spyOn(enemy.base, "setTexture");
-    const propTextures = enemy.props.map(prop => vi.spyOn(prop, "setTexture"));
-    const propVisibility = enemy.props.map(prop => vi.spyOn(prop, "setVisible"));
+    const propTextures = enemy.props.slice(0, 3).map(prop => vi.spyOn(prop, "setTexture"));
+    const propVisibility = enemy.props.slice(0, 3).map(prop => vi.spyOn(prop, "setVisible"));
     player.setBiome(BiomeId.ROCKET_HQ);
     enemy.setBiome(BiomeId.ROCKET_HQ, 7);
     expect(playerTexture).toHaveBeenCalledWith("rocket_hq_a");

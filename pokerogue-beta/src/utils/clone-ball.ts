@@ -22,6 +22,9 @@ import { getPokemonSpecies } from "#utils/pokemon-utils";
 
 export function getCloneBallBattleBlockMessage(): string | undefined {
   const battle = globalScene.currentBattle;
+  if (battle.greatHauntState) {
+    return "battle:noPokeballForce";
+  }
   if (battle.isClassicFinalBoss) {
     return "battle:noCloneBallFinalBoss";
   }

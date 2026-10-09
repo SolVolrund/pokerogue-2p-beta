@@ -6,6 +6,7 @@ import { ChallengeType } from "#enums/challenge-type";
 import { UiMode } from "#enums/ui-mode";
 import { MapModifier, MoneyInterestModifier, OldSeaMapModifier } from "#modifiers/modifier";
 import { BattlePhase } from "#phases/battle-phase";
+import type { BiomeLinks } from "#types/biomes";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { applyChallenges } from "#utils/challenge-utils";
 import {
@@ -16,9 +17,12 @@ import {
 } from "#utils/classic-final-boss-utils";
 import { BooleanHolder, getBiomeName, randSeedInt, randSeedItem } from "#utils/common";
 import { enumValueToKey } from "#utils/enums";
+import { getHauntingSkull } from "#utils/haunting-utils";
+import i18next from "i18next";
 
 export class SelectBiomePhase extends BattlePhase {
   public readonly phaseName = "SelectBiomePhase";
+  private towerEntryDecided = false;
 
   start() {
     super.start();
@@ -44,12 +48,20 @@ export class SelectBiomePhase extends BattlePhase {
       return;
     }
 
+    if (!this.towerEntryDecided && currentBiome === BiomeId.GRAVEYARD) {
+      const voters = globalScene.getActivePlayerIndexes().filter(player => !!getHauntingSkull(player));
+      if (voters.length) {
+        this.showTowerEntryVote(voters);
+        return;
+      }
+    }
+
     if (gameMode.hasRandomBiomes) {
       this.setNextBiomeAndEnd(this.generateNextBiome(nextWaveIndex));
       return;
     }
 
-    const { biomeLinks } = allBiomes.get(currentBiome);
+    const biomeLinks = this.getAvailableBiomeLinks(currentBiome);
     if (biomeLinks.length > 1) {
       const baseBiomes: BiomeId[] = biomeLinks
         .filter(b => !Array.isArray(b) || !randSeedInt(b[1]))
@@ -92,12 +104,64 @@ export class SelectBiomePhase extends BattlePhase {
       return nextWaveIndex === UNOWN_CRYSTAL_GAUNTLET_START_WAVE ? BiomeId.TOWN : BiomeId.END;
     }
 
-    const { biomeLinks } = allBiomes.get(globalScene.arena.biomeId);
+    const biomeLinks = this.getAvailableBiomeLinks(globalScene.arena.biomeId);
     const biomes: BiomeId[] = biomeLinks
       .filter(b => !Array.isArray(b) || !randSeedInt(b[1]))
       .map(b => (Array.isArray(b) ? b[0] : b));
 
     return biomes.length ? randSeedItem(biomes) : this.generateNextBiome(nextWaveIndex);
+  }
+
+  private getAvailableBiomeLinks(biome: BiomeId): BiomeLinks {
+    // Tower access uses a separate skull-holder vote, never an ordinary Map destination.
+    return allBiomes.get(biome).biomeLinks.filter(link =>
+      (Array.isArray(link) ? link[0] : link) !== BiomeId.POKEMON_TOWER,
+    );
+  }
+
+  private showTowerEntryVote(voters: PlayerIndex[]): void {
+    const votes: { player: PlayerIndex; enter: boolean }[] = [];
+    const next = () => {
+      const player = voters[votes.length];
+      if (player === undefined) {
+        const entering = votes.filter(vote => vote.enter).length;
+        const enter = entering * 2 === votes.length
+          ? votes.find(vote => vote.player === globalScene.resolvePlayerTieBreak(voters))!.enter
+          : entering * 2 > votes.length;
+        this.towerEntryDecided = true;
+        globalScene.waitForPlayerSideProgressionInput();
+        if (enter) {
+          globalScene.seasonalEncounters.enterTower(globalScene.currentBattle.waveIndex + 1);
+          this.setNextBiomeAndEnd(BiomeId.POKEMON_TOWER);
+        } else {
+          this.start();
+        }
+        return;
+      }
+      const choose = (enter: boolean) => {
+        votes.push({ player, enter });
+        globalScene.ui.setMode(UiMode.MESSAGE).then(next);
+        return true;
+      };
+      if (globalScene.isComputerPartnerPlayer(player)) {
+        choose(true);
+        return;
+      }
+      globalScene.waitForPlayerInput(player);
+      globalScene.ui.showText(i18next.t("battle:towerEntryPrompt", {
+        playerName: globalScene.getPlayerDisplayName(player),
+      }), null, () => {
+        globalScene.ui.setMode(UiMode.OPTION_SELECT, {
+          options: [
+            { label: i18next.t("battle:towerEnter"), handler: () => choose(true) },
+            { label: i18next.t("battle:towerAvoid"), handler: () => choose(false) },
+          ],
+          noCancel: true,
+          delay: 1000,
+        } satisfies OptionSelectConfig);
+      });
+    };
+    next();
   }
 
   private withOldSeaMapBiomeOptions(currentBiome: BiomeId, biomes: BiomeId[]): BiomeId[] {

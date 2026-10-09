@@ -105,6 +105,7 @@ export interface PlayerSessionSaveData {
 }
 
 export interface SessionSaveData {
+  seasonalEncounters?: import("#data/seasonal-encounters").SeasonalEncounterState;
   playerAppearances?: RunPlayerAppearances;
   seed: string;
   playTime: number;
@@ -123,6 +124,7 @@ export interface SessionSaveData {
   alphLegendaryHelpersUsed?: AlphLegendaryHelperId[];
   unownCrystalMollyAppeared?: boolean;
   mewtwoFinalBossState?: MewtwoFinalBossState;
+  greatHauntState?: import("#data/great-haunt").GreatHauntState;
   unownFinalBossState?: UnownFinalBossState;
   players?: PlayerSessionSaveData[];
   twoPlayerMode?: boolean;

@@ -1,6 +1,6 @@
 import { globalScene } from "#app/global-scene";
 import type { BiomeId } from "#enums/biome-id";
-import { getBiomeAssetKey, getBiomeHasProps } from "#field/arena";
+import { getBiomeAssetKey, getBiomePropCount } from "#field/arena";
 import { randSeedInt } from "#utils/common";
 
 const CRYSTAL_BIOME_FOREGROUND_STRENGTH = 0.75;
@@ -36,7 +36,8 @@ export class ArenaBase extends Phaser.GameObjects.Container {
   }
 
   setBiome(biome: BiomeId, propValue?: number): void {
-    const hasProps = getBiomeHasProps(biome);
+    const propCount = getBiomePropCount(biome);
+    const hasProps = propCount > 0;
     const biomeKey = getBiomeAssetKey(biome);
     const baseKey = `${biomeKey}_${this.player ? "a" : "b"}`;
 
@@ -70,10 +71,21 @@ export class ArenaBase extends Phaser.GameObjects.Container {
     }
 
     if (!this.player) {
+      while (this.props.length < propCount) {
+        const prop = globalScene.addFieldSprite(0, 0, `${biomeKey}_b`, undefined, 1);
+        prop.setOrigin(0, 0);
+        prop.setVisible(false);
+        this.props.push(prop);
+      }
       globalScene.executeWithSeedOffset(
         () => {
-          this.propValue = propValue === undefined ? (hasProps ? randSeedInt(8) : 0) : propValue;
+          this.propValue = propValue === undefined ? (hasProps ? randSeedInt(1 << propCount) : 0) : propValue;
           this.props.forEach((prop, p) => {
+            if (p >= propCount) {
+              prop.stop();
+              prop.setVisible(false);
+              return;
+            }
             const propKey = `${biomeKey}_b${hasProps ? `_${p + 1}` : ""}`;
             prop.pipelineData["crystalBiomeStrength"] = CRYSTAL_BIOME_FOREGROUND_STRENGTH;
             prop.pipelineData["crystalBiomeMotion"] = CRYSTAL_BIOME_PROPS_MOTION;

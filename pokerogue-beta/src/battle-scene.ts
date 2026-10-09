@@ -104,7 +104,8 @@ import { TrainerVariant } from "#enums/trainer-variant";
 import { UiMode } from "#enums/ui-mode";
 import { UiTheme } from "#enums/ui-theme";
 import { NewArenaEvent } from "#events/battle-scene";
-import { Arena, getBiomeAssetKey, getBiomeHasProps } from "#field/arena";
+import { Arena, getBiomeAssetKey, getBiomeHasProps, getBiomePropCount } from "#field/arena";
+import { isReadyForGreatHaunt } from "#utils/haunting-utils";
 import { ArenaBase } from "#field/arena-base";
 import { DamageNumberHandler } from "#field/damage-number-handler";
 import type { Pokemon } from "#field/pokemon";
@@ -157,6 +158,8 @@ import {
 } from "#mystery-encounters/mystery-encounter-compatibility";
 import { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterSaveData } from "#mystery-encounters/mystery-encounter-save-data";
+import { SeasonalEncounterState } from "#data/seasonal-encounters";
+import { rollTowerTrainerEncounter } from "#utils/pokemon-tower-utils";
 import { allMysteryEncounters, mysteryEncountersByBiome } from "#mystery-encounters/mystery-encounters";
 import { expSpriteKeys } from "#sprites/sprite-keys";
 import { hasExpSprite } from "#sprites/sprite-utils";
@@ -737,6 +740,7 @@ export class BattleScene extends SceneBase {
   private twoPlayerTitleStartHandler: ((titleStart: TwoPlayerTitleStart) => void) | undefined;
   /** Session save data that pertains to Mystery Encounters */
   public mysteryEncounterSaveData: MysteryEncounterSaveData = new MysteryEncounterSaveData();
+  public seasonalEncounters = new SeasonalEncounterState();
   public unownCrystalMollyAppeared = false;
   /** If the previous wave was a MysteryEncounter, tracks the object with this variable. Mostly used for visual object cleanup */
   public lastMysteryEncounter?: MysteryEncounter | undefined;
@@ -2070,6 +2074,9 @@ export class BattleScene extends SceneBase {
       seed: this.seed ?? null,
       waveSeed: this.waveSeed ?? null,
       biome: this.arena?.biomeId ?? null,
+      seasonalEncounters: { ...this.seasonalEncounters },
+      hauntedTrainer: this.currentBattle?.trainer?.haunted ?? false,
+      greatHaunt: this.currentBattle?.greatHauntState,
       magicRoomTurns: this.arena?.getTag(ArenaTagType.MAGIC_ROOM)?.turnCount ?? null,
       phase: currentPhase?.phaseName ?? null,
       uiMode,
@@ -2202,6 +2209,7 @@ export class BattleScene extends SceneBase {
       abilityIndex: pokemon.abilityIndex,
       gender: pokemon.gender,
       shiny: pokemon.shiny,
+      haunted: pokemon.isHaunted(),
       variant: pokemon.variant,
       isActive: pokemon.isActive(),
       switchOutStatus: pokemon.switchOutStatus,
@@ -3862,6 +3870,7 @@ export class BattleScene extends SceneBase {
     this.trainerGuest2.setVisible(false);
 
     this.mysteryEncounterSaveData = new MysteryEncounterSaveData();
+    this.seasonalEncounters = new SeasonalEncounterState();
     this.unownCrystalMollyAppeared = false;
 
     this.updateGameInfo();
@@ -3936,6 +3945,9 @@ export class BattleScene extends SceneBase {
   }
 
   isNewBiome(currentBattle = this.currentBattle) {
+    if (this.seasonalEncounters.tower && this.arena.biomeId === BiomeId.POKEMON_TOWER) {
+      return this.seasonalEncounters.tower.floor <= 1;
+    }
     if (isUnownCrystalBossRushWave(currentBattle.waveIndex, this.gameMode.modeId)) {
       return true;
     }
@@ -3954,6 +3966,11 @@ export class BattleScene extends SceneBase {
    * @returns The newly created `Battle` instance.
    */
   public newBattle(fromSession?: SessionSaveData): Battle {
+    const tower = this.seasonalEncounters.tower;
+    if (tower && !fromSession) {
+      tower.floor++;
+      tower.boss = this.getActivePlayerIndexes().every(isReadyForGreatHaunt);
+    }
     const props = this.getNewBattleProps(fromSession);
     const { waveIndex, mysteryEncounterType } = props;
     const resolved: NewBattleInitialProps = { waveIndex, mysteryEncounterType };
@@ -3964,6 +3981,21 @@ export class BattleScene extends SceneBase {
     // Set attributes of the `resolved` object based on the type of battle being created.
     if (fromSession) {
       this.handleSavedBattle(resolved, props);
+    } else if (tower) {
+      const players = this.getActivePlayerIndexes().length;
+      if (!tower.boss && rollTowerTrainerEncounter()) {
+        const types = this.getActivePlayerIndexes().map(() => this.arena.randomTrainerType(waveIndex));
+        const trainer = new Trainer(types[0], TrainerVariant.DEFAULT, 0, undefined, undefined, trainerConfigs[types[0]],
+          types[1], TrainerVariant.DEFAULT, types[1] === undefined ? undefined : trainerConfigs[types[1]],
+          types[2], TrainerVariant.DEFAULT, types[2] === undefined ? undefined : trainerConfigs[types[2]]);
+        trainer.haunted = true;
+        resolved.trainer = trainer;
+        resolved.battleType = BattleType.TRAINER;
+        this.field.add(trainer);
+      } else {
+        resolved.battleType = BattleType.WILD;
+      }
+      resolved.double = players > 1;
     } else if (this.gameMode.isFixedBattle(waveIndex)) {
       this.handleFixedBattle(resolved);
     } else {
@@ -4002,7 +4034,13 @@ export class BattleScene extends SceneBase {
       this.waveSeed,
     );
     this.currentBattle.incrementTurn();
-    if (!fromSession) {
+    if (fromSession?.greatHauntState) {
+      this.currentBattle.greatHauntState = fromSession.greatHauntState;
+    } else if (!fromSession && tower?.boss) {
+      this.currentBattle.greatHauntState = { stage: "ghost", fallen: [], forcedFaintIds: [] };
+      this.currentBattle.enemyLevels = this.currentBattle.enemyLevels?.slice(0, 1);
+    }
+    if (!fromSession && !tower) {
       this.grantComputerPartnerCloneBallAllowance();
     }
 
@@ -4025,9 +4063,9 @@ export class BattleScene extends SceneBase {
         battleType: BattleType.WILD,
         // Don't increment wave index when computing starting wave
         waveIndex:
-          this.currentBattle == null
+          this.seasonalEncounters.tower?.returnWave ?? (this.currentBattle == null
             ? (activeOverrides.STARTING_WAVE_OVERRIDE ?? STARTING_WAVE)
-            : this.currentBattle.waveIndex + 1,
+            : this.currentBattle.waveIndex + 1),
       };
     }
 
@@ -4128,6 +4166,9 @@ export class BattleScene extends SceneBase {
   private handleNonFixedBattle(resolved: NewBattleInitialProps): void {
     const { waveIndex } = resolved;
     const shouldSpawnMollyHaleCrystalEncounter = this.shouldSpawnMollyHaleCrystalEncounter(waveIndex);
+    const forcedHaunting = activeOverrides.STARTING_HAUNTED_TRAINER_OVERRIDE
+      && waveIndex === (activeOverrides.STARTING_WAVE_OVERRIDE ?? STARTING_WAVE)
+      && !shouldSpawnMollyHaleCrystalEncounter;
 
     resolved.battleType =
       shouldSpawnMollyHaleCrystalEncounter
@@ -4145,7 +4186,8 @@ export class BattleScene extends SceneBase {
     // TODO: This means MEs can generate when the override is set to `BattleType.WILD`
     const forcedMysteryEncounterType = this.getForcedMysteryEncounterTypeForWave(resolved.battleType, waveIndex);
     const isMysteryEncounterWave =
-      (!this.twoPlayerMode || this.getMultiplayerMysteryEncounterAllowlist().length > 0)
+      !forcedHaunting
+      && (!this.twoPlayerMode || this.getMultiplayerMysteryEncounterAllowlist().length > 0)
       && !activeOverrides.BATTLE_TYPE_OVERRIDE
       && (forcedMysteryEncounterType != null || this.isWaveMysteryEncounter(resolved.battleType, waveIndex));
 
@@ -4164,6 +4206,11 @@ export class BattleScene extends SceneBase {
       return;
     }
 
+    const haunted = forcedHaunting || (!shouldSpawnMollyHaleCrystalEncounter && this.rollHauntingEncounter(waveIndex));
+    if (haunted) {
+      resolved.battleType = BattleType.TRAINER;
+    }
+
     if (resolved.battleType !== BattleType.TRAINER) {
       return;
     }
@@ -4171,8 +4218,39 @@ export class BattleScene extends SceneBase {
     const trainer = shouldSpawnMollyHaleCrystalEncounter
       ? this.generateMollyHaleCrystalEncounterTrainer()
       : this.generateNewBattleTrainer(waveIndex);
+    trainer.haunted = haunted;
     this.field.add(trainer);
     resolved.trainer = trainer;
+  }
+
+  private rollHauntingEncounter(waveIndex: number): boolean {
+    if (
+      !this.gameMode.hasTrainers
+      || this.gameMode.isDaily
+      || waveIndex <= 10
+      || this.gameMode.isBoss(waveIndex)
+      || this.gameMode.isFixedBattle(waveIndex)
+      || this.gameMode.isWaveFinal(waveIndex)
+      || this.arena.biomeId === BiomeId.END
+      || this.arena.biomeId === BiomeId.ROCKET_HQ
+      || this.arena.biomeId === BiomeId.POKEMON_TOWER
+      || activeOverrides.BATTLE_TYPE_OVERRIDE !== null
+      || activeOverrides.DISABLE_STANDARD_TRAINERS_OVERRIDE
+      || activeOverrides.RANDOM_TRAINER_OVERRIDE !== null
+    ) {
+      return false;
+    }
+    let haunted = false;
+    this.executeWithSeedOffset(
+      () => {
+        const chance = activeOverrides.HAUNTED_ENCOUNTER_CHANCE_OVERRIDE;
+        haunted = chance === null
+          ? this.seasonalEncounters.roll(waveIndex, () => randSeedInt(100))
+          : !this.seasonalEncounters.hauntingsResolved && randSeedInt(100) < Math.max(0, Math.min(chance, 100));
+      },
+      waveIndex * 3000 + 137,
+    );
+    return haunted;
   }
 
   private shouldSpawnMollyHaleCrystalEncounter(waveIndex: number): boolean {
@@ -4235,6 +4313,9 @@ export class BattleScene extends SceneBase {
    * @returns Whether the battle needs more than one field slot.
    */
   private checkIsDouble(props: NewBattleConstructedProps): boolean {
+    if (this.seasonalEncounters.tower) {
+      return this.getActivePlayerIndexes().length > 1;
+    }
     const { double: forcedDouble, battleType, waveIndex, trainer } = props;
     if (this.twoPlayerMode && (!this.twoPlayerEnemyPlayerMode || this.multiplayerPlayerCount > 1)) {
       if (isUnownRealFinalBossWave(waveIndex, this.gameMode.modeId)) {
@@ -4462,7 +4543,7 @@ export class BattleScene extends SceneBase {
     }
 
     if (getBiomeHasProps(biome)) {
-      for (let p = 1; p <= 3; p++) {
+      for (let p = 1; p <= getBiomePropCount(biome); p++) {
         const isPropAnimated = p === 3 && ["power_plant", "end"].includes(btKey);
         const propKey = `${btKey}_b_${p}`;
         if (isPropAnimated) {
@@ -4504,7 +4585,7 @@ export class BattleScene extends SceneBase {
     const keysToClear = [`${btKey}_bg`, `${btKey}_a`, `${btKey}_b`];
 
     if (getBiomeHasProps(biome)) {
-      for (let p = 1; p <= 3; p++) {
+      for (let p = 1; p <= getBiomePropCount(biome); p++) {
         keysToClear.push(`${btKey}_b_${p}`);
       }
     }
@@ -4887,6 +4968,10 @@ export class BattleScene extends SceneBase {
   resetSeed(waveIndex?: number): void {
     const wave = waveIndex ?? this.currentBattle?.waveIndex ?? 0;
     this.waveSeed = shiftCharCodes(this.seed, wave);
+    const tower = this.seasonalEncounters.tower;
+    if (tower) {
+      this.waveSeed += `:tower:${this.seasonalEncounters.towerVisits}:${tower.floor}`;
+    }
     Phaser.Math.RND.sow([this.waveSeed]);
     console.log("Wave Seed:", this.waveSeed, wave);
   }
@@ -4898,9 +4983,10 @@ export class BattleScene extends SceneBase {
     const tempRngOffset = this.rngOffset;
     const tempRngSeedOverride = this.rngSeedOverride;
     const state = Phaser.Math.RND.state();
-    Phaser.Math.RND.sow([shiftCharCodes(seedOverride || this.seed, offset)]);
+    const seed = seedOverride || (this.seasonalEncounters.tower ? this.waveSeed : this.seed);
+    Phaser.Math.RND.sow([shiftCharCodes(seed, offset)]);
     this.rngOffset = offset;
-    this.rngSeedOverride = seedOverride || "";
+    this.rngSeedOverride = seedOverride || (this.seasonalEncounters.tower ? this.waveSeed : "");
     func();
     Phaser.Math.RND.state(state);
     this.rngOffset = tempRngOffset;
@@ -5025,11 +5111,14 @@ export class BattleScene extends SceneBase {
   }
 
   updateBiomeWaveText(): void {
-    const isBoss = !(this.currentBattle.waveIndex % 10);
+    const tower = this.seasonalEncounters.tower;
+    const isBoss = tower ? tower.boss : !(this.currentBattle.waveIndex % 10);
     const biomeString: string = getBiomeName(this.arena.biomeId);
     this.fieldUI.moveAbove(this.biomeWaveText, this.luckText);
     this.biomeWaveText
-      .setText(biomeString + " - " + this.currentBattle.waveIndex.toString())
+      .setText(biomeString + " - " + (tower
+        ? tower.boss ? i18next.t("battle:towerBoss") : i18next.t("battle:towerFloor", { floor: tower.floor })
+        : this.currentBattle.waveIndex.toString()))
       .setColor(isBoss ? "#f89890" : "#ffffff")
       .setShadowColor(isBoss ? "#984038" : "#636363")
       .setVisible(true);
@@ -5212,7 +5301,7 @@ export class BattleScene extends SceneBase {
     const biomes = Object.values(BiomeId).filter(
       // Special destinations outside the normal route graph have no depth
       // weight (e.g. Alto Mare and Secret Garden) and cannot enter this pool.
-      b => b !== BiomeId.TOWN && b !== BiomeId.END && b !== BiomeId.FARAWAY_ISLAND && b !== BiomeId.ROCKET_HQ
+      b => b !== BiomeId.TOWN && b !== BiomeId.END && b !== BiomeId.FARAWAY_ISLAND && b !== BiomeId.ROCKET_HQ && b !== BiomeId.POKEMON_TOWER
         && biomeDepths[b] !== undefined,
     );
     const maxDepth = biomeDepths[BiomeId.END][0] - 2;
@@ -5263,7 +5352,7 @@ export class BattleScene extends SceneBase {
   }
 
   getWaveMoneyAmount(moneyMultiplier: number): number {
-    const waveIndex = this.currentBattle.waveIndex;
+    const waveIndex = this.seasonalEncounters.getTowerDifficultyWave() ?? this.currentBattle.waveIndex;
     const waveSetIndex = Math.ceil(waveIndex / 10) - 1;
     const moneyValue =
       Math.pow((waveSetIndex + 1 + (0.75 + (((waveIndex - 1) % 10) + 1) / 10)) * 100, 1 + 0.005 * waveSetIndex)
@@ -5580,7 +5669,7 @@ export class BattleScene extends SceneBase {
     }
   }
 
-  recoverBattleTransferredHeldItems(playerIndexes: PlayerIndex[]): void {
+  recoverBattleTransferredHeldItems(playerIndexes: PlayerIndex[], enemyOnly = false): void {
     const trackedItems = [
       ...playerIndexes.flatMap(playerIndex =>
         this.findModifiersForPlayer(
@@ -5595,6 +5684,9 @@ export class BattleScene extends SceneBase {
     const recoveredPokemon = new Set<Pokemon>();
 
     for (const { modifier, playerIndex } of trackedItems) {
+      if (enemyOnly && playerIndex !== undefined) {
+        continue;
+      }
       const transferSource = modifier.recoverableBattleTransfer;
       if (!transferSource) {
         continue;

@@ -38,11 +38,11 @@ export class GameWrapper {
     Pokemon.prototype.enableMask = () => null;
     Pokemon.prototype.updateFusionPalette = () => null;
     Pokemon.prototype.cry = () => null;
-    Pokemon.prototype.faintCry = cb => {
+    vi.spyOn(Pokemon.prototype, "faintCry").mockImplementation(cb => {
       if (cb) {
         cb();
       }
-    };
+    });
     BattleScene.prototype.addPokemonIcon = () => new Phaser.GameObjects.Container(this.scene);
 
     // Pokedex container is not actually mocking container, but the sprites they contain are mocked.

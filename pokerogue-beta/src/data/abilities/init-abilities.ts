@@ -521,6 +521,7 @@ export function initAbilities() {
         WeatherType.SANDSTORM,
         WeatherType.STRONG_WINDS,
         WeatherType.FOG,
+        WeatherType.MIASMA,
       ])
       .build(),
     new AbBuilder(AbilityId.STICKY_HOLD, 3) //
@@ -875,6 +876,7 @@ export function initAbilities() {
         WeatherType.SANDSTORM,
         WeatherType.STRONG_WINDS,
         WeatherType.FOG,
+        WeatherType.MIASMA,
         WeatherType.HAIL,
         WeatherType.HEAVY_RAIN,
         WeatherType.SNOW,
@@ -2229,6 +2231,13 @@ export function initAbilities() {
       .attr(NoFusionAbilityAbAttr)
       .uncopiable()
       .unreplaceable()
+      .build(),
+    new AbBuilder(AbilityId.GRAVE_WIND, 9)
+      .attr(PostSummonWeatherChangeAbAttr, WeatherType.MIASMA)
+      .attr(PostBiomeChangeWeatherChangeAbAttr, WeatherType.MIASMA)
+      .build(),
+    new AbBuilder(AbilityId.RESTLESS_SPIRIT, 9)
+      .attr(PostWeatherLapseHealAbAttr, 2, WeatherType.MIASMA)
       .build(),
   );
 }

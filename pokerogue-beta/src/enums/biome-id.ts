@@ -40,6 +40,7 @@ export const BiomeId = {
   ALTO_MARE: 52,
   SECRET_GARDEN: 53,
   ROCKET_HQ: 54,
+  POKEMON_TOWER: 55,
 } as const;
 
 export type BiomeId = ObjectValues<typeof BiomeId>;

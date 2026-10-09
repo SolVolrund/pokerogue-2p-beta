@@ -56,6 +56,8 @@ import { LoginPhase } from "#phases/login-phase";
 import { MessagePhase } from "#phases/message-phase";
 import { MiningPhase } from "#phases/mining-phase";
 import { ModifierRewardPhase } from "#phases/modifier-reward-phase";
+import { HauntingRewardPhase } from "#phases/haunting-reward-phase";
+import { GreatHauntPhase } from "#phases/great-haunt-phase";
 import { MoneyRewardPhase } from "#phases/money-reward-phase";
 import { MoveAnimPhase } from "#phases/move-anim-phase";
 import { MoveChargePhase } from "#phases/move-charge-phase";
@@ -200,6 +202,8 @@ const PHASES = Object.freeze({
   MessagePhase,
   MiningPhase,
   ModifierRewardPhase,
+  HauntingRewardPhase,
+  GreatHauntPhase,
   MoneyRewardPhase,
   MoveAnimPhase,
   MoveChargePhase,
@@ -395,8 +399,9 @@ export class PhaseManager {
 
     let nextPhase = this.phaseQueue.getNextPhase();
 
-    if (nextPhase?.is("DynamicPhaseMarker")) {
-      nextPhase = this.dynamicQueueManager.popNextPhase(nextPhase.phaseType);
+    while (nextPhase?.is("DynamicPhaseMarker")) {
+      // Cancelled dynamic actions can leave markers behind; only an empty tree starts a new turn.
+      nextPhase = this.dynamicQueueManager.popNextPhase(nextPhase.phaseType) ?? this.phaseQueue.getNextPhase();
     }
 
     if (nextPhase == null) {

@@ -61,6 +61,7 @@ export class PokemonData {
   public crystalized: boolean;
   public crystalColor: [number, number, number] | null;
   public shadowPokemon: boolean;
+  public haunted: boolean;
   public purifiedPokemon: boolean;
   public computerPartnerAce: boolean;
   public gtsMalfunctionOriginalPlayerIndex: PlayerIndex | undefined;
@@ -143,6 +144,7 @@ export class PokemonData {
     this.isTerastallized = !!source.isTerastallized;
     this.stellarTypesBoosted = source.stellarTypesBoosted ?? [];
     this.shadowPokemon = !!source.shadowPokemon;
+    this.haunted = !!source.haunted;
     this.purifiedPokemon = !this.shadowPokemon && !!source.purifiedPokemon;
     this.crystalized = sourcePokemon?.crystalized ?? !!source.crystalized;
     this.crystalColor = sourcePokemon?.crystalized

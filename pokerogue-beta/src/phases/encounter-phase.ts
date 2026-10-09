@@ -3,6 +3,8 @@ import type { PlayerIndex } from "#app/battle-scene";
 import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
+import { applyTowerPokemonIdentity, resolveTowerSpecies, rollTowerWildEntry } from "#utils/pokemon-tower-utils";
+import { WeatherType } from "#enums/weather-type";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { activeOverrides } from "#app/overrides";
 import { handleTutorial, Tutorial } from "#app/tutorial";
@@ -16,6 +18,7 @@ import { BattleType } from "#enums/battle-type";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BiomeId } from "#enums/biome-id";
 import { FieldPosition } from "#enums/field-position";
+import { createGreatHauntBoss, ensureGreatHauntBossBulk } from "#utils/great-haunt-utils";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import { MoveCategory } from "#enums/move-category";
 import { MoveId } from "#enums/move-id";
@@ -366,14 +369,18 @@ export class EncounterPhase extends BattlePhase {
       }
       const unownFinalBossHelperSlot = getUnownFinalBossHelperSlot(battle.unownFinalBossState, e);
       if (!this.loaded) {
-        if (battle.battleType === BattleType.TRAINER) {
+        if (battle.greatHauntState && !battle.enemyParty[e]) {
+          battle.enemyParty[e] = createGreatHauntBoss(true);
+        } else if (battle.battleType === BattleType.TRAINER) {
           battle.enemyParty[e] = battle.trainer?.genPartyMember(e)!; // TODO:: is the bang correct here?
         } else if (!battle.enemyParty[e]) {
+          const towerEntry = globalScene.seasonalEncounters.tower ? rollTowerWildEntry() : undefined;
           const helperSpeciesId = unownFinalBossHelperSlot
             ? getNextUnownFinalBossHelperSpeciesId(unownFinalBossHelperSlot)
             : undefined;
-          let enemySpecies =
-            isUnownRealFinalBoss && e === unownFinalBossFieldIndex
+          let enemySpecies = towerEntry
+            ? getPokemonSpecies(resolveTowerSpecies(towerEntry, level))
+            : isUnownRealFinalBoss && e === unownFinalBossFieldIndex
               ? getPokemonSpecies(SpeciesId.UNOWN)
               : helperSpeciesId !== undefined
                 ? getPokemonSpecies(helperSpeciesId)
@@ -381,6 +388,7 @@ export class EncounterPhase extends BattlePhase {
           // If player has golden bug net, rolls 10% chance to replace non-boss wave wild species from the golden bug net bug pool
           if (
             !isUnownRealFinalBoss
+            && !towerEntry
             && globalScene.findModifier(m => m instanceof BoostBugSpawnModifier)
             && !globalScene.gameMode.isBoss(battle.waveIndex)
             && globalScene.arena.biomeId !== BiomeId.END
@@ -406,7 +414,10 @@ export class EncounterPhase extends BattlePhase {
               enemySpecies,
               level,
               TrainerSlot.NONE,
-              !unownFinalBossHelperSlot && !!globalScene.getEncounterBossSegments(battle.waveIndex, level, enemySpecies),
+              !towerEntry && !unownFinalBossHelperSlot && !!globalScene.getEncounterBossSegments(battle.waveIndex, level, enemySpecies),
+              false,
+              undefined,
+              towerEntry ? pokemon => applyTowerPokemonIdentity(pokemon, towerEntry) : undefined,
             );
           }
           if (unownFinalBossHelperSlot) {
@@ -426,6 +437,9 @@ export class EncounterPhase extends BattlePhase {
         }
       }
       const enemyPokemon = globalScene.getEnemyParty()[e];
+      if (battle.trainer?.haunted || globalScene.seasonalEncounters.tower) {
+        enemyPokemon.setHaunted();
+      }
       if (unownFinalBossHelperSlot) {
         unownFinalBossHelperSlot.pokemonId ??= enemyPokemon.id;
       }
@@ -652,7 +666,12 @@ export class EncounterPhase extends BattlePhase {
             enemyPokemon.setVisible(false);
             globalScene.currentBattle.trainer?.tint(0, 0.5);
           }
-          if (battle.double) {
+          if (battle.greatHauntState && battle.greatHauntState.stage !== "clones") {
+            if (this.loaded && ensureGreatHauntBossBulk(enemyPokemon)) {
+              enemyPokemon.calculateStats();
+            }
+            enemyPokemon.setFieldPosition(FieldPosition.CENTER);
+          } else if (battle.double) {
             enemyPokemon.setFieldPosition(
               e === 2 ? FieldPosition.CENTER : e ? FieldPosition.RIGHT : FieldPosition.LEFT,
             );
@@ -667,7 +686,9 @@ export class EncounterPhase extends BattlePhase {
           globalScene.getEnemyField(),
           battle.battleType === BattleType.TRAINER ? ModifierPoolType.TRAINER : ModifierPoolType.WILD,
         );
-        globalScene.generateEnemyModifiers();
+        if (!battle.greatHauntState) {
+          globalScene.generateEnemyModifiers();
+        }
         overrideModifiers(false);
 
         for (const enemy of globalScene.getEnemyField()) {
@@ -694,6 +715,9 @@ export class EncounterPhase extends BattlePhase {
           this.trySetWeatherIfNewBiome();
           this.trySetTerrainIfNewBiome();
           applyPersistentFieldBlessing();
+          if (battle.trainer?.haunted || globalScene.seasonalEncounters.tower) {
+            globalScene.arena.trySetWeather(WeatherType.MIASMA);
+          }
           // Game syncs to server on waves X1 and X6 (As of 1.2.0)
           globalScene.gameData
             .saveAll(true, battle.waveIndex % 5 === 1 || (globalScene.lastSavePlayTime ?? 0) >= 300)
@@ -711,6 +735,9 @@ export class EncounterPhase extends BattlePhase {
   }
 
   private incrementMysteryEncounterChance(): void {
+    if (globalScene.seasonalEncounters.tower) {
+      return;
+    }
     const { battleType, waveIndex } = globalScene.currentBattle;
     if (
       globalScene.isMysteryEncounterValidForWave(battleType, waveIndex)

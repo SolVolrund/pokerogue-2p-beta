@@ -1,10 +1,9 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { globalScene } from "#app/global-scene";
 import type { Weather } from "#data/weather";
-import { getWeatherDamageMessage, getWeatherLapseMessage } from "#data/weather";
+import { getWeatherAnimation, getWeatherDamageMessage, getWeatherLapseMessage } from "#data/weather";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { HitResult } from "#enums/hit-result";
-import { CommonAnim } from "#enums/move-anims-common";
 import { WeatherType } from "#enums/weather-type";
 import type { Pokemon } from "#field/pokemon";
 import { CommonAnimPhase } from "#phases/common-anim-phase";
@@ -18,7 +17,7 @@ export class WeatherEffectPhase extends CommonAnimPhase {
     super(
       undefined,
       undefined,
-      CommonAnim.SUNNY + ((globalScene?.arena?.weather?.weatherType || WeatherType.NONE) - 1),
+      getWeatherAnimation(globalScene?.arena?.weather?.weatherType ?? WeatherType.NONE),
     );
     this.weather = globalScene?.arena?.weather;
   }
@@ -31,7 +30,11 @@ export class WeatherEffectPhase extends CommonAnimPhase {
       return this.end();
     }
 
-    this.setAnimation(CommonAnim.SUNNY + (this.weather.weatherType - 1));
+    const animation = getWeatherAnimation(this.weather.weatherType);
+    if (animation === null) {
+      return this.end();
+    }
+    this.setAnimation(animation);
 
     if (this.weather.isDamaging()) {
       const cancelled = new BooleanHolder(false);
@@ -55,7 +58,7 @@ export class WeatherEffectPhase extends CommonAnimPhase {
             return;
           }
 
-          const damage = toDmgValue(pokemon.getMaxHp() / 16);
+          const damage = toDmgValue(pokemon.getMaxHp() * this.weather!.getDamageFraction());
 
           globalScene.phaseManager.queueMessage(getWeatherDamageMessage(this.weather!.weatherType, pokemon) ?? "");
           pokemon.damageAndUpdate(damage, { result: HitResult.INDIRECT, ignoreSegments: true });

@@ -16,6 +16,7 @@ import { PositionalTagManager } from "#data/positional-tags/positional-tag-manag
 import { getTerrainClearMessage, getTerrainStartMessage, Terrain, TerrainType } from "#data/terrain";
 import {
   getLegendaryWeatherContinuesMessage,
+  getWeatherAnimation,
   getWeatherClearMessage,
   getWeatherStartMessage,
   Weather,
@@ -327,7 +328,7 @@ export class Arena {
    * @param tierValue - Number from `0-511`
    * @returns the generated BiomePoolTier
    */
-  private generateNonBossBiomeTier(tierValue: number): BiomePoolTier {
+  public generateNonBossBiomeTier(tierValue: number): BiomePoolTier {
     if (tierValue >= 156) {
       return BiomePoolTier.COMMON;
     }
@@ -361,7 +362,7 @@ export class Arena {
     this.weather = new Weather(weather, 0);
 
     this.eventTarget.dispatchEvent(new WeatherChangedEvent(weather, 0));
-    globalScene.phaseManager.unshiftNew("CommonAnimPhase", undefined, undefined, CommonAnim.SUNNY + (weather - 1));
+    globalScene.phaseManager.unshiftNew("CommonAnimPhase", undefined, undefined, getWeatherAnimation(weather));
     globalScene.phaseManager.queueMessage(getWeatherStartMessage(weather)!); // TODO: is this bang correct?
   }
 
@@ -391,7 +392,7 @@ export class Arena {
         "CommonAnimPhase",
         undefined,
         undefined,
-        CommonAnim.SUNNY + (oldWeatherType - 1),
+        getWeatherAnimation(oldWeatherType),
       );
       globalScene.phaseManager.queueMessage(getLegendaryWeatherContinuesMessage(oldWeatherType)!);
       return false;
@@ -412,7 +413,7 @@ export class Arena {
       this.weather = new Weather(weather, weatherDuration.value, weatherDuration.value);
       this.eventTarget.dispatchEvent(new WeatherChangedEvent(weather, weatherDuration.value));
 
-      globalScene.phaseManager.unshiftNew("CommonAnimPhase", undefined, undefined, CommonAnim.SUNNY + (weather - 1));
+      globalScene.phaseManager.unshiftNew("CommonAnimPhase", undefined, undefined, getWeatherAnimation(weather));
       globalScene.phaseManager.queueMessage(getWeatherStartMessage(weather)!); // TODO: is this bang correct?
     }
 
@@ -1107,6 +1108,7 @@ export class Arena {
       case BiomeId.TEMPLE:
       case BiomeId.LABORATORY:
       case BiomeId.ROCKET_HQ:
+      case BiomeId.POKEMON_TOWER:
         return false;
       default:
         return true;
@@ -1164,7 +1166,13 @@ export function getBiomeAssetKey(biomeId: BiomeId): string {
 }
 
 export function getBiomeHasProps(biomeId: BiomeId): boolean {
+  return getBiomePropCount(biomeId) > 0;
+}
+
+export function getBiomePropCount(biomeId: BiomeId): number {
   switch (biomeId) {
+    case BiomeId.POKEMON_TOWER:
+      return 4;
     case BiomeId.PLAINS:
     case BiomeId.METROPOLIS:
     case BiomeId.BEACH:
@@ -1193,10 +1201,10 @@ export function getBiomeHasProps(biomeId: BiomeId): boolean {
     case BiomeId.FARAWAY_ISLAND:
     case BiomeId.LABORATORY:
     case BiomeId.END:
-      return true;
+      return 3;
   }
 
-  return false;
+  return 0;
 }
 
 // #endregion Helper Functions

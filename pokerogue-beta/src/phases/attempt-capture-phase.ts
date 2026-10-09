@@ -3,6 +3,7 @@ import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
+import { getGreatHauntCaptureBlock } from "#utils/great-haunt-utils";
 import { getPlayerMessageOptions } from "#utils/player-messages";
 import { IS_TEST, isBeta, isDev } from "#constants/app-constants";
 import { SubstituteTag } from "#data/battler-tags";
@@ -57,6 +58,9 @@ export class AttemptCapturePhase extends PokemonPhase {
       return this.end();
     }
 
+    if (getGreatHauntCaptureBlock(pokemon, this.pokeballType)) {
+      return this.end();
+    }
     // Preserve callers using the legacy enemy-field-index capture entry point.
     if (this.pokeballType === PokeballType.CLONE_BALL) {
       globalScene.phaseManager.unshiftNew("AttemptClonePhase", pokemon.id, this.playerIndex);

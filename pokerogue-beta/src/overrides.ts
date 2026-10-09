@@ -53,48 +53,7 @@ import type { IntClosedRange, TupleOf } from "type-fest";
  */
 //const overrides = {} satisfies Partial<InstanceType<OverridesType>>;
 
-const overrides: Partial<InstanceType<OverridesType>> = {
-//  BATTLE_STYLE_OVERRIDE: "triple",
-//  STARTING_WAVE_OVERRIDE: 2,
-//  MYSTERY_ENCOUNTER_RATE_OVERRIDE: 256,
-//  MYSTERY_ENCOUNTER_OVERRIDE: MysteryEncounterType.GAME_CORNER,
-//  WAVE_ITEM_REWARD_OVERRIDE: {
-//    1: [{ name: "DNA_SPLICERS" }],
-//  },
-//  STARTING_WAVE_OVERRIDE: 200,
-//  STARTING_BIOME_OVERRIDE: BiomeId.END,
-//  BATTLE_TYPE_OVERRIDE: BattleType.TRAINER,
-//  RANDOM_TRAINER_OVERRIDE: {trainerType: TrainerType.MOLLY_HALE},
-//  ENEMY_SPECIES_OVERRIDE: SpeciesId.MEWTWO,
-//  ENEMY_LEVEL_OVERRIDE: 1,
-//  ENEMY_SHINY_OVERRIDE: true,
-//  ENEMY_VARIANT_OVERRIDE: 2,
-//  MYSTERY_ENCOUNTER_RATE_OVERRIDE: 256,
-//  MYSTERY_ENCOUNTER_OVERRIDE: MysteryEncounterType.LIFE_IS_WONDERFUL,
-//  ENEMY_HELD_ITEMS_OVERRIDE: [
-//    { name: "BERRY", type: BerryType.OCCA },
-//    { name: "BERRY", type: BerryType.PASSHO },
-//    { name: "BERRY", type: BerryType.WACAN },
-//    { name: "BERRY", type: BerryType.RINDO },
-//    { name: "BERRY", type: BerryType.YACHE },
-//    { name: "BERRY", type: BerryType.CHOPLE },
-//    { name: "BERRY", type: BerryType.KEBIA },
-//    { name: "BERRY", type: BerryType.SHUCA },
-//    { name: "BERRY", type: BerryType.COBA },
-//    { name: "BERRY", type: BerryType.PAYAPA },
-//    { name: "BERRY", type: BerryType.TANGA },
-//    { name: "BERRY", type: BerryType.CHARTI },
-//    { name: "BERRY", type: BerryType.KASIB },
-//    { name: "BERRY", type: BerryType.HABAN },
-//    { name: "BERRY", type: BerryType.COLBUR },
-//    { name: "BERRY", type: BerryType.BABIRI },
-//    { name: "BERRY", type: BerryType.CHILAN },
-//    { name: "BERRY", type: BerryType.ROSELI },
-//  ],
-//  FIRST_WILD_ENCOUNTER_SPECIES_OVERRIDE: SpeciesId.ENTEI,
-//  ENEMY_CRYSTALIZATION_OVERRIDE: true,
-//  ALPH_TILE_STOCKPILE_OVERRIDE: false,
-};
+const overrides: Partial<InstanceType<OverridesType>> = {};
 
 /**
  * If you need to add Overrides values for local testing do that inside {@linkcode overrides}
@@ -407,6 +366,12 @@ class DefaultOverrides {
    * Ignored if set to {@linkcode BattleType.TRAINER} and `DISABLE_STANDARD_TRAINERS_OVERRIDE` is `true`.
    */
   readonly BATTLE_TYPE_OVERRIDE: Exclude<BattleType, BattleType.CLEAR> | null = null;
+
+  /** Force a Haunted trainer on the starting non-scripted wave, bypassing seasonal odds and mystery events. */
+  readonly STARTING_HAUNTED_TRAINER_OVERRIDE: boolean = false;
+
+  /** 0-100 chance on eligible waves; bypasses season and cooldown, but not Tower completion or protected encounters. */
+  readonly HAUNTED_ENCOUNTER_CHANCE_OVERRIDE: number | null = null;
 
   /** Force all random trainer types to be the provided type. */
   readonly RANDOM_TRAINER_OVERRIDE: RandomTrainerOverride | null = null;

@@ -68,11 +68,23 @@ export class VictoryPhase extends PokemonPhase {
           .find(p => (globalScene.currentBattle.battleType === BattleType.WILD ? p.isOnField() : !p?.isFainted()))
       )
       && !pendingMewtwoFinalBoss
+      && (!globalScene.currentBattle.greatHauntState
+        || defeatedPokemon.id === globalScene.currentBattle.greatHauntState.marowakId)
       && !globalScene.phaseManager.hasPhaseOfType("TrainerVictoryPhase") // temporary hotfix
     ) {
       globalScene.phaseManager.pushNew("BattleEndPhase", true);
       if (globalScene.currentBattle.battleType === BattleType.TRAINER) {
         globalScene.phaseManager.pushNew("TrainerVictoryPhase");
+      }
+
+      if (globalScene.seasonalEncounters.tower) {
+        // Tower floors grant ordinary rewards, never main-wave milestone rewards or route advances.
+        for (const player of globalScene.getActivePlayerIndexes()) {
+          globalScene.phaseManager.pushNew("SelectModifierPhase", undefined, undefined, undefined, false, player);
+        }
+        globalScene.phaseManager.pushNew("NewBattlePhase");
+        this.end();
+        return;
       }
 
       const gameMode = globalScene.gameMode;

@@ -2,6 +2,7 @@ import type { PreAttackWeatherOverrideAbAttr, SuppressWeatherEffectAbAttr } from
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
+import { CommonAnim } from "#enums/move-anims-common";
 import { PokemonType } from "#enums/pokemon-type";
 import { WeatherType } from "#enums/weather-type";
 import type { Pokemon } from "#field/pokemon";
@@ -12,6 +13,24 @@ import i18next from "i18next";
 export interface SerializedWeather {
   weatherType: WeatherType;
   turnsLeft: number;
+}
+
+const WEATHER_ANIMATIONS: Record<WeatherType, CommonAnim | null> = {
+  [WeatherType.NONE]: null,
+  [WeatherType.SUNNY]: CommonAnim.SUNNY,
+  [WeatherType.RAIN]: CommonAnim.RAIN,
+  [WeatherType.SANDSTORM]: CommonAnim.SANDSTORM,
+  [WeatherType.HAIL]: CommonAnim.HAIL,
+  [WeatherType.SNOW]: CommonAnim.SNOW,
+  [WeatherType.FOG]: CommonAnim.WIND,
+  [WeatherType.HEAVY_RAIN]: CommonAnim.HEAVY_RAIN,
+  [WeatherType.HARSH_SUN]: CommonAnim.HARSH_SUN,
+  [WeatherType.STRONG_WINDS]: CommonAnim.STRONG_WINDS,
+  [WeatherType.MIASMA]: CommonAnim.WIND,
+};
+
+export function getWeatherAnimation(weather: WeatherType): CommonAnim | null {
+  return WEATHER_ANIMATIONS[weather];
 }
 
 export class Weather {
@@ -57,6 +76,7 @@ export class Weather {
     switch (this.weatherType) {
       case WeatherType.SANDSTORM:
       case WeatherType.HAIL:
+      case WeatherType.MIASMA:
         return true;
     }
 
@@ -69,9 +89,15 @@ export class Weather {
         return type === PokemonType.GROUND || type === PokemonType.ROCK || type === PokemonType.STEEL;
       case WeatherType.HAIL:
         return type === PokemonType.ICE;
+      case WeatherType.MIASMA:
+        return type === PokemonType.GHOST || type === PokemonType.DARK;
     }
 
     return false;
+  }
+
+  getDamageFraction(): number {
+    return this.weatherType === WeatherType.MIASMA ? 1 / 4 : this.isDamaging() ? 1 / 16 : 0;
   }
 
   isMoveWeatherCancelled(user: Pokemon, move: Move): boolean {
@@ -124,6 +150,8 @@ export function getWeatherStartMessage(weatherType: WeatherType): string | null 
       return i18next.t("weather:snowStartMessage");
     case WeatherType.FOG:
       return i18next.t("weather:fogStartMessage");
+    case WeatherType.MIASMA:
+      return i18next.t("weather:miasmaStartMessage");
     case WeatherType.HEAVY_RAIN:
       return i18next.t("weather:heavyRainStartMessage");
     case WeatherType.HARSH_SUN:
@@ -149,6 +177,8 @@ export function getWeatherLapseMessage(weatherType: WeatherType): string | null 
       return i18next.t("weather:snowLapseMessage");
     case WeatherType.FOG:
       return i18next.t("weather:fogLapseMessage");
+    case WeatherType.MIASMA:
+      return i18next.t("weather:miasmaLapseMessage");
     case WeatherType.HEAVY_RAIN:
       return i18next.t("weather:heavyRainLapseMessage");
     case WeatherType.HARSH_SUN:
@@ -162,6 +192,10 @@ export function getWeatherLapseMessage(weatherType: WeatherType): string | null 
 
 export function getWeatherDamageMessage(weatherType: WeatherType, pokemon: Pokemon): string | null {
   switch (weatherType) {
+    case WeatherType.MIASMA:
+      return i18next.t("weather:miasmaDamageMessage", {
+        pokemonNameWithAffix: getPokemonNameWithAffix(pokemon),
+      });
     case WeatherType.SANDSTORM:
       return i18next.t("weather:sandstormDamageMessage", {
         pokemonNameWithAffix: getPokemonNameWithAffix(pokemon),
@@ -189,6 +223,8 @@ export function getWeatherClearMessage(weatherType: WeatherType): string | null 
       return i18next.t("weather:snowClearMessage");
     case WeatherType.FOG:
       return i18next.t("weather:fogClearMessage");
+    case WeatherType.MIASMA:
+      return i18next.t("weather:miasmaClearMessage");
     case WeatherType.HEAVY_RAIN:
       return i18next.t("weather:heavyRainClearMessage");
     case WeatherType.HARSH_SUN:

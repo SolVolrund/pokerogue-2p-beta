@@ -30,7 +30,7 @@ describe("Random biome selection", () => {
     for (let i = 0; i < 30; i++) {
       const biome = game.scene.generateRandomBiome(wave);
       expect(biomeDepths[biome]).toBeDefined();
-      expect([BiomeId.TOWN, BiomeId.END, BiomeId.FARAWAY_ISLAND, BiomeId.ROCKET_HQ]).not.toContain(biome);
+      expect([BiomeId.TOWN, BiomeId.END, BiomeId.FARAWAY_ISLAND, BiomeId.ROCKET_HQ, BiomeId.POKEMON_TOWER]).not.toContain(biome);
     }
   });
 

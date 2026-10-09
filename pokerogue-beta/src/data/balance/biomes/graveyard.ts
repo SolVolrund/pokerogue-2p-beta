@@ -115,7 +115,7 @@ const terrainPool: TerrainPool = {
   [TerrainType.NONE]: 1,
 };
 
-const biomeLinks: BiomeLinks = [BiomeId.ABYSS];
+const biomeLinks: BiomeLinks = [BiomeId.ABYSS, BiomeId.POKEMON_TOWER];
 
 export const graveyardBiome: Biome = {
   biomeId: BiomeId.GRAVEYARD,

@@ -44,6 +44,7 @@ import {
   isUnownRealFinalBossWave,
 } from "#utils/classic-final-boss-utils";
 import { getModifierType } from "#utils/modifier-utils";
+import { cancelGreatHauntTurn, recordGreatHauntFaint } from "#utils/great-haunt-utils";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import { areHeldItemEffectsSuppressed } from "#utils/held-item-suppression-state";
 import { inSpeedOrder } from "#utils/speed-order-generator";
@@ -104,7 +105,8 @@ export class FaintPhase extends PokemonPhase {
     faintPokemon.resetSummonData();
 
     const shinyBadgeModifier =
-      !heldItemsSuppressed
+      !(this.preventInstantRevive && globalScene.currentBattle.greatHauntState?.forcedFaintIds.includes(faintPokemon.id))
+      && !heldItemsSuppressed
       && globalScene.applyModifierForPokemon(ShinyBadgeModifier, faintPokemon, faintPokemon, "revive");
 
     if (shinyBadgeModifier) {
@@ -139,6 +141,14 @@ export class FaintPhase extends PokemonPhase {
       }
     }
 
+    recordGreatHauntFaint(faintPokemon);
+    if (
+      !faintPokemon.isPlayer()
+      && globalScene.currentBattle.greatHauntState?.stage === "ghost"
+      && globalScene.currentBattle.greatHauntState.ghostId === faintPokemon.id
+    ) {
+      cancelGreatHauntTurn();
+    }
     if (globalScene.currentBattle.isClassicFinalBoss && !this.player) {
       this.handleFinalBossFaint();
     } else {
@@ -229,7 +239,10 @@ export class FaintPhase extends PokemonPhase {
       /** The total number of legal player Pokemon that aren't currently on the field */
       const legalPlayerPartyPokemon = legalPlayerPokemon.filter(p => !p.isActive(true));
       if (legalPlayerPokemon.length === 0) {
-        if (globalScene.hasEonFluteProtection(playerIndex)) {
+        if (
+          globalScene.hasEonFluteProtection(playerIndex)
+          && !(this.preventInstantRevive && globalScene.currentBattle.greatHauntState?.forcedFaintIds.includes(pokemon.id))
+        ) {
           globalScene.phaseManager.pushNew("EonFluteSummonPhase", playerIndex);
         } else if (globalScene.queueVsModeVictoryIfDecided()) {
           // Let the faint animation and field cleanup below finish before the Vs win phase runs.
@@ -306,6 +319,19 @@ export class FaintPhase extends PokemonPhase {
             globalScene.currentBattle.addPostBattleLoot(pokemon as EnemyPokemon);
           }
           pokemon.leaveField();
+          const haunt = globalScene.currentBattle.greatHauntState;
+          if (!pokemon.isPlayer() && haunt && haunt.stage !== "marowak") {
+            if (!globalScene.getEnemyParty().some(p => !p.isFainted())) {
+              cancelGreatHauntTurn();
+            }
+            if (!globalScene.phaseManager.hasPhaseOfType("GreatHauntPhase")) {
+              if (haunt.stage === "ghost") {
+                globalScene.phaseManager.unshiftNew("GreatHauntPhase");
+              } else {
+                globalScene.phaseManager.pushNew("GreatHauntPhase");
+              }
+            }
+          }
           if (eonFluteGuestOwner !== undefined) {
             globalScene.clearEonFluteGuest(eonFluteGuestOwner, true);
           }

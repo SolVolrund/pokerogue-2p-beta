@@ -8,7 +8,7 @@ import { loadPokemonAccessoryAnchors } from "#data/pokemon-accessory-anchors";
 import { BiomeId } from "#enums/biome-id";
 import { GachaType } from "#enums/gacha-types";
 import { getPlayerTrainerSpriteBackTextureKey, getPlayerTrainerSpriteFrontTextureKey, PLAYER_TRAINER_SPRITE_OPTIONS } from "#enums/player-trainer-sprite";
-import { getBiomeAssetKey, getBiomeHasProps } from "#field/arena";
+import { getBiomeAssetKey, getBiomeHasProps, getBiomePropCount } from "#field/arena";
 import { CacheBustedLoaderPlugin } from "#plugins/cache-busted-loader-plugin";
 import { getWindowVariantSuffix, WindowVariant } from "#ui/ui-theme";
 import { hasAllLocalizedSprites, localPing } from "#utils/common";
@@ -87,6 +87,12 @@ export class LoadingScene extends SceneBase {
       .loadImage("shiny_star_small_2", "ui", "shiny_small_2.png")
       .loadImage("shiny_badge", "items")
       .loadImage("pokeblock_kit_smaller", "items")
+      .loadImage("ominous_skull", "items")
+      .loadImage("portent_skull", "items")
+      .loadImage("malefic_skull", "items")
+      .loadImage("lesser_spirit", "items")
+      .loadImage("greater_spirit", "items")
+      .loadImage("great_haunt", "pokemon")
       .loadImage("pokeblock_red", "items")
       .loadImage("pokeblock_blue", "items")
       .loadImage("pokeblock_green", "items")
@@ -614,7 +620,7 @@ export class LoadingScene extends SceneBase {
       if (!getBiomeHasProps(bt)) {
         return;
       }
-      for (let p = 1; p <= 3; p++) {
+      for (let p = 1; p <= getBiomePropCount(bt); p++) {
         const isPropAnimated = p === 3 && ["power_plant", "end"].includes(btKey);
         const propKey = `${btKey}_b_${p}`;
         if (isPropAnimated) {

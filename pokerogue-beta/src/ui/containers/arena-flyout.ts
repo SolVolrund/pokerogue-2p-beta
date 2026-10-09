@@ -234,10 +234,17 @@ export class ArenaFlyout extends Phaser.GameObjects.Container {
   };
 
   /**
-   * Iterate through all currently present tags effects and decrement their durations, removing all tags expiring in this manner..
+   * Decrement displayed field-effect durations, removing expired tags.
    */
   readonly #onTurnEnd = (): void => {
     this.arenaTags = this.arenaTags.filter(info => info.maxDuration === 0 || --info.duration >= 0);
+
+    // TURN_END arrives before the arena lapses weather and terrain; mirror that tick for the display.
+    for (const info of [this.weatherInfo, this.terrainInfo]) {
+      if (info && info.maxDuration > 0) {
+        info.duration = Math.max(0, info.duration - 1);
+      }
+    }
 
     this.updateFieldText();
   };

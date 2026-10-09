@@ -48,6 +48,7 @@ export interface TwoPlayerRunBootstrap {
 export interface TwoPlayerTitleStart {
   action: "new-run" | "load-session";
   mysteryEncounterFrequency?: number;
+  hauntingSeasonActive?: boolean;
   gameMode?: number;
   challenges?: { id: number; value: number; severity: number }[];
   partySize?: 3 | 6;
@@ -275,6 +276,7 @@ function isValidTitleStart(titleStart: unknown): titleStart is TwoPlayerTitleSta
 
   const data = titleStart as Partial<TwoPlayerTitleStart>;
   return (data.action === "new-run" || data.action === "load-session")
+    && (data.hauntingSeasonActive === undefined || typeof data.hauntingSeasonActive === "boolean")
     && (data.mysteryEncounterFrequency === undefined
       || (Number.isInteger(data.mysteryEncounterFrequency)
         && data.mysteryEncounterFrequency >= 0 && data.mysteryEncounterFrequency <= 6))

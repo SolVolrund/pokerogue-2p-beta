@@ -670,6 +670,44 @@ export class OldSeaMapModifier extends PersistentModifier {
   }
 }
 
+export type HauntingSkullStage = "ominous" | "portent" | "malefic";
+
+export class HauntingSkullModifier extends PersistentModifier {
+  constructor(type: ModifierType, public stage: HauntingSkullStage, stackCount = 1) {
+    super(type, stackCount);
+  }
+
+  match(modifier: Modifier): boolean {
+    return modifier instanceof HauntingSkullModifier;
+  }
+
+  clone(): HauntingSkullModifier {
+    return new HauntingSkullModifier(this.type, this.stage, this.stackCount);
+  }
+
+  getArgs(): any[] { return [this.stage]; }
+  override apply(): boolean { return true; }
+  getMaxStackCount(): number { return 1; }
+}
+
+export class HauntingSpiritModifier extends PersistentModifier {
+  constructor(type: ModifierType, public greater: boolean, stackCount = 1) {
+    super(type, stackCount);
+  }
+
+  match(modifier: Modifier): boolean {
+    return modifier instanceof HauntingSpiritModifier && modifier.greater === this.greater;
+  }
+
+  clone(): HauntingSpiritModifier {
+    return new HauntingSpiritModifier(this.type, this.greater, this.stackCount);
+  }
+
+  getArgs(): any[] { return [this.greater]; }
+  override apply(): boolean { return true; }
+  getMaxStackCount(): number { return Number.MAX_SAFE_INTEGER; }
+}
+
 export class EonFluteModifier extends PersistentModifier {
   match(modifier: Modifier): boolean {
     return modifier instanceof EonFluteModifier;
@@ -5026,6 +5064,8 @@ export function overrideHeldItems(pokemon: Pokemon, isPlayer = true): void {
  * requiring modifier types to be imported in every file.
  */
 const ModifierClassMap = Object.freeze({
+  HauntingSkullModifier,
+  HauntingSpiritModifier,
   PersistentModifier,
   ConsumableModifier,
   AddPokeballModifier,

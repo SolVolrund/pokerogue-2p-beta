@@ -5,6 +5,7 @@ import { GameMode, getGameMode } from "#app/game-mode";
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
+import { isHauntingSeason, SeasonalEncounterState } from "#data/seasonal-encounters";
 import { activeOverrides } from "#app/overrides";
 import { Phase } from "#app/phase";
 import type { TwoPlayerTitleStart } from "#app/two-player-input-transport";
@@ -129,6 +130,7 @@ export class TitlePhase extends Phase {
   private remoteTitleStartApplied = false;
   private selectedChallenges: ChallengeData[] = [];
   private mysteryEncounterFrequency: number | undefined;
+  private hauntingSeasonActive: boolean | undefined;
   private profileStartupAnnounceInterval: ReturnType<typeof globalThis.setInterval> | undefined;
   // TODO: Make `end` take a `GameModes` as a parameter rather than storing it on the class itself
   public gameMode: GameModes;
@@ -2027,9 +2029,11 @@ export class TitlePhase extends Phase {
     globalScene.setSeed(runSeed);
     globalScene.resetSeed();
     this.mysteryEncounterFrequency = getMysteryEncounterFrequencySetting();
+    this.hauntingSeasonActive = isHauntingSeason();
     const titleStart: TwoPlayerTitleStart = {
       action: "new-run",
       mysteryEncounterFrequency: this.mysteryEncounterFrequency,
+      hauntingSeasonActive: this.hauntingSeasonActive,
       gameMode,
       ...(gameMode === GameModes.CHALLENGE ? { challenges: this.selectedChallenges } : {}),
       partySize,
@@ -2288,6 +2292,8 @@ export class TitlePhase extends Phase {
           : [];
 
       this.mysteryEncounterFrequency = normalizeMysteryEncounterFrequency(titleStart.mysteryEncounterFrequency);
+      // Missing metadata from an older host must not fall back to a guest's calendar.
+      this.hauntingSeasonActive = titleStart.hauntingSeasonActive === true;
 
       const playerCount = titleStart.playerCount ?? 2;
       const computerPartnerPlayerIndexes = this.getTitleStartComputerPartnerPlayerIndexes(titleStart, playerCount);
@@ -2607,6 +2613,9 @@ export class TitlePhase extends Phase {
     }
 
     if (!this.loaded && !globalScene.gameMode.isDaily) {
+      globalScene.seasonalEncounters = new SeasonalEncounterState({
+        active: this.hauntingSeasonActive ?? isHauntingSeason(),
+      });
       globalScene.mysteryEncounterSaveData.frequency =
         this.mysteryEncounterFrequency ?? getMysteryEncounterFrequencySetting();
       globalScene.gameMode = getGameMode(this.gameMode);

@@ -5949,6 +5949,9 @@ class ForceSwitchOutHelper {
   // TODO: Make this cancel pending move phases on the switched out target
   public switchOutLogic(pokemon: Pokemon): boolean {
     const switchOutTarget = pokemon;
+    if (!pokemon.isPlayer() && globalScene.currentBattle.greatHauntState) {
+      return false;
+    }
     /*
      * If the switch-out target is a player-controlled Pokémon, the function checks:
      * - Whether there are available party members to switch in.

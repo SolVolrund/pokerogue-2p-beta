@@ -8,6 +8,7 @@ import { PLAYER_PARTY_MAX_SIZE, RARE_CANDY_FRIENDSHIP_CAP } from "#app/constants
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
+import { getHauntingStatMultiplier, isHauntedByMaleficSkull } from "#utils/haunting-utils";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { activeOverrides } from "#app/overrides";
@@ -368,6 +369,10 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   public crystalColor: [number, number, number] | null = null;
   /** Persistent Shadow Pokemon state. Drives visuals, stats, and autonomous move selection. */
   public shadowPokemon = false;
+  /** Persistent seasonal identity; the added Ghost type is restored on entry. */
+  public haunted = false;
+  private skullHaunted = false;
+  private hauntingStatMultiplier = 1;
   /** Persistent purification reward state. Keeps the Shadow offense boost after purification. */
   public purifiedPokemon = false;
   /** The set of Types that have been boosted by this Pokémon's Stellar Terastallization. */
@@ -527,6 +532,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       this.isTerastallized = dataSource.isTerastallized;
       this.stellarTypesBoosted = dataSource.stellarTypesBoosted ?? [];
       this.shadowPokemon = !!dataSource.shadowPokemon;
+      this.haunted = !!dataSource.haunted;
       this.purifiedPokemon = !this.shadowPokemon && !!dataSource.purifiedPokemon;
     } else {
       this.id = randSeedInt(4294967296);
@@ -1739,6 +1745,21 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     return this.purifiedPokemon;
   }
 
+  public setHaunted(haunted = true): void {
+    if (this.haunted && !haunted && this.summonData.addedType === PokemonType.GHOST) {
+      this.summonData.addedType = null;
+    }
+    this.haunted = haunted;
+    if (haunted) {
+      this.summonData.addedType = PokemonType.GHOST;
+    }
+    this.updateInfo();
+  }
+
+  public isHaunted(): boolean {
+    return this.haunted || isHauntedByMaleficSkull(this);
+  }
+
   public setShadowPokemon(shadowPokemon = true): void {
     this.shadowPokemon = shadowPokemon;
     if (shadowPokemon) {
@@ -1812,6 +1833,13 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   playAnim(): void {
+    if (this.customPokemonData.eventVariant === "great_haunt") {
+      this.getSprite().anims.stop();
+      this.getTintSprite()?.anims.stop();
+      this.getSprite().setTexture("great_haunt");
+      this.getTintSprite()?.setTexture("great_haunt");
+      return;
+    }
     this.playSprite(this.getSprite(), this.getTintSprite(), this.getBattleSpriteKey());
     this.updateAccessoryOutfitSprites();
   }
@@ -2194,6 +2222,20 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   calculateStats(): void {
+    const oldHp = this.hp;
+    const oldMaxHp = this.stats?.[Stat.HP] ?? 0;
+    const spiritMultiplier = getHauntingStatMultiplier(this);
+    const spiritMultiplierChanged = spiritMultiplier !== this.hauntingStatMultiplier;
+    this.hauntingStatMultiplier = spiritMultiplier;
+    const skullHaunted = isHauntedByMaleficSkull(this);
+    if (this.summonData && skullHaunted !== this.skullHaunted) {
+      if (skullHaunted) {
+        this.summonData.addedType = PokemonType.GHOST;
+      } else if (!this.haunted && this.summonData.addedType === PokemonType.GHOST) {
+        this.summonData.addedType = null;
+      }
+    }
+    this.skullHaunted = skullHaunted;
     if (!this.stats) {
       this.stats = [0, 0, 0, 0, 0, 0];
     }
@@ -2212,6 +2254,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       if (s === Stat.HP) {
         statHolder.value = statHolder.value + this.level + 10;
         globalScene.applyModifierForPokemon(PokemonIncrementingStatModifier, this, this, s, statHolder);
+        statHolder.value = Math.floor(statHolder.value * spiritMultiplier);
         if (this.hasAbility(AbilityId.WONDER_GUARD, false, true)) {
           statHolder.value = 1;
         }
@@ -2241,9 +2284,16 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
         statHolder.value = Math.max(Math.floor(statHolder.value * shadowStatMultiplier), 1);
       }
 
+      if (s !== Stat.HP) {
+        statHolder.value = Math.floor(statHolder.value * spiritMultiplier);
+      }
+
       statHolder.value = Phaser.Math.Clamp(statHolder.value, 1, Number.MAX_SAFE_INTEGER);
 
       this.setStat(s, statHolder.value);
+    }
+    if (spiritMultiplierChanged && oldMaxHp > 0 && oldHp !== undefined) {
+      this.hp = oldHp === 0 ? 0 : Math.max(1, Math.min(this.getMaxHp(), Math.floor(oldHp * this.getMaxHp() / oldMaxHp)));
     }
   }
 
@@ -5694,7 +5744,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       callback: () => {
         frameThreshold = sprite.anims.msPerFrame / crySoundConfig.rate;
         frameProgress += delay;
-        while (frameProgress > frameThreshold) {
+        // Static textures (such as Great Haunt) have no animation frame duration.
+        while (frameThreshold > 0 && frameProgress > frameThreshold) {
           if (sprite.anims.duration) {
             sprite.anims.nextFrame();
             tintSprite?.anims.nextFrame();
@@ -5783,7 +5834,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
         ++i;
         frameThreshold = sprite.anims.msPerFrame / rate;
         frameProgress += delay;
-        while (frameProgress > frameThreshold) {
+        while (frameThreshold > 0 && frameProgress > frameThreshold) {
           if (sprite.anims.duration) {
             sprite.anims.nextFrame();
             tintSprite?.anims.nextFrame();
@@ -6258,6 +6309,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * @param resetSummonData - Whether to additionally reset the Pokemon's summon data (default: `false`)
    */
   public fieldSetup(resetSummonData?: boolean): void {
+    if (this.hauntingStatMultiplier !== getHauntingStatMultiplier(this) || this.skullHaunted !== isHauntedByMaleficSkull(this)) {
+      this.calculateStats();
+    }
     this.switchOutStatus = false;
     if (globalScene) {
       globalScene.triggerPokemonFormChange(this, SpeciesFormChangePostMoveTrigger, true);
@@ -6276,6 +6330,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     if (resetSummonData) {
       this.resetSummonData();
     }
+    if (this.isHaunted()) {
+      this.summonData.addedType = PokemonType.GHOST;
+    }
     refreshSuppressedHeldItemStats(this);
   }
 
@@ -6290,6 +6347,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       void this.loadAssets(false).catch(err => console.error(`Failed to reload assets for ${this.name}`, err));
     }
     this.summonData = new PokemonSummonData();
+    if (this.isHaunted()) {
+      this.summonData.addedType = PokemonType.GHOST;
+    }
     this.tempSummonData = new PokemonTempSummonData();
     refreshSuppressedHeldItemStats(this);
     this.applySpritePipelineData();
