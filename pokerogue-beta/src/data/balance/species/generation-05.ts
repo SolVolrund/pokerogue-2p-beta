@@ -683,6 +683,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.IRON_HEAD,
       MoveId.SMACK_DOWN,
       MoveId.SCALD,
+      MoveId.DUAL_CHOP,
       MoveId.SOLAR_BLADE,
       MoveId.BODY_PRESS,
       MoveId.HARD_PRESS,
@@ -801,6 +802,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.TERA_BLAST,
       MoveId.SNOWSCAPE,
       MoveId.CHILLING_WATER,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFiveSpeciesData[SpeciesId.DEWOTT] = {
@@ -1424,6 +1426,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.CONFIDE,
       MoveId.LASH_OUT,
       MoveId.TERA_BLAST,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFiveSpeciesData[SpeciesId.LIEPARD] = {
@@ -2317,6 +2320,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.CONFIDE,
       MoveId.DUAL_WINGBEAT,
       MoveId.TERA_BLAST,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFiveSpeciesData[SpeciesId.TRANQUILL] = {
@@ -4059,6 +4063,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.RETALIATE,
       MoveId.BULLDOZE,
       MoveId.WORK_UP,
+      MoveId.DUAL_CHOP,
       MoveId.CONFIDE,
       MoveId.POWER_UP_PUNCH,
       MoveId.THROAT_CHOP,
@@ -5799,6 +5804,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.CONFIDE,
       MoveId.SKITTER_SMACK,
       MoveId.TERA_BLAST,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFiveSpeciesData[SpeciesId.CRUSTLE] = {
@@ -5989,6 +5995,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.RETALIATE,
       MoveId.DRAGON_TAIL,
       MoveId.WORK_UP,
+      MoveId.DUAL_CHOP,
       MoveId.SNARL,
       MoveId.CONFIDE,
       MoveId.POWER_UP_PUNCH,
@@ -7196,6 +7203,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.GIGA_IMPACT,
       MoveId.LOW_SWEEP,
       MoveId.THROAT_CHOP,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFiveSpeciesData[SpeciesId.MINCCINO] = {
@@ -7408,7 +7416,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.GOTHORITA, level: 32 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.UNNERVE,
+    passives: [AbilityId.UNNERVE, AbilityId.MAGIC_BOUNCE],
     levelMoves: [
       [1, MoveId.POUND],
       [1, MoveId.CONFUSION],
@@ -7530,7 +7538,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.GOTHITA,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.GOTHITELLE, level: 41 })],
-    passives: AbilityId.UNNERVE,
+    passives: [AbilityId.UNNERVE, AbilityId.MAGIC_BOUNCE],
     levelMoves: [
       [1, MoveId.POUND],
       [1, MoveId.CONFUSION],
@@ -7582,7 +7590,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.GOTHITA,
     evolutions: [],
-    passives: AbilityId.UNNERVE,
+    passives: [AbilityId.UNNERVE, AbilityId.MAGIC_BOUNCE],
     levelMoves: [
       [1, MoveId.POUND],
       [1, MoveId.CONFUSION],
@@ -8801,6 +8809,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.CONFIDE,
       MoveId.INFESTATION,
       MoveId.TERA_BLAST,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFiveSpeciesData[SpeciesId.ESCAVALIER] = {
@@ -8959,6 +8968,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.CONFIDE,
       MoveId.POLLEN_PUFF,
       MoveId.TERA_BLAST,
+      MoveId.FIRST_IMPRESSION,
     ],
   };
   generationFiveSpeciesData[SpeciesId.AMOONGUSS] = {
@@ -9830,7 +9840,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 2,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.EELEKTRIK, level: 39 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.POISON_HEAL,
+    passives: [AbilityId.POISON_HEAL, AbilityId.ELECTROMORPHOSIS],
     levelMoves: [
       [1, MoveId.TACKLE],
       [1, MoveId.THUNDER_WAVE],
@@ -9874,7 +9884,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
         evoDelay: [49, 54, 54],
       }),
     ],
-    passives: AbilityId.POISON_HEAL,
+    passives: [AbilityId.POISON_HEAL, AbilityId.ELECTROMORPHOSIS],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.CRUNCH],
       [1, MoveId.HEADBUTT],
@@ -10028,8 +10038,8 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       }),
     ],
     passives: {
-      0: AbilityId.POISON_HEAL,
-      1: AbilityId.POISON_HEAL,
+      0: [AbilityId.POISON_HEAL, AbilityId.ELECTROMORPHOSIS],
+      1: [AbilityId.POISON_HEAL, AbilityId.ELECTROMORPHOSIS],
     },
     levelMoves: [
       [1, MoveId.HEADBUTT],
@@ -10583,9 +10593,9 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       [6, MoveId.FALSE_SWIPE],
       [9, MoveId.ASSURANCE],
       [12, MoveId.TAUNT],
-      [15, MoveId.SLASH],
-      [18, MoveId.DUAL_CHOP],
-      [21, MoveId.SCARY_FACE],
+      [15, MoveId.DUAL_CHOP],
+      [18, MoveId.SCARY_FACE],
+      [21, MoveId.SLASH],
       [24, MoveId.DRAGON_RAGE],
       [27, MoveId.DRAGON_CLAW],
       [30, MoveId.CRUNCH],
@@ -10656,6 +10666,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.INCINERATE,
       MoveId.BULLDOZE,
       MoveId.DRAGON_TAIL,
+      MoveId.DUAL_CHOP,
       MoveId.SNARL,
       MoveId.CONFIDE,
       MoveId.STOMPING_TANTRUM,
@@ -10664,6 +10675,8 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.TERA_BLAST,
       MoveId.TRAILBLAZE,
       MoveId.DRAGON_CHEER,
+      MoveId.NIGHT_SLASH,
+      MoveId.FIRST_IMPRESSION,
     ],
   };
   generationFiveSpeciesData[SpeciesId.FRAXURE] = {
@@ -10704,9 +10717,9 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       [6, MoveId.FALSE_SWIPE],
       [9, MoveId.ASSURANCE],
       [12, MoveId.TAUNT],
-      [15, MoveId.SLASH],
-      [18, MoveId.DUAL_CHOP],
-      [21, MoveId.SCARY_FACE],
+      [15, MoveId.DUAL_CHOP],
+      [18, MoveId.SCARY_FACE],
+      [21, MoveId.SLASH],
       [24, MoveId.DRAGON_RAGE],
       [27, MoveId.DRAGON_CLAW],
       [30, MoveId.CRUNCH],
@@ -10758,9 +10771,9 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       [6, MoveId.FALSE_SWIPE],
       [9, MoveId.ASSURANCE],
       [12, MoveId.TAUNT],
-      [15, MoveId.SLASH],
-      [18, MoveId.DUAL_CHOP],
-      [21, MoveId.SCARY_FACE],
+      [15, MoveId.DUAL_CHOP],
+      [18, MoveId.SCARY_FACE],
+      [21, MoveId.SLASH],
       [24, MoveId.DRAGON_RAGE],
       [27, MoveId.DRAGON_CLAW],
       [30, MoveId.CRUNCH],
@@ -10906,6 +10919,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.SNOWSCAPE,
       MoveId.TRAILBLAZE,
       MoveId.CHILLING_WATER,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFiveSpeciesData[SpeciesId.BEARTIC] = {
@@ -11085,6 +11099,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.ICE_SPINNER,
       MoveId.SNOWSCAPE,
       MoveId.CHILLING_WATER,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFiveSpeciesData[SpeciesId.SHELMET] = {
@@ -11215,7 +11230,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.SHELMET,
     evolutions: [],
-    passives: AbilityId.TINTED_LENS,
+    passives: [AbilityId.TINTED_LENS, AbilityId.PROTEAN],
     levelMoves: [
       [RELEARN_MOVE, MoveId.ME_FIRST],
       [1, MoveId.ABSORB],
@@ -11284,7 +11299,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [],
     eggTier: EggTier.COMMON,
-    passives: [AbilityId.WATER_ABSORB, AbilityId.ELECTROMORPHOSIS],
+    passives: [AbilityId.WATER_ABSORB, AbilityId.STORM_DRAIN],
     levelMoves: [
       [1, MoveId.TACKLE],
       [1, MoveId.WATER_GUN],
@@ -11482,6 +11497,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.ACROBATICS,
       MoveId.RETALIATE,
       MoveId.WORK_UP,
+      MoveId.DUAL_CHOP,
       MoveId.CONFIDE,
       MoveId.POWER_UP_PUNCH,
       MoveId.COACHING,
@@ -11589,11 +11605,11 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       [9, MoveId.BITE],
       [13, MoveId.SCARY_FACE],
       [18, MoveId.METAL_CLAW],
-      [21, MoveId.SLASH],
+      [21, MoveId.CHIP_AWAY],
       [23, MoveId.DRAGON_RAGE],
       [25, MoveId.CRUNCH],
       [27, MoveId.DRAGON_CLAW],
-      [31, MoveId.CHIP_AWAY],
+      [31, MoveId.SLASH],
       [35, MoveId.REVENGE],
       [40, MoveId.NIGHT_SLASH],
       [45, MoveId.DRAGON_TAIL],
@@ -11680,6 +11696,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.LASH_OUT,
       MoveId.DUAL_WINGBEAT,
       MoveId.TERA_BLAST,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFiveSpeciesData[SpeciesId.GOLETT] = {
@@ -11974,7 +11991,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 4,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.BISHARP, level: 52 })],
     eggTier: EggTier.RARE,
-    passives: AbilityId.SWORD_OF_RUIN,
+    passives: [AbilityId.SWORD_OF_RUIN, AbilityId.DARK_AURA],
     levelMoves: [
       [1, MoveId.SCRATCH],
       [1, MoveId.LEER],
@@ -12055,12 +12072,14 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.FOUL_PLAY,
       MoveId.ROUND,
       MoveId.RETALIATE,
+      MoveId.DUAL_CHOP,
       MoveId.SNARL,
       MoveId.CONFIDE,
       MoveId.POWER_UP_PUNCH,
       MoveId.STEEL_BEAM,
       MoveId.LASH_OUT,
       MoveId.TERA_BLAST,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFiveSpeciesData[SpeciesId.BISHARP] = {
@@ -12098,7 +12117,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
         evoDelay: [70, 85, 100],
       }),
     ],
-    passives: AbilityId.SWORD_OF_RUIN,
+    passives: [AbilityId.SWORD_OF_RUIN, AbilityId.DARK_AURA],
     levelMoves: [
       [1, MoveId.SCRATCH],
       [1, MoveId.LEER],
@@ -12280,7 +12299,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       }),
     ],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.SPEED_BOOST,
+    passives: [AbilityId.SPEED_BOOST, AbilityId.ADAPTABILITY],
     levelMoves: [
       [1, MoveId.LEER],
       [1, MoveId.PECK],
@@ -12387,7 +12406,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.RUFFLET,
     evolutions: [],
-    passives: AbilityId.SPEED_BOOST,
+    passives: [AbilityId.SPEED_BOOST, AbilityId.ADAPTABILITY],
     levelMoves: [
       [RELEARN_MOVE, MoveId.SKY_ATTACK],
       [EVOLVE_MOVE, MoveId.SUPERPOWER],
@@ -12694,6 +12713,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.BURNING_JEALOUSY,
       MoveId.SCORCHING_SANDS,
       MoveId.TERA_BLAST,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFiveSpeciesData[SpeciesId.DURANT] = {
@@ -12800,6 +12820,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.STEEL_BEAM,
       MoveId.SKITTER_SMACK,
       MoveId.TERA_BLAST,
+      MoveId.FIRST_IMPRESSION,
     ],
   };
   generationFiveSpeciesData[SpeciesId.DEINO] = {
@@ -13257,7 +13278,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 6,
     evolutions: [],
     eggTier: EggTier.EPIC,
-    passives: AbilityId.INTREPID_SWORD,
+    passives: [AbilityId.INTREPID_SWORD, AbilityId.STEELY_SPIRIT],
     levelMoves: [
       [1, MoveId.DOUBLE_KICK],
       [1, MoveId.LEER],
@@ -13381,7 +13402,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 7,
     evolutions: [],
     eggTier: EggTier.EPIC,
-    passives: AbilityId.ROCKY_PAYLOAD,
+    passives: [AbilityId.ROCKY_PAYLOAD, AbilityId.ROCK_HEAD],
     levelMoves: [
       [1, MoveId.DOUBLE_KICK],
       [1, MoveId.LEER],
@@ -13500,7 +13521,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     starterCost: 6,
     evolutions: [],
     eggTier: EggTier.EPIC,
-    passives: AbilityId.SHARPNESS,
+    passives: [AbilityId.SHARPNESS, AbilityId.SEED_SOWER],
     levelMoves: [
       [1, MoveId.DOUBLE_KICK],
       [1, MoveId.LEER],
@@ -13684,8 +13705,8 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     ],
     eggTier: EggTier.EPIC,
     passives: {
-      0: AbilityId.DRIZZLE,
-      1: AbilityId.DRIZZLE,
+      0: [AbilityId.DRIZZLE, AbilityId.COMPETITIVE],
+      1: [AbilityId.DRIZZLE, AbilityId.SHEER_FORCE],
     },
     levelMoves: [
       [RELEARN_MOVE, MoveId.SWAGGER],
@@ -13873,7 +13894,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     ],
     eggTier: EggTier.EPIC,
     passives: {
-      0: AbilityId.DRIZZLE,
+      0: [AbilityId.DRIZZLE, AbilityId.COMPETITIVE],
       1: [AbilityId.DRIZZLE, AbilityId.SPEED_BOOST],
     },
     levelMoves: [
@@ -14559,12 +14580,13 @@ export function initGenerationFive(): SpeciesDataMapConfig {
     ],
     eggTier: EggTier.LEGENDARY,
     passives: {
-      0: [AbilityId.SNOW_WARNING, AbilityId.ICE_BODY],
-      1: [AbilityId.TRANSISTOR, AbilityId.SNOW_WARNING],
-      2: [AbilityId.FIRE_MANE, AbilityId.SNOW_WARNING],
+      0: [AbilityId.SNOW_WARNING, AbilityId.MOLD_BREAKER],
+      1: [AbilityId.HADRON_ENGINE, AbilityId.SNOW_WARNING],
+      2: [AbilityId.ORICHALCUM_PULSE, AbilityId.SNOW_WARNING],
     },
     levelMoves: [
       [RELEARN_MOVE, MoveId.FREEZE_DRY],
+      [RELEARN_MOVE, MoveId.ICICLE_SPEAR],
       [1, MoveId.ICY_WIND],
       [1, MoveId.NOBLE_ROAR],
       [8, MoveId.DRAGON_BREATH],
@@ -15071,6 +15093,7 @@ export function initGenerationFive(): SpeciesDataMapConfig {
       MoveId.ACROBATICS,
       MoveId.RETALIATE,
       MoveId.WORK_UP,
+      MoveId.DUAL_CHOP,
       MoveId.DISARMING_VOICE,
       MoveId.PLAY_ROUGH,
       MoveId.CONFIDE,

@@ -21,7 +21,7 @@ export class MessagePhase extends Phase {
 
     this.text = text;
     this.callbackDelay = callbackDelay;
-    this.prompt = prompt;
+    this.prompt = globalScene.manualMessageClear || prompt;
     this.promptDelay = promptDelay;
     this.speaker = speaker;
   }

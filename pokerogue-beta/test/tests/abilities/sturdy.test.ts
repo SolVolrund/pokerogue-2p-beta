@@ -58,6 +58,22 @@ describe("Abilities - Sturdy", () => {
     expect(game.field.getEnemyPokemon()).toHaveFullHp();
   });
 
+  it.each([MoveId.SEISMIC_TOSS, MoveId.DRAGON_RAGE])("survives lethal fixed damage from %i", async move => {
+    await game.classicMode.startBattle(SpeciesId.LUCARIO);
+    game.move.use(move);
+    await game.toEndOfTurn();
+    expect(game.field.getEnemyPokemon()).toHaveHp(1);
+  });
+
+  it("lets Mold Breaker bypass Sturdy for fixed damage", async () => {
+    game.override.ability(AbilityId.MOLD_BREAKER);
+    await game.classicMode.startBattle(SpeciesId.LUCARIO);
+    const enemy = game.field.getEnemyPokemon();
+    game.move.use(MoveId.SEISMIC_TOSS);
+    await game.toEndOfTurn();
+    expect(enemy).toHaveFainted();
+  });
+
   it("doesn't incorrectly activate on the second hit of a multi-hit if the damage from the first hit is reduced by boss bars", async () => {
     game.override.startingWave(10);
     await game.classicMode.startBattle(SpeciesId.FEEBAS);

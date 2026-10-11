@@ -66,6 +66,16 @@ describe("Items - Grip Claw", () => {
     expect(enemy2HeldItemCountsAfter).toBe(enemy2HeldItemCount - 1);
   });
 
+  it("cannot activate after its holder faints", async () => {
+    await game.classicMode.startBattle(SpeciesId.FEEBAS, SpeciesId.MILOTIC);
+    const holder = game.field.getPlayerPokemon();
+    const target = game.field.getEnemyPokemon();
+    const claw = holder.getHeldItems()[0] as ContactHeldItemTransferChanceModifier;
+    expect(claw.shouldApply(holder, target)).toBe(true);
+    holder.hp = 0;
+    expect(claw.shouldApply(holder, target)).toBe(false);
+  });
+
   it("should not steal items when using a targetted, non attack move", async () => {
     await game.classicMode.startBattle(SpeciesId.FEEBAS, SpeciesId.MILOTIC);
 

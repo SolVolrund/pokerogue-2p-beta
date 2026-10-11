@@ -295,6 +295,7 @@ function getTypeChartMultiplier(attackType: PokemonType, defType: PokemonType): 
 export function getTypeDamageMultiplierColor(
   multiplier: TypeDamageMultiplier,
   side: "defense" | "offense",
+  highContrast = false,
 ): string | undefined {
   if (side === "offense") {
     switch (multiplier) {
@@ -309,11 +310,11 @@ export function getTypeDamageMultiplierColor(
       case 1:
         return;
       case 2:
-        return "#4AA500";
+        return highContrast ? "#2DB4FF" : "#4AA500";
       case 4:
-        return "#4BB400";
+        return highContrast ? "#00A4FF" : "#4BB400";
       case 8:
-        return "#52C200";
+        return highContrast ? "#0093FF" : "#52C200";
     }
   }
   switch (multiplier) {

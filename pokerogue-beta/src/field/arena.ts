@@ -44,7 +44,7 @@ import {
 import type { Pokemon } from "#field/pokemon";
 import { BoosterEnergyModifier, FieldEffectModifier } from "#modifiers/modifier";
 import type { Move } from "#moves/move";
-import { isFieldTargeted, isSpreadMove } from "#moves/move-utils";
+import { isFieldTargeted } from "#moves/move-utils";
 import type { ArenaPokemonPools, TrainerPools } from "#types/biomes";
 import type { Constructor } from "#types/common";
 import type { RGBArray } from "#types/sprite-types";
@@ -411,7 +411,9 @@ export class Arena {
       globalScene.phaseManager.queueMessage(getWeatherClearMessage(oldWeatherType)!); // TODO: is this bang correct?
     } else {
       this.weather = new Weather(weather, weatherDuration.value, weatherDuration.value);
-      this.eventTarget.dispatchEvent(new WeatherChangedEvent(weather, weatherDuration.value));
+      this.eventTarget.dispatchEvent(
+        new WeatherChangedEvent(weather, this.weather.turnsLeft, this.weather.maxDuration),
+      );
 
       globalScene.phaseManager.unshiftNew("CommonAnimPhase", undefined, undefined, getWeatherAnimation(weather));
       globalScene.phaseManager.queueMessage(getWeatherStartMessage(weather)!); // TODO: is this bang correct?
@@ -594,7 +596,6 @@ export class Arena {
     if (this.terrainType === TerrainType.PSYCHIC) {
       return (
         !isFieldTargeted(move)
-        && !isSpreadMove(move)
         && move.getPriority(user) > 0
         && user.getOpponents(true).some(o => targets.includes(o.getBattlerIndex()) && o.isGrounded())
       );

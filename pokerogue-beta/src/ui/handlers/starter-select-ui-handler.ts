@@ -1348,11 +1348,12 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       });
 
       const notFreshStart = !globalScene.gameMode.hasChallenge(Challenges.FRESH_START);
+      const showEggMoves = notFreshStart && !globalScene.gameMode.hasChallenge(Challenges.MOVESET_RANDOMIZER);
 
       for (const container of this.pokemonEggMoveContainers) {
-        container.setVisible(notFreshStart);
+        container.setVisible(showEggMoves);
       }
-      this.eggMovesLabel.setVisible(notFreshStart);
+      this.eggMovesLabel.setVisible(showEggMoves);
       // This is not enough, we need individual checks in setStarterSpecies too! :)
       this.pokemonPassiveDisabledIcon.setVisible(notFreshStart);
       this.pokemonPassiveLabelText.setVisible(notFreshStart);
@@ -5853,7 +5854,8 @@ export class StarterSelectUiHandler extends MessageUiHandler {
 
         this.setTypeIcons(speciesForm.type1, speciesForm.type2);
 
-        this.teraIcon.setFrame(PokemonType[this.teraCursor].toLowerCase());
+        const displayTeraType = species.speciesId === SpeciesId.TERAPAGOS ? PokemonType.STELLAR : this.teraCursor;
+        this.teraIcon.setFrame(PokemonType[displayTeraType].toLowerCase());
         this.teraIcon.setVisible(!this.statsMode && this.allowTera);
       } else {
         this.pokemonAbilityText.setText("");

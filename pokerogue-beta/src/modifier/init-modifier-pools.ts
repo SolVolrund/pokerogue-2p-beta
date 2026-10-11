@@ -320,14 +320,10 @@ function initGreatModifierPool() {
     new WeightedModifierType(modifierTypes.TM_GREAT, 3),
     new WeightedModifierType(
       modifierTypes.MEMORY_MUSHROOM,
-      (party: Pokemon[]) => {
-        if (!party.find(p => p.getLearnableLevelMoves().length)) {
-          return 0;
-        }
-        const highestPartyLevel = party
-          .map(p => p.level)
-          .reduce((highestLevel: number, level: number) => Math.max(highestLevel, level), 1);
-        return Math.min(Math.ceil(highestPartyLevel / 20), 4);
+      () => {
+        const { waveIndex } = globalScene.currentBattle;
+        const modeAdjustedWave = globalScene.gameMode.getWaveForDifficulty(waveIndex, true);
+        return Math.min(1 + Math.floor(modeAdjustedWave / 30), 4);
       },
       4,
     ),
@@ -735,6 +731,7 @@ function initUltraModifierPool() {
     new WeightedModifierType(modifierTypes.RARER_CANDY, 4),
     new WeightedModifierType(modifierTypes.GOLDEN_PUNCH, skipInLastClassicWaveOrDefault(2)),
     new WeightedModifierType(modifierTypes.IV_SCANNER, skipInLastClassicWaveOrDefault(4)),
+    new WeightedModifierType(modifierTypes.DOWSING_MACHINE, skipInLastClassicWaveOrDefault(4)),
     new WeightedModifierType(modifierTypes.EXP_CHARM, skipInLastClassicWaveOrDefault(8)),
     new WeightedModifierType(modifierTypes.EXP_SHARE, skipInLastClassicWaveOrDefault(10)),
     new WeightedModifierType(

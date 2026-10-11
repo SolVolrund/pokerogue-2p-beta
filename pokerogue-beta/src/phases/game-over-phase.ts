@@ -9,7 +9,6 @@ import { modifierTypes } from "#data/data-lists";
 import { getCharVariantFromDialogue } from "#data/dialogue";
 import type { PokemonSpecies } from "#data/pokemon-species";
 import { BattleType } from "#enums/battle-type";
-import { Challenges } from "#enums/challenges";
 import { PlayerGender } from "#enums/player-gender";
 import { SpeciesId } from "#enums/species-id";
 import { TrainerType } from "#enums/trainer-type";
@@ -24,12 +23,11 @@ import { ArenaData } from "#system/arena-data";
 import { ChallengeData } from "#system/challenge-data";
 import { ModifierData as PersistentModifierData } from "#system/modifier-data";
 import { PokemonData } from "#system/pokemon-data";
-import { RibbonData, type RibbonFlag } from "#system/ribbons/ribbon-data";
 import { awardRibbonsToSpeciesLine } from "#system/ribbons/ribbon-methods";
 import { TrainerData } from "#system/trainer-data";
 import { trainerConfigs } from "#trainers/trainer-config";
 import type { DejaVuGhostData, SessionSaveData } from "#types/save-data";
-import { checkSpeciesValidForChallenge, getChallengesForPlayer, isNuzlockeChallenge } from "#utils/challenge-utils";
+import { checkSpeciesValidForChallenge, getChallengesForPlayer, getRibbonsToAward } from "#utils/challenge-utils";
 import { isUnownCrystalGauntletWave } from "#utils/classic-final-boss-utils";
 import { fixedInt, isLocalServerConnected } from "#utils/common";
 import { getDejaVuGhostRunKey } from "#utils/deja-vu-run-key";
@@ -170,31 +168,7 @@ export class GameOverPhase extends BattlePhase {
   }
 
   private awardRibbons(playerIndex: PlayerIndex): void {
-    let ribbonFlags = 0n;
-    for (const challenge of getChallengesForPlayer(playerIndex)) {
-      const ribbon = challenge.ribbonAwarded;
-      if (challenge.value && ribbon) {
-        ribbonFlags |= ribbon;
-      }
-    }
-
-    // TODO: find a better way to handle blocking ribbons and achievements
-    // Block other ribbons if flip stats or inverse is active
-    const flip_or_inverse = ribbonFlags & (RibbonData.FLIP_STATS | RibbonData.INVERSE);
-    // Block other ribbons if passives on `all` is active
-    const passives = ribbonFlags & RibbonData.PASSIVE_CHALLENGE;
-    if (flip_or_inverse) {
-      ribbonFlags = flip_or_inverse;
-    } else if (globalScene.gameMode.challenges.some(c => c.id === Challenges.PASSIVES && c.value === 2)) {
-      ribbonFlags = passives;
-    } else {
-      if (globalScene.gameMode.isClassic) {
-        ribbonFlags |= RibbonData.CLASSIC;
-      }
-      if (isNuzlockeChallenge()) {
-        ribbonFlags |= RibbonData.NUZLOCKE;
-      }
-    }
+    const ribbonFlags = getRibbonsToAward(playerIndex);
     // Award ribbons to all Pokémon in the player's party that are considered valid
     // for the current game mode and challenges.
     const gameData = globalScene.getPlayerGameData(playerIndex);
@@ -208,7 +182,7 @@ export class GameOverPhase extends BattlePhase {
           playerIndex,
         )
       ) {
-        awardRibbonsToSpeciesLine(species.speciesId, ribbonFlags as RibbonFlag, gameData);
+        awardRibbonsToSpeciesLine(species.speciesId, ribbonFlags, gameData);
       }
     }
   }

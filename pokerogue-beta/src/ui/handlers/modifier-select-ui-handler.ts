@@ -6,11 +6,13 @@ import { handleTutorial, Tutorial } from "#app/tutorial";
 import { allMoves } from "#data/data-lists";
 import { getPokeballAtlasKey } from "#data/pokeball";
 import { Button } from "#enums/buttons";
+import { MoneyFormat } from "#enums/money-format";
 import type { PokeballType } from "#enums/pokeball";
 import { ShopCursorTarget } from "#enums/shop-cursor-target";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import {
+  DowsingMachineModifier,
   HealShopCostModifier,
   LockModifierTiersModifier,
   PokemonHeldItemModifier,
@@ -38,6 +40,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
   private modifierContainer: Phaser.GameObjects.Container;
   private rerollButtonContainer: Phaser.GameObjects.Container;
   private alphButtonContainer: Phaser.GameObjects.Container;
+  private dowsingButtonContainer: Phaser.GameObjects.Container;
   private lockRarityButtonContainer: Phaser.GameObjects.Container;
   private transferButtonContainer: Phaser.GameObjects.Container;
   private tradeButtonContainer: Phaser.GameObjects.Container;
@@ -170,6 +173,12 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     this.alphButtonText.setOrigin(0, 0);
     this.alphButtonContainer.add(this.alphButtonText);
 
+    this.dowsingButtonContainer = globalScene.add.container(0, OPTION_BUTTON_YPOSITION);
+    this.dowsingButtonContainer.setName("dowsing-btn");
+    this.dowsingButtonContainer.setVisible(false);
+    this.dowsingButtonContainer.add(addTextObject(-4, -2, i18next.t("modifierSelectUiHandler:dowsing"), TextStyle.PARTY));
+    ui.add(this.dowsingButtonContainer);
+
     this.lockRarityButtonContainer = globalScene.add.container(16, OPTION_BUTTON_YPOSITION);
     this.lockRarityButtonContainer.setVisible(false);
     ui.add(this.lockRarityButtonContainer);
@@ -248,6 +257,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     );
     const canTrade = !!args[4];
     const canUseAlphWall = !!globalScene.findModifierForPlayer(m => m instanceof UnownBoxModifier, playerIndex);
+    const canUseDowsing = !!globalScene.findModifierForPlayer(m => m instanceof DowsingMachineModifier, playerIndex);
 
     this.transferButtonContainer.setVisible(false);
     this.transferButtonContainer.setAlpha(0);
@@ -266,6 +276,9 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
 
     this.alphButtonContainer.setVisible(false);
     this.alphButtonContainer.setAlpha(0);
+
+    this.dowsingButtonContainer.setVisible(false);
+    this.dowsingButtonContainer.setAlpha(0);
 
     this.lockRarityButtonContainer.setVisible(false);
     this.lockRarityButtonContainer.setAlpha(0);
@@ -430,11 +443,13 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         this.continueButtonContainer.setAlpha(0);
         this.rerollButtonContainer.setVisible(true);
         this.alphButtonContainer.setVisible(canUseAlphWall);
+        this.dowsingButtonContainer.setVisible(canUseDowsing);
         this.tradeButtonContainer.setVisible(canTrade);
         this.tokenShopButtonContainer.setVisible(this.canUseTokenShop && !canTrade);
         this.checkButtonContainer.setVisible(true);
         this.continueButtonContainer.setVisible(this.rerollCost < 0);
         this.lockRarityButtonContainer.setVisible(canLockRarities);
+        this.updateLeftButtonPositions();
 
         globalScene.tweens.add({
           targets: [
@@ -442,6 +457,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
             this.tokenShopButtonContainer,
             this.checkButtonContainer,
             this.continueButtonContainer,
+            this.dowsingButtonContainer,
           ],
           alpha: 1,
           duration: 250,
@@ -560,58 +576,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
           break;
         case Button.LEFT:
           if (!this.rowCursor) {
-            switch (this.cursor) {
-              case 0:
-                success = this.lockRarityButtonContainer.visible ? this.setCursor(4) : this.setCursor(3);
-                break;
-              case 1:
-                success = this.alphButtonContainer.visible
-                  ? this.setCursor(5)
-                  : this.rerollButtonContainer.visible
-                    ? this.setCursor(0)
-                    : this.lockRarityButtonContainer.visible
-                      ? this.setCursor(4)
-                      : this.setCursor(3);
-                break;
-              case 2:
-                if (this.transferButtonContainer.visible) {
-                  success = this.setCursor(1);
-                } else if (this.alphButtonContainer.visible) {
-                  success = this.setCursor(5);
-                } else if (this.rerollButtonContainer.visible) {
-                  success = this.setCursor(0);
-                } else if (this.lockRarityButtonContainer.visible) {
-                  success = this.setCursor(4);
-                } else {
-                  success = this.setCursor(3);
-                }
-                break;
-              case 3:
-                if (this.isMiddleRightButtonVisible()) {
-                  success = this.setCursor(2);
-                } else if (this.transferButtonContainer.visible) {
-                  success = this.setCursor(1);
-                } else if (this.rerollButtonContainer.visible) {
-                  success = this.setCursor(0);
-                } else {
-                  success = false;
-                }
-                break;
-              case 4:
-                if (this.lockRarityButtonContainer.visible) {
-                  success = this.setCursor(3);
-                } else {
-                  success = false;
-                }
-                break;
-              case 5:
-                success = this.rerollButtonContainer.visible
-                  ? this.setCursor(0)
-                  : this.lockRarityButtonContainer.visible
-                    ? this.setCursor(4)
-                    : this.setCursor(3);
-                break;
-            }
+            success = this.moveActionCursor(-1);
           } else if (this.cursor) {
             success = this.setCursor(this.cursor - 1);
           } else if (this.rowCursor === 1 && this.options.length === 0) {
@@ -622,44 +587,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
           break;
         case Button.RIGHT:
           if (!this.rowCursor) {
-            switch (this.cursor) {
-              case 0:
-                if (this.alphButtonContainer.visible) {
-                  success = this.setCursor(5);
-                } else if (this.transferButtonContainer.visible) {
-                  success = this.setCursor(1);
-                } else if (this.isMiddleRightButtonVisible()) {
-                  success = this.setCursor(2);
-                } else {
-                  success = this.setCursor(3);
-                }
-                break;
-              case 1:
-                success = this.isMiddleRightButtonVisible() ? this.setCursor(2) : this.setCursor(3);
-                break;
-              case 2:
-                success = this.setCursor(3);
-                break;
-              case 3:
-                success = this.lockRarityButtonContainer.visible ? this.setCursor(4) : this.setCursor(0);
-                break;
-              case 4:
-                if (this.transferButtonContainer.visible) {
-                  success = this.setCursor(0);
-                } else {
-                  success = this.setCursor(0);
-                }
-                break;
-              case 5:
-                if (this.transferButtonContainer.visible) {
-                  success = this.setCursor(1);
-                } else if (this.isMiddleRightButtonVisible()) {
-                  success = this.setCursor(2);
-                } else {
-                  success = this.setCursor(3);
-                }
-                break;
-            }
+            success = this.moveActionCursor(1);
           } else if (this.cursor < this.getRowItems(this.rowCursor) - 1) {
             success = this.setCursor(this.cursor + 1);
           } else if (this.rowCursor === 1 && this.options.length === 0) {
@@ -750,7 +678,11 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         6,
         this.lockRarityButtonContainer.visible ? OPTION_BUTTON_YPOSITION - 8 : OPTION_BUTTON_YPOSITION + 4,
       );
-      ui.showText(i18next.t("modifierSelectUiHandler:rerollDesc"));
+      const description = i18next.t("modifierSelectUiHandler:rerollDesc");
+      const cost = i18next.t("modifierSelectUiHandler:rerollCost", {
+        formattedMoney: formatMoney(MoneyFormat.NORMAL, this.rerollCost),
+      });
+      ui.showText(this.rerollCost >= 0 ? `${description} (${cost})` : description);
     } else if (cursor === 1) {
       this.cursorObj.setPosition(
         this.transferButtonContainer.x - this.transferButtonWidth - 10,
@@ -781,9 +713,12 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     } else if (cursor === 4) {
       this.cursorObj.setPosition(6, OPTION_BUTTON_YPOSITION + 4);
       ui.showText(i18next.t("modifierSelectUiHandler:lockRaritiesDesc"));
-    } else {
+    } else if (cursor === 5) {
       this.cursorObj.setPosition(this.alphButtonContainer.x - 10, OPTION_BUTTON_YPOSITION + 4);
       ui.showText(i18next.t("modifierSelectUiHandler:alphDesc"));
+    } else if (cursor === 6) {
+      this.cursorObj.setPosition(this.dowsingButtonContainer.x - 10, OPTION_BUTTON_YPOSITION + 4);
+      ui.showText(i18next.t("modifierSelectUiHandler:dowsingDesc"));
     }
 
     return ret;
@@ -818,6 +753,9 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
           newCursor = 3;
         }
         if (newCursor === 5 && !this.alphButtonContainer.visible) {
+          newCursor = 3;
+        }
+        if (newCursor === 6 && !this.dowsingButtonContainer.visible) {
           newCursor = 3;
         }
       }
@@ -926,7 +864,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
   private getRowItems(rowCursor: number): number {
     switch (rowCursor) {
       case 0:
-        return 6;
+        return 7;
       case 1:
         return this.options.length;
       default:
@@ -1089,13 +1027,60 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
   }
 
   private updateLeftButtonPositions(): void {
-    const rerollRightEdge = this.rerollCostText.visible
-      ? this.rerollButtonContainer.x + this.rerollCostText.x + this.rerollCostText.displayWidth
-      : this.rerollButtonContainer.x + OPTION_BUTTON_LEFT_PADDING;
-    this.alphButtonContainer.setX(rerollRightEdge + OPTION_BUTTON_GAP);
-    this.transferButtonContainer.setX(
-      this.alphButtonContainer.x + this.alphButtonText.displayWidth + this.transferButtonWidth + OPTION_BUTTON_GAP,
+    const buttons = this.getActionButtons().filter(button => button.cursor !== 4);
+    const widths = buttons.map(({ cursor, container }) => {
+      const text = container.list[0] as Phaser.GameObjects.Text;
+      return cursor === 0 && this.rerollCostText.visible
+        ? this.rerollCostText.x + this.rerollCostText.displayWidth + 4
+        : text.displayWidth;
+    });
+    const totalWidth = widths.reduce((sum, width) => sum + width, 0);
+    const availableWidth = globalScene.scaledCanvas.width - OPTION_BUTTON_LEFT_PADDING - 4;
+    // Preserve readable labels when a large reroll price would crowd out the other actions.
+    if (totalWidth + 10 * (buttons.length - 1) > availableWidth && this.rerollCostText.visible) {
+      const compactCost = i18next.t("modifierSelectUiHandler:rerollCost", {
+        formattedMoney: formatMoney(MoneyFormat.ABBREVIATED, this.rerollCost),
+      });
+      if (this.rerollCostText.text !== compactCost) {
+        this.rerollCostText.setText(compactCost);
+        this.updateLeftButtonPositions();
+        return;
+      }
+    }
+    const gap = Math.min(
+      OPTION_BUTTON_GAP,
+      Math.max(10, (availableWidth - totalWidth) / Math.max(1, buttons.length - 1)),
     );
+    let left = OPTION_BUTTON_LEFT_PADDING - 4;
+    buttons.forEach(({ container }, index) => {
+      const text = container.list[0] as Phaser.GameObjects.Text;
+      container.setX(left + 4 + text.displayWidth * text.originX);
+      left += widths[index] + gap;
+    });
+  }
+
+  private getActionButtons(): { cursor: number; container: Phaser.GameObjects.Container }[] {
+    return [
+      { cursor: 4, container: this.lockRarityButtonContainer },
+      { cursor: 0, container: this.rerollButtonContainer },
+      { cursor: 1, container: this.transferButtonContainer },
+      { cursor: 5, container: this.alphButtonContainer },
+      { cursor: 6, container: this.dowsingButtonContainer },
+      {
+        cursor: 2,
+        container: this.tokenShopButtonContainer.visible ? this.tokenShopButtonContainer : this.tradeButtonContainer,
+      },
+      { cursor: 3, container: this.checkButtonContainer },
+    ].filter(button => button.container.visible);
+  }
+
+  private moveActionCursor(direction: number): boolean {
+    const buttons = this.getActionButtons();
+    if (!buttons.length) {
+      return false;
+    }
+    const index = buttons.findIndex(button => button.cursor === this.cursor);
+    return this.setCursor(buttons[(index + direction + buttons.length) % buttons.length].cursor);
   }
 
   updateLockRaritiesText(): void {
@@ -1112,6 +1097,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     this.awaitingActionInput = false;
     this.onActionInput = null;
     this.getUi().clearText();
+    this.getUi().getMessageHandler().hideNameText();
     this.eraseCursor();
 
     // Reset cursor positions
@@ -1155,6 +1141,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     [
       this.rerollButtonContainer,
       this.alphButtonContainer,
+      this.dowsingButtonContainer,
       this.checkButtonContainer,
       this.transferButtonContainer,
       this.tradeButtonContainer,

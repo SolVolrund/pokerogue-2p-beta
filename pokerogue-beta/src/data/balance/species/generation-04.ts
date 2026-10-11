@@ -71,7 +71,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.GROTLE, level: 18 })],
     eggTier: EggTier.COMMON,
-    passives: [AbilityId.SOLID_ROCK, AbilityId.RIPEN],
+    passives: [AbilityId.SOLID_ROCK, AbilityId.HARVEST],
     levelMoves: [
       [1, MoveId.TACKLE],
       [1, MoveId.ABSORB],
@@ -453,6 +453,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       MoveId.FOCUS_BLAST,
       MoveId.SMACK_DOWN,
       MoveId.RETALIATE,
+      MoveId.DUAL_CHOP,
       MoveId.LASH_OUT,
       MoveId.UPPER_HAND,
     ],
@@ -1171,10 +1172,12 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       [13, MoveId.HEADBUTT],
       [18, MoveId.HYPER_FANG],
       [23, MoveId.YAWN],
+      [25, MoveId.WATER_PULSE],
       [28, MoveId.CRUNCH],
       [33, MoveId.TAKE_DOWN],
       [38, MoveId.SUPER_FANG],
       [43, MoveId.SWORDS_DANCE],
+      [45, MoveId.AQUA_TAIL],
       [48, MoveId.AMNESIA],
       [53, MoveId.SUPERPOWER],
       [58, MoveId.CURSE],
@@ -1342,6 +1345,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       MoveId.THROAT_CHOP,
       MoveId.POUNCE,
       MoveId.TRAILBLAZE,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFourSpeciesData[SpeciesId.SHINX] = {
@@ -1449,6 +1453,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       MoveId.RISING_VOLTAGE,
       MoveId.TERA_BLAST,
       MoveId.TRAILBLAZE,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFourSpeciesData[SpeciesId.LUXIO] = {
@@ -1745,6 +1750,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       [1, MoveId.HEADBUTT],
       [1, MoveId.LEER],
       [6, MoveId.FOCUS_ENERGY],
+      [8, MoveId.ANCIENT_POWER],
       [10, MoveId.PURSUIT],
       [12, MoveId.ROCK_SMASH],
       [15, MoveId.TAKE_DOWN],
@@ -1754,7 +1760,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       [24, MoveId.ASSURANCE],
       [26, MoveId.SWORDS_DANCE],
       [28, MoveId.CHIP_AWAY],
-      [33, MoveId.ANCIENT_POWER],
+      [33, MoveId.ROCK_SLIDE],
       [37, MoveId.ZEN_HEADBUTT],
       [42, MoveId.SCREECH],
       [46, MoveId.HEAD_SMASH],
@@ -1868,6 +1874,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       [1, MoveId.HEADBUTT],
       [1, MoveId.LEER],
       [6, MoveId.FOCUS_ENERGY],
+      [8, MoveId.ANCIENT_POWER],
       [10, MoveId.PURSUIT],
       [12, MoveId.ROCK_SMASH],
       [15, MoveId.TAKE_DOWN],
@@ -1877,7 +1884,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       [24, MoveId.ASSURANCE],
       [26, MoveId.SWORDS_DANCE],
       [28, MoveId.CHIP_AWAY],
-      [36, MoveId.ANCIENT_POWER],
+      [36, MoveId.ROCK_SLIDE],
       [43, MoveId.ZEN_HEADBUTT],
       [51, MoveId.SCREECH],
       [58, MoveId.HEAD_SMASH],
@@ -1936,11 +1943,12 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       [1, MoveId.TACKLE],
       [1, MoveId.PROTECT],
       [6, MoveId.TAUNT],
+      [8, MoveId.ANCIENT_POWER],
       [10, MoveId.METAL_SOUND],
       [15, MoveId.TAKE_DOWN],
       [19, MoveId.IRON_DEFENSE],
       [24, MoveId.SWAGGER],
-      [28, MoveId.ANCIENT_POWER],
+      [28, MoveId.ROCK_SLIDE],
       [33, MoveId.ENDURE],
       [37, MoveId.METAL_BURST],
       [42, MoveId.IRON_HEAD],
@@ -2051,11 +2059,12 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       [1, MoveId.TACKLE],
       [1, MoveId.PROTECT],
       [6, MoveId.TAUNT],
+      [8, MoveId.ANCIENT_POWER],
       [10, MoveId.METAL_SOUND],
       [15, MoveId.TAKE_DOWN],
       [19, MoveId.IRON_DEFENSE],
       [24, MoveId.SWAGGER],
-      [28, MoveId.ANCIENT_POWER],
+      [28, MoveId.ROCK_SLIDE],
       [36, MoveId.ENDURE],
       [43, MoveId.METAL_BURST],
       [51, MoveId.IRON_HEAD],
@@ -2203,7 +2212,15 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       [15, MoveId.BUG_BITE],
       [20, MoveId.HIDDEN_POWER],
     ],
-    tms: [MoveId.SNORE, MoveId.PROTECT, MoveId.HIDDEN_POWER, MoveId.BUG_BITE, MoveId.ELECTROWEB, MoveId.TERA_BLAST],
+    tms: [
+      MoveId.SNORE,
+      MoveId.PROTECT,
+      MoveId.HIDDEN_POWER,
+      MoveId.BUG_BITE,
+      MoveId.STRUGGLE_BUG,
+      MoveId.ELECTROWEB,
+      MoveId.TERA_BLAST,
+    ],
   };
   generationFourSpeciesData[SpeciesId.WORMADAM] = {
     species: new PokemonSpecies({
@@ -2311,7 +2328,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     passives: {
       0: [AbilityId.STURDY, AbilityId.GRASSY_SURGE],
       1: [AbilityId.STURDY, AbilityId.SAND_STREAM],
-      2: [AbilityId.STURDY, AbilityId.FILTER],
+      2: [AbilityId.STURDY, AbilityId.STEELY_SPIRIT],
     },
     levelMoves: [
       [EVOLVE_MOVE, MoveId.QUIVER_DANCE],
@@ -2727,7 +2744,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     starterCost: 2,
     evolutions: [],
     eggTier: EggTier.COMMON,
-    passives: [AbilityId.HONEY_GATHER, AbilityId.FUR_COAT],
+    passives: [AbilityId.HONEY_GATHER, AbilityId.CHEEK_POUCH],
     levelMoves: [
       [1, MoveId.GROWL],
       [1, MoveId.THUNDER_SHOCK],
@@ -3523,7 +3540,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.AIPOM,
     evolutions: [],
-    passives: [AbilityId.SCRAPPY, AbilityId.GUTS],
+    passives: [AbilityId.SCRAPPY, AbilityId.LONG_REACH],
     levelMoves: [
       [1, MoveId.SCRATCH],
       [1, MoveId.TAIL_WHIP],
@@ -3573,7 +3590,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     starterCost: 2,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.DRIFBLIM, level: 28 })],
     eggTier: EggTier.COMMON,
-    passives: [AbilityId.MAGIC_GUARD, AbilityId.SHADOW_SHIELD],
+    passives: [AbilityId.MAGIC_GUARD, AbilityId.CURSED_BODY],
     levelMoves: [
       [1, MoveId.MINIMIZE],
       [1, MoveId.CONSTRICT],
@@ -3697,7 +3714,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.DRIFLOON,
     evolutions: [],
-    passives: [AbilityId.MAGIC_GUARD, AbilityId.SHADOW_SHIELD],
+    passives: [AbilityId.MAGIC_GUARD, AbilityId.CURSED_BODY],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.PHANTOM_FORCE],
       [1, MoveId.MINIMIZE],
@@ -4193,6 +4210,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       MoveId.PLAY_ROUGH,
       MoveId.CONFIDE,
       MoveId.TERA_BLAST,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFourSpeciesData[SpeciesId.PURUGLY] = {
@@ -4494,6 +4512,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       MoveId.TERA_BLAST,
       MoveId.TRAILBLAZE,
       MoveId.TEMPER_FLARE,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFourSpeciesData[SpeciesId.SKUNTANK] = {
@@ -5150,7 +5169,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     starterCost: 2,
     evolutions: [],
     eggTier: EggTier.COMMON,
-    passives: [AbilityId.PUNK_ROCK, AbilityId.ADAPTABILITY],
+    passives: [AbilityId.PUNK_ROCK, AbilityId.COSTAR],
     levelMoves: [
       [1, MoveId.PECK],
       [1, MoveId.ROUND],
@@ -5381,8 +5400,8 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       [30, MoveId.SLASH],
       [36, MoveId.DRAGON_CLAW],
       [42, MoveId.DIG],
-      [48, MoveId.TAKE_DOWN],
-      [54, MoveId.SANDSTORM],
+      [48, MoveId.SANDSTORM],
+      [54, MoveId.TAKE_DOWN],
       [60, MoveId.DRAGON_RUSH],
     ],
     tms: [
@@ -5491,11 +5510,11 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       [34, MoveId.SLASH],
       [42, MoveId.DRAGON_CLAW],
       [50, MoveId.DIG],
-      [58, MoveId.TAKE_DOWN],
-      [66, MoveId.SANDSTORM],
+      [58, MoveId.SANDSTORM],
+      [66, MoveId.TAKE_DOWN],
       [74, MoveId.DRAGON_RUSH],
     ],
-    tms: [MoveId.CRUNCH, MoveId.POWER_GEM, MoveId.BREAKING_SWIPE],
+    tms: [MoveId.CRUNCH, MoveId.POWER_GEM, MoveId.DUAL_CHOP, MoveId.BREAKING_SWIPE],
   };
   generationFourSpeciesData[SpeciesId.GARCHOMP] = {
     species: new PokemonSpecies({
@@ -5631,9 +5650,10 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       [34, MoveId.SLASH],
       [42, MoveId.DRAGON_CLAW],
       [50, MoveId.DIG],
-      [58, MoveId.TAKE_DOWN],
-      [66, MoveId.SANDSTORM],
-      [75, MoveId.DRAGON_RUSH],
+      [58, MoveId.SANDSTORM],
+      [66, MoveId.TAKE_DOWN],
+      [72, MoveId.EARTH_POWER],
+      [82, MoveId.DRAGON_RUSH],
     ],
     tms: [
       MoveId.SURF,
@@ -5645,6 +5665,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       MoveId.POISON_JAB,
       MoveId.AQUA_TAIL,
       MoveId.GIGA_IMPACT,
+      MoveId.DUAL_CHOP,
       MoveId.BRUTAL_SWING,
       MoveId.STOMPING_TANTRUM,
       MoveId.LIQUIDATION,
@@ -5923,6 +5944,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       MoveId.RETALIATE,
       MoveId.BULLDOZE,
       MoveId.WORK_UP,
+      MoveId.DUAL_CHOP,
       MoveId.CONFIDE,
       MoveId.POWER_UP_PUNCH,
       MoveId.COACHING,
@@ -6045,8 +6067,8 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     ],
     passives: {
       0: [AbilityId.MINDS_EYE, AbilityId.BATTLE_BOND],
-      1: [AbilityId.SCRAPPY, AbilityId.MOLD_BREAKER],
-      2: [AbilityId.MINDS_EYE, AbilityId.DAZZLING],
+      1: [AbilityId.MINDS_EYE, AbilityId.MOLD_BREAKER],
+      2: [AbilityId.NEUROFORCE, AbilityId.MAGIC_GUARD],
     },
     levelMoves: [
       [RELEARN_MOVE, MoveId.DARK_PULSE],
@@ -6127,7 +6149,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.HIPPOWDON, level: 34 })],
     eggTier: EggTier.COMMON,
-    passives: [AbilityId.UNAWARE, AbilityId.STAMINA],
+    passives: [AbilityId.UNAWARE, AbilityId.SAND_RUSH],
     levelMoves: [
       [1, MoveId.SAND_ATTACK],
       [1, MoveId.TACKLE],
@@ -6229,7 +6251,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.HIPPOPOTAS,
     evolutions: [],
-    passives: [AbilityId.UNAWARE, AbilityId.STAMINA],
+    passives: [AbilityId.UNAWARE, AbilityId.SAND_RUSH],
     levelMoves: [
       [RELEARN_MOVE, MoveId.THUNDER_FANG],
       [RELEARN_MOVE, MoveId.ICE_FANG],
@@ -6371,6 +6393,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       MoveId.INFESTATION,
       MoveId.SKITTER_SMACK,
       MoveId.TERA_BLAST,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFourSpeciesData[SpeciesId.DRAPION] = {
@@ -6479,7 +6502,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     starterCost: 2,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.TOXICROAK, level: 37 })],
     eggTier: EggTier.COMMON,
-    passives: [AbilityId.MOXIE, AbilityId.PICKPOCKET],
+    passives: [AbilityId.MOXIE, AbilityId.MERCILESS],
     levelMoves: [
       [1, MoveId.POISON_STING],
       [1, MoveId.ASTONISH],
@@ -6576,6 +6599,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       MoveId.RETALIATE,
       MoveId.BULLDOZE,
       MoveId.WORK_UP,
+      MoveId.DUAL_CHOP,
       MoveId.CONFIDE,
       MoveId.VENOM_DRENCH,
       MoveId.POWER_UP_PUNCH,
@@ -6614,7 +6638,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.CROAGUNK,
     evolutions: [],
-    passives: [AbilityId.MOXIE, AbilityId.PICKPOCKET],
+    passives: [AbilityId.MOXIE, AbilityId.MERCILESS],
     levelMoves: [
       [1, MoveId.POISON_STING],
       [1, MoveId.ASTONISH],
@@ -6774,7 +6798,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     starterCost: 1,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.LUMINEON, level: 31 })],
     eggTier: EggTier.COMMON,
-    passives: [AbilityId.WATER_BUBBLE, AbilityId.MOODY],
+    passives: [AbilityId.WATER_BUBBLE, AbilityId.DAZZLING],
     levelMoves: [
       [1, MoveId.POUND],
       [6, MoveId.WATER_GUN],
@@ -6881,7 +6905,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.FINNEON,
     evolutions: [],
-    passives: [AbilityId.WATER_BUBBLE, AbilityId.MOODY],
+    passives: [AbilityId.WATER_BUBBLE, AbilityId.DAZZLING],
     levelMoves: [
       [1, MoveId.POUND],
       [1, MoveId.SOAK],
@@ -6899,7 +6923,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       [53, MoveId.BOUNCE],
       [56, MoveId.SILVER_WIND],
       [59, MoveId.TAILWIND],
-      [66, MoveId.SOAK],
+      [66, MoveId.HYDRO_PUMP],
     ],
     tms: [MoveId.HYPER_BEAM, MoveId.ENCORE, MoveId.AIR_SLASH, MoveId.GIGA_IMPACT],
   };
@@ -7310,6 +7334,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       MoveId.FOCUS_BLAST,
       MoveId.ICE_SPINNER,
       MoveId.CHILLING_WATER,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFourSpeciesData[SpeciesId.MAGNEZONE] = {
@@ -7802,6 +7827,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       MoveId.CRUNCH,
       MoveId.GIGA_IMPACT,
       MoveId.DUAL_WINGBEAT,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFourSpeciesData[SpeciesId.LEAFEON] = {
@@ -7983,7 +8009,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.GLIGAR,
     evolutions: [],
-    passives: [AbilityId.TOXIC_BOOST, AbilityId.TOUGH_CLAWS],
+    passives: [AbilityId.TOXIC_BOOST, AbilityId.WIND_RIDER],
     levelMoves: [
       [RELEARN_MOVE, MoveId.THUNDER_FANG],
       [RELEARN_MOVE, MoveId.ICE_FANG],
@@ -8214,7 +8240,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     ],
     passives: {
       0: [AbilityId.NEUROFORCE, AbilityId.DEFIANT],
-      1: [AbilityId.SHARPNESS, AbilityId.DEFIANT],
+      1: [AbilityId.SHARPNESS, AbilityId.INTREPID_SWORD],
     },
     levelMoves: [
       [RELEARN_MOVE, MoveId.LEAF_BLADE],
@@ -8282,11 +8308,13 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       MoveId.RETALIATE,
       MoveId.BULLDOZE,
       MoveId.WORK_UP,
+      MoveId.DUAL_CHOP,
       MoveId.POWER_UP_PUNCH,
       MoveId.SOLAR_BLADE,
       MoveId.THROAT_CHOP,
       MoveId.COACHING,
       MoveId.UPPER_HAND,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationFourSpeciesData[SpeciesId.PROBOPASS] = {
@@ -8382,7 +8410,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.DUSKULL,
     evolutions: [],
-    passives: [AbilityId.UNNERVE, AbilityId.IRON_FIST],
+    passives: [AbilityId.LEVITATE, AbilityId.IRON_FIST],
     levelMoves: [
       [RELEARN_MOVE, MoveId.FIRE_PUNCH],
       [RELEARN_MOVE, MoveId.ICE_PUNCH],
@@ -8742,10 +8770,10 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     passives: {
       0: [AbilityId.HADRON_ENGINE, AbilityId.PROTEAN],
       1: [AbilityId.HADRON_ENGINE, AbilityId.WELL_BAKED_BODY],
-      2: [AbilityId.HADRON_ENGINE, AbilityId.STORM_DRAIN],
-      3: [AbilityId.HADRON_ENGINE, AbilityId.REFRIGERATE],
-      4: [AbilityId.HADRON_ENGINE, AbilityId.WIND_POWER],
-      5: [AbilityId.HADRON_ENGINE, AbilityId.SAP_SIPPER],
+      2: [AbilityId.HADRON_ENGINE, AbilityId.WATER_ABSORB],
+      3: [AbilityId.HADRON_ENGINE, AbilityId.FILTER],
+      4: [AbilityId.HADRON_ENGINE, AbilityId.SPEED_BOOST],
+      5: [AbilityId.HADRON_ENGINE, AbilityId.MOLD_BREAKER],
     },
     levelMoves: [
       [1, MoveId.DOUBLE_TEAM],
@@ -8870,7 +8898,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     starterCost: 5,
     evolutions: [],
     eggTier: EggTier.EPIC,
-    passives: [AbilityId.ILLUSION, AbilityId.AURA_GUARD],
+    passives: [AbilityId.MAGIC_BOUNCE, AbilityId.AURA_GUARD],
     levelMoves: [
       [RELEARN_MOVE, MoveId.SNORE],
       [RELEARN_MOVE, MoveId.IRON_TAIL],
@@ -9016,7 +9044,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     starterCost: 5,
     evolutions: [],
     eggTier: EggTier.EPIC,
-    passives: AbilityId.MOODY,
+    passives: [AbilityId.MOODY, AbilityId.SOUL_HEART],
     levelMoves: [
       [RELEARN_MOVE, MoveId.SNORE],
       [RELEARN_MOVE, MoveId.IRON_TAIL],
@@ -9162,7 +9190,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     starterCost: 6,
     evolutions: [],
     eggTier: EggTier.EPIC,
-    passives: AbilityId.NEUROFORCE,
+    passives: [AbilityId.NEUROFORCE, AbilityId.POWER_SPOT],
     levelMoves: [
       [RELEARN_MOVE, MoveId.SELF_DESTRUCT],
       [RELEARN_MOVE, MoveId.SNORE],
@@ -9863,6 +9891,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
       MoveId.TERA_BLAST,
       MoveId.POUNCE,
       MoveId.HARD_PRESS,
+      MoveId.FIRST_IMPRESSION,
     ],
   };
   generationFourSpeciesData[SpeciesId.REGIGIGAS] = {
@@ -10343,7 +10372,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     starterCost: 4,
     evolutions: [],
     eggTier: EggTier.EPIC,
-    passives: [AbilityId.SIMPLE, AbilityId.WATER_ABSORB],
+    passives: [AbilityId.SIMPLE, AbilityId.STORM_DRAIN],
     levelMoves: [
       [1, MoveId.SUPERSONIC],
       [1, MoveId.BUBBLE],
@@ -10449,7 +10478,7 @@ export function initGenerationFour(): SpeciesDataMapConfig {
     starterCost: 6,
     evolutions: [],
     eggTier: EggTier.EPIC,
-    passives: [AbilityId.PRIMORDIAL_SEA, AbilityId.STORM_DRAIN],
+    passives: [AbilityId.PRIMORDIAL_SEA, AbilityId.WATER_ABSORB],
     levelMoves: [
       [1, MoveId.SUPERSONIC],
       [1, MoveId.BUBBLE],

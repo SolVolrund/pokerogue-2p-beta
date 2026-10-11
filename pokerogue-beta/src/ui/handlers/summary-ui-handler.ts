@@ -29,6 +29,7 @@ import type { PokemonMove } from "#moves/pokemon-move";
 import type { Variant } from "#sprites/variant";
 import { getVariantTint } from "#sprites/variant";
 import { achvs } from "#system/achv";
+import type { OptionSelectItem } from "#ui/base-option-select-ui-handler";
 import { addBBCodeTextObject, addTextObject, getBBCodeFrag, getTextColor, updateCandyCountTextStyle } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { argbFromRgba, rgbHexToRgba } from "#utils/color-utils";
@@ -568,8 +569,10 @@ export class SummaryUiHandler extends UiHandler {
           } else if (this.summaryUiMode === SummaryUiMode.LEARN_MOVE) {
             this.moveSelectFunction?.(this.moveCursor);
           } else if (this.selectedMoveIndex === -1) {
-            this.selectedMoveIndex = this.moveCursor;
-            this.setCursor(this.moveCursor);
+            if (!this.showMoveOptions()) {
+              ui.playError();
+              return true;
+            }
           } else {
             if (this.selectedMoveIndex !== this.moveCursor) {
               const tempMove = this.pokemon?.moveset[this.selectedMoveIndex];
@@ -719,6 +722,80 @@ export class SummaryUiHandler extends UiHandler {
     }
 
     return success || error;
+  }
+
+  private canDeleteMove(pokemon: Pokemon): boolean {
+    const owner = globalScene.getPlayerIndexForPokemon(pokemon);
+    return (
+      this.pokemon === pokemon
+      && this.playerParty
+      && this.summaryUiMode === SummaryUiMode.DEFAULT
+      && pokemon.isPlayer()
+      && pokemon.moveset.length > 1
+      && globalScene.phaseManager.getCurrentPhase().is("SelectModifierPhase")
+      && owner !== undefined
+      && owner === globalScene.activePlayerIndex
+      && globalScene.getPlayerParty(owner).includes(pokemon as PlayerPokemon)
+      && globalScene.inputOwner !== "ep"
+      && (typeof globalScene.inputOwner !== "number" || globalScene.inputOwner === owner)
+    );
+  }
+
+  private showMoveOptions(): boolean {
+    const pokemon = this.pokemon;
+    const moveIndex = this.moveCursor;
+    const move = pokemon?.moveset[moveIndex];
+    if (!pokemon || !move || pokemon.moveset.length <= 1) {
+      return false;
+    }
+
+    const ui = this.getUi();
+    const options: OptionSelectItem[] = [
+      {
+        label: i18next.t("pokemonSummary:swapMove"),
+        handler: () => {
+          this.selectedMoveIndex = moveIndex;
+          this.setCursor(moveIndex);
+          ui.revertMode();
+          return true;
+        },
+      },
+    ];
+    if (this.canDeleteMove(pokemon)) {
+      options.push({
+        label: i18next.t("pokemonSummary:deleteMove"),
+        handler: () => {
+          ui.revertMode();
+          ui.setOverlayMode(
+            UiMode.CONFIRM,
+            () => {
+              // Recheck the owner, phase and move after the confirmation prompt.
+              if (this.canDeleteMove(pokemon) && pokemon.moveset[moveIndex] === move) {
+                pokemon.moveset.splice(moveIndex, 1);
+                this.populateMoveRows();
+                this.setCursor(Math.min(moveIndex, pokemon.moveset.length - 1));
+              }
+              ui.revertMode();
+            },
+            () => ui.revertMode(),
+            false,
+            0,
+            48,
+            1000,
+          );
+          return true;
+        },
+      });
+    }
+    options.push({
+      label: i18next.t("pokemonSummary:cancel"),
+      handler: () => {
+        ui.revertMode();
+        return true;
+      },
+    });
+    ui.setOverlayMode(UiMode.OPTION_SELECT, { options, yOffset: 48 });
+    return true;
   }
 
   private playSummaryPokemonSprite(pokemon: Pokemon): void {
@@ -1317,39 +1394,7 @@ export class SummaryUiHandler extends UiHandler {
         this.moveRowsContainer = globalScene.add.container(0, 0);
         this.movesContainer.add(this.moveRowsContainer);
 
-        for (let m = 0; m < 4; m++) {
-          const move: PokemonMove | null =
-            this.pokemon && this.pokemon.moveset.length > m ? this.pokemon?.moveset[m] : null;
-          const moveRowContainer = globalScene.add.container(0, 16 * m);
-          this.moveRowsContainer.add(moveRowContainer);
-
-          if (move && this.pokemon) {
-            const typeIcon = globalScene.add.sprite(0, 0, getLocalizedSpriteKey("types"));
-            typeIcon.setOrigin(0, 1);
-            moveRowContainer.setData("moveTypeIcon", typeIcon);
-            this.updateMoveTypeIcon(typeIcon, move.getMove());
-            moveRowContainer.add(typeIcon);
-          }
-
-          const moveText = addTextObject(35, 0, move ? move.getName() : "-", TextStyle.SUMMARY);
-          moveText.setOrigin(0, 1);
-          moveRowContainer.add(moveText);
-
-          const ppOverlay = globalScene.add.image(177, -5, getLocalizedSpriteKey("summary_moves_overlay_pp")); // Pixel text 'PP'
-          ppOverlay.setOrigin(1, 0.5);
-          moveRowContainer.add(ppOverlay);
-
-          const ppText = addTextObject(178, 1, "--/--", TextStyle.WINDOW);
-          ppText.setOrigin(0, 1);
-
-          if (move) {
-            const maxPP = move.getMovePp();
-            const pp = maxPP - move.ppUsed;
-            ppText.setText(`${padInt(pp, 2, "  ")}/${padInt(maxPP, 2, "  ")}`);
-          }
-
-          moveRowContainer.add(ppText);
-        }
+        this.populateMoveRows();
 
         this.moveDescriptionText = addTextObject(2, 84, "", TextStyle.WINDOW_ALT, { wordWrap: { width: 1212 } });
         this.movesContainer.add(this.moveDescriptionText);
@@ -1487,6 +1532,43 @@ export class SummaryUiHandler extends UiHandler {
       return i18next.t("pokemonSummary:noContestEffectData", { defaultValue: "No contest effect data." });
     }
     return getContestSpectacularEffect(contestMove.effectId).flavorText;
+  }
+
+  private populateMoveRows(): void {
+    this.moveRowsContainer.removeAll(true);
+    for (let m = 0; m < 4; m++) {
+      const move: PokemonMove | null =
+        this.pokemon && this.pokemon.moveset.length > m ? this.pokemon?.moveset[m] : null;
+      const moveRowContainer = globalScene.add.container(0, 16 * m);
+      this.moveRowsContainer.add(moveRowContainer);
+
+      if (move && this.pokemon) {
+        const typeIcon = globalScene.add.sprite(0, 0, getLocalizedSpriteKey("types"));
+        typeIcon.setOrigin(0, 1);
+        moveRowContainer.setData("moveTypeIcon", typeIcon);
+        this.updateMoveTypeIcon(typeIcon, move.getMove());
+        moveRowContainer.add(typeIcon);
+      }
+
+      const moveText = addTextObject(35, 0, move ? move.getName() : "-", TextStyle.SUMMARY);
+      moveText.setOrigin(0, 1);
+      moveRowContainer.add(moveText);
+
+      const ppOverlay = globalScene.add.image(177, -5, getLocalizedSpriteKey("summary_moves_overlay_pp")); // Pixel text 'PP'
+      ppOverlay.setOrigin(1, 0.5);
+      moveRowContainer.add(ppOverlay);
+
+      const ppText = addTextObject(178, 1, "--/--", TextStyle.WINDOW);
+      ppText.setOrigin(0, 1);
+
+      if (move) {
+        const maxPP = move.getMovePp();
+        const pp = maxPP - move.ppUsed;
+        ppText.setText(`${padInt(pp, 2, "  ")}/${padInt(maxPP, 2, "  ")}`);
+      }
+
+      moveRowContainer.add(ppText);
+    }
   }
 
   private refreshMoveTypeIcons(): void {

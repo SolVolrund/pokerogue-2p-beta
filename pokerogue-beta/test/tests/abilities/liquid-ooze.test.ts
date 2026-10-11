@@ -1,8 +1,8 @@
 import { AbilityId } from "#enums/ability-id";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";
-import { GameManager } from "#test/framework/game-manager";
 import { Pokemon } from "#field/pokemon";
+import { GameManager } from "#test/framework/game-manager";
 import Phaser from "phaser";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -64,6 +64,15 @@ describe("Ability - Liquid Ooze", () => {
     expect(game.field.getPlayerPokemon()).toHaveFullHp();
   });
 
-  // TODO: Write test
+  it("reverses a drain that knocks out the holder", async () => {
+    await game.classicMode.startBattle(SpeciesId.FEEBAS);
+    const target = game.field.getEnemyPokemon();
+    target.hp = 1;
+    game.move.use(MoveId.GIGA_DRAIN);
+    await game.toEndOfTurn();
+    expect(target).toHaveFainted();
+    expect(game.field.getPlayerPokemon()).not.toHaveFullHp();
+  });
+
   it.todo("should reverse drains from Leech Seed");
 });

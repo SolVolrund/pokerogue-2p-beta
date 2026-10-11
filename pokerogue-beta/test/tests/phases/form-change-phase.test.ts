@@ -1,9 +1,9 @@
-import { modifierTypes } from "#data/data-lists";
 import { AbilityId } from "#enums/ability-id";
+import { FormChangeItem } from "#enums/form-change-item";
 import { MoveId } from "#enums/move-id";
 import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
-import { generateModifierType } from "#mystery-encounters/encounter-phase-utils";
+import { FormChangeItemModifierType } from "#modifiers/modifier-type";
 import { GameManager } from "#test/framework/game-manager";
 import Phaser from "phaser";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -40,7 +40,7 @@ describe("Form Change Phase", () => {
     expect(zacian.calculateBaseStats()).toStrictEqual([92, 120, 115, 80, 115, 138]);
 
     // Give Zacian a Rusted Sword
-    const rustedSwordType = generateModifierType(modifierTypes.RARE_FORM_CHANGE_ITEM)!;
+    const rustedSwordType = new FormChangeItemModifierType(FormChangeItem.RUSTED_SWORD);
     const rustedSword = rustedSwordType.newModifier(zacian);
     await game.scene.addModifier(rustedSword);
 

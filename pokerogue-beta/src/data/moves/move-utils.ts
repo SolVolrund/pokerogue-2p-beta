@@ -2,7 +2,6 @@ import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { allMoves } from "#data/data-lists";
 import { BattlerIndex } from "#enums/battler-index";
-import { BattlerTagType } from "#enums/battler-tag-type";
 import { FieldPosition } from "#enums/field-position";
 import { MoveCategory, type MoveDamageCategory } from "#enums/move-category";
 import type { MoveId } from "#enums/move-id";
@@ -12,7 +11,7 @@ import { PokemonType } from "#enums/pokemon-type";
 import type { WeatherType } from "#enums/weather-type";
 import type { Pokemon } from "#field/pokemon";
 import { applyMoveAttrs } from "#moves/apply-attrs";
-import type { Move, UserMoveConditionFunc } from "#moves/move";
+import type { Move } from "#moves/move";
 import type { MoveTargetSet } from "#types/move-target-set";
 import { areBattlerIndexesAllies } from "#utils/battler-index-utils";
 import { areAllies } from "#utils/pokemon-utils";
@@ -479,15 +478,6 @@ function isPokePoachersVsPlayerPoacherPair(playerPokemon: Pokemon, poacherPokemo
   const poacherIds = idsByPlayer?.[playerIndex];
   return Array.isArray(poacherIds) && poacherIds.includes(poacherPokemon.id);
 }
-
-export const frenzyMissFunc: UserMoveConditionFunc = (user: Pokemon, move: Move) => {
-  while (user.getMoveQueue().length > 0 && user.getMoveQueue()[0].move === move.id) {
-    user.getMoveQueue().shift();
-  }
-  user.removeTag(BattlerTagType.FRENZY); // FRENZY tag should be disrupted on miss/no effect
-
-  return true;
-};
 
 /**
  * Determine the target for the `user`'s counter-attack move

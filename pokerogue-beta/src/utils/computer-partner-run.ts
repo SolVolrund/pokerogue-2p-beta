@@ -3,10 +3,12 @@ import { globalScene } from "#app/global-scene";
 import { Gender } from "#data/gender";
 import { allMoves } from "#data/data-lists";
 import { LearnMoveType } from "#enums/learn-move-type";
+import { ChallengeType } from "#enums/challenge-type";
+import { Challenges } from "#enums/challenges";
 import type { PlayerPokemon } from "#field/pokemon";
 import type { Starter } from "#types/save-data";
 import { chooseComputerPartnerMoveLearningDecision } from "#utils/computer-partner-move-ai";
-import { checkSpeciesValidForChallenge } from "#utils/challenge-utils";
+import { applyChallenges, checkSpeciesValidForChallenge } from "#utils/challenge-utils";
 import {
   type ComputerPartnerProfile,
   type ComputerPartnerStarter,
@@ -146,6 +148,9 @@ function createPartnerPokemon(
     pokemon.nickname = starter.nickname;
   }
   pokemon.teraType = starter.teraType ?? pokemon.species.type1;
+  if (globalScene.gameMode.hasChallenge(Challenges.MOVESET_RANDOMIZER)) {
+    applyChallenges(ChallengeType.STARTER_MODIFY, pokemon);
+  }
 
   // Catch up on missed level-up/evolution moves without opening learning prompts.
   const context = { profile, role: isAce ? ("ace" as const) : (profile.roles[partyIndex] ?? "balanced") };

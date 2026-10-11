@@ -2,6 +2,7 @@ import { globalScene } from "#app/global-scene";
 import { Button } from "#enums/buttons";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
+import { ScrollBar } from "#ui/scroll-bar";
 import { addBBCodeTextObject, getTextColor, getTextStyleOptions } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { addWindow } from "#ui/ui-theme";
@@ -43,9 +44,6 @@ export interface OptionSelectGridLayout {
   centerLastOption?: boolean;
 }
 
-const scrollUpLabel = "↑";
-const scrollDownLabel = "↓";
-
 export abstract class BaseOptionSelectUiHandler extends UiHandler {
   protected optionSelectContainer: Phaser.GameObjects.Container;
   protected optionSelectTextContainer: Phaser.GameObjects.Container;
@@ -63,6 +61,14 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
 
   protected scale = 0.1666666667;
 
+  private scrollBar: ScrollBar | undefined;
+
+  private get visibleRows(): number {
+    const availableHeight = globalScene.scaledCanvas.height - 48 + (this.config?.yOffset ?? 0) - 2;
+    const screenRows = Math.max(1, Math.floor(availableHeight / (96 * this.scale)) - 1);
+    return Math.max(1, Math.min(this.config?.options.length ?? 1, this.config?.maxOptions ?? screenRows, screenRows));
+  }
+
   private cursorObj: Phaser.GameObjects.Image | null;
   private optionSelectGridPositions = new Map<number, { x: number; y: number }>();
 
@@ -79,7 +85,7 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
       return (rowCount + 1) * 96 * this.scale;
     }
 
-    return (Math.min((this.config?.options || []).length, this.config?.maxOptions || 99) + 1) * 96 * this.scale;
+    return (this.visibleRows + 1) * 96 * this.scale;
   }
 
   public override setup(): void {
@@ -112,6 +118,8 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
 
     this.unskippedIndices = this.getUnskippedIndices(configOptions);
     this.optionSelectGridPositions.clear();
+    this.scrollBar?.destroy();
+    this.scrollBar = undefined;
 
     if (this.optionSelectText) {
       if (this.optionSelectText instanceof BBCodeText) {
@@ -141,10 +149,8 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
       return;
     }
 
-    const optionsWithScroll =
-      this.config?.options && this.config?.options.length > this.config?.maxOptions!
-        ? this.getOptionsWithScroll()
-        : options;
+    const optionsWithScroll = this.getOptionsWithScroll();
+    const hasItem = options.some(option => !!option.item);
 
     // Setting the initial text to establish the width of the select object. We consider all options, even ones that are not displayed,
     // Except in the case of autocomplete, where we don't want to set up a text element with potentially hundreds of lines.
@@ -154,7 +160,7 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
       0,
       optionsForWidth
         .map(o =>
-          o.item
+          hasItem
             ? `[shadow=${getTextColor(o.style ?? this.defaultTextStyle, true)}][color=${getTextColor(o.style ?? TextStyle.WINDOW, false)}]    ${o.label}[/color][/shadow]`
             : `[shadow=${getTextColor(o.style ?? this.defaultTextStyle, true)}][color=${getTextColor(o.style ?? TextStyle.WINDOW, false)}]${o.label}[/color][/shadow]`,
         )
@@ -169,7 +175,11 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
       globalScene.scaledCanvas.width - 1 - (this.config?.xOffset || 0),
       -48 + (this.config?.yOffset || 0),
     );
-    this.optionSelectBg.width = Math.max(this.optionSelectText.displayWidth + 24, this.getWindowWidth());
+    const isScrollable = options.length > this.visibleRows;
+    this.optionSelectBg.width = Math.max(
+      this.optionSelectText.displayWidth + 24 + (isScrollable ? 8 : 0),
+      this.getWindowWidth(),
+    );
     this.optionSelectBg.height = this.getWindowHeight();
     this.optionSelectTextContainer.setPosition(
       this.optionSelectBg.x - this.optionSelectBg.width + 12 + 24 * this.scale,
@@ -179,14 +189,27 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
     // Now that the container and background widths are established, we can set up the proper text restricted to visible options
     this.textContent = optionsWithScroll
       .map(o =>
-        o.item
+        hasItem
           ? `[shadow=${getTextColor(o.style ?? this.defaultTextStyle, true)}][color=${getTextColor(o.style ?? TextStyle.WINDOW, false)}]    ${o.label}[/color][/shadow]`
           : `[shadow=${getTextColor(o.style ?? this.defaultTextStyle, true)}][color=${getTextColor(o.style ?? TextStyle.WINDOW, false)}]${o.label}[/color][/shadow]`,
       )
       .join("\n");
     this.optionSelectText.setText(this.textContent);
 
-    options.forEach((option: OptionSelectItem, i: number) => {
+    if (isScrollable) {
+      this.scrollBar = new ScrollBar(
+        -10,
+        -this.optionSelectBg.height + 6,
+        4,
+        this.optionSelectBg.height - 12,
+        this.visibleRows,
+      );
+      this.optionSelectContainer.add(this.scrollBar);
+      this.scrollBar.setTotalRows(options.length);
+      this.scrollBar.setScrollCursor(this.scrollCursor);
+    }
+
+    optionsWithScroll.forEach((option: OptionSelectItem, i: number) => {
       if (option.item) {
         const itemIcon = globalScene.add.sprite(0, 0, "items", option.item);
         itemIcon.setScale(3 * this.scale);
@@ -224,7 +247,13 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
     const minColumnWidth = gridLayout.minColumnWidth ?? 20;
     const columnGap = gridLayout.columnGap ?? 8;
     const columnWidths = new Array(columnCount).fill(minColumnWidth);
-    const slotEntries: Array<{ optionIndex: number; option: OptionSelectItem; text: BBCodeText; column: number; row: number }> = [];
+    const slotEntries: Array<{
+      optionIndex: number;
+      option: OptionSelectItem;
+      text: BBCodeText;
+      column: number;
+      row: number;
+    }> = [];
 
     for (let optionIndex = 0; optionIndex < slotCount; optionIndex++) {
       const option = options[optionIndex];
@@ -330,6 +359,10 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
     super.show(args);
 
     this.config = args[0] as OptionSelectConfig;
+    this.scrollCursor = 0;
+    this.fullCursor = 0;
+    this.blockInput = false;
+    this.optionSelectTextContainer.setAlpha(1);
     this.setupOptions();
 
     globalScene.ui.bringToTop(this.optionSelectContainer);
@@ -337,7 +370,10 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
     this.optionSelectContainer.setVisible(true);
     this.scrollCursor = 0;
     this.fullCursor = 0;
-    const initialCursor = Math.max(0, Math.min(this.unskippedIndices.length - 1, Math.trunc(this.config.initialCursor ?? 0)));
+    const initialCursor = Math.max(
+      0,
+      Math.min(this.unskippedIndices.length - 1, Math.trunc(this.config.initialCursor ?? 0)),
+    );
     this.setCursor(initialCursor);
 
     if (this.config.delay) {
@@ -370,16 +406,13 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
 
       success = true;
       if (button === Button.CANCEL) {
-        if (this.config?.maxOptions && this.config.options.length > this.config.maxOptions) {
-          this.setCursor(this.unskippedIndices.length - 1);
-        } else if (this.config?.noCancel) {
+        if (this.config?.noCancel) {
           return false;
-        } else {
-          this.setCursor(this.unskippedIndices.length - 1);
         }
+        this.setCursor(this.unskippedIndices.length - 1);
       }
       const option = this.config?.options[this.unskippedIndices[this.fullCursor]];
-      if (option?.handler()) {
+      if (option && !option.disabled && !option.skip && option.handler()) {
         if (!option.keepOpen) {
           this.clear();
         }
@@ -420,7 +453,8 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
       case Button.UP:
         if (this.fullCursor === 0) {
           return this.setCursor(this.unskippedIndices.length - 1);
-        } else if (this.fullCursor) {
+        }
+        if (this.fullCursor) {
           return this.setCursor(this.fullCursor - 1);
         }
         break;
@@ -554,46 +588,14 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
   }
 
   public getOptionsWithScroll(): OptionSelectItem[] {
-    if (!this.config) {
-      return [];
-    }
+    return this.config?.options.slice(this.scrollCursor, this.scrollCursor + this.visibleRows) ?? [];
+  }
 
-    const options = this.config.options.slice(0);
-
-    if (!this.config.maxOptions || this.config.options.length < this.config.maxOptions) {
-      return options;
-    }
-
-    const optionsScrollTotal = options.length;
-    const optionStartIndex = this.scrollCursor;
-    const optionEndIndex = Math.min(
-      optionsScrollTotal,
-      optionStartIndex
-        + (!optionStartIndex || this.scrollCursor + (this.config.maxOptions - 1) >= optionsScrollTotal
-          ? this.config.maxOptions - 1
-          : this.config.maxOptions - 2),
-    );
-
-    if (this.config?.maxOptions && options.length > this.config.maxOptions) {
-      options.splice(optionEndIndex, optionsScrollTotal);
-      options.splice(0, optionStartIndex);
-      if (optionStartIndex) {
-        options.unshift({
-          label: scrollUpLabel,
-          handler: () => true,
-          style: this.defaultTextStyle,
-        });
-      }
-      if (optionEndIndex < optionsScrollTotal) {
-        options.push({
-          label: scrollDownLabel,
-          handler: () => true,
-          style: this.defaultTextStyle,
-        });
-      }
-    }
-
-    return options;
+  public getTwoPlayerInputContextState(): Record<string, unknown> {
+    return {
+      optionIndex: this.unskippedIndices[this.fullCursor] ?? null,
+      scrollCursor: this.scrollCursor,
+    };
   }
 
   private getUnskippedIndices(options: OptionSelectItem[]): number[] {
@@ -604,51 +606,23 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
   }
 
   public override setCursor(fullCursor: number): boolean {
+    this.unskippedIndices = this.getUnskippedIndices(this.config?.options ?? []);
+    fullCursor = Math.max(0, Math.min(fullCursor, this.unskippedIndices.length - 1));
     const changed = this.fullCursor !== fullCursor;
-
-    if (changed && this.config?.maxOptions && this.config.options.length > this.config.maxOptions) {
-      // If the fullCursor is the last possible value, we go to the bottom
-      if (fullCursor === this.unskippedIndices.length - 1) {
-        this.fullCursor = fullCursor;
-        this.cursor = this.config.maxOptions - (this.config.options.length - this.unskippedIndices[fullCursor]);
-        this.scrollCursor = this.config.options.length - this.config.maxOptions + 1;
-        // If the fullCursor is the first possible value, we go to the top
-      } else if (fullCursor === 0) {
-        this.fullCursor = fullCursor;
-        this.cursor = this.unskippedIndices[fullCursor];
-        this.scrollCursor = 0;
-      } else {
-        const isDown = fullCursor && fullCursor > this.fullCursor;
-
-        if (isDown) {
-          // If there are skipped options under the next selection, we show them
-          const jumpFromCurrent = this.unskippedIndices[fullCursor] - this.unskippedIndices[this.fullCursor];
-          const skipsFromNext = this.unskippedIndices[fullCursor + 1] - this.unskippedIndices[fullCursor] - 1;
-
-          if (this.cursor + jumpFromCurrent + skipsFromNext >= this.config.maxOptions - 1) {
-            this.fullCursor = fullCursor;
-            this.cursor = this.config.maxOptions - 2 - skipsFromNext;
-            this.scrollCursor = this.unskippedIndices[this.fullCursor] - this.cursor + 1;
-          } else {
-            this.fullCursor = fullCursor;
-            this.cursor = this.unskippedIndices[fullCursor] - this.scrollCursor + (this.scrollCursor ? 1 : 0);
-          }
-        } else {
-          const jumpFromPrevious = this.unskippedIndices[fullCursor] - this.unskippedIndices[fullCursor - 1];
-
-          if (this.cursor - jumpFromPrevious < 1) {
-            this.fullCursor = fullCursor;
-            this.cursor = 1;
-            this.scrollCursor = this.unskippedIndices[this.fullCursor] - this.cursor + 1;
-          } else {
-            this.fullCursor = fullCursor;
-            this.cursor = this.unskippedIndices[fullCursor] - this.scrollCursor + (this.scrollCursor ? 1 : 0);
-          }
-        }
-      }
+    this.fullCursor = fullCursor;
+    const optionIndex = this.unskippedIndices[fullCursor] ?? 0;
+    if (this.config?.gridLayout) {
+      this.scrollCursor = 0;
+      this.cursor = optionIndex;
     } else {
-      this.fullCursor = fullCursor;
-      this.cursor = this.unskippedIndices[fullCursor];
+      const maxScroll = Math.max(0, (this.config?.options.length ?? 0) - this.visibleRows);
+      this.scrollCursor = Math.max(0, Math.min(this.scrollCursor, maxScroll));
+      if (optionIndex < this.scrollCursor) {
+        this.scrollCursor = optionIndex;
+      } else if (optionIndex >= this.scrollCursor + this.visibleRows) {
+        this.scrollCursor = optionIndex - this.visibleRows + 1;
+      }
+      this.cursor = optionIndex - this.scrollCursor;
     }
 
     this.setupOptions();
@@ -658,6 +632,7 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
       this.optionSelectContainer.add(this.cursorObj);
     }
 
+    this.cursorObj.setVisible(this.unskippedIndices.length > 0);
     this.cursorObj.setScale(this.scale * 6);
     if (this.config?.gridLayout) {
       const position = this.optionSelectGridPositions.get(this.unskippedIndices[this.fullCursor]);

@@ -1,3 +1,4 @@
+import { EVOLVE_MOVE, RELEARN_MOVE } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
@@ -11,6 +12,7 @@ import {
   getStarterValueFriendshipCap,
   getValueReductionCandyCounts,
 } from "#balance/starters";
+import { getTmNumber, tmPoolTiers } from "#balance/tm-pool-tiers";
 import { allAbilities, allMoves, catchableSpecies } from "#data/data-lists";
 import { Egg } from "#data/egg";
 import { GrowthRate, getGrowthRateColor } from "#data/exp";
@@ -20,13 +22,14 @@ import type { SpeciesFormChange } from "#data/pokemon-forms";
 import type { PokemonSpecies } from "#data/pokemon-species";
 import { normalForm } from "#data/pokemon-species";
 import { AbilityAttr } from "#enums/ability-attr";
-import type { AbilityId } from "#enums/ability-id";
+import { AbilityId } from "#enums/ability-id";
 import { BiomeId } from "#enums/biome-id";
 import { BiomePoolTier } from "#enums/biome-pool-tier";
 import { Button } from "#enums/buttons";
 import { Device } from "#enums/devices";
 import { DexAttr } from "#enums/dex-attr";
 import { EggSourceType } from "#enums/egg-source-types";
+import { ModifierTier } from "#enums/modifier-tier";
 import type { MoveId } from "#enums/move-id";
 import type { Nature } from "#enums/nature";
 import { getPassiveAttrs, isPassiveUnlocked } from "#enums/passive";
@@ -275,8 +278,8 @@ export class PokedexPageUiHandler extends MessageUiHandler {
   private ability1: AbilityId; // TODO: add `| undefined`?
   private ability2: AbilityId | undefined;
   private abilityHidden: AbilityId | undefined;
-  private passive: AbilityId;
-  private hasPassive: boolean;
+  private passives: AbilityId[];
+  private hasPassives: boolean[];
   private hasAbilities: [ability1: number, ability2: number, hiddenAbility: number];
   private biomes: readonly BiomeTierTimeOfDay[] = [];
   private baseStats: number[];
@@ -865,11 +868,11 @@ export class PokedexPageUiHandler extends MessageUiHandler {
 
     this.tmMoves = species.getTms(formKey).sort((a, b) => (allMoves[a].name > allMoves[b].name ? 1 : -1));
 
-    this.passive = speciesDataRegistry.getPassive(species.speciesId, this.formIndex);
+    this.passives = speciesDataRegistry.getPassiveOptions(species.speciesId, this.formIndex);
 
     const starterData = globalScene.gameData.starterData[this.starterId];
     const abilityAttr = starterData.abilityAttr;
-    this.hasPassive = isPassiveUnlocked(starterData.passiveAttr, 0);
+    this.hasPassives = this.passives.map((_, index) => isPassiveUnlocked(starterData.passiveAttr, index));
 
     const hasAbility1 = abilityAttr & AbilityAttr.ABILITY_1;
     const hasAbility2 = abilityAttr & AbilityAttr.ABILITY_2;
@@ -1243,19 +1246,20 @@ export class PokedexPageUiHandler extends MessageUiHandler {
                       const levelNumber = m[0] > 0 ? String(m[0]) : "";
                       const option: OptionSelectItem = {
                         label: levelNumber.padStart(3, "\u2007") + " " + allMoves[m[1]].name,
+                        ...(m[0] === EVOLVE_MOVE || m[0] === RELEARN_MOVE ? { item: "big_mushroom" } : {}),
                         handler: () => {
                           return false;
                         },
                         onHover: () => {
                           this.moveInfoOverlay.show(allMoves[m[1]]);
                           if (m[0] === 0) {
-                            this.showText(i18next.t("pokedexUiHandler:onlyEvolutionMove"));
+                            this.showText(i18next.t("pokedexUiHandler:onlyEvolutionMove"), 0);
                           } else if (m[0] === -1) {
-                            this.showText(i18next.t("pokedexUiHandler:onlyRecallMove"));
+                            this.showText(i18next.t("pokedexUiHandler:onlyRecallMove"), 0);
                           } else if (m[0] <= 5) {
-                            this.showText(i18next.t("pokedexUiHandler:onStarterSelectMove"));
+                            this.showText(i18next.t("pokedexUiHandler:onStarterSelectMove"), 0);
                           } else {
-                            this.showText(i18next.t("pokedexUiHandler:byLevelUpMove"));
+                            this.showText(i18next.t("pokedexUiHandler:byLevelUpMove"), 0);
                           }
                         },
                       };
@@ -1375,11 +1379,23 @@ export class PokedexPageUiHandler extends MessageUiHandler {
                     .map(m => {
                       const option: OptionSelectItem = {
                         label: allMoves[m].name,
+                        item: `tm_${PokemonType[allMoves[m].type].toLowerCase()}`,
                         handler: () => {
                           return false;
                         },
                         onHover: () => {
                           this.moveInfoOverlay.show(allMoves[m]);
+                          const number = getTmNumber(m);
+                          const tier = tmPoolTiers[m];
+                          this.showText(
+                            number !== null && tier !== undefined
+                              ? i18next.t("pokedexUiHandler:tmMove", {
+                                  number,
+                                  tier: i18next.t(`modifier:tier.${ModifierTier[tier].toLowerCase()}`),
+                                })
+                              : i18next.t("pokedexUiHandler:showTmMoves"),
+                            0,
+                          );
                         },
                       };
                       return option;
@@ -1458,7 +1474,7 @@ export class PokedexPageUiHandler extends MessageUiHandler {
                   });
                 }
 
-                if (this.passive) {
+                if (this.passives.some(passive => passive !== AbilityId.NONE)) {
                   options.push({
                     label: i18next.t("pokedexUiHandler:passive"),
                     skip: true,
@@ -1466,12 +1482,17 @@ export class PokedexPageUiHandler extends MessageUiHandler {
                     handler: () => false,
                     onHover: () => this.infoOverlay.clear(),
                   });
-                  const ability = allAbilities.at(this.passive) ?? { name: "", description: "" };
-                  options.push({
-                    label: ability.name,
-                    style: this.hasPassive ? TextStyle.SETTINGS_VALUE : TextStyle.SHADOW_TEXT,
-                    handler: () => false,
-                    onHover: () => this.infoOverlay.show(ability.description),
+                  this.passives.forEach((passive, index) => {
+                    if (passive === AbilityId.NONE) {
+                      return;
+                    }
+                    const ability = allAbilities.at(passive) ?? { name: "", description: "" };
+                    options.push({
+                      label: ability.name,
+                      style: this.hasPassives[index] ? TextStyle.SETTINGS_VALUE : TextStyle.SHADOW_TEXT,
+                      handler: () => false,
+                      onHover: () => this.infoOverlay.show(ability.description),
+                    });
                   });
                 }
 

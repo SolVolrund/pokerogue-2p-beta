@@ -77,6 +77,9 @@ export class EvolutionPhase extends Phase {
     return globalScene.ui.setModeForceTransition(UiMode.EVOLUTION_SCENE);
   }
 
+  /** Runs after the scene transition, before preview sprites are configured. */
+  protected onBeforeSpriteSetup(): void {}
+
   /**
    * Set up the following evolution assets
    * - {@linkcode evolutionContainer}
@@ -208,6 +211,7 @@ export class EvolutionPhase extends Phase {
     if (!this.validate()) {
       return this.end();
     }
+    this.onBeforeSpriteSetup();
     this.setupEvolutionAssets();
     this.setupPokemonSprites();
     this.preEvolvedPokemonName = getPokemonNameWithAffix(this.pokemon);

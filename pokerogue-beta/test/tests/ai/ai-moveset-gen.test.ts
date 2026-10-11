@@ -3,14 +3,18 @@ import { speciesDataRegistry } from "#app/global-species-data-registry";
 import {
   COMMON_TIER_TM_LEVEL_REQUIREMENT,
   GREAT_TIER_TM_LEVEL_REQUIREMENT,
+  PRIORITY_STAB_LEVEL_CUTOFF,
   ULTRA_TIER_TM_LEVEL_REQUIREMENT,
 } from "#balance/moves/moveset-generation";
 import { allMoves } from "#data/data-lists";
 import { LearnableMoveSource } from "#enums/learnable-move-source";
+import { MoveCategory } from "#enums/move-category";
 import { MoveId } from "#enums/move-id";
+import { MoveTarget } from "#enums/move-target";
 import { SpeciesId } from "#enums/species-id";
 import { TrainerSlot } from "#enums/trainer-slot";
 import { EnemyPokemon } from "#field/pokemon";
+import { PokemonMove } from "#moves/pokemon-move";
 import { GameManager } from "#test/framework/game-manager";
 import { NumberHolder } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
@@ -277,6 +281,126 @@ describe("Regression Tests - ai-moveset-gen.ts", () => {
   });
 
   describe("generateMoveset", () => {
+    it("includes two direct attacks when available despite heavily weighted status moves", () => {
+      pokemon = createTestablePokemon(SpeciesId.EEVEE, { level: 50 });
+      for (let attempt = 0; attempt < 20; attempt++) {
+        pokemon.moveset = [new PokemonMove(MoveId.TACKLE)];
+        const weights = new Map([
+          [MoveId.QUICK_ATTACK, 1],
+          [MoveId.GROWL, 100000],
+          [MoveId.TAIL_WHIP, 100000],
+          [MoveId.SAND_ATTACK, 100000],
+        ]);
+        __INTERNAL_TEST_EXPORTS.fillInRemainingMovesetSlots(
+          pokemon,
+          new Map(),
+          new Map(),
+          new NumberHolder(0),
+          new NumberHolder(0),
+          weights,
+        );
+        expect(pokemon.moveset).toHaveLength(4);
+        expect(pokemon.moveset[1].moveId).toBe(MoveId.QUICK_ATTACK);
+      }
+    });
+
+    it("does not count Counter as one of the two direct attacks", () => {
+      pokemon = createTestablePokemon(SpeciesId.EEVEE, { level: 50 });
+      pokemon.moveset = [new PokemonMove(MoveId.COUNTER)];
+      __INTERNAL_TEST_EXPORTS.fillInRemainingMovesetSlots(
+        pokemon,
+        new Map(),
+        new Map(),
+        new NumberHolder(0),
+        new NumberHolder(0),
+        new Map([
+          [MoveId.TACKLE, 1],
+          [MoveId.QUICK_ATTACK, 1],
+          [MoveId.GROWL, 100000],
+          [MoveId.SPLASH, 100000],
+        ]),
+      );
+      expect(
+        pokemon.moveset
+          .slice(1, 3)
+          .every(m => m.getMove().category !== MoveCategory.STATUS && m.getMove().moveTarget !== MoveTarget.ATTACKER),
+      ).toBe(true);
+    });
+
+    it("allows status moves if no more direct attacks can be learned", () => {
+      pokemon = createTestablePokemon(SpeciesId.MAGIKARP, { level: 5 });
+      pokemon.moveset = [new PokemonMove(MoveId.TACKLE)];
+      const weights = new Map([
+        [MoveId.SPLASH, 1],
+        [MoveId.TACKLE, 1],
+      ]);
+      __INTERNAL_TEST_EXPORTS.fillInRemainingMovesetSlots(
+        pokemon,
+        new Map(),
+        new Map(),
+        new NumberHolder(0),
+        new NumberHolder(0),
+        weights,
+      );
+      expect(pokemon.moveset.map(m => m.moveId)).toEqual([MoveId.TACKLE, MoveId.SPLASH]);
+      expect(weights.size).toBe(0);
+    });
+
+    it("removes exhausted TM and egg choices without exceeding their caps", () => {
+      pokemon = createTestablePokemon(SpeciesId.EEVEE, { level: 5 });
+      pokemon.moveset = [new PokemonMove(MoveId.TACKLE)];
+      const weights = new Map([
+        [MoveId.SURF, 1],
+        [MoveId.EXTREME_SPEED, 1],
+        [MoveId.GROWL, 1],
+      ]);
+      __INTERNAL_TEST_EXPORTS.fillInRemainingMovesetSlots(
+        pokemon,
+        new Map([[MoveId.SURF, 1]]),
+        new Map([[MoveId.EXTREME_SPEED, 1]]),
+        new NumberHolder(0),
+        new NumberHolder(0),
+        weights,
+      );
+      expect(pokemon.moveset.map(m => m.moveId)).toEqual([MoveId.TACKLE, MoveId.GROWL]);
+      expect(weights.size).toBe(0);
+    });
+
+    it.each([
+      PRIORITY_STAB_LEVEL_CUTOFF,
+      PRIORITY_STAB_LEVEL_CUTOFF + 1,
+    ])("applies the priority STAB cutoff at level %i", level => {
+      pokemon = createTestablePokemon(SpeciesId.EEVEE, { level });
+      pokemon.moveset = [];
+      __INTERNAL_TEST_EXPORTS.forceStabMove(
+        new Map([[MoveId.QUICK_ATTACK, 1]]),
+        new Map(),
+        new Map(),
+        pokemon,
+        new NumberHolder(0),
+        new NumberHolder(0),
+      );
+      expect(pokemon.moveset.length).toBe(level <= PRIORITY_STAB_LEVEL_CUTOFF ? 1 : 0);
+    });
+
+    it("does not penalize a priority move for sharing the main attack's type", () => {
+      pokemon = createTestablePokemon(SpeciesId.EEVEE, { level: 50 });
+      pokemon.moveset = [new PokemonMove(MoveId.TACKLE)];
+      const pool: [MoveId, number][] = [
+        [MoveId.QUICK_ATTACK, 100],
+        [MoveId.BODY_SLAM, 100],
+      ];
+      __INTERNAL_TEST_EXPORTS.filterRemainingTrainerMovePool(pool, pokemon);
+      expect(pool).toEqual([
+        [MoveId.QUICK_ATTACK, 200],
+        [MoveId.BODY_SLAM, 10],
+      ]);
+      pokemon.moveset.push(new PokemonMove(MoveId.EXTREME_SPEED));
+      const overlap: [MoveId, number][] = [[MoveId.QUICK_ATTACK, 100]];
+      __INTERNAL_TEST_EXPORTS.filterRemainingTrainerMovePool(overlap, pokemon);
+      expect(overlap[0][1]).toBe(10);
+    });
+
     it("should spawn with 4 moves if possible", async () => {
       // Create a pokemon that can learn at least 4 moves
       pokemon = createTestablePokemon(SpeciesId.ROCKRUFF, { level: 15 });

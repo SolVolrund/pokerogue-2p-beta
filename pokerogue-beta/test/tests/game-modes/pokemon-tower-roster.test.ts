@@ -6,6 +6,7 @@ import { SeasonalEncounterState } from "#data/seasonal-encounters";
 import { BattleType } from "#enums/battle-type";
 import { BiomeId } from "#enums/biome-id";
 import { BiomePoolTier } from "#enums/biome-pool-tier";
+import { EvoLevelThresholdKind } from "#enums/evo-level-threshold-kind";
 import { GameModes } from "#enums/game-modes";
 import { PartyMemberStrength } from "#enums/party-member-strength";
 import { SpeciesId } from "#enums/species-id";
@@ -97,7 +98,7 @@ describe("Pokemon Tower encounter roster", () => {
       expect(config.getSpriteKey()).toBe(TOWER_GHOST_SPRITE);
       expect(config.partyTemplates[0].size).toBe(entry.party.length);
       entry.party.forEach((member, slot) => {
-        const pokemon = config.partyMemberFuncs[slot](100, PartyMemberStrength.AVERAGE);
+        const pokemon = config.partyMemberFuncs[slot](100, PartyMemberStrength.AVERAGE, EvoLevelThresholdKind.NORMAL);
         if (member.nickname) expect(pokemon.getNameToRender()).toBe(member.nickname);
         if (member.fixed) expect(pokemon.species.speciesId).toBe(member.species);
         expect(pokemon.formIndex).toBe(member.formIndex ?? 0);

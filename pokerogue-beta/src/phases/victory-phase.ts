@@ -101,18 +101,12 @@ export class VictoryPhase extends PokemonPhase {
           globalScene.phaseManager.pushNew("EnemyPlayerTokenRewardPhase");
         }
         if (gameMode.isClassic) {
-          switch (currentWaveIndex) {
-            case ClassicFixedBossWaves.RIVAL_1:
-            case ClassicFixedBossWaves.RIVAL_2:
-              // Get event modifiers for this wave
-              timedEventManager
-                .getFixedBattleEventRewards(currentWaveIndex)
-                .forEach(r => this.pushModifierReward(modifierTypes[r]));
-              break;
-            case ClassicFixedBossWaves.EVIL_BOSS_2:
-              // Should get Lock Capsule on 165 before shop phase so it can be used in the rewards shop
-              this.pushModifierReward(modifierTypes.LOCK_CAPSULE);
-              break;
+          if (currentWaveIndex === ClassicFixedBossWaves.EVIL_BOSS_2) {
+            // Award the Lock Capsule before the shop so it can be used immediately.
+            this.pushModifierReward(modifierTypes.LOCK_CAPSULE);
+          }
+          for (const reward of timedEventManager.getFixedBattleEventRewards(currentWaveIndex)) {
+            this.pushModifierReward(modifierTypes[reward], true);
           }
         }
         if (currentWaveIndex % 10) {
@@ -201,15 +195,15 @@ export class VictoryPhase extends PokemonPhase {
     this.end();
   }
 
-  private pushModifierReward(modifierTypeFunc: ModifierTypeFunc): void {
+  private pushModifierReward(modifierTypeFunc: ModifierTypeFunc, substituteFullStack = false): void {
     if (globalScene.twoPlayerMode) {
       globalScene.getActivePlayerIndexes().forEach(playerIndex => {
-        globalScene.phaseManager.pushNew("ModifierRewardPhase", modifierTypeFunc, playerIndex);
+        globalScene.phaseManager.pushNew("ModifierRewardPhase", modifierTypeFunc, playerIndex, substituteFullStack);
       });
       return;
     }
 
-    globalScene.phaseManager.pushNew("ModifierRewardPhase", modifierTypeFunc);
+    globalScene.phaseManager.pushNew("ModifierRewardPhase", modifierTypeFunc, undefined, substituteFullStack);
   }
 
   private shouldQueueEnemyPlayerTokenReward(waveIndex: number): boolean {

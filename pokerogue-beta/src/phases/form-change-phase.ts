@@ -35,6 +35,10 @@ export class FormChangePhase extends EvolutionPhase {
     return !!this.formChange;
   }
 
+  protected override onBeforeSpriteSetup(): void {
+    this.pokemon.resetTeraOnMajorFormChange(this.formChange.formKey);
+  }
+
   setMode(): Promise<void> {
     if (!this.modal) {
       return super.setMode();

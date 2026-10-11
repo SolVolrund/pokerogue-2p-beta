@@ -2,6 +2,7 @@ import type { Ability } from "#abilities/ability";
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
+import { Challenges } from "#enums/challenges";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { allAbilities } from "#data/data-lists";
 import { getNatureName, getNatureStatMultiplier } from "#data/nature";
@@ -718,6 +719,7 @@ export const TrainingSessionEncounter: MysteryEncounter = MysteryEncounterBuilde
   MysteryEncounterType.TRAINING_SESSION,
 )
   .withEncounterTier(MysteryEncounterTier.ULTRA)
+  .withDisallowedChallenges(Challenges.ABILITY_RANDOMIZER)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withSceneRequirement(new TrainingSessionSpawnRequirement())
   .withFleeAllowed(false)

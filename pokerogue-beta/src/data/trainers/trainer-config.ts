@@ -1024,15 +1024,15 @@ export function getRandomPartyMemberFunc(
   trainerSlot: TrainerSlot = TrainerSlot.TRAINER,
   ignoreEvolution = false,
   postProcess?: (enemyPokemon: EnemyPokemon) => void,
-): (level: number, strength: PartyMemberStrength) => EnemyPokemon {
-  return (level: number, strength: PartyMemberStrength) => {
+): PartyMemberFunc {
+  return (level, strength, evoThresholdKind) => {
     let species: SpeciesId | readonly SpeciesId[] | typeof speciesPool = speciesPool;
     do {
       species = randSeedItem(species);
     } while (typeof species !== "number");
 
     if (!ignoreEvolution) {
-      species = getPokemonSpecies(species).getTrainerSpeciesForLevel(level, true, strength);
+      species = getPokemonSpecies(species).getTrainerSpeciesForLevel(level, true, strength, evoThresholdKind);
     }
 
     return globalScene.addEnemyPokemon(
@@ -1117,13 +1117,12 @@ function getSpeciesFilterRandomPartyMemberFunc(
     return (allowLegendaries || notLegendary) && !species.isTrainerForbidden() && originalSpeciesFilter(species);
   };
 
-  return (level: number, strength: PartyMemberStrength) => {
+  return (level, strength, evoThresholdKind) => {
     const waveIndex = globalScene.currentBattle.waveIndex;
     const species = getPokemonSpecies(
       globalScene
         .randomSpecies(waveIndex, level, false, speciesFilter)
-        // TODO: What EvoLevelThresholdKind to use here?
-        .getTrainerSpeciesForLevel(level, true, strength),
+        .getTrainerSpeciesForLevel(level, true, strength, evoThresholdKind),
     );
 
     return globalScene.addEnemyPokemon(species, level, trainerSlot, undefined, false, undefined, postProcess);
@@ -2225,6 +2224,7 @@ export const trainerConfigs: TrainerConfigs = {
         SpeciesId.DITTO,
         SpeciesId.PORYGON,
         SpeciesId.ELEKID,
+        SpeciesId.ROTOM,
         SpeciesId.SOLOSIS,
         SpeciesId.GALAR_WEEZING,
       ],
@@ -2238,12 +2238,14 @@ export const trainerConfigs: TrainerConfigs = {
         SpeciesId.SHIELDON,
         SpeciesId.TIRTOUGA,
         SpeciesId.ARCHEN,
+        SpeciesId.TYRUNT,
+        SpeciesId.AMAURA,
         SpeciesId.ARCTOVISH,
         SpeciesId.ARCTOZOLT,
         SpeciesId.DRACOVISH,
         SpeciesId.DRACOZOLT,
       ],
-      [TrainerPoolTier.ULTRA_RARE]: [SpeciesId.ROTOM, SpeciesId.MELTAN],
+      [TrainerPoolTier.ULTRA_RARE]: [SpeciesId.MELTAN],
     }),
   [TrainerType.SCUBA_DIVER]: new TrainerConfig(++t)
     .setHasGenders("Free Diver")

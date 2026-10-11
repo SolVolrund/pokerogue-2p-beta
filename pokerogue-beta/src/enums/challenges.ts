@@ -13,6 +13,8 @@ export enum Challenges {
   SINGLE_TYPE_P1,
   SINGLE_TYPE_P2,
   SINGLE_TYPE_P3,
+  MOVESET_RANDOMIZER,
+  ABILITY_RANDOMIZER,
 }
 
 export function isSingleTypeChallenge(id: Challenges): boolean {

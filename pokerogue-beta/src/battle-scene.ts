@@ -101,6 +101,7 @@ import { TimeOfDay } from "#enums/time-of-day";
 import type { TrainerSlot } from "#enums/trainer-slot";
 import { TrainerType } from "#enums/trainer-type";
 import { TrainerVariant } from "#enums/trainer-variant";
+import { TypeHints } from "#enums/type-hints";
 import { UiMode } from "#enums/ui-mode";
 import { UiTheme } from "#enums/ui-theme";
 import { NewArenaEvent } from "#events/battle-scene";
@@ -618,6 +619,7 @@ export class BattleScene extends SceneBase {
   public moveAnimations = true;
   public expGainsSpeed: ExpGainsSpeed = ExpGainsSpeed.DEFAULT;
   public skipSeenDialogues = false;
+  public manualMessageClear = false;
   /**
    * Determines if the egg hatching animation should be skipped
    * - 0 = Never (never skip animation)
@@ -640,12 +642,8 @@ export class BattleScene extends SceneBase {
   public battleStyle: BattleStyle = BattleStyle.SWITCH;
   public plannerAiEnabled = false;
   public twoPlayerInputLockoutMs = 100;
-  /**
-   * Defines whether or not to show type effectiveness hints
-   * - true: Show hints for moves
-   * - false: No hints
-   */
-  public typeHints = false;
+  /** Defines whether and how to show type effectiveness hints. */
+  public typeHints: TypeHints = TypeHints.OFF;
 
   public preferBatonPass = true;
 

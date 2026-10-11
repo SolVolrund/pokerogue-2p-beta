@@ -5,6 +5,7 @@ import type { InputSeat, PlayerIndex, TwoPlayerDebugStateCheckpoint } from "#app
 import { isDev } from "#constants/app-constants";
 import { onlineSaveSession } from "#utils/online-save-session";
 import { Button } from "#enums/buttons";
+import { GameChallengesUiHandler } from "#ui/handlers/challenges-select-ui-handler";
 import { UiMode } from "#enums/ui-mode";
 import { Setting, SettingKeys, settingIndex } from "#system/settings";
 import {
@@ -980,6 +981,7 @@ export class UiInputs {
 
   buttonCycleOption(button: Button): void {
     const whitelist = [
+      GameChallengesUiHandler,
       StarterSelectUiHandler,
       PokedexUiHandler,
       PokedexPageUiHandler,

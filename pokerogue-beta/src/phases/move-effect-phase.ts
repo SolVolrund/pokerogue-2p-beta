@@ -19,7 +19,7 @@ import { MoveFlags } from "#enums/move-flags";
 import { MoveId } from "#enums/move-id";
 import { MoveResult } from "#enums/move-result";
 import { MoveTarget } from "#enums/move-target";
-import { isReflected, MoveUseMode } from "#enums/move-use-mode";
+import { isDancerCopiable, isReflected, MoveUseMode } from "#enums/move-use-mode";
 import { PokemonType } from "#enums/pokemon-type";
 import type { Pokemon } from "#field/pokemon";
 import {
@@ -602,6 +602,11 @@ export class MoveEffectPhase extends PokemonPhase {
       (attr: MoveAttr) =>
         attr.is("MoveEffectAttr")
         && attr.trigger === triggerType
+        && !(
+          this.useMode === MoveUseMode.INDIRECT
+          && attr.is("AddBattlerTagAttr")
+          && attr.tagType === BattlerTagType.FRENZY
+        )
         && (selfTarget == null || attr.selfTarget === selfTarget)
         && (!attr.firstHitOnly || this.firstHit)
         && (!attr.lastHitOnly || this.lastHit)
@@ -974,7 +979,25 @@ export class MoveEffectPhase extends PokemonPhase {
     this.getTargets().forEach(target => {
       target.turnData.moveEffectiveness = null;
     });
+    this.queueDancerResponses();
     super.end();
+  }
+
+  private queueDancerResponses(): void {
+    if (
+      !isDancerCopiable(this.useMode)
+      || !this.move.hasFlag(MoveFlags.DANCE_MOVE)
+      || !this.hitChecks.some(([result]) => result === HitCheckResult.HIT)
+    ) {
+      return;
+    }
+    const source = this.getUserPokemon();
+    for (const pokemon of globalScene.getField(true)) {
+      const params = { pokemon, source, move: this.move, targets: this.targets.slice() };
+      if (pokemon.getAbilityAttrs("PostMoveUsedAbAttr").some(attr => attr.canApply(params))) {
+        globalScene.phaseManager.unshiftNew("DancerPhase", params);
+      }
+    }
   }
 
   // #region Helpers

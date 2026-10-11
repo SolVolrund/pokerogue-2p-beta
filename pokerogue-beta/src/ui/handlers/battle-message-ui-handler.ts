@@ -5,6 +5,7 @@ import { getStatKey, PERMANENT_STATS } from "#enums/stat";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import { MessageUiHandler } from "#ui/message-ui-handler";
+import { getModifierIconTexture } from "#ui/modifier-icon";
 import { addBBCodeTextObject, addTextObject, getTextColor } from "#ui/text";
 import { addWindow } from "#ui/ui-theme";
 import i18next from "i18next";
@@ -341,7 +342,7 @@ export class BattleMessageUiHandler extends MessageUiHandler {
     this.nameExtraText.setVisible(false);
 
     if (iconFrame) {
-      this.nameIcon.setTexture("items", iconFrame);
+      this.nameIcon.setTexture(...getModifierIconTexture(iconFrame));
       this.nameIcon.setVisible(true);
       this.nameIcon.setScale(0.5);
       this.nameText.x = this.nameIcon.x + this.nameIcon.displayWidth + 4;

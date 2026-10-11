@@ -2,8 +2,10 @@ import type { FixedBattleConfig } from "#app/battle";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
+import type { SpeciesFormEvolution } from "#balance/pokemon-evolutions";
 import { type Challenge, SingleTypeChallenge } from "#data/challenge";
-import type { PokemonSpecies } from "#data/pokemon-species";
+import type { PokemonSpecies, PokemonSpeciesForm } from "#data/pokemon-species";
+import type { AbilityId } from "#enums/ability-id";
 import { ChallengeType } from "#enums/challenge-type";
 import { Challenges } from "#enums/challenges";
 import type { MoveId } from "#enums/move-id";
@@ -12,8 +14,11 @@ import type { PokemonType } from "#enums/pokemon-type";
 import type { SpeciesId } from "#enums/species-id";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
 import type { ModifierTypeOption } from "#modifiers/modifier-type";
+import { RibbonData, type RibbonFlag } from "#system/ribbons/ribbon-data";
 import type { DexEntry } from "#types/dex-data";
+import type { LevelMoves } from "#types/pokemon-species";
 import type { DexAttrProps, StarterDataEntry } from "#types/save-data";
+import type { ValueHolder } from "#utils/value-holder";
 import { BooleanHolder, type NumberHolder } from "./common";
 import { getComputerPartnerProfile } from "./computer-partner-profile";
 import { getPokemonSpecies } from "./pokemon-utils";
@@ -275,13 +280,58 @@ export function applyChallenges(
  */
 export function applyChallenges(challengeType: ChallengeType.PREVENT_REVIVE, status: BooleanHolder): boolean;
 
+export function applyChallenges(
+  challengeType: ChallengeType.MOVESET_MODIFY | ChallengeType.ME_MOVESET_MODIFY,
+  pokemon: Pokemon,
+): boolean;
+export function applyChallenges(
+  challengeType: ChallengeType.LEVEL_UP_MOVESET,
+  species: PokemonSpeciesForm,
+  moves: LevelMoves,
+): boolean;
+export function applyChallenges(
+  challengeType: ChallengeType.PLAYER_TM_COMPATIBILITY,
+  pokemon: PlayerPokemon,
+  tms: Set<MoveId>,
+): boolean;
+export function applyChallenges(
+  challengeType: ChallengeType.ENEMY_TM_COMPATIBILITY,
+  species: PokemonSpecies,
+  tms: MoveId[],
+): boolean;
+export function applyChallenges(
+  challengeType: ChallengeType.AI_MOVE_GENERATION_EGG_POOL,
+  speciesId: SpeciesId,
+  pool: Map<MoveId, number>,
+): boolean;
+export function applyChallenges(
+  challengeType: ChallengeType.AI_MOVE_GENERATION_SUPERCEDED_MAP,
+  moves: Partial<Record<MoveId, MoveId[]>>,
+): boolean;
+export function applyChallenges(
+  challengeType: ChallengeType.MODIFY_EVOLUTIONS,
+  pokemon: Pokemon,
+  evos: SpeciesFormEvolution[],
+): boolean;
+export function applyChallenges(
+  challengeType: ChallengeType.EGG_MOVE_RELEARN_AVAILABILITY,
+  pokemon: Pokemon,
+  available: ValueHolder<boolean>,
+): boolean;
+export function applyChallenges(
+  challengeType: ChallengeType.SPECIES_ABILITY_MODIFY | ChallengeType.PASSIVE_ABILITY_MODIFY,
+  speciesId: SpeciesId,
+  ability: ValueHolder<AbilityId>,
+): boolean;
+
 export function applyChallenges(challengeType: ChallengeType, ...args: any[]): boolean {
   let ret = false;
-  const playerIndex: PlayerIndex = challengeType === ChallengeType.POKEMON_IN_BATTLE
-    ? globalScene.getPlayerIndexForPokemon(args[0]) ?? globalScene.activePlayerIndex
-    : challengeType === ChallengeType.STARTER_CHOICE || challengeType === ChallengeType.STARTER_SELECT_MODIFY
-      ? args[3] ?? globalScene.activePlayerIndex
-      : globalScene.activePlayerIndex;
+  const playerIndex: PlayerIndex =
+    challengeType === ChallengeType.POKEMON_IN_BATTLE
+      ? (globalScene.getPlayerIndexForPokemon(args[0]) ?? globalScene.activePlayerIndex)
+      : challengeType === ChallengeType.STARTER_CHOICE || challengeType === ChallengeType.STARTER_SELECT_MODIFY
+        ? (args[3] ?? globalScene.activePlayerIndex)
+        : globalScene.activePlayerIndex;
   getChallengesForPlayer(playerIndex, true).forEach(c => {
     if (c.value !== 0) {
       switch (challengeType) {
@@ -292,13 +342,13 @@ export function applyChallenges(challengeType: ChallengeType, ...args: any[]): b
           ret ||= c.applyStarterPoints(args[0]);
           break;
         case ChallengeType.STARTER_COST:
-          ret ||= c.applyStarterCost(args[0], args[1]);
+          ret = c.applyStarterCost(args[0], args[1]) || ret;
           break;
         case ChallengeType.STARTER_SELECT_MODIFY:
-          ret ||= c.applyStarterSelectModify(args[0], args[1], args[2]);
+          ret = c.applyStarterSelectModify(args[0], args[1], args[2]) || ret;
           break;
         case ChallengeType.STARTER_MODIFY:
-          ret ||= c.applyStarterModify(args[0]);
+          ret = c.applyStarterModify(args[0]) || ret;
           break;
         case ChallengeType.POKEMON_IN_BATTLE:
           ret ||= c.applyPokemonInBattle(args[0], args[1]);
@@ -354,10 +404,82 @@ export function applyChallenges(challengeType: ChallengeType, ...args: any[]): b
         case ChallengeType.PREVENT_REVIVE:
           ret ||= c.applyPreventRevive(args[0]);
           break;
+        case ChallengeType.MOVESET_MODIFY:
+          ret = c.applyMovesetModify(args[0]) || ret;
+          break;
+        case ChallengeType.LEVEL_UP_MOVESET:
+          ret = c.applyLevelUpMoveset(args[0], args[1]) || ret;
+          break;
+        case ChallengeType.PLAYER_TM_COMPATIBILITY:
+          ret = c.applyPlayerTMCompatibility(args[0], args[1]) || ret;
+          break;
+        case ChallengeType.ENEMY_TM_COMPATIBILITY:
+          ret = c.applyEnemyTMCompatibility(args[0], args[1]) || ret;
+          break;
+        case ChallengeType.AI_MOVE_GENERATION_EGG_POOL:
+          ret = c.applyAIMoveGenerationEggPool(args[0], args[1]) || ret;
+          break;
+        case ChallengeType.AI_MOVE_GENERATION_SUPERCEDED_MAP:
+          ret = c.applyAIMoveGenerationSupercededMap(args[0]) || ret;
+          break;
+        case ChallengeType.MODIFY_EVOLUTIONS:
+          ret = c.applyModifyEvolutions(args[0], args[1]) || ret;
+          break;
+        case ChallengeType.ME_MOVESET_MODIFY:
+          ret = c.applyMysteryEncounterMovesetModify(args[0]) || ret;
+          break;
+        case ChallengeType.EGG_MOVE_RELEARN_AVAILABILITY:
+          ret = c.applyEggMoveRelearnAvailability(args[0], args[1]) || ret;
+          break;
+        case ChallengeType.SPECIES_ABILITY_MODIFY:
+          ret = c.applySpeciesAbilityModify(args[0], args[1]) || ret;
+          break;
+        case ChallengeType.PASSIVE_ABILITY_MODIFY:
+          ret = c.applyPassiveAbilityModify(args[0], args[1]) || ret;
+          break;
       }
     }
   });
   return ret;
+}
+
+export function hasRandomizerChallenge(): boolean {
+  return (
+    globalScene.gameMode.hasChallenge(Challenges.MOVESET_RANDOMIZER)
+    || globalScene.gameMode.hasChallenge(Challenges.ABILITY_RANDOMIZER)
+  );
+}
+
+export function getRibbonsToAward(playerIndex: PlayerIndex = globalScene.activePlayerIndex): RibbonFlag {
+  if (hasRandomizerChallenge()) {
+    return 0n as RibbonFlag;
+  }
+  let ribbonFlags = 0n;
+  for (const challenge of getChallengesForPlayer(playerIndex)) {
+    const ribbon = challenge.ribbonAwarded;
+    if (challenge.value && ribbon) {
+      ribbonFlags |= ribbon;
+    }
+  }
+
+  // TODO: find a better way to handle blocking ribbons and achievements
+  // Block other ribbons if flip stats or inverse is active
+  const flip_or_inverse = ribbonFlags & (RibbonData.FLIP_STATS | RibbonData.INVERSE);
+  // Block other ribbons if passives on `all` is active
+  const passives = ribbonFlags & RibbonData.PASSIVE_CHALLENGE;
+  if (flip_or_inverse) {
+    ribbonFlags = flip_or_inverse;
+  } else if (globalScene.gameMode.challenges.some(c => c.id === Challenges.PASSIVES && c.value === 2)) {
+    ribbonFlags = passives;
+  } else {
+    if (globalScene.gameMode.isClassic) {
+      ribbonFlags |= RibbonData.CLASSIC;
+    }
+    if (isNuzlockeChallenge()) {
+      ribbonFlags |= RibbonData.NUZLOCKE;
+    }
+  }
+  return ribbonFlags as RibbonFlag;
 }
 
 export function createMonotypeRestriction(type: PokemonType): SingleTypeChallenge {
@@ -460,7 +582,9 @@ export function checkSpeciesValidForChallenge(
       if (f1.formKey === f2.formKey) {
         const formProps = { ...props, formIndex };
         const isFormValidForChallenge = new BooleanHolder(true);
-        challenges.filter(c => c.value !== 0).forEach(c => c.applyStarterChoice(species, isFormValidForChallenge, formProps));
+        challenges
+          .filter(c => c.value !== 0)
+          .forEach(c => c.applyStarterChoice(species, isFormValidForChallenge, formProps));
         return isFormValidForChallenge.value;
       }
       return false;

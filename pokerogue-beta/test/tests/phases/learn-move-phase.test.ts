@@ -18,7 +18,8 @@ describe("Learn Move Phase", () => {
 
   beforeEach(() => {
     game = new GameManager(phaserGame);
-    game.override.xpMultiplier(50);
+    // A second KO can advance past the learning prompt before the test starts waiting for it.
+    game.override.battleStyle("single").xpMultiplier(50);
   });
 
   it("If Pokemon has less than 4 moves, its newest move will be added to the lowest empty index", async () => {

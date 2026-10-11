@@ -3415,8 +3415,11 @@ export class GameData {
    */
   getSpeciesStarterValue(speciesId: SpeciesId, valueReduction?: number): number {
     const baseValue = speciesDataRegistry.getStarterCost(speciesId);
-    const reduction = valueReduction ?? this.starterData[speciesId].valueReduction;
-    let value = baseValue as number;
+    const reduction = globalScene.gameMode.isFreshStartChallenge()
+      ? 0
+      : valueReduction ?? this.starterData[speciesId].valueReduction;
+    const cost = new NumberHolder<number>(baseValue);
+    applyChallenges(ChallengeType.STARTER_COST, speciesId, cost);
 
     const decrementValue = (v: number) => {
       if (v > 1) {
@@ -3428,11 +3431,8 @@ export class GameData {
     };
 
     for (let v = 0; v < reduction; v++) {
-      value = decrementValue(value);
+      cost.value = decrementValue(cost.value);
     }
-
-    const cost = new NumberHolder(value);
-    applyChallenges(ChallengeType.STARTER_COST, speciesId, cost);
 
     return cost.value;
   }

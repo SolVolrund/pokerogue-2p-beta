@@ -61,7 +61,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.THWACKEY, level: 16 })],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.PICKPOCKET,
+    passives: [AbilityId.PICKPOCKET, AbilityId.RATTLED],
     levelMoves: [
       [1, MoveId.SCRATCH],
       [1, MoveId.GROWL],
@@ -1569,6 +1569,8 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       MoveId.PLAY_ROUGH,
       MoveId.LASH_OUT,
       MoveId.TERA_BLAST,
+      MoveId.NIGHT_SLASH,
+      MoveId.FIRST_IMPRESSION,
     ],
   };
   generationEightSpeciesData[SpeciesId.THIEVUL] = {
@@ -1634,6 +1636,9 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       MoveId.GRASS_KNOT,
       MoveId.ACROBATICS,
       MoveId.BURNING_JEALOUSY,
+      MoveId.DOUBLE_TEAM,
+      MoveId.ROAR,
+      MoveId.TRAILBLAZE,
     ],
   };
   generationEightSpeciesData[SpeciesId.GOSSIFLEUR] = {
@@ -1742,7 +1747,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.GOSSIFLEUR,
     evolutions: [],
-    passives: AbilityId.GRASSY_SURGE,
+    passives: AbilityId.SEED_SOWER,
     levelMoves: [
       [EVOLVE_MOVE, MoveId.COTTON_SPORE],
       [1, MoveId.SING],
@@ -3406,6 +3411,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       MoveId.FLIP_TURN,
       MoveId.TERA_BLAST,
       MoveId.CHILLING_WATER,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationEightSpeciesData[SpeciesId.BARRASKEWDA] = {
@@ -4033,12 +4039,11 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       [5, MoveId.FEINT],
       [10, MoveId.BIND],
       [14, MoveId.DETECT],
-      [17, MoveId.BULLET_PUNCH],
+      [17, MoveId.MACH_PUNCH],
       [20, MoveId.BRICK_BREAK],
-      [22, MoveId.MACH_PUNCH],
       [25, MoveId.BULK_UP],
       [29, MoveId.SUBMISSION],
-      [32, MoveId.KNOCK_OFF],
+      [32, MoveId.STORM_THROW],
       [35, MoveId.TAUNT],
       [40, MoveId.REVERSAL],
       [45, MoveId.SUPERPOWER],
@@ -4078,10 +4083,12 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       MoveId.ROUND,
       MoveId.RETALIATE,
       MoveId.WORK_UP,
+      MoveId.DUAL_CHOP,
       MoveId.POWER_UP_PUNCH,
       MoveId.LIQUIDATION,
       MoveId.COACHING,
       MoveId.TERA_BLAST,
+      MoveId.CHILLING_WATER,
     ],
   };
   generationEightSpeciesData[SpeciesId.GRAPPLOCT] = {
@@ -4121,12 +4128,11 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       [5, MoveId.FEINT],
       [10, MoveId.BIND],
       [14, MoveId.DETECT],
-      [17, MoveId.BULLET_PUNCH],
+      [17, MoveId.MACH_PUNCH],
       [20, MoveId.BRICK_BREAK],
-      [22, MoveId.MACH_PUNCH],
       [25, MoveId.BULK_UP],
       [29, MoveId.SUBMISSION],
-      [32, MoveId.KNOCK_OFF],
+      [32, MoveId.STORM_THROW],
       [35, MoveId.TAUNT],
       [40, MoveId.REVERSAL],
       [45, MoveId.SUPERPOWER],
@@ -4245,8 +4251,8 @@ export function initGenerationEight(): SpeciesDataMapConfig {
     ],
     eggTier: EggTier.COMMON,
     passives: {
-      0: AbilityId.SHADOW_SHIELD,
-      1: AbilityId.SHADOW_SHIELD,
+      0: AbilityId.WATER_ABSORB,
+      1: AbilityId.STURDY,
     },
     levelMoves: [
       [1, MoveId.ABSORB],
@@ -4388,8 +4394,8 @@ export function initGenerationEight(): SpeciesDataMapConfig {
     starter: SpeciesId.SINISTEA,
     evolutions: [],
     passives: {
-      0: AbilityId.SHADOW_SHIELD,
-      1: AbilityId.SHADOW_SHIELD,
+      0: AbilityId.WATER_ABSORB,
+      1: AbilityId.STURDY,
     },
     levelMoves: [
       [EVOLVE_MOVE, MoveId.TEATIME],
@@ -5138,7 +5144,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       [14, MoveId.PAY_DAY],
       [17, MoveId.FURY_SWIPES],
       [20, MoveId.SCREECH],
-      [22, MoveId.FEINT_ATTACK],
+      [22, MoveId.BITE],
       [25, MoveId.TAUNT],
       [27, MoveId.MIMIC],
       [31, MoveId.METAL_BURST],
@@ -5223,6 +5229,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       MoveId.ROUND,
       MoveId.RETALIATE,
       MoveId.WORK_UP,
+      MoveId.DUAL_CHOP,
       MoveId.PLAY_ROUGH,
       MoveId.THROAT_CHOP,
       MoveId.STEEL_BEAM,
@@ -5230,6 +5237,8 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       MoveId.TERA_BLAST,
       MoveId.TRAILBLAZE,
       MoveId.CHILLING_WATER,
+      MoveId.SPIKES,
+      MoveId.THUNDER_WAVE,
     ],
   };
   generationEightSpeciesData[SpeciesId.CURSOLA] = {
@@ -5392,7 +5401,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       [21, MoveId.DETECT],
       [25, MoveId.SWORDS_DANCE],
       [27, MoveId.DEFOG],
-      [31, MoveId.AGILITY],
+      [31, MoveId.FEATHER_DANCE],
       [37, MoveId.BRICK_BREAK],
       [43, MoveId.SLAM],
       [45, MoveId.FALSE_SWIPE],
@@ -5446,6 +5455,9 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       MoveId.COACHING,
       MoveId.DUAL_WINGBEAT,
       MoveId.TERA_BLAST,
+      MoveId.AERIAL_ACE,
+      MoveId.FEATHER_DANCE,
+      MoveId.FIRST_IMPRESSION,
     ],
   };
   generationEightSpeciesData[SpeciesId.MR_RIME] = {
@@ -7064,10 +7076,9 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       [15, MoveId.PSYBEAM],
       [20, MoveId.HELPING_HAND],
       [22, MoveId.DRAINING_KISS],
-      [28, MoveId.TRI_ATTACK],
       [30, MoveId.AROMATHERAPY],
       [35, MoveId.PSYCHIC],
-      [38, MoveId.MOONLIGHT],
+      [38, MoveId.WISH],
       [40, MoveId.CALM_MIND],
       [50, MoveId.PSYCHIC_TERRAIN],
       [55, MoveId.HEALING_WISH],
@@ -7076,12 +7087,14 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       male: [
         [5, MoveId.ENCORE],
         [25, MoveId.AFTER_YOU],
+        [28, MoveId.TRI_ATTACK],
         [45, MoveId.POWER_SPLIT],
         [60, MoveId.LAST_RESORT],
       ],
       female: [
         [5, MoveId.BATON_PASS],
         [25, MoveId.FOLLOW_ME],
+        [28, MoveId.SING],
         [45, MoveId.GUARD_SPLIT],
       ],
     },
@@ -8130,6 +8143,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       MoveId.STEEL_ROLLER,
       MoveId.TERA_BLAST,
       MoveId.DRAGON_CHEER,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationEightSpeciesData[SpeciesId.DREEPY] = {
@@ -8431,7 +8445,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
     eggTier: EggTier.LEGENDARY,
     passives: {
       0: [AbilityId.UNNERVE, AbilityId.LONG_REACH],
-      1: AbilityId.UNNERVE,
+      1: [AbilityId.UNNERVE, AbilityId.LONG_REACH],
     },
     levelMoves: [
       [RELEARN_MOVE, MoveId.NOBLE_ROAR],
@@ -8606,20 +8620,21 @@ export function initGenerationEight(): SpeciesDataMapConfig {
     eggTier: EggTier.LEGENDARY,
     passives: {
       0: [AbilityId.UNNERVE, AbilityId.BATTLE_ARMOR],
-      1: AbilityId.UNNERVE,
+      1: [AbilityId.UNNERVE, AbilityId.PRISM_ARMOR],
     },
     levelMoves: [
       [RELEARN_MOVE, MoveId.LASER_FOCUS],
+      [RELEARN_MOVE, MoveId.METAL_BURST],
       [1, MoveId.BITE],
       [1, MoveId.QUICK_ATTACK],
       [1, MoveId.METAL_CLAW],
-      [1, MoveId.ROCK_SMASH],
+      [1, MoveId.DOUBLE_KICK],
       [1, MoveId.WIDE_GUARD],
       [8, MoveId.HOWL],
       [11, MoveId.SLASH],
       [22, MoveId.IRON_DEFENSE],
       [33, MoveId.IRON_HEAD],
-      [44, MoveId.METAL_BURST],
+      [44, MoveId.BRICK_BREAK],
       [55, MoveId.CRUNCH],
       [66, MoveId.MOONBLAST],
       [77, MoveId.CLOSE_COMBAT],
@@ -8919,7 +8934,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       }),
     ],
     eggTier: EggTier.EPIC,
-    passives: AbilityId.IRON_FIST,
+    passives: [AbilityId.IRON_FIST, AbilityId.SUPER_LUCK],
     levelMoves: [
       [1, MoveId.LEER],
       [1, MoveId.ROCK_SMASH],
@@ -9127,17 +9142,16 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       }),
     ],
     passives: {
-      0: AbilityId.IRON_FIST,
-      1: AbilityId.IRON_FIST,
-      2: AbilityId.IRON_FIST,
-      3: AbilityId.IRON_FIST,
+      0: [AbilityId.IRON_FIST, AbilityId.MOLD_BREAKER],
+      1: [AbilityId.IRON_FIST, AbilityId.LONG_REACH],
+      2: [AbilityId.IRON_FIST, AbilityId.MOLD_BREAKER],
+      3: [AbilityId.IRON_FIST, AbilityId.LONG_REACH],
     },
     levelMoves: [
       [1, MoveId.LEER],
       [1, MoveId.FOCUS_ENERGY],
       [1, MoveId.ENDURE],
       [1, MoveId.ROCK_SMASH],
-      [1, MoveId.SUCKER_PUNCH],
       [12, MoveId.AERIAL_ACE],
       [16, MoveId.SCARY_FACE],
       [20, MoveId.HEADBUTT],
@@ -10140,7 +10154,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.STANTLER,
     evolutions: [],
-    passives: [AbilityId.SPEED_BOOST, AbilityId.NO_GUARD],
+    passives: [AbilityId.SPEED_BOOST, AbilityId.CUD_CHEW],
     levelMoves: [
       [1, MoveId.TACKLE],
       [3, MoveId.LEER],
@@ -10262,13 +10276,12 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       [1, MoveId.LEER],
       [1, MoveId.LICK],
       [1, MoveId.FAKE_TEARS],
-      [1, MoveId.COVET],
       [8, MoveId.FURY_SWIPES],
       [13, MoveId.PAYBACK],
-      [15, MoveId.FEINT_ATTACK],
-      [18, MoveId.SWEET_SCENT],
-      [22, MoveId.SLASH],
-      [25, MoveId.PLAY_NICE],
+      [15, MoveId.COVET],
+      [18, MoveId.FEINT_ATTACK],
+      [22, MoveId.SWEET_SCENT],
+      [25, MoveId.SLASH],
       [29, MoveId.PLAY_ROUGH],
       [35, MoveId.SCARY_FACE],
       [41, MoveId.REST],
@@ -10854,7 +10867,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       [14, MoveId.PAY_DAY],
       [17, MoveId.FURY_SWIPES],
       [20, MoveId.SCREECH],
-      [22, MoveId.FEINT_ATTACK],
+      [22, MoveId.BITE],
       [25, MoveId.TAUNT],
       [27, MoveId.MIMIC],
       [30, MoveId.CAPTIVATE],
@@ -10940,6 +10953,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       MoveId.LASH_OUT,
       MoveId.TERA_BLAST,
       MoveId.TRAILBLAZE,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationEightSpeciesData[SpeciesId.GALAR_PONYTA] = {
@@ -11372,7 +11386,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       [21, MoveId.DETECT],
       [25, MoveId.SWORDS_DANCE],
       [27, MoveId.DEFOG],
-      [31, MoveId.AGILITY],
+      [31, MoveId.FEATHER_DANCE],
       [37, MoveId.BRICK_BREAK],
       [43, MoveId.SLAM],
       [45, MoveId.FALSE_SWIPE],
@@ -11419,6 +11433,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       MoveId.BRUTAL_SWING,
       MoveId.DUAL_WINGBEAT,
       MoveId.TERA_BLAST,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationEightSpeciesData[SpeciesId.GALAR_WEEZING] = {
@@ -12293,6 +12308,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       MoveId.THROAT_CHOP,
       MoveId.STOMPING_TANTRUM,
       MoveId.BODY_PRESS,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationEightSpeciesData[SpeciesId.GALAR_DARUMAKA] = {
@@ -12683,7 +12699,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
     starterCost: 2,
     evolutions: [],
     eggTier: EggTier.RARE,
-    passives: [AbilityId.ARENA_TRAP, AbilityId.IRON_BARBS],
+    passives: [AbilityId.ARENA_TRAP, AbilityId.EARTH_EATER],
     levelMoves: [
       [1, MoveId.TACKLE],
       [1, MoveId.WATER_GUN],
@@ -13048,6 +13064,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       MoveId.ELECTRO_BALL,
       MoveId.FOUL_PLAY,
       MoveId.VOLT_SWITCH,
+      MoveId.ELECTROWEB,
       MoveId.WILD_CHARGE,
       MoveId.GRASSY_TERRAIN,
       MoveId.ELECTRIC_TERRAIN,
@@ -13419,13 +13436,13 @@ export function initGenerationEight(): SpeciesDataMapConfig {
       MoveId.SLUDGE_WAVE,
       MoveId.LOW_SWEEP,
       MoveId.ACID_SPRAY,
-      MoveId.ELECTROWEB,
       MoveId.WILD_CHARGE,
       MoveId.THROAT_CHOP,
       MoveId.LASH_OUT,
       MoveId.COACHING,
       MoveId.TERA_BLAST,
       MoveId.TRAILBLAZE,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationEightSpeciesData[SpeciesId.HISUI_SAMUROTT] = {
@@ -13926,7 +13943,7 @@ export function initGenerationEight(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.RUFFLET,
     evolutions: [],
-    passives: AbilityId.SPEED_BOOST,
+    passives: [AbilityId.SPEED_BOOST, AbilityId.ADAPTABILITY],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.ESPER_WING],
       [1, MoveId.LEER],

@@ -198,7 +198,11 @@ export class ChallengeAchv extends Achv {
     score: number,
     challengeFunc: (challenge: Challenge) => boolean,
   ) {
-    super(localizationKey, description, iconImage, score, (args: any[]) => challengeFunc(args[0] as Challenge));
+    super(localizationKey, description, iconImage, score, (args: any[]) =>
+      !globalScene.gameMode.hasChallenge(Challenges.MOVESET_RANDOMIZER)
+      && !globalScene.gameMode.hasChallenge(Challenges.ABILITY_RANDOMIZER)
+      && challengeFunc(args[0] as Challenge),
+    );
   }
 }
 

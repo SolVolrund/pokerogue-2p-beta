@@ -17,6 +17,7 @@ export class MockContainer implements MockGameObject {
   public list: MockGameObject[] = [];
   public name: string;
   public active = true;
+  private readonly data = new Map<string, unknown>();
 
   constructor(textureManager: MockTextureManager, x: number, y: number) {
     this.x = x;
@@ -27,6 +28,15 @@ export class MockContainer implements MockGameObject {
   setVisible(visible: boolean): this {
     this.visible = visible;
     return this;
+  }
+
+  setData(key: string, value: unknown): this {
+    this.data.set(key, value);
+    return this;
+  }
+
+  getData(key: string): unknown {
+    return this.data.get(key);
   }
 
   once(_event, _callback, _source): this {
@@ -50,6 +60,8 @@ export class MockContainer implements MockGameObject {
   addedToScene() {
     // This callback is invoked when this Game Object is added to a Scene.
   }
+
+  update(): void {}
 
   setSize(_width: number, _height: number): this {
     // Sets the size of this Game Object.

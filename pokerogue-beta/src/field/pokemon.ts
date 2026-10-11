@@ -15,8 +15,7 @@ import { activeOverrides } from "#app/overrides";
 import type { AnySound } from "#audio/audio-manager";
 import { speciesEggMoves } from "#balance/moves/egg-moves";
 import type { FORCED_RIVAL_SIGNATURE_MOVES } from "#balance/moves/signature-moves";
-import type { SpeciesFormEvolution } from "#balance/pokemon-evolutions";
-import { FusionSpeciesFormEvolution, validateShedinjaEvo } from "#balance/pokemon-evolutions";
+import { FusionSpeciesFormEvolution, SpeciesFormEvolution, validateShedinjaEvo } from "#balance/pokemon-evolutions";
 import { BASE_HIDDEN_ABILITY_RATE, BASE_SHINY_CHANCE, SHINY_EPIC_CHANCE, SHINY_VARIANT_CHANCE } from "#balance/rates";
 import { getStarterValueFriendshipCap, TRAINER_MAX_FRIENDSHIP_WAVE, TRAINER_MIN_FRIENDSHIP } from "#balance/starters";
 import { normalizeAceType } from "#data/ace-type";
@@ -2680,7 +2679,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   public getLearnableLevelMoves(): [number | null, MoveId, LearnableMoveSource][] {
     let learnableMoves: [number | null, MoveId, LearnableMoveSource][] = [];
     learnableMoves = this.getLevelMoves(1, true, true, true);
-    if (this.metBiome === -1 && !globalScene.gameMode.isFreshStartChallenge() && !globalScene.gameMode.isDaily) {
+    const allowEggMoves = new BooleanHolder(true);
+    applyChallenges(ChallengeType.EGG_MOVE_RELEARN_AVAILABILITY, this, allowEggMoves);
+    if (this.metBiome === -1 && allowEggMoves.value && !globalScene.gameMode.isDaily) {
       const eggMoves: [number | null, MoveId, LearnableMoveSource][] = this.getUnlockedEggMoves().map(em => [
         null,
         em,
@@ -2946,6 +2947,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * @returns The passive {@linkcode Ability} of the pokemon
    */
   public getPassiveAbility(): Ability {
+    if (this.summonData.passiveAbility) {
+      return allAbilities[this.summonData.passiveAbility];
+    }
     if (activeOverrides.PASSIVE_ABILITY_OVERRIDE && this.isPlayer()) {
       return allAbilities[activeOverrides.PASSIVE_ABILITY_OVERRIDE];
     }
@@ -3198,7 +3202,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       weightRemoved = 100 * autotomizedTag.autotomizeCount;
     }
     const minWeight = 0.1;
-    const weight = new NumberHolder(this.species.weight - weightRemoved);
+    const formWeight = this.species.forms[this.formIndex]?.weight ?? this.species.weight;
+    const weight = new NumberHolder(formWeight - weightRemoved);
 
     // This will trigger the ability overlay so only call this function when necessary
     applyAbAttrs("WeightMultiplierAbAttr", { pokemon: this, weight });
@@ -3363,6 +3368,29 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     }
 
     return moveTypeHolder.value as PokemonType;
+  }
+
+  /** Get an ordinary move's item-spawn type, ignoring temporary ability suppression. */
+  public getMoveTypeForItemSpawn(move: Move): PokemonType[] {
+    if (move.hasAttr("VariableMoveTypeAttr") || move.hasAttr("CallMoveAttr")) {
+      return [move.type];
+    }
+
+    const wasGeneratingMoveset = globalScene.movesetGenInProgress;
+    globalScene.movesetGenInProgress = true;
+    try {
+      const moveType = new NumberHolder(move.type);
+      applyAbAttrs("MoveTypeChangeAbAttr", {
+        pokemon: this,
+        move,
+        simulated: true,
+        moveType,
+        opponent: this,
+      });
+      return [moveType.value as PokemonType];
+    } finally {
+      globalScene.movesetGenInProgress = wasGeneratingMoveset;
+    }
   }
 
   public isLegendPlateJudgmentType(move: Move, moveType: PokemonType): boolean {
@@ -3692,7 +3720,10 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       return null;
     }
     if (speciesDataRegistry.hasEvolutions(this.species.speciesId)) {
-      const evolutions = speciesDataRegistry.getEvolutions(this.species.speciesId);
+      const evolutions = speciesDataRegistry.getEvolutions(this.species.speciesId).map(e =>
+        new SpeciesFormEvolution({ ...e, item: e.item!, evoDelay: e.evoLevelThreshold, condition: e.condition?.data.map(c => ({ ...c })) }),
+      );
+      applyChallenges(ChallengeType.MODIFY_EVOLUTIONS, this, evolutions);
       for (const e of evolutions) {
         if (e.validate(this)) {
           return e;
@@ -3704,6 +3735,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       const fusionEvolutions = speciesDataRegistry
         .getEvolutions(this.fusionSpecies.speciesId)
         .map(e => new FusionSpeciesFormEvolution(this.species.speciesId, e));
+      applyChallenges(ChallengeType.MODIFY_EVOLUTIONS, this, fusionEvolutions);
       for (const fe of fusionEvolutions) {
         if (fe.validate(this, true)) {
           return fe;
@@ -4772,6 +4804,16 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       globalScene.applyModifiersForPokemon(PokemonMultiHitModifier, source, source, move.id, null, multiLensMultiplier);
       fixedDamage.value = toDmgValue(fixedDamage.value * multiLensMultiplier.value);
 
+      if (this.isFullHp() && !ignoreAbility) {
+        applyAbAttrs("PreDefendFullHpEndureAbAttr", {
+          pokemon: this,
+          opponent: source,
+          move,
+          simulated,
+          damage: fixedDamage,
+        });
+      }
+
       return {
         cancelled: false,
         result: HitResult.EFFECTIVE,
@@ -5135,7 +5177,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   /**
    * @returns Whether this Pokémon is in a Dynamax or Gigantamax form
    */
-  public isMax(): boolean {
+  public isMax(formKey = this.getFormKey()): boolean {
     const maxForms = [
       SpeciesFormKey.GIGANTAMAX,
       SpeciesFormKey.GIGANTAMAX_RAPID,
@@ -5143,14 +5185,14 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       SpeciesFormKey.ETERNAMAX,
     ] as string[];
     return (
-      maxForms.includes(this.getFormKey()) || (!!this.getFusionFormKey() && maxForms.includes(this.getFusionFormKey()!))
+      maxForms.includes(formKey) || (!!this.getFusionFormKey() && maxForms.includes(this.getFusionFormKey()!))
     );
   }
 
   /**
    * @returns Whether this Pokémon is in a Mega or Primal form
    */
-  public isMega(): boolean {
+  public isMega(formKey = this.getFormKey()): boolean {
     const megaForms = [
       SpeciesFormKey.MEGA,
       SpeciesFormKey.MEGA_X,
@@ -5163,7 +5205,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       SpeciesFormKey.PRIMAL,
     ] as string[];
     return (
-      megaForms.includes(this.getFormKey())
+      megaForms.includes(formKey)
       || (!!this.getFusionFormKey() && megaForms.includes(this.getFusionFormKey()!))
     );
   }
@@ -5614,6 +5656,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     } else {
       this.formIndex = formIndex;
     }
+    this.resetTeraOnMajorFormChange();
     if (!isFusionFormChange && isCosplayPikachuSpeciesForm(this.species, this.formIndex)) {
       this.gender = Gender.FEMALE;
     }
@@ -6380,6 +6423,13 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     this.tempSummonData.waveTurnCount = 1;
   }
 
+  /** Major transformations cannot retain an earlier Terastallization. */
+  public resetTeraOnMajorFormChange(formKey?: string): void {
+    if (this.isTerastallized && (this.isMega(formKey) || this.isMax(formKey))) {
+      this.resetTera();
+    }
+  }
+
   /**
    * Reset this Pokémon's Terastallization state
    *
@@ -7108,7 +7158,7 @@ export class PlayerPokemon extends Pokemon {
    * Get all TMs compatible with this Pokémon. Includes TMs from its fused species.
    * @returns An array of all compatible TMs
    */
-  getCompatibleTms(excludeKnown = false, excludeLevelUp = false): MoveId[] {
+  getCompatibleTms(excludeKnown = false, excludeLevelUp = false, excludeUsedTMs = false): MoveId[] {
     if (this.isBioInstabilityEevee()) {
       return [];
     }
@@ -7116,11 +7166,15 @@ export class PlayerPokemon extends Pokemon {
     if (this.fusionSpecies) {
       this.fusionSpecies.getTms(this.getFusionFormKey() ?? undefined).forEach(tm => tms.add(tm));
     }
+    applyChallenges(ChallengeType.PLAYER_TM_COMPATIBILITY, this, tms);
     if (excludeKnown) {
       this.moveset.forEach(move => tms.delete(move.moveId));
     }
     if (excludeLevelUp) {
       this.getLevelMoves(undefined, true, false, true).forEach(lm => tms.delete(lm[1]));
+    }
+    if (excludeUsedTMs) {
+      this.usedTMs?.forEach(moveId => tms.delete(moveId));
     }
 
     return Array.from(tms);
@@ -7333,6 +7387,7 @@ export class PlayerPokemon extends Pokemon {
           this.formIndex = formIndex;
         }
       }
+      this.resetTeraOnMajorFormChange();
       this.generateName();
       if (isFusion) {
         const abilityCount = this.getFusionSpeciesForm().getAbilityCount();
@@ -7479,6 +7534,7 @@ export class PlayerPokemon extends Pokemon {
       } else {
         this.formIndex = formIndex;
       }
+      this.resetTeraOnMajorFormChange();
       if (!isFusionFormChange && isCosplayPikachuSpeciesForm(this.species, this.formIndex)) {
         this.gender = Gender.FEMALE;
       }
@@ -7848,6 +7904,11 @@ export class EnemyPokemon extends Pokemon {
   }
 
   override generateAndPopulateMoveset(useRivalSignatures = false, formIndex?: number): void {
+    if (globalScene.gameMode.hasChallenge(Challenges.MOVESET_RANDOMIZER)) {
+      super.generateAndPopulateMoveset(false);
+      applyChallenges(ChallengeType.MOVESET_MODIFY, this);
+      return;
+    }
     switch (true) {
       case this.species.speciesId === SpeciesId.SMEARGLE:
         this.moveset = [

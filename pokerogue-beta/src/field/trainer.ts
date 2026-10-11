@@ -1,5 +1,6 @@
 import { withRivalRollContext } from "#app/ai/rival-team-gen";
 import { globalScene } from "#app/global-scene";
+import { Challenges } from "#enums/challenges";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { signatureSpecies } from "#balance/signature-species";
 import { assignAceEvSpread } from "#data/ace-evs";
@@ -16,7 +17,7 @@ import { TrainerVariant } from "#enums/trainer-variant";
 import type { EnemyPokemon } from "#field/pokemon";
 import type { PersistentModifier } from "#modifiers/modifier";
 import { TrainerAceEvCategory, trainerConfigs, type TrainerConfig } from "#trainers/trainer-config";
-import { TrainerPartyCompoundTemplate, type TrainerPartyTemplate } from "#trainers/trainer-party-template";
+import { TrainerPartyCompoundTemplate, TrainerPartyTemplate } from "#trainers/trainer-party-template";
 import { getRandomTwoPlayerTrainerPartners } from "#trainers/two-player-trainer-partners";
 import { randSeedInt, randSeedItem } from "#utils/common";
 import { getCachedUrl } from "#utils/fetch-utils";
@@ -883,10 +884,30 @@ export class Trainer extends Phaser.GameObjects.Container {
   }
 
   getPartyTemplate(config: TrainerConfig = this.config): TrainerPartyTemplate {
-    if (config.partyTemplateFunc) {
-      return config.partyTemplateFunc();
+    const template = config.partyTemplateFunc
+      ? config.partyTemplateFunc()
+      : config.partyTemplates[Math.min(this.partyTemplateIndex, config.partyTemplates.length - 1)];
+    if (this.limitedPartyMemberSlots || this.shouldUseTwoPlayerNamedPartnerParty() || !this.isDouble()) {
+      return template;
     }
-    return config.partyTemplates[Math.min(this.partyTemplateIndex, config.partyTemplates.length - 1)];
+
+    const minimumSize = this.shouldUseTateLizaPairParty() ? 2 : Math.max(2, globalScene.getBattleFieldSlotCount());
+    if (template.size >= minimumSize) {
+      return template;
+    }
+
+    // Pad this battle's roster without changing the template shared by later trainers.
+    // Generation and Ace selection must see the same expanded roster as the level calculation.
+    const padding = new TrainerPartyTemplate(
+      template instanceof TrainerPartyCompoundTemplate ? minimumSize - template.size : minimumSize,
+      template.strength,
+      template.sameSpecies,
+      template.balanced,
+      template.evoLevelThresholdKind,
+    );
+    return template instanceof TrainerPartyCompoundTemplate
+      ? new TrainerPartyCompoundTemplate(...template.templates, padding)
+      : padding;
   }
 
   private shouldUseTwoPlayerNamedPartnerParty(): boolean {
@@ -936,16 +957,12 @@ export class Trainer extends Phaser.GameObjects.Container {
       : 0;
   }
 
-  private getPartyLevelsForConfig(config: TrainerConfig, waveIndex: number, minimumPartySize = 0): number[] {
+  private getPartyLevelsForConfig(config: TrainerConfig, waveIndex: number): number[] {
     const ret: number[] = [];
     const partyTemplate = this.getPartyTemplate(config);
 
     const difficultyWaveIndex = globalScene.gameMode.getWaveForDifficulty(waveIndex);
     const baseLevel = 1 + difficultyWaveIndex / 2 + Math.pow(difficultyWaveIndex / 25, 2);
-
-    if (minimumPartySize > 0 && partyTemplate.size < minimumPartySize) {
-      partyTemplate.size = minimumPartySize;
-    }
 
     for (let i = 0; i < partyTemplate.size; i++) {
       let multiplier = 1;
@@ -953,19 +970,25 @@ export class Trainer extends Phaser.GameObjects.Container {
       const strength = partyTemplate.getStrength(i);
 
       switch (strength) {
-        case PartyMemberStrength.WEAKER:
+        case PartyMemberStrength.WEAKEST:
           multiplier = 0.95;
           break;
+        case PartyMemberStrength.WEAKER:
+          multiplier = 1;
+          break;
         case PartyMemberStrength.WEAK:
-          multiplier = 1.0;
+          multiplier = 1.05;
           break;
         case PartyMemberStrength.AVERAGE:
-          multiplier = 1.1;
+          multiplier = 1.12;
           break;
         case PartyMemberStrength.STRONG:
-          multiplier = 1.2;
+          multiplier = 1.22;
           break;
         case PartyMemberStrength.STRONGER:
+          multiplier = 1.24;
+          break;
+        case PartyMemberStrength.STRONGEST:
           multiplier = 1.25;
           break;
       }
@@ -973,7 +996,7 @@ export class Trainer extends Phaser.GameObjects.Container {
       let levelOffset = 0;
 
       if (strength < PartyMemberStrength.STRONG) {
-        multiplier = Math.min(multiplier + 0.025 * Math.floor(difficultyWaveIndex / 25), 1.2);
+        multiplier = Math.min(multiplier + 0.025 * Math.floor(difficultyWaveIndex / 25), 1.225);
         levelOffset = -Math.floor((difficultyWaveIndex / 50) * (PartyMemberStrength.STRONG - strength));
       }
 
@@ -998,7 +1021,7 @@ export class Trainer extends Phaser.GameObjects.Container {
     }
 
     if (this.shouldUseTateLizaPairParty()) {
-      const levels = this.getPartyLevelsForConfig(this.config, waveIndex, 2);
+      const levels = this.getPartyLevelsForConfig(this.config, waveIndex);
       const targetSize = getTateLizaPairCountForWave(waveIndex) * 2;
 
       return Array.from({ length: targetSize }, (_, i) => levels[Math.min(i, levels.length - 1)] ?? 1);
@@ -1022,11 +1045,7 @@ export class Trainer extends Phaser.GameObjects.Container {
       return ret;
     }
 
-    return this.getPartyLevelsForConfig(
-      this.config,
-      waveIndex,
-      this.isDouble() ? globalScene.getBattleFieldSlotCount() : 0,
-    );
+    return this.getPartyLevelsForConfig(this.config, waveIndex);
   }
 
   public getTrainerSlotForPartyIndex(index: number): TrainerSlot {
@@ -1097,20 +1116,21 @@ export class Trainer extends Phaser.GameObjects.Container {
       () => {
         const template = this.getPartyTemplate();
         const strength: PartyMemberStrength = template.getStrength(index);
+        const evoThresholdKind = template.getEvoThresholdKind(index);
         const doubleOnlyPartyMemberFuncIndex = this.getTwoPlayerDoubleOnlyPartyMemberFuncIndex(index);
 
         // If the battle is not one of the named trainer doubles
         if (!(this.config.trainerTypeDouble && this.isDouble() && !this.config.doubleOnly)) {
           if (doubleOnlyPartyMemberFuncIndex !== undefined) {
-            ret = this.config.partyMemberFuncs[doubleOnlyPartyMemberFuncIndex](level, strength);
+            ret = this.config.partyMemberFuncs[doubleOnlyPartyMemberFuncIndex](level, strength, evoThresholdKind);
             return;
           }
           if (Object.hasOwn(this.config.partyMemberFuncs, index)) {
-            ret = this.config.partyMemberFuncs[index](level, strength);
+            ret = this.config.partyMemberFuncs[index](level, strength, evoThresholdKind);
             return;
           }
           if (Object.hasOwn(this.config.partyMemberFuncs, index - template.size)) {
-            ret = this.config.partyMemberFuncs[index - template.size](level, template.getStrength(index));
+            ret = this.config.partyMemberFuncs[index - template.size](level, strength, evoThresholdKind);
             return;
           }
         }
@@ -1201,15 +1221,15 @@ export class Trainer extends Phaser.GameObjects.Container {
                   level,
                   false,
                   template.getStrength(offset),
-                  template.evoLevelThresholdKind,
+                  evoThresholdKind,
                 ),
               )
-            : this.genNewPartyMemberSpecies(level, strength);
+            : this.genNewPartyMemberSpecies(level, strength, undefined, this.config, template, evoThresholdKind);
 
         // If the species is from newSpeciesPool, we need to adjust it based on the level and strength
         if (newSpeciesPool) {
           species = getPokemonSpecies(
-            species.getSpeciesForLevel(level, true, true, strength, template.evoLevelThresholdKind),
+            species.getSpeciesForLevel(level, true, true, strength, evoThresholdKind),
           );
         }
 
@@ -1224,6 +1244,7 @@ export class Trainer extends Phaser.GameObjects.Container {
     );
 
     this.applyAceEvsToGeneratedPartyMember(ret!, this.config, index);
+    this.applyRandomizedMoveset(ret!);
 
     return ret!; // TODO: is this bang correct?
   }
@@ -1244,16 +1265,19 @@ export class Trainer extends Phaser.GameObjects.Container {
       () => {
         const template = this.getPartyTemplate(config);
         const strength = template.getStrength(index);
+        const evoThresholdKind = template.getEvoThresholdKind(index);
         const generationContext = `${TrainerType[config.trainerType]}:${TrainerSlot[trainerSlot]}`;
 
         if (Object.hasOwn(config.partyMemberFuncs, index)) {
-          ret = withRivalRollContext(generationContext, () => config.partyMemberFuncs[index](level, strength));
+          ret = withRivalRollContext(generationContext, () =>
+            config.partyMemberFuncs[index](level, strength, evoThresholdKind),
+          );
           ret.trainerSlot = trainerSlot;
           return;
         }
         if (Object.hasOwn(config.partyMemberFuncs, index - template.size)) {
           ret = withRivalRollContext(generationContext, () =>
-            config.partyMemberFuncs[index - template.size](level, template.getStrength(index)),
+            config.partyMemberFuncs[index - template.size](level, strength, evoThresholdKind),
           );
           ret.trainerSlot = trainerSlot;
           return;
@@ -1280,10 +1304,10 @@ export class Trainer extends Phaser.GameObjects.Container {
                 level,
                 false,
                 template.getStrength(offset),
-                template.evoLevelThresholdKind,
+                evoThresholdKind,
               ),
             )
-          : this.genNewPartyMemberSpecies(level, strength, undefined, config, template);
+          : this.genNewPartyMemberSpecies(level, strength, undefined, config, template, evoThresholdKind);
 
         ret = globalScene.addEnemyPokemon(species, level, trainerSlot);
       },
@@ -1296,8 +1320,16 @@ export class Trainer extends Phaser.GameObjects.Container {
     );
 
     this.applyAceEvsToGeneratedPartyMember(ret!, config, index);
+    this.applyRandomizedMoveset(ret!);
 
     return ret!;
+  }
+
+  private applyRandomizedMoveset(pokemon: EnemyPokemon): void {
+    if (globalScene.gameMode.hasChallenge(Challenges.MOVESET_RANDOMIZER)) {
+      // Trainer callbacks can inject fixed moves after initial generation.
+      globalScene.executeWithSeedOffset(() => pokemon.generateAndPopulateMoveset(), pokemon.id, globalScene.seed);
+    }
   }
 
   genNewPartyMemberSpecies(
@@ -1306,6 +1338,7 @@ export class Trainer extends Phaser.GameObjects.Container {
     attempt?: number,
     config: TrainerConfig = this.config,
     template: TrainerPartyTemplate = this.getPartyTemplate(config),
+    evoThresholdKind = template.evoLevelThresholdKind,
   ): PokemonSpecies {
     const battle = globalScene.currentBattle;
     let baseSpecies: PokemonSpecies;
@@ -1341,7 +1374,7 @@ export class Trainer extends Phaser.GameObjects.Container {
     }
 
     let ret = getPokemonSpecies(
-      baseSpecies.getTrainerSpeciesForLevel(level, true, strength, template.evoLevelThresholdKind),
+      baseSpecies.getTrainerSpeciesForLevel(level, true, strength, evoThresholdKind),
     );
     let retry = false;
 
@@ -1367,7 +1400,7 @@ export class Trainer extends Phaser.GameObjects.Container {
       let evoAttempt = 0;
       while (retry && evoAttempt++ < 10) {
         ret = getPokemonSpecies(
-          baseSpecies.getTrainerSpeciesForLevel(level, true, strength, template.evoLevelThresholdKind),
+          baseSpecies.getTrainerSpeciesForLevel(level, true, strength, evoThresholdKind),
         );
         console.log(ret.name);
         if (ret.isOfType(config.specialtyType)) {
@@ -1384,7 +1417,7 @@ export class Trainer extends Phaser.GameObjects.Container {
 
     if (retry && (attempt ?? 0) < 10) {
       console.log("Rerolling party member...");
-      ret = this.genNewPartyMemberSpecies(level, strength, (attempt ?? 0) + 1, config, template);
+      ret = this.genNewPartyMemberSpecies(level, strength, (attempt ?? 0) + 1, config, template, evoThresholdKind);
     }
 
     return ret;
@@ -1513,6 +1546,7 @@ export class Trainer extends Phaser.GameObjects.Container {
       case PartyMemberStrength.STRONG:
         return 0.45;
       case PartyMemberStrength.STRONGER:
+      case PartyMemberStrength.STRONGEST:
         return 0.375;
       default:
         console.warn("getPartyMemberModifierChanceMultiplier not defined. Using default 0");

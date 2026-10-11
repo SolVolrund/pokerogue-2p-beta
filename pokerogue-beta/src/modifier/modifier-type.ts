@@ -6,7 +6,7 @@ import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { activeOverrides } from "#app/overrides";
 import { EvolutionItem } from "#balance/pokemon-evolutions";
-import { tmPoolTiers } from "#balance/tm-pool-tiers";
+import { getTmNumber, tmPoolTiers } from "#balance/tm-pool-tiers";
 import { getBerryEffectDescription, getBerryName, getDamageReductionBerryTypeForMoveType } from "#data/berry";
 import { CONTEST_TYPES, ContestType, contestTypeData } from "#data/contests/contest-type";
 import { CONTEST_STAT_MAX, type PartialContestStats } from "#data/contests/contest-stats";
@@ -23,6 +23,7 @@ import { getStatusEffectDescriptor } from "#data/status-effect";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BerryType } from "#enums/berry-type";
 import { ChallengeType } from "#enums/challenge-type";
+import { DOWSING_GROUPS, type DowsingGroup } from "#enums/dowsing-group";
 import { FormChangeItem } from "#enums/form-change-item";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import { ModifierTier } from "#enums/modifier-tier";
@@ -53,6 +54,7 @@ import {
   CriticalCatchChanceBoosterModifier,
   DamageMoneyRewardModifier,
   DoubleBattleChanceBoosterModifier,
+  DowsingMachineModifier,
   EnemyAttackStatusEffectChanceModifier,
   EnemyDamageBoosterModifier,
   EnemyDamageReducerModifier,
@@ -153,7 +155,7 @@ import type { PokemonMoveSelectFilter, PokemonSelectFilter } from "#ui/party-ui-
 import { PartyUiHandler } from "#ui/party-ui-handler";
 import { getModifierTierTextTint } from "#ui/text";
 import { applyChallenges } from "#utils/challenge-utils";
-import { BooleanHolder, formatMoney, NumberHolder, padInt, randSeedInt, randSeedItem } from "#utils/common";
+import { BooleanHolder, formatMoney, NumberHolder, randSeedInt, randSeedItem } from "#utils/common";
 import { getEnumKeys, getEnumValues } from "#utils/enums";
 import { areResistBerriesEnabled, isModifierAllowedByItemSettings } from "#utils/item-settings-utils";
 import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
@@ -1562,7 +1564,7 @@ export class TmModifierType extends PokemonModifierType {
 
   get name(): string {
     return i18next.t("modifierType:ModifierType.TmModifierType.name", {
-      moveId: padInt(Object.keys(tmPoolTiers).indexOf(this.moveId.toString()) + 1, 3),
+      moveId: getTmNumber(this.moveId),
       moveName: allMoves[this.moveId].name,
     });
   }
@@ -1684,9 +1686,10 @@ function getFormChangeItemTriggerEntriesForPokemon(
       || (fc.conditions.length > 0
         && fc.conditions.filter(cond => cond instanceof SpeciesFormChangeCondition && cond.predicate(pokemon)).length
           === 0)
-      || globalScene.findModifier(
+      || globalScene.findModifierForPokemon(
         m =>
           m instanceof PokemonFormChangeItemModifier && m.pokemonId === pokemon.id && m.formChangeItem === trigger.item,
+        pokemon,
       )
     ) {
       return [];
@@ -1797,7 +1800,7 @@ class AttackTypeBoosterModifierTypeGenerator extends ModifierTypeGenerator {
           // Account for variable type changing moves
           // Get a variable type attribute of the move
           const variableTypeAttr = move.getAttrs("VariableMoveTypeAttr")[0];
-          const types = variableTypeAttr?.getTypesForItemSpawn(p, move) ?? [move.type];
+          const types = variableTypeAttr?.getTypesForItemSpawn(p, move) ?? p.getMoveTypeForItemSpawn(move);
           for (const type of types) {
             const currentWeight = attackMoveTypeWeights.get(type) ?? 0;
             if (currentWeight < 3) {
@@ -2042,7 +2045,7 @@ class TmModifierTypeGenerator extends ModifierTypeGenerator {
       if (pregenArgs && pregenArgs.length === 1 && pregenArgs[0] in MoveId) {
         return new TmModifierType(pregenArgs[0] as MoveId);
       }
-      const partyMemberCompatibleTms = party.map(p => (p as PlayerPokemon).getCompatibleTms(true, true));
+      const partyMemberCompatibleTms = party.map(p => (p as PlayerPokemon).getCompatibleTms(true, true, true));
       const tierUniqueCompatibleTms = partyMemberCompatibleTms
         .flat()
         .filter(tm => tmPoolTiers[tm] === tier)
@@ -2058,48 +2061,51 @@ class TmModifierTypeGenerator extends ModifierTypeGenerator {
   }
 }
 
+function getEvolutionItemPool(party: readonly Pokemon[], rare: boolean): EvolutionItem[] {
+  return [
+    party
+      .filter(
+        p =>
+          speciesDataRegistry.hasEvolutions(p.species.speciesId)
+          && (!p.pauseEvolutions
+            || p.species.speciesId === SpeciesId.SLOWPOKE
+            || p.species.speciesId === SpeciesId.EEVEE
+            || p.species.speciesId === SpeciesId.KIRLIA
+            || p.species.speciesId === SpeciesId.SNORUNT),
+      )
+      .flatMap(p => {
+        const evolutions = speciesDataRegistry.getEvolutions(p.species.speciesId);
+        return evolutions.filter(e => e.isValidItemEvolution(p));
+      }),
+    party
+      .filter(
+        p =>
+          p.isFusion()
+          && p.fusionSpecies
+          && speciesDataRegistry.hasEvolutions(p.fusionSpecies.speciesId)
+          && (!p.pauseEvolutions
+            || p.fusionSpecies.speciesId === SpeciesId.SLOWPOKE
+            || p.fusionSpecies.speciesId === SpeciesId.EEVEE
+            || p.fusionSpecies.speciesId === SpeciesId.KIRLIA
+            || p.fusionSpecies.speciesId === SpeciesId.SNORUNT),
+      )
+      .flatMap(p => {
+        const evolutions = speciesDataRegistry.getEvolutions(p.fusionSpecies!.speciesId);
+        return evolutions.filter(e => e.isValidItemEvolution(p, true));
+      }),
+  ]
+    .flat()
+    .flatMap(e => e.evoItem)
+    .filter(i => !!i && i > 50 === rare);
+}
+
 class EvolutionItemModifierTypeGenerator extends ModifierTypeGenerator {
   constructor(rare: boolean) {
     super((party: readonly Pokemon[], pregenArgs?: any[]) => {
       if (pregenArgs && pregenArgs.length === 1 && pregenArgs[0] in EvolutionItem) {
         return new EvolutionItemModifierType(pregenArgs[0] as EvolutionItem);
       }
-
-      const evolutionItemPool = [
-        party
-          .filter(
-            p =>
-              speciesDataRegistry.hasEvolutions(p.species.speciesId)
-              && (!p.pauseEvolutions
-                || p.species.speciesId === SpeciesId.SLOWPOKE
-                || p.species.speciesId === SpeciesId.EEVEE
-                || p.species.speciesId === SpeciesId.KIRLIA
-                || p.species.speciesId === SpeciesId.SNORUNT),
-          )
-          .flatMap(p => {
-            const evolutions = speciesDataRegistry.getEvolutions(p.species.speciesId);
-            return evolutions.filter(e => e.isValidItemEvolution(p));
-          }),
-        party
-          .filter(
-            p =>
-              p.isFusion()
-              && p.fusionSpecies
-              && speciesDataRegistry.hasEvolutions(p.fusionSpecies.speciesId)
-              && (!p.pauseEvolutions
-                || p.fusionSpecies.speciesId === SpeciesId.SLOWPOKE
-                || p.fusionSpecies.speciesId === SpeciesId.EEVEE
-                || p.fusionSpecies.speciesId === SpeciesId.KIRLIA
-                || p.fusionSpecies.speciesId === SpeciesId.SNORUNT),
-          )
-          .flatMap(p => {
-            const evolutions = speciesDataRegistry.getEvolutions(p.fusionSpecies!.speciesId);
-            return evolutions.filter(e => e.isValidItemEvolution(p, true));
-          }),
-      ]
-        .flat()
-        .flatMap(e => e.evoItem)
-        .filter(i => !!i && i > 50 === rare);
+      const evolutionItemPool = getEvolutionItemPool(party, rare);
 
       if (evolutionItemPool.length === 0) {
         return null;
@@ -2111,94 +2117,99 @@ class EvolutionItemModifierTypeGenerator extends ModifierTypeGenerator {
   }
 }
 
+function getFormChangeItemPool(party: readonly Pokemon[], isRareFormChangeItem: boolean): FormChangeItem[] {
+  return [
+    ...new Set(
+      party.flatMap(p => {
+        const playerIndex = globalScene.getPlayerIndexForPokemon(p) ?? globalScene.activePlayerIndex;
+        let formChangeItemTriggerEntries = getFormChangeItemTriggerEntriesForPokemon(
+          p,
+          p.species.speciesId,
+          p.getFormKey(),
+        )
+          .concat(
+            p.isFusion() && p.fusionSpecies
+              ? getFormChangeItemTriggerEntriesForPokemon(p, p.fusionSpecies.speciesId, p.getFusionFormKey())
+              : [],
+          )
+          .filter(
+            entry =>
+              ((entry.formKey.indexOf(SpeciesFormKey.MEGA) === -1
+                && entry.formKey.indexOf(SpeciesFormKey.PRIMAL) === -1)
+                || !!globalScene.findModifierForPlayer(m => m instanceof MegaEvolutionAccessModifier, playerIndex))
+              && ((entry.formKey.indexOf(SpeciesFormKey.GIGANTAMAX) === -1
+                && entry.formKey.indexOf(SpeciesFormKey.ETERNAMAX) === -1)
+                || !!globalScene.findModifierForPlayer(m => m instanceof GigantamaxAccessModifier, playerIndex)),
+          );
+
+        if (p.hasSpecies(SpeciesId.NECROZMA)) {
+          // technically we could use a simplified version and check for formChanges.length > 3, but in case any code changes later, this might break...
+          let foundULTRA_Z = false;
+          let foundN_LUNA = false;
+          let foundN_SOLAR = false;
+          formChangeItemTriggerEntries.forEach((entry, _i) => {
+            console.log("Checking ", entry.trigger.item);
+            switch (entry.trigger.item) {
+              case FormChangeItem.ULTRANECROZIUM_Z:
+                foundULTRA_Z = true;
+                break;
+              case FormChangeItem.N_LUNARIZER:
+                foundN_LUNA = true;
+                break;
+              case FormChangeItem.N_SOLARIZER:
+                foundN_SOLAR = true;
+                break;
+            }
+          });
+          if (foundULTRA_Z && foundN_LUNA && foundN_SOLAR) {
+            // all three items are present -> user hasn't acquired any of the N_*ARIZERs -> block ULTRANECROZIUM_Z acquisition.
+            formChangeItemTriggerEntries = formChangeItemTriggerEntries.filter(
+              entry => entry.trigger.item !== FormChangeItem.ULTRANECROZIUM_Z,
+            );
+          } else {
+            console.log("DID NOT FIND ");
+          }
+        }
+        if (p.hasSpecies(SpeciesId.ARCEUS)) {
+          const hasLegendPlateRequirements = hasAllArceusLegendPlateRequirements(p);
+          formChangeItemTriggerEntries = formChangeItemTriggerEntries.filter(
+            entry => entry.trigger.item !== FormChangeItem.LEGEND_PLATE || hasLegendPlateRequirements,
+          );
+
+          if (
+            hasLegendPlateRequirements
+            && !formChangeItemTriggerEntries.some(entry => entry.trigger.item === FormChangeItem.LEGEND_PLATE)
+            && !globalScene.findModifierForPokemon(
+              m =>
+                m instanceof PokemonFormChangeItemModifier
+                && m.pokemonId === p.id
+                && m.formChangeItem === FormChangeItem.LEGEND_PLATE,
+              p,
+            )
+          ) {
+            formChangeItemTriggerEntries.push({
+              trigger: new SpeciesFormChangeItemTrigger(FormChangeItem.LEGEND_PLATE),
+              formKey: "legend",
+            });
+          }
+        }
+        return formChangeItemTriggerEntries.map(entry => entry.trigger);
+      }),
+    ),
+  ]
+    .flat()
+    .flatMap(fc => fc.item)
+    .filter(i => i !== FormChangeItem.STRANGE_HELMET && (i && i < 100) === isRareFormChangeItem);
+  // convert it into a set to remove duplicate values, which can appear when the same species with a potential form change is in the party.
+}
+
 export class FormChangeItemModifierTypeGenerator extends ModifierTypeGenerator {
   constructor(isRareFormChangeItem: boolean) {
     super((party: readonly Pokemon[], pregenArgs?: any[]) => {
       if (pregenArgs && pregenArgs.length === 1 && pregenArgs[0] in FormChangeItem) {
         return new FormChangeItemModifierType(pregenArgs[0] as FormChangeItem);
       }
-
-      const formChangeItemPool = [
-        ...new Set(
-          party.flatMap(p => {
-            let formChangeItemTriggerEntries = getFormChangeItemTriggerEntriesForPokemon(
-              p,
-              p.species.speciesId,
-              p.getFormKey(),
-            )
-              .concat(
-                p.isFusion() && p.fusionSpecies
-                  ? getFormChangeItemTriggerEntriesForPokemon(p, p.fusionSpecies.speciesId, p.getFusionFormKey())
-                  : [],
-              )
-              .filter(
-                entry =>
-                  ((entry.formKey.indexOf(SpeciesFormKey.MEGA) === -1
-                    && entry.formKey.indexOf(SpeciesFormKey.PRIMAL) === -1)
-                    || globalScene.getModifiers(MegaEvolutionAccessModifier).length > 0)
-                  && ((entry.formKey.indexOf(SpeciesFormKey.GIGANTAMAX) === -1
-                    && entry.formKey.indexOf(SpeciesFormKey.ETERNAMAX) === -1)
-                    || globalScene.getModifiers(GigantamaxAccessModifier).length > 0),
-              );
-
-            if (p.hasSpecies(SpeciesId.NECROZMA)) {
-              // technically we could use a simplified version and check for formChanges.length > 3, but in case any code changes later, this might break...
-              let foundULTRA_Z = false;
-              let foundN_LUNA = false;
-              let foundN_SOLAR = false;
-              formChangeItemTriggerEntries.forEach((entry, _i) => {
-                console.log("Checking ", entry.trigger.item);
-                switch (entry.trigger.item) {
-                  case FormChangeItem.ULTRANECROZIUM_Z:
-                    foundULTRA_Z = true;
-                    break;
-                  case FormChangeItem.N_LUNARIZER:
-                    foundN_LUNA = true;
-                    break;
-                  case FormChangeItem.N_SOLARIZER:
-                    foundN_SOLAR = true;
-                    break;
-                }
-              });
-              if (foundULTRA_Z && foundN_LUNA && foundN_SOLAR) {
-                // all three items are present -> user hasn't acquired any of the N_*ARIZERs -> block ULTRANECROZIUM_Z acquisition.
-                formChangeItemTriggerEntries = formChangeItemTriggerEntries.filter(
-                  entry => entry.trigger.item !== FormChangeItem.ULTRANECROZIUM_Z,
-                );
-              } else {
-                console.log("DID NOT FIND ");
-              }
-            }
-            if (p.hasSpecies(SpeciesId.ARCEUS)) {
-              const hasLegendPlateRequirements = hasAllArceusLegendPlateRequirements(p);
-              formChangeItemTriggerEntries = formChangeItemTriggerEntries.filter(
-                entry => entry.trigger.item !== FormChangeItem.LEGEND_PLATE || hasLegendPlateRequirements,
-              );
-
-              if (
-                hasLegendPlateRequirements
-                && !formChangeItemTriggerEntries.some(entry => entry.trigger.item === FormChangeItem.LEGEND_PLATE)
-                && !globalScene.findModifier(
-                  m =>
-                    m instanceof PokemonFormChangeItemModifier
-                    && m.pokemonId === p.id
-                    && m.formChangeItem === FormChangeItem.LEGEND_PLATE,
-                )
-              ) {
-                formChangeItemTriggerEntries.push({
-                  trigger: new SpeciesFormChangeItemTrigger(FormChangeItem.LEGEND_PLATE),
-                  formKey: "legend",
-                });
-              }
-            }
-            return formChangeItemTriggerEntries.map(entry => entry.trigger);
-          }),
-        ),
-      ]
-        .flat()
-        .flatMap(fc => fc.item)
-        .filter(i => i !== FormChangeItem.STRANGE_HELMET && (i && i < 100) === isRareFormChangeItem);
-      // convert it into a set to remove duplicate values, which can appear when the same species with a potential form change is in the party.
+      const formChangeItemPool = getFormChangeItemPool(party, isRareFormChangeItem);
 
       if (formChangeItemPool.length === 0) {
         return null;
@@ -2208,6 +2219,71 @@ export class FormChangeItemModifierTypeGenerator extends ModifierTypeGenerator {
       return new FormChangeItemModifierType(formChangeItemPool[randSeedInt(formChangeItemPool.length)]);
     });
   }
+}
+
+export interface DowsingItemOption {
+  item: EvolutionItem | FormChangeItem | ZCrystal;
+  type: ModifierType;
+  available: boolean;
+}
+
+export function getDowsingItemOptions(party: readonly Pokemon[], group: DowsingGroup): DowsingItemOption[] {
+  let items: (EvolutionItem | FormChangeItem | ZCrystal)[];
+  let eligible: readonly (EvolutionItem | FormChangeItem | ZCrystal)[];
+  let tier: ModifierTier;
+  switch (group) {
+    case "EVOLUTION_ITEM":
+    case "RARE_EVOLUTION_ITEM": {
+      const rare = group === "RARE_EVOLUTION_ITEM";
+      items = getEnumValues(EvolutionItem).filter(item => item !== EvolutionItem.NONE && (item > 50) === rare);
+      eligible = getEvolutionItemPool(party, rare);
+      tier = rare ? ModifierTier.ULTRA : ModifierTier.GREAT;
+      break;
+    }
+    case "RARE_FORM_CHANGE_ITEM":
+    case "FORM_CHANGE_ITEM": {
+      const mega = group === "RARE_FORM_CHANGE_ITEM";
+      items = getEnumValues(FormChangeItem).filter(
+        item => item !== FormChangeItem.NONE && item !== FormChangeItem.STRANGE_HELMET && (item < 100) === mega,
+      );
+      eligible = getFormChangeItemPool(party, mega);
+      tier = mega ? ModifierTier.ROGUE : ModifierTier.ULTRA;
+      break;
+    }
+    case "Z_CRYSTAL":
+      items = Object.values(ZCrystal);
+      eligible = hasZMoveAccessForParty(party) ? getReceivableZCrystalsForParty(party) : [];
+      tier = ModifierTier.GREAT;
+      break;
+  }
+  const generator = modifierTypes[group]().withIdFromFunc(modifierTypes[group]) as ModifierTypeGenerator;
+  generator.setTier(tier);
+  return items.map(item => {
+    const type = generator.generateType(party, [item])!;
+    return { item, type, available: eligible.includes(item) && isGeneratedModifierAllowedByItemSettings(type) };
+  });
+}
+
+/** Bias only actual player reward rolls, never pool probes, save restoration, or enemy equipment. */
+export function applyDowsingPreference(party: readonly Pokemon[], rolledType: ModifierType): ModifierType {
+  const group = DOWSING_GROUPS.find(group => group === rolledType.id);
+  const playerIndex = party[0] && globalScene.getPlayerIndexForPokemon(party[0]);
+  if (!group || playerIndex === undefined) {
+    return rolledType;
+  }
+  const machine = globalScene.findModifierForPlayer(
+    modifier => modifier instanceof DowsingMachineModifier,
+    playerIndex,
+  ) as DowsingMachineModifier | undefined;
+  const selected = machine?.preferences[group];
+  if (selected === undefined) {
+    return rolledType;
+  }
+  const target = getDowsingItemOptions(party, group).find(option => option.item === selected && option.available);
+  if (!target || target.type.tier !== rolledType.tier || randSeedInt(2) !== 0) {
+    return rolledType;
+  }
+  return target.type;
 }
 
 export class ContactHeldItemTransferChanceModifierType extends PokemonHeldItemModifierType {
@@ -2958,6 +3034,12 @@ const modifierTypeInitObj = Object.freeze({
 
   IV_SCANNER: () =>
     new ModifierType("modifierType:ModifierType.IV_SCANNER", "scanner", (type, _args) => new IvScannerModifier(type)),
+  DOWSING_MACHINE: () =>
+    new ModifierType(
+      "modifierType:ModifierType.DOWSING_MACHINE",
+      "dowsing_machine",
+      type => new DowsingMachineModifier(type),
+    ),
 
   DNA_SPLICERS: () => new FusePokemonModifierType("modifierType:ModifierType.DNA_SPLICERS", "dna_splicers"),
 
@@ -3683,6 +3765,10 @@ function getNewModifierTypeOption(
     }
   } else if (!isGeneratedModifierAllowedByItemSettings(modifierType)) {
     return getNewModifierTypeOption(party, poolType, tier, upgradeCount, ++retryCount);
+  }
+
+  if (poolType === ModifierPoolType.PLAYER) {
+    modifierType = applyDowsingPreference(party, modifierType);
   }
 
   console.log(modifierType, player ? "" : "(enemy)");

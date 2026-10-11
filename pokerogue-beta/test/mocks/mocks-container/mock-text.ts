@@ -15,7 +15,7 @@ export class MockText implements MockGameObject {
   public color?: string;
   public active = true;
 
-  constructor(textureManager, _x, _y, _content, _styleOptions) {
+  constructor(textureManager, _x, _y, content, _styleOptions) {
     this.scene = textureManager.scene;
     this.textureManager = textureManager;
     this.style = {};
@@ -24,7 +24,7 @@ export class MockText implements MockGameObject {
     // Phaser.Textures.TextureManager.prototype.addCanvas = () => {};
     UI.prototype.showText = this.showText;
     UI.prototype.showDialogue = this.showDialogue;
-    this.text = "";
+    this.text = Array.isArray(content) ? content.join("\n") : String(content ?? "");
     this.phaserText = "";
     // super(scene, x, y);
     // this.phaserText = new Phaser.GameObjects.Text(scene, x, y, content, styleOptions);

@@ -2,12 +2,14 @@ import { allMoves } from "#data/data-lists";
 import { AbilityId } from "#enums/ability-id";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import { ArenaTagType } from "#enums/arena-tag-type";
+import { BattleType } from "#enums/battle-type";
 import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";
 import { Stat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
+import { TrainerType } from "#enums/trainer-type";
 import { WeatherType } from "#enums/weather-type";
 import { GameManager } from "#test/framework/game-manager";
 import { toDmgValue } from "#utils/common";
@@ -133,12 +135,17 @@ describe("Abilities - Wimp Out", () => {
   });
 
   it("If this Ability does not activate due to being hit by U-turn or Volt Switch, the user of that move will be switched out.", async () => {
-    game.override.startingLevel(190).startingWave(8).enemyMoveset([MoveId.U_TURN]);
+    game.override
+      .startingLevel(190)
+      .startingWave(2)
+      .enemyMoveset([MoveId.U_TURN])
+      .battleType(BattleType.TRAINER)
+      .randomTrainer({ trainerType: TrainerType.YOUNGSTER });
     await game.classicMode.startBattle(SpeciesId.GOLISOPOD, SpeciesId.TYRUNT);
-    const RIVAL_NINJASK1 = game.field.getEnemyPokemon().id;
+    const originalEnemyId = game.field.getEnemyPokemon().id;
     game.move.select(MoveId.SPLASH);
     await game.phaseInterceptor.to("BerryPhase", false);
-    expect(game.field.getEnemyPokemon().id !== RIVAL_NINJASK1);
+    expect(game.field.getEnemyPokemon().id).not.toBe(originalEnemyId);
   });
 
   it("Dragon Tail and Circle Throw switch out Pokémon before the Ability activates.", async () => {
@@ -374,7 +381,8 @@ describe("Abilities - Wimp Out", () => {
     game.scene.arena.addTag(ArenaTagType.STEALTH_ROCK, 1, MoveId.STEALTH_ROCK, 0, ArenaTagSide.ENEMY);
     game.scene.arena.addTag(ArenaTagType.SPIKES, 1, MoveId.SPIKES, 0, ArenaTagSide.ENEMY);
     game.override.enemySpecies(SpeciesId.CENTISKORCH).enemyAbility(AbilityId.WIMP_OUT).startingWave(4);
-    await game.classicMode.startBattle(SpeciesId.TYRUNT);
+    await game.classicMode.runToSummon(SpeciesId.TYRUNT);
+    await game.phaseInterceptor.to("BattleEndPhase");
 
     expect(game.phaseInterceptor.log).not.toContain("MovePhase");
     expect(game.phaseInterceptor.log).toContain("BattleEndPhase");
@@ -540,6 +548,8 @@ describe("Abilities - Wimp Out", () => {
     await game.move.selectEnemyMove(MoveId.ENDURE);
 
     await game.phaseInterceptor.to("SelectModifierPhase");
+    expect(game.scene.currentBattle.waveIndex).toBe(wave);
+    await game.toNextWave();
     expect(game.scene.currentBattle.waveIndex).toBe(wave + 1);
   });
 });

@@ -1,6 +1,7 @@
 import { globalScene } from "#app/global-scene";
 
 const STANDALONE_ITEM_ICONS = new Set([
+  "dowsing_machine",
   "ominous_skull",
   "portent_skull",
   "malefic_skull",
@@ -22,6 +23,12 @@ const STANDALONE_ITEM_ICONS = new Set([
   "pokeblock_rainbow_plus",
   "roseli_berry",
 ]);
+
+export function getModifierIconTexture(iconImage: string): [string, string?] {
+  return STANDALONE_ITEM_ICONS.has(iconImage) && globalScene.textures.exists(iconImage)
+    ? [iconImage]
+    : ["items", iconImage];
+}
 
 export function addModifierIconSprite(x: number, y: number, iconImage: string): Phaser.GameObjects.Sprite {
   if (STANDALONE_ITEM_ICONS.has(iconImage) && globalScene.textures.exists(iconImage)) {

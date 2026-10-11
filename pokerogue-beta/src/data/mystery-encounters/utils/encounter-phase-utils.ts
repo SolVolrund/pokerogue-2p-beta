@@ -3,6 +3,8 @@ import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
+import { ChallengeType } from "#enums/challenge-type";
+import { applyChallenges } from "#utils/challenge-utils";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { BASE_HIDDEN_ABILITY_RATE, BASE_SHINY_CHANCE } from "#balance/rates";
 import { initMoveAnim, loadMoveAnimAssets } from "#data/battle-anims";
@@ -462,6 +464,7 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
         const moves = config.moveSet.map(m => new PokemonMove(m));
         enemyPokemon.moveset = moves;
         enemyPokemon.summonData.moveset = moves;
+        applyChallenges(ChallengeType.ME_MOVESET_MODIFY, enemyPokemon);
       }
 
       // Set tags

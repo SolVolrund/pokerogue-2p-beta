@@ -2,6 +2,7 @@ import type { PlayerIndex } from "#app/battle-scene";
 import { getGameMode } from "#app/game-mode";
 import { Phase } from "#app/phase";
 import { SingleTypeChallenge } from "#data/challenge";
+import { Button } from "#enums/buttons";
 import { Challenges, isSingleTypeChallenge } from "#enums/challenges";
 import { GameModes } from "#enums/game-modes";
 import { PokemonType } from "#enums/pokemon-type";
@@ -121,23 +122,22 @@ describe("Player-specific Mono Type", () => {
     ]);
   });
 
-  it("draws separate icons for all three rows and clears stale icons on scroll", () => {
+  it("draws separate icons for all three rows and clears stale icons on tab changes", () => {
     const handler = game.scene.ui.handlers[UiMode.CHALLENGE_SELECT] as GameChallengesUiHandler;
-    handler["challengesContainer"].update = () => {};
     const labels = handler["challengeLabels"];
     const visibility = labels.map(label => vi.spyOn(label.typeIcon, "setVisible"));
     const frames = labels.map(label => vi.spyOn(label.typeIcon, "setFrame"));
     handler.show([]);
-    const rules = game.scene.gameMode.challenges;
+    handler.processInput(Button.CYCLE_SHINY);
+    const rules = handler["getFilteredChallenges"]();
     for (const id of ids) {
       const row = rules.findIndex(c => c.id === id);
       expect(visibility[row]).toHaveBeenLastCalledWith(true);
       expect(frames[row]).toHaveBeenLastCalledWith(rules[row].getValue());
     }
-    handler["scrollCursor"] = rules.length - labels.length;
-    handler["updateText"]();
+    handler.processInput(Button.CYCLE_SHINY);
     for (const [row, label] of labels.entries()) {
-      expect(visibility[row]).toHaveBeenLastCalledWith(isSingleTypeChallenge(rules[handler["scrollCursor"] + row].id));
+      expect(visibility[row]).toHaveBeenLastCalledWith(false);
       expect(label.typeIcon).not.toBe(labels[(row + 1) % labels.length].typeIcon);
     }
   });

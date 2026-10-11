@@ -1,5 +1,6 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { globalScene } from "#app/global-scene";
+import { BattleType } from "#enums/battle-type";
 import { WeatherType } from "#enums/weather-type";
 import { BerryPotModifier, LapsingPersistentModifier, LapsingPokemonHeldItemModifier } from "#modifiers/modifier";
 import { clearRollingMove } from "#moves/rolling-move";
@@ -116,6 +117,27 @@ export class BattleEndPhase extends BattlePhase {
       }
 
       globalScene.updateModifiers(true, undefined, playerIndex);
+    }
+
+    const { currentBattle, phaseManager } = globalScene;
+    if (
+      !this.isVictory
+      && currentBattle.battleType === BattleType.WILD
+      && !currentBattle.successfulRun
+      && !phaseManager.hasPhaseOfType("SelectModifierPhase")
+      && !phaseManager.hasPhaseOfType("GameOverPhase")
+    ) {
+      // Escaping wild enemies still leave the shop available, but no defeat means no free rewards.
+      const rewardSettings =
+        currentBattle.enemyFaints > 0
+          ? undefined
+          : { fillRemaining: false, rerollMultiplier: -1, allowBonusRewards: false };
+      const rewardPlayers = globalScene.twoPlayerMode
+        ? globalScene.getActivePlayerIndexes()
+        : [globalScene.activePlayerIndex];
+      for (const playerIndex of rewardPlayers) {
+        phaseManager.unshiftNew("SelectModifierPhase", 0, undefined, rewardSettings, false, playerIndex);
+      }
     }
     this.end();
   }

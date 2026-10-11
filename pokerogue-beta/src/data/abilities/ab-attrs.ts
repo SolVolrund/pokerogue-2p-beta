@@ -2,7 +2,7 @@ import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
 import type { EntryHazardTag, SuppressAbilitiesTag } from "#data/arena-tag";
-import { type BattlerTag, CritBoostTag } from "#data/battler-tags";
+import { type BattlerTag, CritBoostTag, SemiInvulnerableTag } from "#data/battler-tags";
 import { getBerryEffectFunc, getBerryName } from "#data/berry";
 import { allAbilities, allMoves } from "#data/data-lists";
 import {
@@ -47,7 +47,7 @@ import { BerryUsedEvent, MoveUsedEvent } from "#events/battle-scene";
 import type { EnemyPokemon, Pokemon } from "#field/pokemon";
 import { BerryModifier, BoosterEnergyModifier, HitHealModifier, PokemonHeldItemModifier } from "#modifiers/modifier";
 import { BerryModifierType } from "#modifiers/modifier-type";
-import { getMoveTargets } from "#moves/move-utils";
+import { getMoveTargets, resolveAbsentMoveTarget } from "#moves/move-utils";
 import { PokemonMove } from "#moves/pokemon-move";
 import type { MoveReflectPhase } from "#phases/move-reflect-phase";
 import type {
@@ -599,7 +599,6 @@ export class FieldPriorityMoveImmunityAbAttr extends PreDefendAbAttr {
       !cancelled.value
       && move.getPriority(attacker) > 0
       && !move.isAllyTarget()
-      && !move.isMultiTarget()
       && attacker.isOpponent(pokemon)
     );
   }
@@ -2734,12 +2733,16 @@ export class PostSummonFormChangeAbAttr extends PostSummonAbAttr {
  */
 export class PostSummonCopyAbilityAbAttr extends PostSummonAbAttr {
   private target: Pokemon;
+  private targetAbilityId: AbilityId;
   private targetAbilityName: string;
 
-  override canApply({ pokemon, simulated }: AbAttrBaseParams): boolean {
-    const targets = pokemon
-      .getOpponents()
-      .filter(t => t.getAbility().copiable || t.getAbility().id === AbilityId.WONDER_GUARD);
+  override canApply({ pokemon, simulated, passive }: AbAttrBaseParams): boolean {
+    const getCopiedAbility = (target: Pokemon) =>
+      passive && target.hasPassive() ? target.getPassiveAbility() : target.getAbility();
+    const targets = pokemon.getOpponents().filter(target => {
+      const ability = getCopiedAbility(target);
+      return ability.copiable || ability.id === AbilityId.WONDER_GUARD;
+    });
     if (targets.length === 0) {
       return false;
     }
@@ -2753,14 +2756,15 @@ export class PostSummonCopyAbilityAbAttr extends PostSummonAbAttr {
     }
 
     this.target = target;
-    this.targetAbilityName = allAbilities[target.getAbility().id].name;
+    this.targetAbilityId = getCopiedAbility(target).id;
+    this.targetAbilityName = allAbilities[this.targetAbilityId].name;
     return true;
   }
 
-  override apply({ pokemon, simulated }: AbAttrBaseParams): void {
+  override apply({ pokemon, simulated, passive }: AbAttrBaseParams): void {
     // Protect against this somehow being called before canApply by ensuring target is defined
     if (!simulated && this.target) {
-      pokemon.setTempAbility(this.target.getAbility());
+      pokemon.setTempAbility(allAbilities[this.targetAbilityId], !!passive);
       this.target.revealAbility();
       pokemon.updateInfo();
     }
@@ -4567,11 +4571,11 @@ export class PostBiomeChangeTerrainChangeAbAttr extends PostBiomeChangeAbAttr {
 
 export interface PostMoveUsedAbAttrParams extends AbAttrBaseParams {
   /** The move that was used */
-  move: PokemonMove;
+  move: Move;
   /** The source of the move */
   source: Pokemon;
   /** The targets of the move */
-  targets: BattlerIndex[];
+  targets: readonly BattlerIndex[];
 }
 
 /** Triggers just after a move is used either by the opponent or the player */
@@ -4585,41 +4589,37 @@ export class PostMoveUsedAbAttr extends AbAttr {
 
 /** Triggers after a dance move is used either by the opponent or the player */
 export class PostDancingMoveAbAttr extends PostMoveUsedAbAttr {
-  override canApply({ source, pokemon }: PostMoveUsedAbAttrParams): boolean {
-    /** Tags that prevent Dancer from replicating the move */
-    const forbiddenTags = [
-      BattlerTagType.FLYING,
-      BattlerTagType.UNDERWATER,
-      BattlerTagType.UNDERGROUND,
-      BattlerTagType.HIDDEN,
-    ];
+  override canApply({ source, pokemon, move }: PostMoveUsedAbAttrParams): boolean {
     // The move to replicate cannot come from the Dancer
     return (
       source.getBattlerIndex() !== pokemon.getBattlerIndex()
-      && !pokemon.summonData.tags.some(tag => forbiddenTags.includes(tag.tagType))
+      && move.hasFlag(MoveFlags.DANCE_MOVE)
+      && !pokemon.getTag(SemiInvulnerableTag)
     );
   }
 
   override apply({ source, pokemon, move, targets, simulated }: PostMoveUsedAbAttrParams): void {
     if (!simulated) {
       // If the move is an AttackMove or a StatusMove the Dancer must replicate the move on the source of the Dance
-      if (move.getMove().is("AttackMove") || move.getMove().is("StatusMove")) {
-        const target = this.getTarget(pokemon, source, targets);
+      if (move.is("AttackMove") || move.is("StatusMove")) {
+        const target = move.isMultiTarget()
+          ? getMoveTargets(pokemon, move.id).targets
+          : this.getTarget(pokemon, source, targets, move);
         globalScene.phaseManager.unshiftNew(
           "MovePhase",
           pokemon,
           target,
-          move,
+          new PokemonMove(move.id),
           MoveUseMode.INDIRECT,
           MovePhaseTimingModifier.FIRST,
         );
-      } else if (move.getMove().is("SelfStatusMove")) {
+      } else if (move.is("SelfStatusMove")) {
         // If the move is a SelfStatusMove (ie. Swords Dance) the Dancer should replicate it on itself
         globalScene.phaseManager.unshiftNew(
           "MovePhase",
           pokemon,
           [pokemon.getBattlerIndex()],
-          move,
+          new PokemonMove(move.id),
           MoveUseMode.INDIRECT,
           MovePhaseTimingModifier.FIRST,
         );
@@ -4634,11 +4634,19 @@ export class PostDancingMoveAbAttr extends PostMoveUsedAbAttr {
    * @param source - The user of the dancing move
    * @param targets - Targets of the dancing move
    */
-  private getTarget(dancer: Pokemon, source: Pokemon, targets: BattlerIndex[]): BattlerIndex[] {
-    if (dancer.isPlayer()) {
-      return source.isPlayer() ? targets : [source.getBattlerIndex()];
-    }
-    return source.isPlayer() ? [source.getBattlerIndex()] : targets;
+  private getTarget(
+    dancer: Pokemon,
+    source: Pokemon,
+    targets: readonly BattlerIndex[],
+    move: Move,
+  ): BattlerIndex[] {
+    const copiedTargets = dancer.isAlly(source) && !targets.includes(dancer.getBattlerIndex())
+      ? targets.slice()
+      : [source.getBattlerIndex()];
+    return copiedTargets.flatMap(index => {
+      const target = resolveAbsentMoveTarget(dancer, move, index);
+      return target === undefined ? [] : [target];
+    });
   }
 }
 

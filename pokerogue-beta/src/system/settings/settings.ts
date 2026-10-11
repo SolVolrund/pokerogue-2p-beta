@@ -212,6 +212,7 @@ export const SettingKeys = {
   EXP_Gains_Speed: "EXP_GAINS_SPEED",
   EXP_Party_Display: "EXP_PARTY_DISPLAY",
   Skip_Seen_Dialogues: "SKIP_SEEN_DIALOGUES",
+  Manual_Message_Clear: "MANUAL_MESSAGE_CLEAR",
   Egg_Skip: "EGG_SKIP",
   Battle_Style: "BATTLE_STYLE",
   Ace_Mechanics: "ACE_MECHANICS",
@@ -381,6 +382,13 @@ export const Setting: Setting[] = [
   {
     key: SettingKeys.Skip_Seen_Dialogues,
     label: i18next.t("settings:skipSeenDialogues"),
+    options: OFF_ON,
+    default: 0,
+    type: SettingType.GENERAL,
+  },
+  {
+    key: SettingKeys.Manual_Message_Clear,
+    label: i18next.t("settings:alwaysPromptMessages"),
     options: OFF_ON,
     default: 0,
     type: SettingType.GENERAL,
@@ -813,7 +821,7 @@ export const Setting: Setting[] = [
   {
     key: SettingKeys.Type_Hints,
     label: i18next.t("settings:typeHints"),
-    options: OFF_ON,
+    options: [...OFF_ON, { value: "High Contrast", label: i18next.t("settings:highContrast") }],
     default: 0,
     type: SettingType.DISPLAY,
   },
@@ -1045,6 +1053,9 @@ export function setSetting(setting: string, value: number): boolean {
     case SettingKeys.Skip_Seen_Dialogues:
       globalScene.skipSeenDialogues = Setting[index].options[value].value === "On";
       break;
+    case SettingKeys.Manual_Message_Clear:
+      globalScene.manualMessageClear = Setting[index].options[value].value === "On";
+      break;
     case SettingKeys.Egg_Skip:
       globalScene.eggSkipPreference = value;
       break;
@@ -1259,7 +1270,7 @@ export function setSetting(setting: string, value: number): boolean {
       globalScene.enableVibration = Setting[index].options[value].value !== "Disabled" && hasTouchscreen();
       break;
     case SettingKeys.Type_Hints:
-      globalScene.typeHints = Setting[index].options[value].value === "On";
+      globalScene.typeHints = value;
       break;
     case SettingKeys.Prefer_Baton_Pass:
       globalScene.preferBatonPass = Setting[index].options[value].value === "On";

@@ -19,14 +19,17 @@ import {
   getVsEnemyTokenModifierTypeOptionsForWave,
   isVsEnemyTokenAtStackLimit,
 } from "#data/vs-enemy-tokens";
+import { DOWSING_GROUPS, type DowsingGroup } from "#enums/dowsing-group";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import type { ModifierTier } from "#enums/modifier-tier";
 import { LearnMoveType } from "#enums/learn-move-type";
 import type { MoveId } from "#enums/move-id";
+import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon } from "#field/pokemon";
 import type { EnemyPersistentModifier, Modifier, PersistentModifier } from "#modifiers/modifier";
 import {
+  DowsingMachineModifier,
   ExtraModifierModifier,
   HealShopCostModifier,
   LinkingCordGoldModifier,
@@ -39,6 +42,7 @@ import {
 import type { CustomModifierSettings, ModifierType } from "#modifiers/modifier-type";
 import {
   FusePokemonModifierType,
+  getDowsingItemOptions,
   getPlayerModifierTypeOptions,
   getPlayerShopModifierTypeOptionsForWave,
   getPokeblockModifierTypeOption,
@@ -193,6 +197,8 @@ export class SelectModifierPhase extends BattlePhase {
               return this.toggleRerollLock();
             case 5:
               return this.openAlphWallScreen(modifierSelectCallback);
+            case 6:
+              return this.openDowsingScreen(modifierSelectCallback);
             default:
               return false;
           }
@@ -815,6 +821,81 @@ export class SelectModifierPhase extends BattlePhase {
     return true;
   }
 
+  private openDowsingScreen(modifierSelectCallback: ModifierSelectCallback, group?: DowsingGroup): boolean {
+    const machine = globalScene.findModifierForPlayer(
+      modifier => modifier instanceof DowsingMachineModifier,
+      this.playerIndex,
+    ) as DowsingMachineModifier | undefined;
+    if (!machine) {
+      return false;
+    }
+
+    const back = () => {
+      this.resetModifierSelect(modifierSelectCallback);
+      return true;
+    };
+    if (!group) {
+      this.showRewardOptionSelect({
+        maxOptions: 8,
+        options: [
+          ...DOWSING_GROUPS.map(group => ({
+            label: i18next.t(`modifierSelectUiHandler:dowsingGroups.${group}`),
+            keepOpen: true,
+            handler: () => this.openDowsingScreen(modifierSelectCallback, group),
+          })),
+          { label: i18next.t("settings:back"), handler: back },
+        ],
+      });
+      return true;
+    }
+
+    const party = globalScene.getPlayerParty(this.playerIndex);
+    // Keep the catalog order identical across clients, regardless of their display language.
+    const items = getDowsingItemOptions(party, group);
+    const selected = machine.preferences[group];
+    const select = (item?: number | string) => {
+      if (
+        item !== undefined
+        && !getDowsingItemOptions(party, group).some(option => option.item === item && option.available)
+      ) {
+        return false;
+      }
+      if (item === undefined) {
+        delete machine.preferences[group];
+      } else {
+        machine.preferences[group] = item;
+      }
+      this.openDowsingScreen(modifierSelectCallback, group);
+      globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("dowsing-preference-changed");
+      return true;
+    };
+    this.showRewardOptionSelect({
+      maxOptions: 8,
+      initialCursor: Math.max(0, items.findIndex(option => option.item === selected) + 1),
+      options: [
+        {
+          label: i18next.t("modifierSelectUiHandler:dowsingNone"),
+          style: selected === undefined ? TextStyle.SUMMARY_GOLD : TextStyle.WINDOW,
+          keepOpen: true,
+          handler: () => select(),
+        },
+        ...items.map(({ item, type, available }) => ({
+          label: type.name,
+          item: type.iconImage,
+          style: !available ? TextStyle.SHADOW_TEXT : item === selected ? TextStyle.SUMMARY_GOLD : TextStyle.WINDOW,
+          keepOpen: true,
+          handler: () => select(item),
+        })),
+        {
+          label: i18next.t("settings:back"),
+          keepOpen: true,
+          handler: () => this.openDowsingScreen(modifierSelectCallback),
+        },
+      ],
+    });
+    return true;
+  }
+
   private openAlphWallScreen(modifierSelectCallback: ModifierSelectCallback): boolean {
     globalScene.ui.setModeWithoutClear(UiMode.ALPH_WALL, {
       playerIndex: this.playerIndex,
@@ -1025,7 +1106,11 @@ export class SelectModifierPhase extends BattlePhase {
   }
 
   private showRewardOptionSelect(config: OptionSelectConfig): void {
-    globalScene.ui.setModeWithoutClear(UiMode.OPTION_SELECT, config, null, true);
+    if (globalScene.ui.getMode() === UiMode.OPTION_SELECT) {
+      globalScene.ui.getHandler().show([config, null, true]);
+    } else {
+      globalScene.ui.setModeWithoutClear(UiMode.OPTION_SELECT, config, null, true);
+    }
   }
 
   private getAvailablePartnerReviveTargetPlayerIndexes(

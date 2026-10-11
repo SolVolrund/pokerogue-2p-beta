@@ -26,6 +26,7 @@ import { AbilityId } from "#enums/ability-id";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BerryType } from "#enums/berry-type";
 import { Color, ShadowColor } from "#enums/color";
+import { DOWSING_GROUPS, type DowsingPreferences } from "#enums/dowsing-group";
 import { FormChangeItem } from "#enums/form-change-item";
 import { HitResult } from "#enums/hit-result";
 import { LearnMoveType } from "#enums/learn-move-type";
@@ -4379,6 +4380,10 @@ export class SwitchEffectTransferModifier extends PokemonHeldItemModifier {
  * @see {@linkcode ContactHeldItemTransferChanceModifier}
  */
 export abstract class HeldItemTransferModifier extends PokemonHeldItemModifier {
+  override shouldApply(pokemon: Pokemon, target?: Pokemon): boolean {
+    return super.shouldApply(pokemon, target) && !pokemon.isFainted();
+  }
+
   /**
    * Determines the targets to transfer items from when this applies.
    * @param pokemon the {@linkcode Pokemon} holding this item
@@ -4537,6 +4542,40 @@ export class ContactHeldItemTransferChanceModifier extends HeldItemTransferModif
 
   getMaxHeldItemCount(_pokemon: Pokemon): number {
     return 5;
+  }
+}
+
+export class DowsingMachineModifier extends PersistentModifier {
+  public readonly preferences: DowsingPreferences = {};
+
+  constructor(type: ModifierType, preferences: DowsingPreferences = {}, stackCount = 1) {
+    super(type, stackCount);
+    for (const group of DOWSING_GROUPS) {
+      const value = preferences?.[group];
+      if (typeof value === "number" || typeof value === "string") {
+        this.preferences[group] = value;
+      }
+    }
+  }
+
+  match(modifier: Modifier): boolean {
+    return modifier instanceof DowsingMachineModifier;
+  }
+
+  clone(): DowsingMachineModifier {
+    return new DowsingMachineModifier(this.type, this.preferences, this.stackCount);
+  }
+
+  getArgs(): any[] {
+    return [{ ...this.preferences }];
+  }
+
+  override apply(): boolean {
+    return true;
+  }
+
+  getMaxStackCount(): number {
+    return 1;
   }
 }
 
@@ -5162,6 +5201,7 @@ const ModifierClassMap = Object.freeze({
   TurnHeldItemTransferModifier,
   ContactHeldItemTransferChanceModifier,
   IvScannerModifier,
+  DowsingMachineModifier,
   PokeblockKitModifier,
   ExtraModifierModifier,
   TempExtraModifierModifier,

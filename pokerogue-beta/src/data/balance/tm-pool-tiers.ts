@@ -1,5 +1,6 @@
 import { ModifierTier } from "#enums/modifier-tier";
 import { MoveId } from "#enums/move-id";
+import { padInt } from "#utils/common";
 
 interface TmPoolTiers {
   [key: number]: Exclude<ModifierTier, ModifierTier.ROGUE | ModifierTier.MASTER | ModifierTier.LUXURY>;
@@ -176,13 +177,14 @@ export const tmPoolTiers: TmPoolTiers = {
   [MoveId.GASTRO_ACID]: ModifierTier.GREAT,
   [MoveId.POWER_SWAP]: ModifierTier.COMMON,
   [MoveId.GUARD_SWAP]: ModifierTier.COMMON,
-  [MoveId.WORRY_SEED]: ModifierTier.GREAT,
+  [MoveId.WORRY_SEED]: ModifierTier.COMMON,
   [MoveId.TOXIC_SPIKES]: ModifierTier.GREAT,
   [MoveId.FLARE_BLITZ]: ModifierTier.ULTRA,
   [MoveId.AURA_SPHERE]: ModifierTier.GREAT,
   [MoveId.ROCK_POLISH]: ModifierTier.GREAT,
   [MoveId.POISON_JAB]: ModifierTier.GREAT,
   [MoveId.DARK_PULSE]: ModifierTier.GREAT,
+  [MoveId.NIGHT_SLASH]: ModifierTier.GREAT,
   [MoveId.AQUA_TAIL]: ModifierTier.GREAT,
   [MoveId.SEED_BOMB]: ModifierTier.GREAT,
   [MoveId.AIR_SLASH]: ModifierTier.GREAT,
@@ -192,7 +194,7 @@ export const tmPoolTiers: TmPoolTiers = {
   [MoveId.POWER_GEM]: ModifierTier.GREAT,
   [MoveId.DRAIN_PUNCH]: ModifierTier.GREAT,
   [MoveId.VACUUM_WAVE]: ModifierTier.COMMON,
-  [MoveId.FOCUS_BLAST]: ModifierTier.GREAT,
+  [MoveId.FOCUS_BLAST]: ModifierTier.ULTRA,
   [MoveId.ENERGY_BALL]: ModifierTier.GREAT,
   [MoveId.BRAVE_BIRD]: ModifierTier.ULTRA,
   [MoveId.EARTH_POWER]: ModifierTier.ULTRA,
@@ -257,6 +259,7 @@ export const tmPoolTiers: TmPoolTiers = {
   [MoveId.ELECTROWEB]: ModifierTier.GREAT,
   [MoveId.WILD_CHARGE]: ModifierTier.GREAT,
   [MoveId.DRILL_RUN]: ModifierTier.GREAT,
+  [MoveId.DUAL_CHOP]: ModifierTier.GREAT,
   [MoveId.RAZOR_SHELL]: ModifierTier.GREAT,
   [MoveId.HEAT_CRASH]: ModifierTier.GREAT,
   [MoveId.TAIL_SLAP]: ModifierTier.GREAT,
@@ -277,6 +280,7 @@ export const tmPoolTiers: TmPoolTiers = {
   [MoveId.DAZZLING_GLEAM]: ModifierTier.ULTRA,
   [MoveId.INFESTATION]: ModifierTier.COMMON,
   [MoveId.POWER_UP_PUNCH]: ModifierTier.GREAT,
+  [MoveId.FIRST_IMPRESSION]: ModifierTier.ULTRA,
   [MoveId.DARKEST_LARIAT]: ModifierTier.GREAT,
   [MoveId.HIGH_HORSEPOWER]: ModifierTier.ULTRA,
   [MoveId.SOLAR_BLADE]: ModifierTier.ULTRA,
@@ -297,7 +301,7 @@ export const tmPoolTiers: TmPoolTiers = {
   [MoveId.EXPANDING_FORCE]: ModifierTier.GREAT,
   [MoveId.STEEL_ROLLER]: ModifierTier.GREAT,
   [MoveId.SCALE_SHOT]: ModifierTier.ULTRA,
-  [MoveId.METEOR_BEAM]: ModifierTier.GREAT,
+  [MoveId.METEOR_BEAM]: ModifierTier.ULTRA,
   [MoveId.MISTY_EXPLOSION]: ModifierTier.GREAT,
   [MoveId.GRASSY_GLIDE]: ModifierTier.COMMON,
   [MoveId.RISING_VOLTAGE]: ModifierTier.GREAT,
@@ -326,3 +330,9 @@ export const tmPoolTiers: TmPoolTiers = {
   [MoveId.PSYCHIC_NOISE]: ModifierTier.GREAT,
   [MoveId.UPPER_HAND]: ModifierTier.COMMON,
 };
+
+/** The displayed TM number, or null for moves outside the TM pool. */
+export function getTmNumber(moveId: MoveId): string | null {
+  const index = Object.keys(tmPoolTiers).indexOf(moveId.toString());
+  return index < 0 ? null : padInt(index + 1, 3);
+}

@@ -1,3 +1,4 @@
+import { PostDancingMoveAbAttr } from "#abilities/ab-attrs";
 import { Battle } from "#app/battle";
 import { MovePhasePriorityQueue } from "#app/queues/move-phase-priority-queue";
 import { allMoves } from "#data/data-lists";
@@ -80,6 +81,45 @@ describe("Rolling moves and triple-battle retargeting", () => {
   function faint(pokemon: Pokemon) {
     vi.mocked(pokemon.isActive).mockReturnValue(false);
   }
+
+  it("Dancer retargets a fainted attacker to a reachable third opponent", () => {
+    faint(enemies[0]);
+    const queue = vi.spyOn(game.scene.phaseManager, "unshiftNew").mockImplementation(() => {});
+    new PostDancingMoveAbAttr().apply({
+      pokemon: players[0],
+      source: enemies[0],
+      move: allMoves[MoveId.AQUA_STEP],
+      targets: [BattlerIndex.PLAYER],
+    });
+    expect(queue.mock.calls[0][2]).toEqual([BattlerIndex.ENEMY_3]);
+  });
+
+  it("Dancer uses team relationships rather than sprite side", () => {
+    players[0].isAlly = () => false;
+    players[0].isOpponent = () => true;
+    const queue = vi.spyOn(game.scene.phaseManager, "unshiftNew").mockImplementation(() => {});
+    new PostDancingMoveAbAttr().apply({
+      pokemon: players[0],
+      source: players[2],
+      move: allMoves[MoveId.FEATHER_DANCE],
+      targets: [BattlerIndex.ENEMY],
+    });
+    expect(queue.mock.calls[0][2]).toEqual([BattlerIndex.PLAYER_3]);
+  });
+
+  it("Dancer recomputes spread targets around the copying Pokemon", () => {
+    const queue = vi.spyOn(game.scene.phaseManager, "unshiftNew").mockImplementation(() => {});
+    new PostDancingMoveAbAttr().apply({
+      pokemon: players[0],
+      source: players[2],
+      move: allMoves[MoveId.TEETER_DANCE],
+      targets: [BattlerIndex.PLAYER],
+    });
+    const targets = queue.mock.calls[0][2] as BattlerIndex[];
+    expect(targets).not.toContain(BattlerIndex.PLAYER);
+    expect(targets).toContain(BattlerIndex.PLAYER_3);
+    expect(targets).toContain(BattlerIndex.ENEMY_3);
+  });
 
   it.each([
     MoveId.TACKLE,

@@ -310,7 +310,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.TORRACAT, level: 17 })],
     eggTier: EggTier.COMMON,
-    passives: [AbilityId.TOUGH_CLAWS, AbilityId.FIRE_MANE],
+    passives: [AbilityId.TOUGH_CLAWS, AbilityId.PICKPOCKET],
     levelMoves: [
       [1, MoveId.SCRATCH],
       [1, MoveId.GROWL],
@@ -412,7 +412,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.LITTEN,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.INCINEROAR, level: 34 })],
-    passives: [AbilityId.TOUGH_CLAWS, AbilityId.FIRE_MANE],
+    passives: [AbilityId.TOUGH_CLAWS, AbilityId.PICKPOCKET],
     levelMoves: [
       [1, MoveId.SCRATCH],
       [1, MoveId.GROWL],
@@ -431,7 +431,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       [46, MoveId.FLARE_BLITZ],
       [51, MoveId.OUTRAGE],
     ],
-    tms: [],
+    tms: [MoveId.DUAL_CHOP],
   };
   generationSevenSpeciesData[SpeciesId.INCINEROAR] = {
     species: new PokemonSpecies({
@@ -1136,6 +1136,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       MoveId.GIGA_IMPACT,
       MoveId.IRON_HEAD,
       MoveId.LOW_SWEEP,
+      MoveId.DUAL_CHOP,
     ],
   };
   generationSevenSpeciesData[SpeciesId.GRUBBIN] = {
@@ -1388,7 +1389,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       }),
     ],
     eggTier: EggTier.COMMON,
-    passives: AbilityId.TOUGH_CLAWS,
+    passives: AbilityId.OPPORTUNIST,
     levelMoves: [
       [RELEARN_MOVE, MoveId.SLAM],
       [1, MoveId.VISE_GRIP],
@@ -1463,6 +1464,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       MoveId.BULLDOZE,
       MoveId.FROST_BREATH,
       MoveId.WORK_UP,
+      MoveId.DUAL_CHOP,
       MoveId.CONFIDE,
       MoveId.POWER_UP_PUNCH,
       MoveId.BRUTAL_SWING,
@@ -2351,6 +2353,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
         MoveId.SHADOW_CLAW,
         MoveId.LOW_SWEEP,
         MoveId.FOUL_PLAY,
+        MoveId.DUAL_CHOP,
         MoveId.THROAT_CHOP,
         MoveId.LASH_OUT,
         MoveId.UPPER_HAND,
@@ -3104,6 +3107,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       MoveId.GRASS_KNOT,
       MoveId.BUG_BITE,
       MoveId.ROUND,
+      MoveId.DUAL_CHOP,
       MoveId.PETAL_BLIZZARD,
       MoveId.GRASSY_TERRAIN,
       MoveId.CONFIDE,
@@ -3173,6 +3177,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       MoveId.CROSS_POISON,
       MoveId.LOW_SWEEP,
       MoveId.SOLAR_BLADE,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationSevenSpeciesData[SpeciesId.MORELULL] = {
@@ -3607,6 +3612,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       MoveId.ROUND,
       MoveId.BULLDOZE,
       MoveId.WORK_UP,
+      MoveId.DUAL_CHOP,
       MoveId.CONFIDE,
       MoveId.BRUTAL_SWING,
       MoveId.STOMPING_TANTRUM,
@@ -4033,7 +4039,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
     starterCost: 4,
     evolutions: [],
     eggTier: EggTier.RARE,
-    passives: [AbilityId.FRIEND_GUARD, AbilityId.HOSPITALITY],
+    passives: [AbilityId.POWER_SPOT, AbilityId.HOSPITALITY],
     levelMoves: [
       [1, MoveId.CONFUSION],
       [1, MoveId.TAUNT],
@@ -4484,10 +4490,18 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       MoveId.SLUDGE_WAVE,
       MoveId.FROST_BREATH,
       MoveId.DRILL_RUN,
+      MoveId.DUAL_CHOP,
       MoveId.RAZOR_SHELL,
       MoveId.SNARL,
       MoveId.THROAT_CHOP,
       MoveId.LIQUIDATION,
+      MoveId.AGILITY,
+      MoveId.CHILLING_WATER,
+      MoveId.GUNK_SHOT,
+      MoveId.POUNCE,
+      MoveId.U_TURN,
+      MoveId.NIGHT_SLASH,
+      MoveId.FIRST_IMPRESSION,
     ],
   };
   generationSevenSpeciesData[SpeciesId.SANDYGAST] = {
@@ -5955,20 +5969,20 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
     ],
     eggTier: EggTier.RARE,
     passives: {
-      0: AbilityId.STURDY,
-      1: AbilityId.STURDY,
-      2: AbilityId.STURDY,
-      3: AbilityId.STURDY,
-      4: AbilityId.STURDY,
-      5: AbilityId.STURDY,
-      6: AbilityId.STURDY,
-      7: AbilityId.AERILATE,
-      8: AbilityId.AERILATE,
-      9: AbilityId.AERILATE,
-      10: AbilityId.AERILATE,
-      11: AbilityId.AERILATE,
-      12: AbilityId.AERILATE,
-      13: AbilityId.AERILATE,
+      0: [AbilityId.STURDY, AbilityId.ANGER_SHELL],
+      1: [AbilityId.STURDY, AbilityId.ANGER_SHELL],
+      2: [AbilityId.STURDY, AbilityId.ANGER_SHELL],
+      3: [AbilityId.STURDY, AbilityId.ANGER_SHELL],
+      4: [AbilityId.STURDY, AbilityId.ANGER_SHELL],
+      5: [AbilityId.STURDY, AbilityId.ANGER_SHELL],
+      6: [AbilityId.STURDY, AbilityId.ANGER_SHELL],
+      7: [AbilityId.AERILATE, AbilityId.PIXILATE],
+      8: [AbilityId.AERILATE, AbilityId.PIXILATE],
+      9: [AbilityId.AERILATE, AbilityId.GALVANIZE],
+      10: [AbilityId.AERILATE, AbilityId.GALVANIZE],
+      11: [AbilityId.AERILATE, AbilityId.REFRIGERATE],
+      12: [AbilityId.AERILATE, AbilityId.REFRIGERATE],
+      13: [AbilityId.AERILATE, AbilityId.AERILATE],
     },
     levelMoves: [
       [RELEARN_MOVE, MoveId.ROCK_POLISH],
@@ -6184,7 +6198,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
     starterCost: 4,
     evolutions: [],
     eggTier: EggTier.RARE,
-    passives: AbilityId.DAUNTLESS_SHIELD,
+    passives: [AbilityId.DAUNTLESS_SHIELD, AbilityId.ANALYTIC],
     levelMoves: [
       [1, MoveId.TACKLE],
       [1, MoveId.SMOG],
@@ -6483,7 +6497,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
     ],
     eggTier: EggTier.RARE,
     passives: {
-      0: AbilityId.TOUGH_CLAWS,
+      0: [AbilityId.TOUGH_CLAWS, AbilityId.CURSED_BODY],
       1: [AbilityId.TOUGH_CLAWS, AbilityId.INTIMIDATE],
     },
     levelMoves: [
@@ -6576,6 +6590,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       MoveId.TERA_BLAST,
       MoveId.POUNCE,
       MoveId.TRAILBLAZE,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationSevenSpeciesData[SpeciesId.BRUXISH] = {
@@ -7109,6 +7124,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       MoveId.BULLDOZE,
       MoveId.DRAGON_TAIL,
       MoveId.WORK_UP,
+      MoveId.DUAL_CHOP,
       MoveId.CONFIDE,
       MoveId.BREAKING_SWIPE,
       MoveId.SCALE_SHOT,
@@ -7601,6 +7617,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       MoveId.ECHOED_VOICE,
       MoveId.STORED_POWER,
       MoveId.WORK_UP,
+      MoveId.DUAL_CHOP,
       MoveId.SNARL,
       MoveId.GRASSY_TERRAIN,
       MoveId.CONFIDE,
@@ -7767,7 +7784,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       }),
     ],
     eggTier: EggTier.LEGENDARY,
-    passives: [AbilityId.PICKUP, AbilityId.SHIELD_DUST],
+    passives: [AbilityId.POWER_SPOT, AbilityId.PICKUP],
     levelMoves: [
       [1, MoveId.TELEPORT],
       [1, MoveId.SPLASH],
@@ -7817,7 +7834,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
         evoDelay: [53, 73, 79],
       }),
     ],
-    passives: [AbilityId.POWER_SPOT, AbilityId.SHELL_ARMOR],
+    passives: [AbilityId.POWER_SPOT, AbilityId.LEVITATE],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.MORNING_SUN],
       [EVOLVE_MOVE, MoveId.MOONLIGHT],
@@ -7990,7 +8007,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.COSMOG,
     evolutions: [],
-    passives: AbilityId.BEAST_BOOST,
+    passives: [AbilityId.BEAST_BOOST, AbilityId.DAZZLING],
     levelMoves: [
       [EVOLVE_MOVE, MoveId.MOONGEIST_BEAM],
       [1, MoveId.CONFUSION],
@@ -8235,7 +8252,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
     starterCost: 6,
     evolutions: [],
     eggTier: EggTier.EPIC,
-    passives: AbilityId.IRON_FIST,
+    passives: [AbilityId.IRON_FIST, AbilityId.WIND_RIDER],
     levelMoves: [
       [RELEARN_MOVE, MoveId.ICE_PUNCH],
       [RELEARN_MOVE, MoveId.THUNDER_PUNCH],
@@ -8309,6 +8326,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       MoveId.ROUND,
       MoveId.BULLDOZE,
       MoveId.WORK_UP,
+      MoveId.DUAL_CHOP,
       MoveId.CONFIDE,
       MoveId.POWER_UP_PUNCH,
       MoveId.DARKEST_LARIAT,
@@ -8850,6 +8868,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       MoveId.ROUND,
       MoveId.BULLDOZE,
       MoveId.DRAGON_TAIL,
+      MoveId.DUAL_CHOP,
       MoveId.HEAT_CRASH,
       MoveId.SNARL,
       MoveId.HIGH_HORSEPOWER,
@@ -9128,6 +9147,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       MoveId.EXPANDING_FORCE,
       MoveId.METEOR_BEAM,
       MoveId.TERA_BLAST,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationSevenSpeciesData[SpeciesId.MAGEARNA] = {
@@ -9568,6 +9588,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       MoveId.HEX,
       MoveId.ACROBATICS,
       MoveId.WORK_UP,
+      MoveId.DUAL_CHOP,
       MoveId.PHANTOM_FORCE,
       MoveId.CONFIDE,
       MoveId.THROAT_CHOP,
@@ -10153,6 +10174,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       MoveId.ACROBATICS,
       MoveId.VOLT_SWITCH,
       MoveId.WORK_UP,
+      MoveId.DUAL_CHOP,
       MoveId.ELECTROWEB,
       MoveId.WILD_CHARGE,
       MoveId.SNARL,
@@ -10321,7 +10343,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
     ],
     passives: {
       0: [AbilityId.HEATPROOF, AbilityId.FULL_METAL_BODY],
-      1: [AbilityId.HEATPROOF, AbilityId.FULL_METAL_BODY],
+      1: [AbilityId.FULL_METAL_BODY, AbilityId.HEATPROOF],
     },
     levelMoves: [
       [EVOLVE_MOVE, MoveId.THUNDER_PUNCH],
@@ -10569,7 +10591,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       malePercent: 50,
       genderDiffs: false,
     }),
-    starter: SpeciesId.PIKACHU,
+    starter: SpeciesId.PICHU,
     evolutions: [],
     passives: [AbilityId.TRANSISTOR, AbilityId.LEVITATE],
     levelMoves: [
@@ -10751,6 +10773,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       MoveId.TERA_BLAST,
       MoveId.ICE_SPINNER,
       MoveId.SNOWSCAPE,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationSevenSpeciesData[SpeciesId.ALOLA_SANDSLASH] = {
@@ -11194,6 +11217,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       MoveId.SLUDGE_WAVE,
       MoveId.HIGH_HORSEPOWER,
       MoveId.THROAT_CHOP,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationSevenSpeciesData[SpeciesId.ALOLA_MEOWTH] = {
@@ -11332,6 +11356,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       MoveId.TERA_BLAST,
       MoveId.TRAILBLAZE,
       MoveId.CHILLING_WATER,
+      MoveId.NIGHT_SLASH,
     ],
   };
   generationSevenSpeciesData[SpeciesId.ALOLA_PERSIAN] = {
@@ -11429,7 +11454,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
     starterCost: 3,
     evolutions: [new SpeciesEvolution({ speciesId: SpeciesId.ALOLA_GRAVELER, level: 25 })],
     eggTier: EggTier.RARE,
-    passives: [AbilityId.DRY_SKIN, AbilityId.ELECTROMORPHOSIS],
+    passives: [AbilityId.DRY_SKIN, AbilityId.EARTH_EATER],
     levelMoves: [
       [1, MoveId.TACKLE],
       [1, MoveId.THUNDER_SHOCK],
@@ -11556,7 +11581,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
         evoDelay: [35, 45, 55],
       }),
     ],
-    passives: [AbilityId.DRY_SKIN, AbilityId.ELECTROMORPHOSIS],
+    passives: [AbilityId.DRY_SKIN, AbilityId.EARTH_EATER],
     levelMoves: [
       [1, MoveId.TACKLE],
       [1, MoveId.THUNDER_SHOCK],
@@ -11618,7 +11643,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.ALOLA_GEODUDE,
     evolutions: [],
-    passives: [AbilityId.DRY_SKIN, AbilityId.ELECTROMORPHOSIS],
+    passives: [AbilityId.DRY_SKIN, AbilityId.EARTH_EATER],
     levelMoves: [
       [1, MoveId.TACKLE],
       [1, MoveId.THUNDER_SHOCK],
@@ -11870,7 +11895,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
     }),
     starter: SpeciesId.EXEGGCUTE,
     evolutions: [],
-    passives: [AbilityId.UNBURDEN, AbilityId.THICK_FAT],
+    passives: [AbilityId.UNBURDEN, AbilityId.MEGA_SOL],
     levelMoves: [
       [RELEARN_MOVE, MoveId.UPROAR],
       [RELEARN_MOVE, MoveId.SEED_BOMB],
@@ -12013,6 +12038,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       id: SpeciesId.BATTLE_BOND_GRENINJA,
       generation: 7,
       category: "Ninja Pokémon",
+      subLegendary: true,
       type1: PokemonType.WATER,
       type2: PokemonType.DARK,
       height: 1.5,
@@ -12083,7 +12109,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       ],
     }),
     starter: SpeciesId.BATTLE_BOND_GRENINJA,
-    starterCost: 5,
+    starterCost: 6,
     evolutions: [],
     formChanges: [
       new SpeciesFormChange({
@@ -12105,8 +12131,8 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
     ],
     eggTier: EggTier.EPIC,
     passives: {
-      0: AbilityId.STAKEOUT,
-      1: AbilityId.SUPER_LUCK,
+      0: [AbilityId.STAKEOUT, AbilityId.TELEPATHY],
+      1: [AbilityId.SUPER_LUCK, AbilityId.TELEPATHY],
     },
     levelMoves: [
       [RELEARN_MOVE, MoveId.BUBBLE],

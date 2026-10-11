@@ -177,6 +177,9 @@ export class Battle {
    */
   public failedRunAway = false;
 
+  /** The player's Run command succeeded; do not open the post-battle shop. */
+  public successfulRun = false;
+
   constructor(
     gameMode: GameMode,
     { waveIndex, battleType, trainer, mysteryEncounterType, double = false, wildBattlerCount }: NewBattleResolvedProps,

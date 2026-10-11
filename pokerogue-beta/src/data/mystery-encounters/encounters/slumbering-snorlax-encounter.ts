@@ -1,5 +1,6 @@
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
+import { Challenges } from "#enums/challenges";
 import { modifierTypes } from "#data/data-lists";
 import { CustomPokemonData } from "#data/pokemon-data";
 import { AiType } from "#enums/ai-type";
@@ -467,6 +468,7 @@ export const SlumberingSnorlaxEncounter: MysteryEncounter = MysteryEncounterBuil
   MysteryEncounterType.SLUMBERING_SNORLAX,
 )
   .withEncounterTier(MysteryEncounterTier.GREAT)
+  .withDisallowedChallenges(Challenges.MOVESET_RANDOMIZER)
   .withSceneWaveRangeRequirement(15, 150)
   .withCatchAllowed(true)
   .withHideWildIntroMessage(true)

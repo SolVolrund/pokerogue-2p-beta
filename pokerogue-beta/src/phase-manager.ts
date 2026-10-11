@@ -27,6 +27,7 @@ import { CommandPhase } from "#phases/command-phase";
 import { CommonAnimPhase } from "#phases/common-anim-phase";
 import { CrystalRecruitmentPhase } from "#phases/crystal-recruitment-phase";
 import { DamageAnimPhase } from "#phases/damage-anim-phase";
+import { DancerPhase } from "#phases/dancer-phase";
 import { DynamicPhaseMarker } from "#phases/dynamic-phase-marker";
 import { EggHatchPhase } from "#phases/egg-hatch-phase";
 import { EggLapsePhase } from "#phases/egg-lapse-phase";
@@ -173,6 +174,7 @@ const PHASES = Object.freeze({
   ContestStartPhase,
   CrystalRecruitmentPhase,
   DamageAnimPhase,
+  DancerPhase,
   DynamicPhaseMarker,
   EggHatchPhase,
   EggLapsePhase,
@@ -350,7 +352,7 @@ export class PhaseManager {
   public unshiftPhase(...phases: NonEmptyTuple<Phase>): void {
     for (const phase of phases) {
       const toAdd = this.checkDynamic(phase);
-      if (phase.is("MovePhase")) {
+      if (phase.is("MovePhase") || phase.is("DancerPhase")) {
         this.phaseQueue.addAfter(toAdd, "MoveEndPhase");
       } else {
         this.phaseQueue.addPhase(toAdd);

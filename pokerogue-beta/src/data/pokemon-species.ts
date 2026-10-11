@@ -10,6 +10,9 @@ import type { GrowthRate } from "#data/exp";
 import { Gender } from "#data/gender";
 import { getBioInstabilityForm } from "#data/bio-instability";
 import { AbilityId } from "#enums/ability-id";
+import { ChallengeType } from "#enums/challenge-type";
+import { applyChallenges } from "#utils/challenge-utils";
+import { ValueHolder } from "#utils/value-holder";
 import { DexAttr } from "#enums/dex-attr";
 import { EvoLevelThresholdKind } from "#enums/evo-level-threshold-kind";
 import type { MoveId } from "#enums/move-id";
@@ -214,7 +217,11 @@ export abstract class PokemonSpeciesForm {
     } else {
       ret = this.abilityHidden;
     }
-    return ret;
+    const ability = new ValueHolder(ret);
+    if (ret !== AbilityId.NONE) {
+      applyChallenges(ChallengeType.SPECIES_ABILITY_MODIFY, this.speciesId, ability);
+    }
+    return ability.value;
   }
 
   /**
@@ -223,7 +230,11 @@ export abstract class PokemonSpeciesForm {
    * @returns The id of the ability
    */
   getPassiveAbility(formIndex = this.formIndex, passiveIndex = 0): AbilityId {
-    return speciesDataRegistry.getPassive(this.speciesId, formIndex, passiveIndex);
+    const ability = new ValueHolder(speciesDataRegistry.getPassive(this.speciesId, formIndex, passiveIndex));
+    if (ability.value !== AbilityId.NONE) {
+      applyChallenges(ChallengeType.PASSIVE_ABILITY_MODIFY, this.speciesId, ability);
+    }
+    return ability.value;
   }
 
   /**
@@ -233,6 +244,7 @@ export abstract class PokemonSpeciesForm {
    */
   public getLevelMoves(formKey?: string): LevelMoves {
     const levelMoves = speciesDataRegistry.getLevelMoves(this.speciesId, formKey);
+    applyChallenges(ChallengeType.LEVEL_UP_MOVESET, this, levelMoves);
     return levelMoves.sort((a, b) => a[0] - b[0]);
   }
 

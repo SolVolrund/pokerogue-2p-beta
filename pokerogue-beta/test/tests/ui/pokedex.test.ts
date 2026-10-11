@@ -28,7 +28,7 @@ Cyndaquil has first cost reduction unlocked, enough candies to buy the second
 Totodile has first cost reduction unlocked, not enough candies to buy the second
 Treecko has both cost reduction unlocked
 Torchic has enough candies to do anything
-Mudkip has passive unlocked
+Mudkip has its primary passive unlocked and enough candies for its secondary
 Turtwig has enough candies to purchase an egg
 */
 
@@ -337,12 +337,12 @@ describe("UI - Pokedex", () => {
 
     const filter = pokedexHandler["filterBar"].getFilter(DropDownColumn.UNLOCKS);
 
-    // Cycling 4 times to get to the "can unlock" for passive
     const expectedPokemon = new Set([
       SpeciesId.EKANS,
       SpeciesId.CHIKORITA,
       SpeciesId.CYNDAQUIL,
       SpeciesId.TORCHIC,
+      SpeciesId.MUDKIP, // Its secondary passive is still available to unlock.
       SpeciesId.TURTWIG,
     ]);
 
@@ -350,11 +350,12 @@ describe("UI - Pokedex", () => {
     filter.toggleOptionState(0);
     filter.toggleOptionState(0);
 
-    expect(
-      pokedexHandler["filteredPokemonData"].every(pokemon =>
-        expectedPokemon.has(pokedexHandler.getStarterSpeciesId(pokemon.species.speciesId)),
+    const actualPokemon = new Set(
+      pokedexHandler["filteredPokemonData"].map(pokemon =>
+        pokedexHandler.getStarterSpeciesId(pokemon.species.speciesId),
       ),
-    ).toBe(true);
+    );
+    expect(actualPokemon).toEqual(expectedPokemon);
   });
 
   it("filtering for pokemon that have any cost reduction shows only the species that have unlocked a cost reduction", async () => {

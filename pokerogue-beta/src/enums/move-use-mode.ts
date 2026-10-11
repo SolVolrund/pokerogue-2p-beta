@@ -76,6 +76,11 @@ export type MoveUseMode = ObjectValues<typeof MoveUseMode>;
 
 // #region Helper Functions
 
+/** Dancer copies ordinary and move-called dances, but never another Dancer response. */
+export function isDancerCopiable(useMode: MoveUseMode): boolean {
+  return ![MoveUseMode.INDIRECT, MoveUseMode.REFLECTED, MoveUseMode.DELAYED_ATTACK].some(mode => mode === useMode);
+}
+
 // Please update the markdown tables if any new `MoveUseMode`s get added.
 
 /**
