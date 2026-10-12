@@ -11,7 +11,8 @@ export abstract class PartyMemberPokemonPhase extends FieldPhase {
     super();
 
     this.partyMemberIndex = partyMemberIndex;
-    this.fieldIndex = partyMemberIndex < globalScene.currentBattle.getBattlerCount() ? partyMemberIndex : -1;
+    const fieldCount = player ? globalScene.getBattleFieldSlotCount() : globalScene.currentBattle.getBattlerCount();
+    this.fieldIndex = partyMemberIndex < fieldCount ? partyMemberIndex : -1;
     this.player = player;
   }
 

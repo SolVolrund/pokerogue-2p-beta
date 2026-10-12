@@ -8,11 +8,12 @@ import {
   handleMysteryEncounterTurnStartEffects,
 } from "#mystery-encounters/encounter-phase-utils";
 import { FieldPhase } from "#phases/field-phase";
+import { reformHordePlayers } from "#utils/horde-battle";
 import i18next from "i18next";
 
 export class TurnInitPhase extends FieldPhase {
   public readonly phaseName = "TurnInitPhase";
-  start() {
+  async start() {
     super.start();
 
     let queuedVsModeVictory = false;
@@ -50,7 +51,7 @@ export class TurnInitPhase extends FieldPhase {
           handleMysteryEncounterBattleFailed();
         } else if (
           allowedPokemon.length >= activePartySlotCount
-          || (globalScene.currentBattle.double && !allowedPokemon[0].isActive(true))
+          || (globalScene.currentBattle.double && allowedPokemon.length > 0 && !allowedPokemon[0].isActive(true))
         ) {
           // If there is at least one pokemon in the back that is legal to switch in, force a switch.
           p.switchOut();
@@ -85,6 +86,9 @@ export class TurnInitPhase extends FieldPhase {
       return;
     }
 
+    if (globalScene.currentBattle.horde) {
+      await reformHordePlayers();
+    }
     globalScene.getField().forEach((pokemon, i) => {
       if (pokemon?.isActive()) {
         if (pokemon.isPlayer()) {

@@ -2667,7 +2667,7 @@ export class TitlePhase extends Phase {
         if (availablePartyMembers > 0) {
           for (
             let fieldIndex = 0;
-            fieldIndex < Math.min(availablePartyMembers, globalScene.currentBattle.getBattlerCount());
+            fieldIndex < Math.min(availablePartyMembers, globalScene.getBattleFieldSlotCount());
             fieldIndex++
           ) {
             globalScene.phaseManager.pushNew("SummonPhase", fieldIndex, true, true);
@@ -2680,7 +2680,7 @@ export class TitlePhase extends Phase {
           globalScene.currentBattle.battleType !== BattleType.TRAINER
           && (globalScene.currentBattle.waveIndex > 1 || !globalScene.gameMode.isDaily)
         ) {
-          const minPartySize = globalScene.currentBattle.getBattlerCount();
+          const minPartySize = globalScene.getBattleFieldSlotCount();
           if (availablePartyMembers > minPartySize) {
             for (let fieldIndex = 0; fieldIndex < minPartySize; fieldIndex++) {
               globalScene.phaseManager.pushNew("CheckSwitchPhase", fieldIndex, globalScene.currentBattle.double);

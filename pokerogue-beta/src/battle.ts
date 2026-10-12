@@ -5,6 +5,7 @@ import { globalScene } from "#app/global-scene";
 import { ArenaTagType } from "#enums/arena-tag-type";
 import { BattleType } from "#enums/battle-type";
 import { BattlerIndex } from "#enums/battler-index";
+import { copyHordeBattleState, HORDE_ENEMY_COUNT, scaleHordeLevel, type HordeBattleState } from "#data/horde-battle";
 import { BiomeId } from "#enums/biome-id";
 import type { Command } from "#enums/command";
 import { MoveId } from "#enums/move-id";
@@ -76,6 +77,7 @@ export class Battle {
   public seenEnemyPartyMemberIds: Set<number> = new Set<number>();
   public double: boolean;
   public wildBattlerCount: 1 | 2 | 3 | undefined;
+  public horde: HordeBattleState | undefined;
   public started = false;
   public enemySwitchCounter = 0;
   public computerPartnerSwitchCounter = 0;
@@ -182,7 +184,7 @@ export class Battle {
 
   constructor(
     gameMode: GameMode,
-    { waveIndex, battleType, trainer, mysteryEncounterType, double = false, wildBattlerCount }: NewBattleResolvedProps,
+    { waveIndex, battleType, trainer, mysteryEncounterType, double = false, wildBattlerCount, horde }: NewBattleResolvedProps,
   ) {
     this.gameMode = gameMode;
     this.waveIndex = waveIndex;
@@ -191,12 +193,16 @@ export class Battle {
     this.mysteryEncounterType = mysteryEncounterType;
     this.double = double;
     this.wildBattlerCount = wildBattlerCount;
+    this.horde = horde ? copyHordeBattleState(horde) : undefined;
 
     this.enemyLevels =
       battleType === BattleType.TRAINER
         ? trainer?.getPartyLevels(globalScene.seasonalEncounters.getTowerDifficultyWave() ?? this.waveIndex)
         : // TODO: Remove array.fill.map
-          new Array(this.getBattlerCount()).fill(null).map(() => this.getLevelForWave());
+          new Array(this.getBattlerCount()).fill(null).map(() => {
+            const level = this.getLevelForWave();
+            return this.horde ? scaleHordeLevel(level, this.horde.initialPlayerCount) : level;
+          });
   }
 
   public get isClassicFinalBoss(): boolean {
@@ -239,7 +245,14 @@ export class Battle {
     return rand / value;
   }
 
+  getPlayerBattlerCount(): number {
+    return this.horde ? (globalScene.twoPlayerMode ? globalScene.multiplayerPlayerCount : 1) : this.getBattlerCount();
+  }
+
   getBattlerCount(): number {
+    if (this.horde) {
+      return HORDE_ENEMY_COUNT;
+    }
     if (!this.double) {
       return 1;
     }

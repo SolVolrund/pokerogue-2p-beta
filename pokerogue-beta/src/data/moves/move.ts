@@ -2830,7 +2830,7 @@ export class SacrificialFullRestoreAttr extends SacrificialAttr {
 
   getCondition(): MoveConditionFunc {
     return (_user, _target, _move) =>
-      globalScene.getPlayerParty().filter(p => p.isActive()).length > globalScene.currentBattle.getBattlerCount();
+      globalScene.getPlayerParty().filter(p => p.isActive()).length > globalScene.getBattleFieldSlotCount();
   }
 }
 
@@ -7979,7 +7979,9 @@ export class ForceSwitchOutAttr extends MoveEffectAttr {
         return false;
       }
 
-      const allyPokemon = switchOutTarget.getAlly();
+      const allyPokemon = globalScene.currentBattle.horde
+        ? switchOutTarget.getAllies().find(pokemon => pokemon.isActive(true))
+        : switchOutTarget.getAlly();
 
       if (switchOutTarget.hp > 0) {
         switchOutTarget.leaveField(false);

@@ -766,7 +766,7 @@ export class FaintPhase extends PokemonPhase {
   }
 
   private getFaintPokemon(): Pokemon | undefined {
-    if (this.battlerIndex > BattlerIndex.ENEMY_3) {
+    if (this.battlerIndex > BattlerIndex.ENEMY_5) {
       return globalScene.getPokemonById(this.battlerIndex) ?? undefined;
     }
 

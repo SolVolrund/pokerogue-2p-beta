@@ -1,5 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import { allMoves } from "#data/data-lists";
+import { areHordePositionsAdjacent } from "#data/horde-battle";
+import { getRepositionPositions } from "#utils/horde-battle";
 import { BattlerIndex } from "#enums/battler-index";
 import { FieldPosition } from "#enums/field-position";
 import { MoveId } from "#enums/move-id";
@@ -66,11 +68,17 @@ export function filterAiRelevantOpponentsForPosition(
     opponent =>
       isForcedDuelOpponent(referencePokemon, opponent)
       || isForcedDuelAlly(referencePokemon, opponent)
-      || areAiFieldPositionsAdjacent(fieldPosition, opponent.fieldPosition),
+      || (globalScene.currentBattle?.horde
+        ? areHordePositionsAdjacent(fieldPosition, opponent.fieldPosition, referencePokemon.isPlayer(),
+          opponent.isPlayer(), globalScene.currentBattle.horde.playerCount)
+        : areAiFieldPositionsAdjacent(fieldPosition, opponent.fieldPosition)),
   );
 }
 
 export function shouldAiRepositionToCenter(user: Pokemon): boolean {
+  if (globalScene.currentBattle?.horde) {
+    return false;
+  }
   if (
     globalScene.isVsLaneBattle()
     || (globalScene.currentBattle?.getBattlerCount() ?? 1) < 3
@@ -88,6 +96,23 @@ export function shouldAiRepositionToCenter(user: Pokemon): boolean {
 
   const opponents = globalScene.getField(true).filter(target => target !== user && user.isOpponent(target));
   return opponents.length > 0 && !opponents.some(target => areAiBattlersAdjacent(user, target));
+}
+
+export function getAiEmergencyRepositionTarget(user: Pokemon): FieldPosition | undefined {
+  if (!globalScene.currentBattle?.horde) {
+    return shouldAiRepositionToCenter(user) ? FieldPosition.CENTER : undefined;
+  }
+  const opponents = user.getOpponents().filter(p => p.isActive(true));
+  if (!opponents.length || getAiRelevantOpponents(user).length) {
+    return;
+  }
+  // Long-range moves already provide an escape from isolation without spending a turn moving.
+  if (user.getMoveset().some(move => move.isUsable(user)[0]
+    && getAiMoveTargetData(user, move.moveId).opponentTargets.length > 0)) {
+    return;
+  }
+  return getRepositionPositions(user).find(position => position !== user.fieldPosition
+    && filterAiRelevantOpponentsForPosition(user, opponents, user.getFieldIndex(), position).length > 0);
 }
 
 function isAiOpponentSeekingMove(move: Move): boolean {

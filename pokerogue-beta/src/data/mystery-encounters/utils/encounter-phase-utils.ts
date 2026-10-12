@@ -53,6 +53,7 @@ import { trainerConfigs } from "#trainers/trainer-config";
 import type { HeldModifierConfig } from "#types/held-modifier-config";
 import type { RandomEncounterParams } from "#types/pokemon-common";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
+import type { MysteryEncounterUiHandler } from "#ui/mystery-encounter-ui-handler";
 import type { PartyOption, PokemonSelectFilter } from "#ui/party-ui-handler";
 import { PartyUiMode } from "#ui/party-ui-handler";
 import { coerceArray } from "#utils/array";
@@ -637,6 +638,24 @@ export function generateModifierTypeOption(
   return result;
 }
 
+function captureEncounterMenuReturn(): () => Promise<void> {
+  const mode = globalScene.ui.getMode();
+  const playerIndex = globalScene.activePlayerIndex;
+  // Leaving the encounter screen clears its player-specific option handlers and display settings.
+  const settings =
+    mode === UiMode.MYSTERY_ENCOUNTER
+      ? globalScene.ui.getHandler<MysteryEncounterUiHandler>().getReturnSettings()
+      : undefined;
+
+  return () => {
+    if (settings) {
+      globalScene.waitForPlayerSideProgressionInput(playerIndex);
+      return globalScene.ui.setMode(mode, settings);
+    }
+    return globalScene.ui.setMode(mode);
+  };
+}
+
 /**
  * This function is intended for use inside onPreOptionPhase() of an encounter option
  * @param onPokemonSelected - Any logic that needs to be performed when Pokemon is chosen
@@ -652,7 +671,7 @@ export function selectPokemonForOption(
   playerIndex: PlayerIndex = globalScene.activePlayerIndex,
 ): Promise<boolean> {
   return new Promise(resolve => {
-    const modeToSetOnExit = globalScene.ui.getMode();
+    const returnToMenu = captureEncounterMenuReturn();
     const getParty = () => globalScene.getPlayerParty(playerIndex);
 
     if (globalScene.twoPlayerMode) {
@@ -667,7 +686,7 @@ export function selectPokemonForOption(
       PartyUiMode.SELECT,
       -1,
       async (slotIndex: number, _option: PartyOption) => {
-        await globalScene.ui.setMode(modeToSetOnExit);
+        await returnToMenu();
         const party = getParty();
         if (slotIndex >= party.length) {
           onPokemonNotSelected?.();
@@ -718,8 +737,7 @@ export function selectPokemonForOption(
               label: i18next.t("menu:cancel"),
               handler: () => {
                 globalScene.ui.clearText();
-                globalScene.ui.setMode(modeToSetOnExit);
-                resolve(false);
+                returnToMenu().then(() => resolve(false));
                 return true;
               },
               onHover: () => {
@@ -784,7 +802,7 @@ export function selectOptionThenPokemon(
   onHoverOverCancelOption?: () => void,
 ): Promise<PokemonAndOptionSelected | null> {
   return new Promise<PokemonAndOptionSelected | null>(resolve => {
-    const modeToSetOnExit = globalScene.ui.getMode();
+    const returnToMenu = captureEncounterMenuReturn();
 
     const displayOptions = async (config: OptionSelectConfig) => {
       await globalScene.ui.setMode(UiMode.MESSAGE);
@@ -807,7 +825,7 @@ export function selectOptionThenPokemon(
         (slotIndex: number, _option: PartyOption) => {
           if (slotIndex < globalScene.getPlayerParty().length) {
             // Pokemon and option selected
-            globalScene.ui.setMode(modeToSetOnExit).then(() => {
+            returnToMenu().then(() => {
               const result: PokemonAndOptionSelected = {
                 selectedPokemonIndex: slotIndex,
                 selectedOptionIndex,
@@ -839,8 +857,7 @@ export function selectOptionThenPokemon(
         label: i18next.t("menu:cancel"),
         handler: () => {
           globalScene.ui.clearText();
-          globalScene.ui.setMode(modeToSetOnExit);
-          resolve(null);
+          returnToMenu().then(() => resolve(null));
           return true;
         },
         onHover: () => {

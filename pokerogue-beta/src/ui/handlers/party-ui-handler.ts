@@ -2188,7 +2188,7 @@ class PartySlot extends Phaser.GameObjects.Container {
     iconAnimHandler: PokemonIconAnimHelper,
     partyUiMode: PartyUiMode,
     tmMoveId: MoveId,
-    private readonly activePartySlotCount = globalScene.currentBattle.getBattlerCount(),
+    private readonly activePartySlotCount = globalScene.getBattleFieldSlotCount(),
   ) {
     const isBenched = slotIndex >= activePartySlotCount;
     const isDoubleBattle = activePartySlotCount > 1;
@@ -2631,7 +2631,7 @@ class PartyDiscardModeButton extends Phaser.GameObjects.Container {
     }
     // The third active panel fills the old toggle location. Use the spare
     // fourth bench tile in the triples background instead.
-    if (!globalScene.twoPlayerMode && globalScene.currentBattle.getBattlerCount() === 3) {
+    if (!globalScene.twoPlayerMode && globalScene.getBattleFieldSlotCount() === 3) {
       this.setPosition(228, -44);
       return;
     }

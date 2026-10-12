@@ -378,7 +378,9 @@ export class EncounterPhase extends BattlePhase {
           const helperSpeciesId = unownFinalBossHelperSlot
             ? getNextUnownFinalBossHelperSpeciesId(unownFinalBossHelperSlot)
             : undefined;
-          let enemySpecies = towerEntry
+          let enemySpecies = battle.horde && e > 0
+            ? battle.enemyParty[0].species
+            : towerEntry
             ? getPokemonSpecies(resolveTowerSpecies(towerEntry, level))
             : isUnownRealFinalBoss && e === unownFinalBossFieldIndex
               ? getPokemonSpecies(SpeciesId.UNOWN)
@@ -388,6 +390,7 @@ export class EncounterPhase extends BattlePhase {
           // If player has golden bug net, rolls 10% chance to replace non-boss wave wild species from the golden bug net bug pool
           if (
             !isUnownRealFinalBoss
+            && !(battle.horde && e > 0)
             && !towerEntry
             && globalScene.findModifier(m => m instanceof BoostBugSpawnModifier)
             && !globalScene.gameMode.isBoss(battle.waveIndex)
@@ -414,7 +417,7 @@ export class EncounterPhase extends BattlePhase {
               enemySpecies,
               level,
               TrainerSlot.NONE,
-              !towerEntry && !unownFinalBossHelperSlot && !!globalScene.getEncounterBossSegments(battle.waveIndex, level, enemySpecies),
+              !battle.horde && !towerEntry && !unownFinalBossHelperSlot && !!globalScene.getEncounterBossSegments(battle.waveIndex, level, enemySpecies),
               false,
               undefined,
               towerEntry ? pokemon => applyTowerPokemonIdentity(pokemon, towerEntry) : undefined,
@@ -428,7 +431,7 @@ export class EncounterPhase extends BattlePhase {
           }
           const playerPokemonForEncounterSync = globalScene.twoPlayerMode
             ? globalScene.getPlayerFieldOwners().map(playerIndex => globalScene.getPlayerParty(playerIndex)[0])
-            : globalScene.getPlayerParty().slice(0, battle.getBattlerCount());
+            : globalScene.getPlayerParty().slice(0, globalScene.getBattleFieldSlotCount());
           playerPokemonForEncounterSync.reverse().forEach(playerPokemon => {
             if (playerPokemon) {
               applyAbAttrs("SyncEncounterNatureAbAttr", { pokemon: playerPokemon, target: battle.enemyParty[e] });
@@ -671,6 +674,8 @@ export class EncounterPhase extends BattlePhase {
               enemyPokemon.calculateStats();
             }
             enemyPokemon.setFieldPosition(FieldPosition.CENTER);
+          } else if (battle.horde) {
+            enemyPokemon.setFieldPosition(battle.horde.enemyPositions[e]);
           } else if (battle.double) {
             enemyPokemon.setFieldPosition(
               e === 2 ? FieldPosition.CENTER : e ? FieldPosition.RIGHT : FieldPosition.LEFT,
@@ -824,6 +829,9 @@ export class EncounterPhase extends BattlePhase {
 
   getEncounterMessage(): string {
     const enemyField = globalScene.getEnemyField();
+    if (globalScene.currentBattle.horde) {
+      return i18next.t("battle:hordeAppeared", { pokemonName: enemyField[0].getNameToRender() });
+    }
 
     if (globalScene.currentBattle.isClassicFinalBoss) {
       return i18next.t("battle:bossAppeared", {
@@ -1337,7 +1345,8 @@ export class EncounterPhase extends BattlePhase {
         );
 
         availablePartyMembersByField.forEach((availablePartyMembers, fieldIndex) => {
-          if (availablePartyMembers[0] && !availablePartyMembers[0].isOnField()) {
+          const partyIndex = globalScene.getPlayerPartyIndexForFieldSlot(fieldIndex);
+          if (availablePartyMembers[partyIndex] && !globalScene.getPlayerPokemonForFieldSlot(fieldIndex)?.isOnField()) {
             globalScene.phaseManager.pushNew("SummonPhase", fieldIndex);
           } else if (
             availablePartyMembers.length === 0
@@ -1370,7 +1379,7 @@ export class EncounterPhase extends BattlePhase {
           globalScene.phaseManager.pushNew("SummonPhase", 0);
         }
 
-        const battlerCount = globalScene.currentBattle.getBattlerCount();
+        const battlerCount = globalScene.getBattleFieldSlotCount();
         globalScene.phaseManager.pushNew("ToggleDoublePositionPhase", globalScene.currentBattle.double);
         for (let fieldIndex = 1; fieldIndex < Math.min(availablePartyMembers.length, battlerCount); fieldIndex++) {
           if (!availablePartyMembers[fieldIndex].isOnField()) {

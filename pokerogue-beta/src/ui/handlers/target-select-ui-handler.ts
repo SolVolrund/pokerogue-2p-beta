@@ -3,6 +3,7 @@ import { SubstituteTag } from "#data/battler-tags";
 import { BattlerIndex } from "#enums/battler-index";
 import { Button } from "#enums/buttons";
 import { FieldPosition } from "#enums/field-position";
+import { HORDE_POSITION_COLUMNS } from "#data/horde-battle";
 import type { MoveId } from "#enums/move-id";
 import { UiMode } from "#enums/ui-mode";
 import type { Pokemon } from "#field/pokemon";
@@ -90,6 +91,8 @@ export class TargetSelectUiHandler extends UiHandler {
       this.resetCursor(this.cursor1, user);
     } else if (this.fieldIndex === 2) {
       this.resetCursor(this.cursor2, user);
+    } else {
+      this.resetCursor(-1, user);
     }
     return true;
   }
@@ -313,6 +316,9 @@ function getTripleTargetPosition(target: number): TripleTargetPosition | undefin
     }
 
     const row = pokemon.isEnemy() ? 0 : 1;
+    if (globalScene.currentBattle.horde) {
+      return { row, column: HORDE_POSITION_COLUMNS[pokemon.fieldPosition] };
+    }
     switch (pokemon.fieldPosition) {
       case FieldPosition.LEFT:
         return { row, column: 0 };

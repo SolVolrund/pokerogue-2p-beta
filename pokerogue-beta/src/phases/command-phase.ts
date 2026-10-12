@@ -31,7 +31,8 @@ import { FieldPhase } from "#phases/field-phase";
 import type { MoveTargetSet } from "#types/move-target-set";
 import type { TurnMove } from "#types/turn-move";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
-import { shouldAiRepositionToCenter } from "#utils/ai-targeting";
+import { getAiEmergencyRepositionTarget } from "#utils/ai-targeting";
+import { getRepositionPositions } from "#utils/horde-battle";
 import { getPlannerRepositionTarget } from "#utils/battle-planner-ai";
 import { getCloneBallBattleBlockMessage, getCloneBallTargets, getComputerPartnerCloneTarget } from "#utils/clone-ball";
 import { getComputerPartnerImprovedSwitchIndex, isComputerPartnerFieldIndex } from "#utils/computer-partner-ai";
@@ -904,12 +905,8 @@ export class CommandPhase extends FieldPhase {
     playerIndex: PlayerIndex,
     skipOptionalReposition = false,
   ): boolean {
-    if (shouldAiRepositionToCenter(playerPokemon)) {
-      this.queueComputerPartnerRepositionCommand(playerIndex, FieldPosition.CENTER);
-      return true;
-    }
-
-    const repositionTarget = skipOptionalReposition ? undefined : this.shouldComputerPartnerReposition();
+    const repositionTarget = skipOptionalReposition ? undefined
+      : getAiEmergencyRepositionTarget(playerPokemon) ?? this.shouldComputerPartnerReposition();
     if (repositionTarget !== undefined) {
       const repositionRequest = this.getComputerPartnerRepositionRequest(playerIndex, repositionTarget);
       if (!repositionRequest) {
@@ -978,10 +975,11 @@ export class CommandPhase extends FieldPhase {
     const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
     const previousAiType = playerPokemon.aiType;
 
-    if (shouldAiRepositionToCenter(playerPokemon)) {
+    const emergencyPosition = getAiEmergencyRepositionTarget(playerPokemon);
+    if (emergencyPosition !== undefined) {
       this.setTurnCommand({
         command: Command.REPOSITION,
-        cursor: FieldPosition.CENTER,
+        cursor: emergencyPosition,
         playerIndex,
       });
       this.end();
@@ -1703,8 +1701,9 @@ export class CommandPhase extends FieldPhase {
     const playerPokemon = this.getPokemon();
     if (
       globalScene.isVsLaneBattle()
-      || globalScene.getBattleFieldSlotCount() < 3
+      || (!globalScene.currentBattle.horde && globalScene.getBattleFieldSlotCount() < 3)
       || globalScene.currentBattle.getBattlerCount() < 3
+      || !getRepositionPositions(playerPokemon).includes(targetPosition)
       || playerPokemon.fieldPosition === targetPosition
     ) {
       return false;

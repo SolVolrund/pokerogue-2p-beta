@@ -8,6 +8,7 @@ import { PLAYER_PARTY_MAX_SIZE, RARE_CANDY_FRIENDSHIP_CAP } from "#app/constants
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
+import { HORDE_ENEMY_SPRITE_OFFSETS } from "#data/horde-battle";
 import { getHauntingStatMultiplier, isHauntedByMaleficSkull } from "#utils/haunting-utils";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
@@ -1844,14 +1845,19 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   getFieldPositionOffset(slotCount?: number): [number, number] {
+    if (globalScene.currentBattle?.horde && this.isEnemy()) {
+      return [...HORDE_ENEMY_SPRITE_OFFSETS[this.fieldPosition]];
+    }
     const playerIndex = this.isPlayer() ? globalScene.getPlayerIndexForPokemon(this) : undefined;
     const usePlayerSideLayout =
       this.isPlayer() && (playerIndex == null || !globalScene.isMysteryEncounterEnemySidePlayer(playerIndex));
     const useThreeSlotLayout =
       slotCount !== undefined
         ? slotCount > 2
-        : globalScene.currentBattle?.getBattlerCount() > 2
-          || (usePlayerSideLayout && globalScene.twoPlayerMode && globalScene.getPlayerFieldOwners().length > 2);
+        : globalScene.currentBattle?.horde && this.isPlayer()
+          ? globalScene.currentBattle.horde.playerCount > 2
+          : globalScene.currentBattle?.getBattlerCount() > 2
+            || (usePlayerSideLayout && globalScene.twoPlayerMode && globalScene.getPlayerFieldOwners().length > 2);
 
     if (useThreeSlotLayout) {
       switch (this.fieldPosition) {
@@ -1871,6 +1877,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
         return [-32, -8];
       case FieldPosition.RIGHT:
         return [32, 0];
+      default:
+        return [0, 0];
     }
   }
 
@@ -1911,8 +1919,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * Set the field position of this Pokémon
    * @param fieldPosition - The new field position
    * @param duration - How long the transition should take, in milliseconds; if `0` or `undefined`, the position is changed instantly
+   * @param previousSlotCount - The previous layout size when a formation changes
    */
-  public setFieldPosition(fieldPosition: FieldPosition, duration?: number): Promise<void> {
+  public setFieldPosition(fieldPosition: FieldPosition, duration?: number, previousSlotCount?: number): Promise<void> {
     return new Promise(resolve => {
       const battleInfo = this.battleInfo;
       const isPlayerPokemon = this.isPlayer();
@@ -1933,16 +1942,23 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       );
       if (usePlayerCompactInfo) {
         battleInfo.setPlayerCompactLayout(this.getFieldIndex(), playerFieldOwnerCount);
+      } else if (this.isEnemy() && globalScene.currentBattle?.horde) {
+        battleInfo.setHordeEnemyCompactLayout(fieldPosition);
       } else if (useThreeEnemyCompactInfo) {
         battleInfo.setThreeEnemyCompactLayout(this.getFieldIndex());
       }
 
-      if (fieldPosition === this.fieldPosition) {
+      const horde = globalScene.currentBattle?.horde;
+      if (horde && this.getFieldIndex() >= 0) {
+        (this.isPlayer() ? horde.playerPositions : horde.enemyPositions)[this.getFieldIndex()] = fieldPosition;
+      }
+
+      if (fieldPosition === this.fieldPosition && previousSlotCount === undefined) {
         resolve();
         return;
       }
 
-      const initialOffset = this.getFieldPositionOffset();
+      const initialOffset = this.getFieldPositionOffset(previousSlotCount);
 
       this.fieldPosition = fieldPosition;
 

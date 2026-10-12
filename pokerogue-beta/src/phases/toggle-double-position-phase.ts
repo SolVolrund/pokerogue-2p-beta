@@ -18,33 +18,30 @@ export class ToggleDoublePositionPhase extends BattlePhase {
     if (
       globalScene.twoPlayerMode
       && !(globalScene.twoPlayerEnemyPlayerMode && globalScene.multiplayerPlayerCount === 1)
+      && this.previousSlotCount === undefined
+      && !globalScene.currentBattle.horde
     ) {
       this.end();
       return;
     }
 
     const field = globalScene.getPlayerField().filter(p => p.isActive(true));
-    const singleSurvivor = globalScene.getPokemonAllowedInBattle().length === 1;
+    const singleTeam = !globalScene.twoPlayerMode || (globalScene.twoPlayerEnemyPlayerMode && globalScene.multiplayerPlayerCount === 1);
+    const singleSurvivor = singleTeam && globalScene.getPokemonAllowedInBattle().length === 1;
     if (singleSurvivor && field[0]?.getFieldIndex() > 0) {
       const party = globalScene.getPlayerParty();
       const index = field[0].getFieldIndex();
       [party[0], party[index]] = [party[index], party[0]];
     }
     const moves = field.map(pokemon => {
-      if (this.previousSlotCount !== undefined) {
-        const oldOffset = pokemon.getFieldPositionOffset(this.previousSlotCount);
-        const newOffset = pokemon.getFieldPositionOffset();
-        pokemon.x += newOffset[0] - oldOffset[0];
-        pokemon.y += newOffset[1] - oldOffset[1];
-      }
-      const position = !this.double || singleSurvivor
+      const position = globalScene.currentBattle.horde?.playerPositions[pokemon.getFieldIndex()] ?? (!this.double || singleSurvivor
         ? FieldPosition.CENTER
         : pokemon.getFieldIndex() === 2
           ? FieldPosition.CENTER
           : pokemon.getFieldIndex() === 1
             ? FieldPosition.RIGHT
-            : FieldPosition.LEFT;
-      return pokemon.setFieldPosition(position, 500);
+            : FieldPosition.LEFT);
+      return pokemon.setFieldPosition(position, 500, this.previousSlotCount);
     });
     void Promise.all(moves).then(() => this.end());
   }

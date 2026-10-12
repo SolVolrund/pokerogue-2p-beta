@@ -81,7 +81,7 @@ export class SwitchPhase extends BattlePhase {
     const fieldIndex =
       globalScene.twoPlayerMode
         ? this.fieldIndex
-        : globalScene.currentBattle.getBattlerCount() === 1 || allowedPartyMembers.length > 1
+        : globalScene.getBattleFieldSlotCount() === 1 || allowedPartyMembers.length > 1
         ? this.fieldIndex
         : 0;
 

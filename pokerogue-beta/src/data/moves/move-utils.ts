@@ -1,6 +1,7 @@
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { allMoves } from "#data/data-lists";
+import { areHordePositionsAdjacent } from "#data/horde-battle";
 import { BattlerIndex } from "#enums/battler-index";
 import { FieldPosition } from "#enums/field-position";
 import { MoveCategory, type MoveDamageCategory } from "#enums/move-category";
@@ -118,8 +119,10 @@ export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: Move
     case MoveTarget.ATTACKER:
       // TODO: Remove MoveTarget.ATTACKER and BattlerIndex.ATTACKER
       return { targets: [BattlerIndex.ATTACKER], multiple: false };
-    case MoveTarget.NEAR_ALLY:
     case MoveTarget.ALLY:
+      set = globalScene.currentBattle?.horde ? allies : getNearTargets(user, allies);
+      break;
+    case MoveTarget.NEAR_ALLY:
       set = getNearTargets(user, allies);
       break;
     case MoveTarget.USER_OR_NEAR_ALLY:
@@ -257,6 +260,10 @@ export function arePokemonMoveTargetsAdjacent(user: Pokemon, target: Pokemon): b
     return true;
   }
 
+  if (globalScene.currentBattle?.horde) {
+    return areHordePositionsAdjacent(user.fieldPosition, target.fieldPosition,
+      user.isPlayer(), target.isPlayer(), globalScene.currentBattle.horde.playerCount);
+  }
   const userCenter = user.fieldPosition === FieldPosition.CENTER;
   const targetCenter = target.fieldPosition === FieldPosition.CENTER;
 

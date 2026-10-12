@@ -4,6 +4,7 @@ import { getTypeRgb } from "#data/type";
 import { Button } from "#enums/buttons";
 import { Command } from "#enums/command";
 import { FieldPosition } from "#enums/field-position";
+import { getRepositionPositions } from "#utils/horde-battle";
 import { PartyUiMode } from "#enums/party-ui-mode";
 import { PokemonType } from "#enums/pokemon-type";
 import { TextStyle } from "#enums/text-style";
@@ -218,7 +219,11 @@ export class CommandUiHandler extends UiHandler {
           // Pokemon
           case Command.POKEMON:
             if (this.isEnemyCommandPhase(commandPhase)) {
-              commandPhase.handleCommand(Command.POKEMON, 0);
+              if (globalScene.currentBattle.horde) {
+                this.openRepositionMenu(commandPhase);
+              } else {
+                commandPhase.handleCommand(Command.POKEMON, 0);
+              }
             } else {
               this.openPokemonCommandMenu(commandPhase);
             }
@@ -340,23 +345,31 @@ export class CommandUiHandler extends UiHandler {
     );
   }
 
-  private openRepositionMenu(commandPhase: CommandPhase): void {
+  private openRepositionMenu(commandPhase: CommandPhase | EnemyCommandPhase): void {
     const pokemon = commandPhase.getPokemon();
     const positionOptions: Array<{ label: string; position: FieldPosition }> = [
+      { label: "Switch to Far Left", position: FieldPosition.FAR_LEFT },
       { label: "Switch to Left", position: FieldPosition.LEFT },
       { label: "Switch to Center", position: FieldPosition.CENTER },
       { label: "Switch to Right", position: FieldPosition.RIGHT },
+      { label: "Switch to Far Right", position: FieldPosition.FAR_RIGHT },
     ];
-    const options: OptionSelectItem[] = positionOptions.map(option => ({
-      label: option.label,
-      handler: () => commandPhase.handleCommand(Command.REPOSITION, option.position),
-      disabled: pokemon.fieldPosition === option.position,
-    }));
+    const options: OptionSelectItem[] = positionOptions
+      .filter(option => getRepositionPositions(pokemon).includes(option.position))
+      .map(option => ({
+        label: option.label,
+        handler: () => commandPhase.handleCommand(Command.REPOSITION, option.position),
+        disabled: pokemon.fieldPosition === option.position,
+      }));
     options.push({
       label: i18next.t("menu:cancel"),
       keepOpen: true,
       handler: () => {
-        this.openPokemonCommandMenu(commandPhase);
+        if (this.isEnemyCommandPhase(commandPhase)) {
+          globalScene.ui.setMode(UiMode.COMMAND, commandPhase.getFieldIndex());
+        } else {
+          this.openPokemonCommandMenu(commandPhase);
+        }
         return true;
       },
     });
@@ -367,7 +380,7 @@ export class CommandUiHandler extends UiHandler {
   private shouldShowTriplePokemonMenu(): boolean {
     return (
       !globalScene.isVsLaneBattle()
-      && globalScene.getBattleFieldSlotCount() > 2
+      && (globalScene.currentBattle?.horde ? globalScene.currentBattle.horde.playerCount > 1 : globalScene.getBattleFieldSlotCount() > 2)
       && (globalScene.currentBattle?.getBattlerCount() ?? 1) > 2
     );
   }

@@ -54,12 +54,14 @@ export class EonFluteSummonPhase extends FieldPhase {
       : globalScene.currentBattle.double
         ? 2
         : 1;
-    const fieldSlotCount = globalScene.twoPlayerMode ? playerFieldSlotCount : globalScene.currentBattle.getBattlerCount();
+    const fieldSlotCount = globalScene.twoPlayerMode ? playerFieldSlotCount : globalScene.getBattleFieldSlotCount();
 
     applyAbAttrs("PreSummonAbAttr", { pokemon });
 
     pokemon.setPosition(106, 148);
-    if (fieldSlotCount > 2 && fieldIndex === 2) {
+    if (globalScene.currentBattle.horde) {
+      pokemon.setFieldPosition(globalScene.currentBattle.horde.playerPositions[fieldIndex], 0);
+    } else if (fieldSlotCount > 2 && fieldIndex === 2) {
       pokemon.setFieldPosition(FieldPosition.CENTER, 0);
     } else if (fieldIndex === 1) {
       pokemon.setFieldPosition(FieldPosition.RIGHT, 0);

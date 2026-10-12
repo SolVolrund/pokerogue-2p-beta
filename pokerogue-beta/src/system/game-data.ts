@@ -1541,6 +1541,7 @@ export class GameData {
       waveIndex: globalScene.currentBattle.waveIndex,
       battleType: globalScene.currentBattle.battleType,
       wildBattlerCount: globalScene.currentBattle.wildBattlerCount,
+      horde: globalScene.currentBattle.horde ? structuredClone(globalScene.currentBattle.horde) : undefined,
       trainer:
         globalScene.currentBattle.battleType === BattleType.TRAINER
           ? new TrainerData(globalScene.currentBattle.trainer)

@@ -1,6 +1,8 @@
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { Gender, getGenderColor, getGenderSymbol } from "#data/gender";
+import { HORDE_POSITION_COLUMNS } from "#data/horde-battle";
+import type { FieldPosition } from "#enums/field-position";
 import { getTypeRgb } from "#data/type";
 import { PokemonType } from "#enums/pokemon-type";
 import { Stat } from "#enums/stat";
@@ -508,6 +510,13 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
     }
 
     this.applyCompactLayout(layout);
+  }
+
+  setHordeEnemyCompactLayout(position: FieldPosition): void {
+    if (!this.player) {
+      const column = HORDE_POSITION_COLUMNS[position];
+      this.applyCompactLayout({ x: 75 + column * 35, y: column % 2 === 0 ? -162 : -148 });
+    }
   }
 
   clearCompactLayout(): void {

@@ -6,7 +6,7 @@ import { isPlayerBattlerIndex } from "#utils/battler-index-utils";
 
 export abstract class PokemonPhase extends FieldPhase {
   /**
-   * The battler index this phase refers to, or the pokemon ID if greater than 3.
+   * The battler index this phase refers to, or a Pokemon ID above the last battler index.
    * TODO: Make this either use IDs or `BattlerIndex`es, not a weird mix of both
    */
   protected battlerIndex: BattlerIndex | number;
@@ -37,7 +37,7 @@ export abstract class PokemonPhase extends FieldPhase {
 
   // TODO: This should have `undefined` in its signature
   getPokemon(): Pokemon {
-    if (this.battlerIndex > BattlerIndex.ENEMY_3) {
+    if (this.battlerIndex > BattlerIndex.ENEMY_5) {
       return globalScene.getPokemonById(this.battlerIndex)!;
     }
     return globalScene.getField()[this.battlerIndex]!;

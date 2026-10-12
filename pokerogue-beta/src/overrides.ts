@@ -53,7 +53,11 @@ import type { IntClosedRange, TupleOf } from "type-fest";
  */
 //const overrides = {} satisfies Partial<InstanceType<OverridesType>>;
 
-const overrides: Partial<InstanceType<OverridesType>> = {};
+const overrides: Partial<InstanceType<OverridesType>> = {
+  //ENEMY_LEVEL_OVERRIDE: 5,
+  STARTING_WAVE_OVERRIDE: 21,
+  //HORDE_ENCOUNTER_CHANCE_OVERRIDE: 100,
+};
 
 /**
  * If you need to add Overrides values for local testing do that inside {@linkcode overrides}
@@ -104,6 +108,8 @@ class DefaultOverrides {
    * and may be removed in a future PR.
    */
   readonly BATTLE_STYLE_OVERRIDE: BattleStyleOverride | null = null;
+  /** 0-100 chance on eligible wild waves; retains the minimum wave and all horde exclusions. */
+  readonly HORDE_ENCOUNTER_CHANCE_OVERRIDE: number | null = null;
   /**
    * If present and non-`null`, will override the starting wave # when starting a new run.
    * Should never be set to a negative value.

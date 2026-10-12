@@ -1,6 +1,7 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { Animation } from "#app/animations";
 import { Battle } from "#app/battle";
+import { createHordeBattleState, getHordeChanceDenominator, HORDE_ENEMY_SPRITE_OFFSETS, HORDE_MIN_WAVE } from "#data/horde-battle";
 import {
   ANTI_VARIANCE_WEIGHT_MODIFIER,
   BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT,
@@ -1898,6 +1899,9 @@ export class BattleScene extends SceneBase {
   }
 
   public getBattleFieldSlotCount(): number {
+    if (this.currentBattle?.horde) {
+      return this.currentBattle.getPlayerBattlerCount();
+    }
     if (this.twoPlayerEnemyPlayerMode && this.multiplayerPlayerCount === 1) {
       return this.currentBattle?.double ? 2 : 1;
     }
@@ -2075,6 +2079,7 @@ export class BattleScene extends SceneBase {
       seasonalEncounters: { ...this.seasonalEncounters },
       hauntedTrainer: this.currentBattle?.trainer?.haunted ?? false,
       greatHaunt: this.currentBattle?.greatHauntState,
+      horde: this.currentBattle?.horde,
       magicRoomTurns: this.arena?.getTag(ArenaTagType.MAGIC_ROOM)?.turnCount ?? null,
       phase: currentPhase?.phaseName ?? null,
       uiMode,
@@ -2170,6 +2175,7 @@ export class BattleScene extends SceneBase {
       inputOwner: this.inputOwner,
       fieldOwners: this.getPlayerFieldOwners(),
       playerFieldPokemonIds: this.getPlayerField().map(pokemon => pokemon?.id ?? null),
+      horde: this.currentBattle?.horde,
       enemyFieldPokemonIds: this.getEnemyField().map(pokemon => pokemon?.id ?? null),
       message: messageInputContextKey ?? null,
       handlerPromptState: handlerInputContextPromptState,
@@ -3064,6 +3070,9 @@ export class BattleScene extends SceneBase {
       return [0];
     }
 
+    if (this.currentBattle?.horde) {
+      return this.fieldSlotOwners.slice(0, this.multiplayerPlayerCount);
+    }
     if (this.twoPlayerEnemyPlayerMode && this.multiplayerPlayerCount === 1) {
       return new Array(this.currentBattle?.double ? 2 : 1).fill(0) as PlayerIndex[];
     }
@@ -3112,7 +3121,7 @@ export class BattleScene extends SceneBase {
   public getPlayerActiveSlotCount(playerIndex: PlayerIndex = this.activePlayerIndex): number {
     return this.twoPlayerMode
       ? Math.max(1, this.getPlayerFieldOwners().filter(owner => owner === playerIndex).length)
-      : this.currentBattle.getBattlerCount();
+      : this.getBattleFieldSlotCount();
   }
 
   public isPlayerSwitchReserved(playerIndex: PlayerIndex, partyIndex: number, fieldIndex: number): boolean {
@@ -3312,7 +3321,7 @@ export class BattleScene extends SceneBase {
       return [];
     }
     return party
-      .slice(0, Math.min(party.length, this.currentBattle?.getBattlerCount() ?? 1))
+      .slice(0, Math.min(party.length, this.getBattleFieldSlotCount()))
       .filter(p => !active || p.isActive());
   }
 
@@ -3355,7 +3364,7 @@ export class BattleScene extends SceneBase {
    * If speed order matters, use {@linkcode inSpeedOrder}.
    */
   public getField(activeOnly = false): Pokemon[] {
-    const ret: Pokemon[] = new Array(6).fill(null);
+    const ret: Pokemon[] = new Array(this.currentBattle?.horde ? 8 : 6).fill(null);
     const enemyField = this.getEnemyField();
     if (this.twoPlayerMode) {
       this.getPlayerFieldOwners().forEach((_playerIndex, fieldIndex) => {
@@ -4006,6 +4015,9 @@ export class BattleScene extends SceneBase {
           + JSON.stringify(resolved),
       );
     }
+    if (!fromSession) {
+      this.tryRollHorde(resolved);
+    }
     resolved.double = this.checkIsDouble(resolved as NewBattleConstructedProps);
 
     const lastBattle: Battle | null = this.currentBattle;
@@ -4114,6 +4126,7 @@ export class BattleScene extends SceneBase {
       trainerData,
       double: fixedDouble,
       wildBattlerCount: fromSession.wildBattlerCount,
+      horde: fromSession.horde,
     } satisfies NewBattleSavedProps;
   }
 
@@ -4151,6 +4164,7 @@ export class BattleScene extends SceneBase {
     resolved.battleType = props.battleType;
     resolved.double = props.double;
     resolved.wildBattlerCount = props.wildBattlerCount;
+    resolved.horde = props.horde;
     resolved.trainer = props.trainerData?.toTrainer();
     if (resolved.trainer) {
       this.field.add(resolved.trainer);
@@ -4305,12 +4319,41 @@ export class BattleScene extends SceneBase {
     return new Trainer(trainerType, variant);
   }
 
-  /**
-   * Sub-method of {@linkcode newBattle} that returns whether the new battle is a double battle.
-   * @param props - Battle configuration, also populated with the solo wild encounter size.
-   * @returns Whether the battle needs more than one field slot.
-   */
+  /** Roll the separate horde chance before deciding the ordinary wild encounter size. */
+  private tryRollHorde(props: NewBattleInitialProps): void {
+    const { waveIndex } = props;
+    if (props.battleType !== BattleType.WILD || props.double != null || this.twoPlayerVsMode
+      || waveIndex < HORDE_MIN_WAVE || this.seasonalEncounters.tower
+      || this.gameMode.isFixedBattle(waveIndex) || this.gameMode.isBoss(waveIndex)
+      || this.gameMode.isWaveFinal(waveIndex) || this.gameMode.isEndlessBoss(waveIndex)
+      || isUnownCrystalGauntletWave(waveIndex, this.gameMode.modeId)
+      || this.arena.biomeId === BiomeId.END || this.arena.biomeId === BiomeId.ROCKET_HQ
+      || this.arena.biomeId === BiomeId.POKEMON_TOWER || activeOverrides.BATTLE_STYLE_OVERRIDE != null) {
+      return;
+    }
+    const teams = this.getActivePlayerIndexes().length;
+    const chance = getHordeChanceDenominator(teams, this.getModifiers(DoubleBattleChanceBoosterModifier).length);
+    const chanceOverride = activeOverrides.HORDE_ENCOUNTER_CHANCE_OVERRIDE;
+    // An independent stream keeps ordinary encounter rolls unchanged when the horde roll misses.
+    this.executeWithSeedOffset(() => {
+      const rolledHorde = chanceOverride == null
+        ? randSeedInt(chance) === 0
+        : randSeedInt(100) < Math.max(0, Math.min(100, chanceOverride));
+      if (rolledHorde) {
+        const owners = this.twoPlayerMode ? this.fieldSlotOwners.slice(0, teams) : [0 as PlayerIndex];
+        const slots = owners.flatMap((owner, slot) => this.hasPlayerUsablePokemonOrEonFlute(owner) ? [slot] : []);
+        if (slots.length) {
+          props.horde = createHordeBattleState(slots);
+        }
+      }
+    }, waveIndex * 3000 + 193);
+  }
+
+  /** Determine whether either side needs more than one field slot. */
   private checkIsDouble(props: NewBattleConstructedProps): boolean {
+    if (props.horde) {
+      return true;
+    }
     if (this.seasonalEncounters.tower) {
       return this.getActivePlayerIndexes().length > 1;
     }
@@ -4410,30 +4453,19 @@ export class BattleScene extends SceneBase {
     // Use the previous slot count so shrinking encounters still recall every outgoing Pokemon.
     const playerField =
       this.twoPlayerEnemyPlayerMode && this.multiplayerPlayerCount === 1
-        ? this.getPlayerParty(0).slice(0, 1 + Number(lastBattle.double))
+        ? this.getPlayerParty(0).slice(0, lastBattle.getPlayerBattlerCount())
         : this.twoPlayerMode
           ? this.getPlayerField()
-          : this.getPlayerParty().slice(0, lastBattle.getBattlerCount());
-    if (!resetArenaState && !this.twoPlayerMode && lastBattle.getBattlerCount() !== this.currentBattle.getBattlerCount()) {
-      for (let i = this.currentBattle.getBattlerCount(); i < playerField.length; i++) {
+          : this.getPlayerParty().slice(0, lastBattle.getPlayerBattlerCount());
+    if (!resetArenaState && (lastBattle.horde || this.currentBattle.horde
+      || lastBattle.getPlayerBattlerCount() !== this.currentBattle.getPlayerBattlerCount())) {
+      for (let i = this.currentBattle.getPlayerBattlerCount(); i < playerField.length; i++) {
         if (playerField[i].isOnField()) {
           this.phaseManager.pushNew("ReturnPhase", i);
         }
       }
-      this.phaseManager.pushNew("ToggleDoublePositionPhase", this.currentBattle.double, lastBattle.getBattlerCount());
-    }
-    if (
-      !resetArenaState
-      && this.twoPlayerEnemyPlayerMode
-      && this.multiplayerPlayerCount === 1
-      && lastBattle.double
-      && !this.currentBattle.double
-    ) {
-      const extraPokemon = this.getPlayerParty(0)[1];
-      if (extraPokemon?.isOnField()) {
-        this.phaseManager.pushNew("ReturnPhase", 1);
-      }
-      this.phaseManager.pushNew("ToggleDoublePositionPhase", false);
+      this.phaseManager.pushNew("ToggleDoublePositionPhase", this.getBattleFieldSlotCount() > 1,
+        lastBattle.horde?.playerCount ?? lastBattle.getPlayerBattlerCount());
     }
     if (resetArenaState) {
       this.arena.resetArenaEffects();
@@ -4615,6 +4647,9 @@ export class BattleScene extends SceneBase {
       ? this.currentBattle.unownFinalBossState?.bossPokemonId
       : undefined;
     const positionOrder = (pokemon: Pokemon): number => {
+      if (this.currentBattle.horde && pokemon.isEnemy()) {
+        return HORDE_ENEMY_SPRITE_OFFSETS[pokemon.fieldPosition][1];
+      }
       if (pokemon.id === unownFinalBossId) {
         return -1;
       }

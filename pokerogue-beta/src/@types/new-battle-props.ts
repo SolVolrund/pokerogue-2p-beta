@@ -7,6 +7,7 @@
  */
 
 import type { Battle } from "#app/battle";
+import type { HordeBattleState } from "#data/horde-battle";
 import type { BattleScene } from "#app/battle-scene";
 import type { BattleType } from "#enums/battle-type";
 import type { MysteryEncounterType } from "#enums/mystery-encounter-type";
@@ -52,6 +53,7 @@ interface NewBattleBaseProps {
   double?: boolean | undefined;
   /** Explicit size for naturally rolled solo wild encounters. */
   wildBattlerCount?: 1 | 2 | 3 | undefined;
+  horde?: HordeBattleState | undefined;
 }
 
 /**

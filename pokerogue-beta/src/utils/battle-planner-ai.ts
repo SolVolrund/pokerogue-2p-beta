@@ -66,9 +66,11 @@ const PLANNER_IQ_PROFILES = {
 const PLANNER_DEBUG_STORAGE_KEY = "pokeroguePlannerAiDebug";
 const PLANNER_DETAILED_DEBUG_STORAGE_KEY = "pokeroguePlannerAiDetailedDebug";
 const PLANNER_FIELD_LOG_ORDER = [
+  BattlerIndex.ENEMY_4,
   BattlerIndex.ENEMY,
   BattlerIndex.ENEMY_3,
   BattlerIndex.ENEMY_2,
+  BattlerIndex.ENEMY_5,
   BattlerIndex.PLAYER,
   BattlerIndex.PLAYER_3,
   BattlerIndex.PLAYER_2,
@@ -1682,6 +1684,10 @@ function getBattlerLogLabel(battlerIndex: BattlerIndex): string {
       return "E2";
     case BattlerIndex.ENEMY_3:
       return "E3";
+    case BattlerIndex.ENEMY_4:
+      return "E4";
+    case BattlerIndex.ENEMY_5:
+      return "E5";
     case BattlerIndex.ATTACKER:
       return "ATTACKER";
     default:

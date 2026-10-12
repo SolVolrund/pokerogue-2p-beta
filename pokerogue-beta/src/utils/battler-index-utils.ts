@@ -10,6 +10,8 @@ export const ENEMY_BATTLER_INDEXES: readonly BattlerIndex[] = [
   BattlerIndex.ENEMY,
   BattlerIndex.ENEMY_2,
   BattlerIndex.ENEMY_3,
+  BattlerIndex.ENEMY_4,
+  BattlerIndex.ENEMY_5,
 ] as const;
 
 export function getPlayerBattlerIndex(fieldIndex: number): BattlerIndex {

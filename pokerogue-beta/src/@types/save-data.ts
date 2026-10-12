@@ -1,5 +1,6 @@
 import type { MultiplayerPlayerCount, PlayerIndex, PokeballCounts } from "#app/battle-scene";
 import type { Tutorial } from "#app/tutorial";
+import type { HordeBattleState } from "#data/horde-battle";
 import type { AlphTileCounts } from "#data/alph/alph-tiles";
 import type { AlphLegendaryHelperId } from "#data/alph/legendary-helpers";
 import type { VsEnemyTokenPurchaseState } from "#data/vs-enemy-tokens";
@@ -143,6 +144,7 @@ export interface SessionSaveData {
   // Remove this later on to reduce save size and improve clarity.
   battleType: Exclude<BattleType, BattleType.CLEAR>;
   wildBattlerCount?: 1 | 2 | 3 | undefined;
+  horde?: HordeBattleState | undefined;
   // TODO: This being nullable NEEDS to be reflected in the type signature
   trainer: TrainerData;
   gameVersion: string;

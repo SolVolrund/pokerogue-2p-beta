@@ -665,7 +665,7 @@ export class FusionSummaryUiHandler extends UiHandler {
     this.addCenteredText(160, 149, "Live Preview", TextStyle.WINDOW_ALT);
     this.addCenteredText(268, 149, "Palette: P2", TextStyle.WINDOW_ALT);
 
-    this.addControlText(12, 166, "Q: Change Body");
+    this.addControlText(12, 166, "G: Change Body");
     this.addControlText(124, 166, "W: Swap Body/Donor");
     this.addControlText(224, 166, "E: Change Donor");
   }
@@ -686,7 +686,7 @@ export class FusionSummaryUiHandler extends UiHandler {
     //this.addPokemonIcon(body, 160, 58, 1.1);
     this.addFusionPokemonIcon(body, donor, 160, 70, 1.1);
 
-    this.addBoundedCenteredText(5, 92, 96, "Q: Change Body Type", TextStyle.SUMMARY_GREEN, "36px");
+    this.addBoundedCenteredText(5, 92, 96, "G: Change Body Type", TextStyle.SUMMARY_GREEN, "36px");
     this.addBoundedCenteredText(112, 101, 96, "W: Change Tera Type", TextStyle.SUMMARY_GREEN, "36px");
     this.addBoundedCenteredText(219, 92, 96, "E: Change Donor Type", TextStyle.SUMMARY_GREEN, "36px");
 

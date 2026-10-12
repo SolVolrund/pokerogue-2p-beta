@@ -3,6 +3,7 @@ import type { BattlerIndex } from "#enums/battler-index";
 import { FieldPosition } from "#enums/field-position";
 import type { Pokemon } from "#field/pokemon";
 import { FieldPhase } from "#phases/field-phase";
+import { getRepositionPositions } from "#utils/horde-battle";
 
 export class RepositionPhase extends FieldPhase {
   public readonly phaseName = "RepositionPhase";
@@ -18,7 +19,8 @@ export class RepositionPhase extends FieldPhase {
     super.start();
 
     const pokemon = globalScene.getField()[this.battlerIndex];
-    if (!pokemon?.isActive(true) || pokemon.fieldPosition === this.targetPosition) {
+    if (!pokemon?.isActive(true) || pokemon.fieldPosition === this.targetPosition
+      || !getRepositionPositions(pokemon).includes(this.targetPosition)) {
       this.end();
       return;
     }

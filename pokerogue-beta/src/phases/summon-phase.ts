@@ -230,6 +230,9 @@ export class SummonPhase extends PartyMemberPokemonPhase {
       pokemon.setFieldPosition(FieldPosition.CENTER, 0);
     } else if (this.inheritedFieldPosition !== undefined) {
       pokemon.setFieldPosition(this.inheritedFieldPosition, 0);
+    } else if (globalScene.currentBattle.horde) {
+      const horde = globalScene.currentBattle.horde;
+      pokemon.setFieldPosition((this.player ? horde.playerPositions : horde.enemyPositions)[this.fieldIndex], 0);
     } else if (fieldSlotCount > 2 && this.fieldIndex === 2) {
       pokemon.setFieldPosition(FieldPosition.CENTER, 0);
     } else if (this.fieldIndex === 1) {
@@ -331,7 +334,10 @@ export class SummonPhase extends PartyMemberPokemonPhase {
       this.player ? globalScene.getBattleFieldSlotCount() : globalScene.currentBattle.getBattlerCount();
     const fieldSlotCount = this.player ? playerFieldSlotCount : globalScene.currentBattle.getBattlerCount();
 
-    if (!this.player && globalScene.currentBattle.greatHauntState?.stage === "marowak") {
+    if (globalScene.currentBattle.horde) {
+      const horde = globalScene.currentBattle.horde;
+      pokemon.setFieldPosition((this.player ? horde.playerPositions : horde.enemyPositions)[this.fieldIndex], 0);
+    } else if (!this.player && globalScene.currentBattle.greatHauntState?.stage === "marowak") {
       pokemon.setFieldPosition(FieldPosition.CENTER, 0);
     } else if (fieldSlotCount > 2 && this.fieldIndex === 2) {
       pokemon.setFieldPosition(FieldPosition.CENTER, 0);

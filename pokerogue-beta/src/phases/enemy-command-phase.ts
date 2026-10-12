@@ -16,7 +16,8 @@ import { FieldPhase } from "#phases/field-phase";
 import type { MoveTargetSet } from "#types/move-target-set";
 import type { TurnMove } from "#types/turn-move";
 import { PartyOption, PartyUiMode } from "#ui/party-ui-handler";
-import { shouldAiRepositionToCenter } from "#utils/ai-targeting";
+import { getAiEmergencyRepositionTarget } from "#utils/ai-targeting";
+import { getRepositionPositions } from "#utils/horde-battle";
 import { getPlannerRepositionTarget, getPlannerSwitchIndex } from "#utils/battle-planner-ai";
 import { isMysteryEncounterSwitchProtectedPokemon } from "#utils/mystery-encounter-switch-protection";
 import { getZMoveForPokemonMove, shouldSpendZMoveForTurnMove } from "#utils/z-move-utils";
@@ -71,10 +72,11 @@ export class EnemyCommandPhase extends FieldPhase {
     }
 
     const moveLocked = enemyPokemon.getMoveQueue().length > 0;
-    if (!moveLocked && !globalScene.isVsLaneBattle() && !this.skipTurn && shouldAiRepositionToCenter(enemyPokemon)) {
+    const emergencyPosition = !moveLocked && !this.skipTurn ? getAiEmergencyRepositionTarget(enemyPokemon) : undefined;
+    if (!globalScene.isVsLaneBattle() && emergencyPosition !== undefined) {
       battle.turnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = {
         command: Command.REPOSITION,
-        cursor: FieldPosition.CENTER,
+        cursor: emergencyPosition,
         skip: this.skipTurn,
       };
 
@@ -217,7 +219,7 @@ export class EnemyCommandPhase extends FieldPhase {
       case Command.FIGHT:
         return true;
       case Command.POKEMON:
-        return this.canInspectTrainerParty(this.getPokemon());
+        return !!globalScene.currentBattle.horde || this.canInspectTrainerParty(this.getPokemon());
       default:
         return false;
     }
@@ -227,6 +229,14 @@ export class EnemyCommandPhase extends FieldPhase {
     const enemyPokemon = this.getPokemon();
 
     switch (command) {
+      case Command.REPOSITION:
+        if (!globalScene.currentBattle.horde || !getRepositionPositions(enemyPokemon).includes(cursor)
+          || cursor === enemyPokemon.fieldPosition) {
+          return false;
+        }
+        globalScene.currentBattle.turnCommands[this.getBattlerIndex()] = { command, cursor };
+        this.end();
+        return true;
       case Command.FIGHT:
         return this.handleEnemyPlayerFightCommand(enemyPokemon, cursor, _useMode ?? MoveUseMode.NORMAL);
       case Command.POKEMON:

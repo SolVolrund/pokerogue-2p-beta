@@ -282,7 +282,8 @@ describe("Solo wild encounter size", () => {
     party[0].fieldPosition = FieldPosition.LEFT;
     party[0].setPosition(34, 140);
     for (const p of party.slice(0, 2)) {
-      vi.spyOn(p, "setFieldPosition").mockResolvedValue();
+      const setPosition = p.setFieldPosition.bind(p);
+      vi.spyOn(p, "setFieldPosition").mockImplementation((position, _duration, oldCount) => setPosition(position, 0, oldCount));
     }
     const phase = new ToggleDoublePositionPhase(true, 3);
     vi.spyOn(phase, "end").mockImplementation(() => {});
@@ -290,7 +291,7 @@ describe("Solo wild encounter size", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(party[0].x).toBe(74);
-    expect(party[1].setFieldPosition).toHaveBeenCalledWith(FieldPosition.RIGHT, 500);
+    expect(party[1].setFieldPosition).toHaveBeenCalledWith(FieldPosition.RIGHT, 500, 3);
     expect(phase.end).toHaveBeenCalledOnce();
   });
 });

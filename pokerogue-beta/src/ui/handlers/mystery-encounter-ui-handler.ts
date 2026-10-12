@@ -128,6 +128,14 @@ export class MysteryEncounterUiHandler extends UiHandler {
     return true;
   }
 
+  public getReturnSettings(): OptionSelectSettings {
+    return {
+      ...this.overrideSettings,
+      slideInDescription: false,
+      startingCursorIndex: this.getCursor(),
+    };
+  }
+
   override processInput(button: Button): boolean {
     const ui = this.getUi();
 
@@ -174,10 +182,7 @@ export class MysteryEncounterUiHandler extends UiHandler {
   private selectEncounterOption(cursor: number, ignoreBlockInput = false): boolean {
     const selected = this.encounterOptions[cursor];
     if (cursor === this.viewPartyIndex) {
-      const overrideSettings: OptionSelectSettings = {
-        ...this.overrideSettings,
-        slideInDescription: false,
-      };
+      const overrideSettings = this.getReturnSettings();
       globalScene.ui.setMode(UiMode.PARTY, PartyUiMode.CHECK, -1, () => {
         globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, overrideSettings);
         setTimeout(() => {
