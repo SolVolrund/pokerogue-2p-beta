@@ -205,9 +205,11 @@ export class Egg {
       }
     };
 
+    // New eggs use a separate seed namespace so old inventory-based seeds cannot be replayed.
+    // Restoring an existing egg must not consume another sequence number.
     const eggSeedIndex = eggOptions?.fromSave
       ? (eggOptions.id ?? 0)
-      : (eggOptions?.id ?? this.getOwnerGameData().eggs.length);
+      : `generated:${this.getOwnerGameData().eggGenerationCount++}`;
     const seedOverride = globalScene.twoPlayerMode
       ? `${globalScene.seed}:egg:${this.ownerPlayerIndex}:${eggSeedIndex}`
       : randomString(24);

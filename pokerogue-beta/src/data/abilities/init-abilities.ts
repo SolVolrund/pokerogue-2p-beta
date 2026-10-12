@@ -1041,8 +1041,6 @@ export function initAbilities() {
       .attr(IllusionBreakAbAttr)
       // The illusion breaks when the Pokemon takes direct move damage or reveals an impossible immunity.
       .attr(PostDefendIllusionBreakAbAttr, true)
-      // Disable Illusion in fusions.
-      .attr(NoFusionAbilityAbAttr)
       // Illusion is available again after a battle.
       .conditionalAttr(pokemon => pokemon.isAllowedInBattle(), IllusionPostBattleAbAttr, false)
       .uncopiable()

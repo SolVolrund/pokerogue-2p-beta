@@ -55,7 +55,7 @@ import type { IntClosedRange, TupleOf } from "type-fest";
 
 const overrides: Partial<InstanceType<OverridesType>> = {
   //ENEMY_LEVEL_OVERRIDE: 5,
-  STARTING_WAVE_OVERRIDE: 21,
+  //STARTING_WAVE_OVERRIDE: 21,
   //HORDE_ENCOUNTER_CHANCE_OVERRIDE: 100,
 };
 

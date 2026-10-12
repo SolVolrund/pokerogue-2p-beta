@@ -80,7 +80,7 @@ export async function populateVariantColors(
     globalScene.experimentalSprites && hasExpSprite(pokemon.getBattleSpriteKey(isBackSprite, ignoreOverride));
   battleSpritePath.split("/").map(p => (config ? (config = config[p]) : null));
   const variantSet: VariantSet = config as VariantSet;
-  if (!variantSet || variantSet[pokemon.variant] !== 1) {
+  if (!variantSet || variantSet[pokemon.getBaseVariant(true)] !== 1) {
     return;
   }
   const cacheKey = pokemon.getBattleSpriteKey(isBackSprite);

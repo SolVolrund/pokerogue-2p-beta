@@ -36,7 +36,7 @@ export class GameWrapper {
     // TODO: Move these mocks elsewhere
     MoveAnim.prototype.getAnim = () => ({ frames: {} }) as any;
     Pokemon.prototype.enableMask = () => null;
-    Pokemon.prototype.updateFusionPalette = () => null;
+    vi.spyOn(Pokemon.prototype, "updateFusionPalette").mockImplementation(() => {});
     Pokemon.prototype.cry = () => null;
     vi.spyOn(Pokemon.prototype, "faintCry").mockImplementation(cb => {
       if (cb) {

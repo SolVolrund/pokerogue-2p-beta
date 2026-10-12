@@ -980,32 +980,30 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     const formIndex = this.getSpriteFormIndex(useIllusion);
     loadPromises.push(
       this.getSpriteSpeciesForm(false, useIllusion).loadAssets(
-        this.getGender(useIllusion) === Gender.FEMALE,
+        this.getGender(false, useIllusion) === Gender.FEMALE,
         formIndex,
-        this.isShiny(useIllusion),
-        this.getVariant(useIllusion),
+        this.isBaseShiny(useIllusion),
+        this.getBaseVariant(useIllusion),
       ),
     );
 
-    if (this.isPlayer() || this.getFusionSpeciesForm(false, useIllusion)) {
+    const fusionSpeciesForm = this.getFusionSpeciesForm(false, useIllusion);
+    if (this.isPlayer() || fusionSpeciesForm) {
       globalScene.loadPokemonAtlas(
         this.getBattleSpriteKey(true, ignoreOverride),
         this.getBattleSpriteAtlasPath(true, ignoreOverride),
       );
     }
-    if (this.getFusionSpeciesForm()) {
+    if (fusionSpeciesForm) {
       const { fusionFormIndex, fusionShiny, fusionVariant } = useIllusion ? illusion! : this;
+      const fusionFemale = this.getFusionGender(false, useIllusion) === Gender.FEMALE;
       loadPromises.push(
-        this.getFusionSpeciesForm(false, useIllusion).loadAssets(
-          this.getFusionGender(false, useIllusion) === Gender.FEMALE,
-          fusionFormIndex,
-          fusionShiny,
-          fusionVariant,
-        ),
+        fusionSpeciesForm.loadAssets(fusionFemale, fusionFormIndex, fusionShiny, fusionVariant),
       );
+      // Use the same donor for both views, including real-asset reloads while a disguise is active.
       globalScene.loadPokemonAtlas(
-        this.getFusionBattleSpriteKey(true, ignoreOverride),
-        this.getFusionBattleSpriteAtlasPath(true, ignoreOverride),
+        fusionSpeciesForm.getSpriteKey(fusionFemale, fusionFormIndex, fusionShiny, fusionVariant, true),
+        fusionSpeciesForm.getSpriteAtlasPath(fusionFemale, fusionFormIndex, fusionShiny, fusionVariant, true),
       );
     }
 
@@ -1360,8 +1358,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     return this.getFusionSpeciesForm(ignoreOverride, true).getSpriteId(
       this.getFusionGender(ignoreOverride, true) === Gender.FEMALE,
       fusionFormIndex,
-      this.fusionShiny,
-      this.fusionVariant,
+      this.isFusionShiny(true),
+      this.getFusionVariant(true),
     );
   }
 
@@ -1375,8 +1373,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     return this.getFusionSpeciesForm(ignoreOverride, true).getSpriteId(
       this.getFusionGender(ignoreOverride, true) === Gender.FEMALE,
       fusionFormIndex,
-      this.fusionShiny,
-      this.fusionVariant,
+      this.isFusionShiny(true),
+      this.getFusionVariant(true),
       back,
     );
   }
@@ -1386,7 +1384,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   getFusionBattleSpriteAtlasPath(back?: boolean, ignoreOverride?: boolean): string {
-    return this.getFusionBattleSpriteId(back, ignoreOverride).replace(/_{2}/g, "/");
+    const spriteId = this.getFusionBattleSpriteId(back, ignoreOverride).replace(/_{2}/g, "/");
+    return `${/_[1-3]$/.test(spriteId) ? "variant/" : ""}${spriteId}`;
   }
 
   getIconAtlasKey(ignoreOverride = false, useIllusion = true): string {
@@ -1403,7 +1402,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     const { fusionFormIndex, fusionVariant } = useIllusion && illusion ? illusion : this;
     return this.getFusionSpeciesForm(ignoreOverride, useIllusion).getIconAtlasKey(
       fusionFormIndex,
-      this.isFusionShiny(),
+      this.isFusionShiny(useIllusion),
       fusionVariant,
     );
   }
@@ -1424,7 +1423,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     return this.getFusionSpeciesForm(ignoreOverride, useIllusion).getIconId(
       this.getFusionGender(ignoreOverride, useIllusion) === Gender.FEMALE,
       fusionFormIndex,
-      this.isFusionShiny(),
+      this.isFusionShiny(useIllusion),
       fusionVariant,
     );
   }
@@ -2482,7 +2481,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * @returns The {@linkcode Gender} of this {@linkcode Pokemon}'s fusion.
    */
   getFusionGender(ignoreOverride = false, useIllusion = false): Gender {
-    if (useIllusion && this.summonData.illusion?.fusionGender) {
+    if (useIllusion && this.summonData.illusion?.fusionGender != null) {
       return this.summonData.illusion.fusionGender;
     }
     if (!ignoreOverride && this.summonData.fusionGender != null) {
@@ -2578,7 +2577,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       return 0;
     }
     const illusion = this.summonData.illusion;
-    return illusion ? (illusion.fusionVariant ?? this.fusionVariant) : this.fusionVariant;
+    return useIllusion && illusion ? (illusion.fusionVariant ?? 0) : this.fusionVariant;
   }
 
   /**
@@ -2595,7 +2594,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * @returns Whether this Pokemon is currently fused with another species.
    */
   isFusion(useIllusion = false): boolean {
-    return !!(useIllusion ? (this.summonData.illusion?.fusionSpecies ?? this.fusionSpecies) : this.fusionSpecies);
+    const illusion = this.summonData.illusion;
+    return !!(useIllusion && illusion ? illusion.fusionSpecies : this.fusionSpecies);
   }
 
   /**
@@ -6569,7 +6569,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   updateFusionPalette(ignoreOverride?: boolean): void {
-    if (!this.getFusionSpeciesForm(ignoreOverride)) {
+    // Recolor the visible disguise, which may be fused even when the real Pokemon is not (or vice versa).
+    const fusionSpeciesForm = this.getFusionSpeciesForm(ignoreOverride, true);
+    if (!fusionSpeciesForm) {
       [this.getSprite(), this.getTintSprite()]
         .filter(s => !!s)
         .map(s => {
@@ -6579,30 +6581,33 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       return;
     }
 
-    const speciesForm = this.getSpeciesForm(ignoreOverride);
-    const fusionSpeciesForm = this.getFusionSpeciesForm(ignoreOverride);
+    const speciesForm = this.getSpeciesForm(ignoreOverride, true);
+    const shiny = this.isBaseShiny(true);
+    const variant = this.getBaseVariant(true);
+    const fusionShiny = this.isFusionShiny(true);
+    const fusionVariant = this.getFusionVariant(true);
 
     const spriteKey = speciesForm.getSpriteKey(
-      this.getGender(ignoreOverride) === Gender.FEMALE,
+      this.getGender(ignoreOverride, true) === Gender.FEMALE,
       speciesForm.formIndex,
-      this.shiny,
-      this.variant,
+      shiny,
+      variant,
     );
     const backSpriteKey = speciesForm
-      .getSpriteKey(this.getGender(ignoreOverride) === Gender.FEMALE, speciesForm.formIndex, this.shiny, this.variant)
+      .getSpriteKey(this.getGender(ignoreOverride, true) === Gender.FEMALE, speciesForm.formIndex, shiny, variant)
       .replace("pkmn__", "pkmn__back__");
     const fusionSpriteKey = fusionSpeciesForm.getSpriteKey(
-      this.getFusionGender(ignoreOverride) === Gender.FEMALE,
+      this.getFusionGender(ignoreOverride, true) === Gender.FEMALE,
       fusionSpeciesForm.formIndex,
-      this.fusionShiny,
-      this.fusionVariant,
+      fusionShiny,
+      fusionVariant,
     );
     const fusionBackSpriteKey = fusionSpeciesForm
       .getSpriteKey(
-        this.getFusionGender(ignoreOverride) === Gender.FEMALE,
+        this.getFusionGender(ignoreOverride, true) === Gender.FEMALE,
         fusionSpeciesForm.formIndex,
-        this.fusionShiny,
-        this.fusionVariant,
+        fusionShiny,
+        fusionVariant,
       )
       .replace("pkmn__", "pkmn__back__");
 
@@ -6658,11 +6663,11 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     for (let f = 0; f < 2; f++) {
       const variantColors = variantColorCache[f ? backSpriteKey : spriteKey];
       const variantColorSet = new Map<number, number[]>();
-      if (this.shiny && variantColors && variantColors[this.variant]) {
-        Object.keys(variantColors[this.variant]).forEach(k => {
+      if (shiny && variantColors && variantColors[variant]) {
+        Object.keys(variantColors[variant]).forEach(k => {
           variantColorSet.set(
             rgbaToInt(Array.from(Object.values(rgbHexToRgba(k)))),
-            Array.from(Object.values(rgbHexToRgba(variantColors[this.variant][k]))),
+            Array.from(Object.values(rgbHexToRgba(variantColors[variant][k]))),
           );
         });
       }
@@ -6711,11 +6716,11 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     for (let f = 0; f < 2; f++) {
       const variantColors = variantColorCache[f ? fusionBackSpriteKey : fusionSpriteKey];
       const variantColorSet = new Map<number, number[]>();
-      if (this.fusionShiny && variantColors && variantColors[this.fusionVariant]) {
-        for (const k of Object.keys(variantColors[this.fusionVariant])) {
+      if (fusionShiny && variantColors && variantColors[fusionVariant]) {
+        for (const k of Object.keys(variantColors[fusionVariant])) {
           variantColorSet.set(
             rgbaToInt(Array.from(Object.values(rgbHexToRgba(k)))),
-            Array.from(Object.values(rgbHexToRgba(variantColors[this.fusionVariant][k]))),
+            Array.from(Object.values(rgbHexToRgba(variantColors[fusionVariant][k]))),
           );
         }
       }

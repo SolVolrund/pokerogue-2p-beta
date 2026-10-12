@@ -317,7 +317,7 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
    * @param doubleShiny - Whether the pokemon is shiny and its fusion species is also shiny
    */
   protected initShinyIcon(pokemon: Pokemon, xOffset: number, doubleShiny: boolean) {
-    const baseVariant = doubleShiny ? pokemon.variant : pokemon.getVariant(true);
+    const baseVariant = doubleShiny ? pokemon.getBaseVariant(true) : pokemon.getVariant(true);
 
     this.shinyIcon.setPositionRelative(
       this.nameText,
@@ -330,7 +330,7 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
     );
     this.shinyIcon
       .setTexture(`shiny_star${doubleShiny ? "_1" : ""}`)
-      .setVisible(pokemon.isShiny())
+      .setVisible(pokemon.isShiny(true))
       .setTint(getVariantTint(baseVariant));
 
     this.shinyIcon
@@ -345,7 +345,7 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
     if (doubleShiny || baseVariant) {
       shinyDescriptor = " (" + getShinyDescriptor(baseVariant);
       if (doubleShiny) {
-        shinyDescriptor += "/" + getShinyDescriptor(pokemon.fusionVariant);
+        shinyDescriptor += "/" + getShinyDescriptor(pokemon.getFusionVariant(true));
       }
       shinyDescriptor += ")";
     }
@@ -383,12 +383,12 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
     const isFusion = pokemon.isFusion(true);
     this.initSplicedIcon(pokemon, nameTextWidth);
 
-    const doubleShiny = isFusion && pokemon.shiny && pokemon.fusionShiny;
+    const doubleShiny = pokemon.isDoubleShiny(true);
     this.initShinyIcon(pokemon, nameTextWidth, doubleShiny);
 
     this.fusionShinyIcon.setVisible(doubleShiny).copyPosition(this.shinyIcon);
     if (isFusion) {
-      this.fusionShinyIcon.setTint(getVariantTint(pokemon.fusionVariant));
+      this.fusionShinyIcon.setTint(getVariantTint(pokemon.getFusionVariant(true)));
     }
 
     this.hpBar.setScale(pokemon.getHpRatio(true, true), 1);
@@ -709,13 +709,13 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
 
     this.shinyIcon.setVisible(pokemon.isShiny(true));
 
-    const doubleShiny = isFusion && pokemon.shiny && pokemon.fusionShiny;
-    const baseVariant = doubleShiny ? pokemon.variant : pokemon.getVariant(true);
+    const doubleShiny = pokemon.isDoubleShiny(true);
+    const baseVariant = doubleShiny ? pokemon.getBaseVariant(true) : pokemon.getVariant(true);
     this.shinyIcon.setTint(getVariantTint(baseVariant));
 
     this.fusionShinyIcon.setVisible(doubleShiny).setPosition(this.shinyIcon.x, this.shinyIcon.y);
     if (isFusion) {
-      this.fusionShinyIcon.setTint(getVariantTint(pokemon.fusionVariant));
+      this.fusionShinyIcon.setTint(getVariantTint(pokemon.getFusionVariant(true)));
     }
 
     resolve();

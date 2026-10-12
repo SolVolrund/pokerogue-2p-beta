@@ -136,7 +136,7 @@ export class SpritePipeline extends FieldSpritePipeline {
       const variant: number = Object.hasOwn(data, "variant")
         ? data["variant"]
         : sprite.parentContainer instanceof Pokemon
-          ? sprite.parentContainer.variant
+          ? sprite.parentContainer.getBaseVariant(true)
           : 0;
       let variantColors: { [x: string]: string }[];
 
@@ -145,7 +145,7 @@ export class SpritePipeline extends FieldSpritePipeline {
       const flatVariantColors: number[] = [];
 
       if (
-        (sprite.parentContainer instanceof Pokemon ? sprite.parentContainer.shiny : !!data["shiny"])
+        (sprite.parentContainer instanceof Pokemon ? sprite.parentContainer.isBaseShiny(true) : !!data["shiny"])
         && (variantColors =
           variantColorCache[
             sprite.parentContainer instanceof Pokemon

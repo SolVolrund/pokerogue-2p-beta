@@ -47,6 +47,7 @@ export interface SystemSaveData {
   dejaVuGhosts?: Partial<Record<string, DejaVuGhostData>>;
   voucherCounts: VoucherCounts;
   eggs: EggData[];
+  eggGenerationCount?: number;
   gameVersion: string;
   timestamp: number;
   eggPity: number[];

@@ -380,7 +380,7 @@ describe("Egg Generation Tests", () => {
     expect(scene.gameData.gameStats.legendaryEggsPulled).toBe(startingLegendaryEggsPulled + 1);
   });
   it("should increase legendary egg rate", () => {
-    vi.spyOn(Utils, "randInt").mockReturnValue(1);
+    const tierRoll = vi.spyOn(Utils, "randSeedInt").mockReturnValueOnce(1);
 
     const scene = game.scene;
     const expectedTier1 = EggTier.LEGENDARY;
@@ -391,6 +391,7 @@ describe("Egg Generation Tests", () => {
       sourceType: EggSourceType.GACHA_LEGENDARY,
       pulled: true,
     }).tier;
+    tierRoll.mockReturnValueOnce(1);
     const result2 = new Egg({
       scene,
       sourceType: EggSourceType.GACHA_MOVE,

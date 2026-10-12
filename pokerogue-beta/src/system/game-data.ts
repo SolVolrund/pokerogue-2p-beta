@@ -219,6 +219,8 @@ export class GameData {
   public dejaVuGhosts: Partial<Record<string, DejaVuGhostData>>;
   public voucherCounts: VoucherCounts;
   public eggs: Egg[];
+  /** Number of newly generated eggs, independent of the remaining unhatched eggs. */
+  public eggGenerationCount: number;
   public eggPity: number[];
   public unlockPity: number[];
 
@@ -261,6 +263,7 @@ export class GameData {
       [VoucherType.GOLDEN]: 0,
     };
     this.eggs = [];
+    this.eggGenerationCount = 0;
     this.eggPity = [0, 0, 0, 0];
     this.unlockPity = [0, 0, 0, 0];
     this.initDexData();
@@ -290,6 +293,7 @@ export class GameData {
       dejaVuGhosts: this.dejaVuGhosts,
       voucherCounts: this.voucherCounts,
       eggs: this.eggs.map(e => new EggData(e)),
+      eggGenerationCount: this.eggGenerationCount,
       gameVersion: globalScene.game.config.gameVersion,
       timestamp: Date.now(),
       eggPity: this.eggPity.slice(0),
@@ -539,6 +543,7 @@ export class GameData {
     }
 
     this.eggs = systemData.eggs ? systemData.eggs.map(e => e.toEgg(eggOwnerPlayerIndex)) : [];
+    this.eggGenerationCount = systemData.eggGenerationCount ?? 0;
 
     this.eggPity = systemData.eggPity ? systemData.eggPity.slice(0) : [0, 0, 0, 0];
     this.unlockPity = systemData.unlockPity ? systemData.unlockPity.slice(0) : [0, 0, 0, 0];
@@ -682,6 +687,7 @@ export class GameData {
     GameData.mergeDexDataProgress(target.dexData, source.dexData);
     GameData.mergeStarterDataProgress(target.starterData, source.starterData);
     GameData.mergeGameStatsProgress(target.gameStats, source.gameStats);
+    target.eggGenerationCount = Math.max(target.eggGenerationCount ?? 0, source.eggGenerationCount ?? 0);
     GameData.mergeBooleanUnlocks(target.unlocks, source.unlocks);
     GameData.mergeTimestampUnlocks(target.achvUnlocks, source.achvUnlocks);
     GameData.mergeTimestampUnlocks(target.voucherUnlocks, source.voucherUnlocks);
@@ -2417,6 +2423,7 @@ export class GameData {
     const systemData = useCachedSystem && cachedSystemData ? cachedSystemData : liveSystemData;
     GameData.mergeSystemSaveProgress(systemData, liveSystemData);
     GameData.mergeSystemSaveProgress(systemData, cachedSystemData);
+    systemSaveSource.eggGenerationCount = systemData.eggGenerationCount ?? 0;
     systemData.timestamp = Date.now();
 
     const request = {
