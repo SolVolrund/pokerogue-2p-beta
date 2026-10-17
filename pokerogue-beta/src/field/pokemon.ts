@@ -870,6 +870,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
         moveset: pokemon.getMoveset().map(move => move.moveId),
         types: pokemon.getTypes({ includeTeraType: false, ignoreThirdType: true, ignoreAceType: true }),
         aceType: pokemon.getAceType(),
+        aceTypeAlwaysActive: globalScene.getComputerPartnerAceType(pokemon) !== undefined,
         fusionFormIndex: pokemon.fusionFormIndex,
         fusionSpecies: pokemon.fusionSpecies || undefined,
         fusionGender: pokemon.fusionGender,
@@ -2727,7 +2728,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
   /** The permanent bonus typing, independent of temporary battle overrides. */
   public getAceType(): PokemonType | undefined {
-    return this.ace && isSettingEnabled(SettingKeys.Ace_Mechanics) ? normalizeAceType(this.aceType) : undefined;
+    return globalScene.getComputerPartnerAceType(this)
+      ?? (this.ace && isSettingEnabled(SettingKeys.Ace_Mechanics) ? normalizeAceType(this.aceType) : undefined);
   }
 
   /**
@@ -2780,7 +2782,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     } else if (!ignoreAceType) {
       // Temporary added types take precedence without changing the saved Ace choice.
       const aceType = illusion
-        ? (isSettingEnabled(SettingKeys.Ace_Mechanics) ? normalizeAceType(illusion.aceType) : undefined)
+        ? (illusion.aceTypeAlwaysActive || isSettingEnabled(SettingKeys.Ace_Mechanics)
+          ? normalizeAceType(illusion.aceType) : undefined)
         : this.getAceType();
       const suppressed = !bypassSummonData && ((!illusion && this.summonData.aceTypeSuppressed)
         || (aceType === PokemonType.FLYING && this.getTag(BattlerTagType.ROOSTED)));
@@ -4733,34 +4736,36 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     return matchesSourceType ? 0.5 : 0.2;
   }
 
-  private applyDamageReductionBerry(source: Pokemon, move: Move, damage: NumberHolder, simulated: boolean): void {
+  private applyDamageReductionBerry(source: Pokemon, move: Move, damage: NumberHolder, simulated: boolean): boolean {
     if (damage.value <= 0) {
-      return;
+      return false;
     }
 
     const berryType = getDamageReductionBerryTypeForMoveType(source.getMoveType(move, simulated, this));
     if (berryType == null) {
-      return;
+      return false;
     }
 
-    const berryModifier = globalScene.findModifierForPokemon(
-      m => m instanceof BerryModifier && m.berryType === berryType && !m.consumed,
-      this,
-    ) as BerryModifier | undefined;
+    const berryModifier = this.getHeldItems().find(
+      (m): m is BerryModifier =>
+        m instanceof BerryModifier && m.berryType === berryType && !m.consumed && m.stackCount > 0,
+    );
     if (berryModifier == null) {
-      return;
+      return false;
     }
 
     if (simulated) {
       if (canUseBerry(this, false)) {
         damage.value = toDmgValue(damage.value / 2);
       }
-      return;
+      return false;
     }
 
-    if (consumeBerryModifier(this, berryModifier, { trigger: "damage", source, move })) {
+    if (consumeBerryModifier(this, berryModifier, { trigger: "damage", source, move }, { applyBerryUseHealing: false })) {
       damage.value = toDmgValue(damage.value / 2);
+      return true;
     }
+    return false;
   }
 
   /**
@@ -4998,7 +5003,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     // This attribute may modify damage arbitrarily, so be careful about changing its order of application.
     applyMoveAttrs("ModifiedDamageAttr", source, this, move, damage);
 
-    this.applyDamageReductionBerry(source, move, damage, simulated);
+    const usedDamageReductionBerry = this.applyDamageReductionBerry(source, move, damage, simulated);
 
     if (this.isFullHp() && !ignoreAbility) {
       applyAbAttrs("PreDefendFullHpEndureAbAttr", abAttrParams);
@@ -5026,6 +5031,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       cancelled: cancelled.value,
       result: hitResult,
       damage: damage.value,
+      usedDamageReductionBerry,
     };
   }
 

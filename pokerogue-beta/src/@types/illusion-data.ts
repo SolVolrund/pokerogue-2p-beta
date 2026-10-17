@@ -35,6 +35,8 @@ export interface IllusionData {
   /** Perceived base typing and Ace bonus; never expose the user's hidden Ace type. */
   types?: PokemonType[] | undefined;
   aceType?: PokemonType | undefined;
+  /** Monotype CPU Ace typing remains visible when optional Ace mechanics are disabled. */
+  aceTypeAlwaysActive?: boolean | undefined;
   /** The fusion species of the illusion if it's a fusion */
   fusionSpecies?: PokemonSpecies | undefined;
   /** The fusionFormIndex of the illusion */

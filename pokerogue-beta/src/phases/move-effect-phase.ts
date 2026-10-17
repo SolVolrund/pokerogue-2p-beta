@@ -715,7 +715,7 @@ export class MoveEffectPhase extends PokemonPhase {
     applyMoveAttrs("StatChangeBeforeDmgCalcAttr", user, target, this.move);
 
     const moveCategory = user.getMoveCategory(target, this.move);
-    const { result, damage: initialDmg } = target.getAttackDamage({
+    const { result, damage: initialDmg, usedDamageReductionBerry } = target.getAttackDamage({
       source: user,
       move: this.move,
       ignoreAbility: false,
@@ -761,6 +761,10 @@ export class MoveEffectPhase extends PokemonPhase {
           isCritical,
           source: user,
         });
+
+    if (usedDamageReductionBerry && !target.isFainted()) {
+      applyAbAttrs("HealFromBerryUseAbAttr", { pokemon: target });
+    }
 
     if (isCritical) {
       globalScene.phaseManager.queueMessage(i18next.t("battle:hitResultCriticalHit"));

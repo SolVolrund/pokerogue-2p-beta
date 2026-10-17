@@ -304,6 +304,7 @@ export class SpeciesFormEvolution {
    */
   public validate(pokemon: Pokemon, forFusion = false, item?: EvolutionItem): boolean {
     return (
+      globalScene.isComputerPartnerEvolutionAllowed(pokemon, this.speciesId, forFusion) &&
       pokemon.level >= this.level &&
       // Check form key, using the fusion's form key if we're checking the fusion
       (this.preFormKey == null || (forFusion ? pokemon.getFusionFormKey() : pokemon.getFormKey()) === this.preFormKey) &&
@@ -320,6 +321,7 @@ export class SpeciesFormEvolution {
    */
   public isValidItemEvolution(pokemon: Pokemon, forFusion = false): boolean {
     return (
+      globalScene.isComputerPartnerEvolutionAllowed(pokemon, this.speciesId, forFusion) &&
       this.item != null &&
       pokemon.level >= this.level &&
       // Check form key, using the fusion's form key if we're checking the fusion

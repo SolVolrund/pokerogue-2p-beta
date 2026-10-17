@@ -64,7 +64,6 @@ export async function inviteComputerPartnerToRun(key: ComputerPartnerKey): Promi
       index,
       playerIndex,
     );
-    party.push(starterPokemon);
     return starterPokemon.loadAssets();
   });
 
@@ -118,6 +117,7 @@ function createPartnerPokemon(
     : getPokemonSpecies(starter.speciesId);
   if (!checkSpeciesValidForChallenge(species, {
     shiny: starter.shiny, female: !!starter.female, variant: starter.variant, formIndex: starter.formIndex,
+    aceType: isAce ? profile.monotype : undefined,
   }, false, playerIndex)) {
     species = getPokemonSpecies(starter.speciesId);
   }
@@ -134,6 +134,8 @@ function createPartnerPokemon(
   );
 
   pokemon.computerPartnerAce = isAce;
+  // Move-learning scores need the owning trainer's Ace type during recruitment.
+  globalScene.getPlayerParty(playerIndex).push(pokemon);
   pokemon.moveset = [];
   if (starter.moveset) {
     pokemon.tryPopulateMoveset(starter.moveset, true);

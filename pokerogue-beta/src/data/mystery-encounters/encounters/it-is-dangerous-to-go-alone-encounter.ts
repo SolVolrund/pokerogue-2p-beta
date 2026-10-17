@@ -32,6 +32,12 @@ const PARTNER_TRAINER_TYPES: Partial<Record<ComputerPartnerKey, TrainerType>> = 
   amber_two: TrainerType.AMBER_TWO,
   whitney: TrainerType.WHITNEY,
   sabrina: TrainerType.SABRINA,
+  gardenia: TrainerType.GARDENIA,
+  blaine: TrainerType.BLAINE,
+  jasmine: TrainerType.JASMINE,
+  brock: TrainerType.BROCK,
+  acerola: TrainerType.ACEROLA,
+  valerie: TrainerType.VALERIE,
 };
 const ELIGIBLE_PARTNER_KEYS = COMPUTER_PARTNER_KEYS.filter(
   key => key !== "alex" && PARTNER_TRAINER_TYPES[key] !== undefined,

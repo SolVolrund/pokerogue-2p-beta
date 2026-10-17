@@ -20,4 +20,6 @@ export interface DamageCalculationResult {
   result: HitResult;
   /** The damage dealt by the move */
   damage: number;
+  /** A resistance berry was used; apply its ability healing after damage is displayed. */
+  usedDamageReductionBerry?: boolean;
 }

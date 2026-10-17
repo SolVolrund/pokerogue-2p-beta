@@ -1341,7 +1341,8 @@ export class BattleScene extends SceneBase {
     }
   }
 
-  private getLocalPlayerSystemSave(): GameData {
+  /** The device owner's permanent profile, independent of the active player or EP's shared-run view. */
+  public getLocalPlayerSystemSave(): GameData {
     if (!this.twoPlayerMode) {
       this.localPlayerSystemSave = this.gameData;
     }
@@ -1690,6 +1691,7 @@ export class BattleScene extends SceneBase {
     return localSeat === "host-and-guest-local" ? playerIndex === 0 : localSeat === playerIndex;
   }
 
+  /** Gameplay-facing profile; EP views P1. Use getLocalPlayerSystemSave for permanent saving. */
   public getLocalPlayerGameData(): GameData {
     if (!this.twoPlayerMode) {
       return this.getLocalPlayerSystemSave();
@@ -2363,6 +2365,32 @@ export class BattleScene extends SceneBase {
 
   public getComputerPartnerKey(playerIndex: PlayerIndex = 1): ComputerPartnerKey {
     return playerIndex === 1 ? this.computerPartnerKey : (this.computerPartnerKeys[playerIndex] ?? "alex");
+  }
+
+  /** A monotype CPU's Ace keeps its trainer's type even with optional Ace mechanics disabled. */
+  public getComputerPartnerAceType(pokemon: Pokemon): PokemonType | undefined {
+    if (!pokemon.isPlayer() || !pokemon.computerPartnerAce) {
+      return;
+    }
+    const playerIndex = this.getPlayerIndexForPokemon(pokemon);
+    if (playerIndex === undefined || !this.isComputerPartnerPlayer(playerIndex)) {
+      return;
+    }
+    return getComputerPartnerProfile(this.getComputerPartnerKey(playerIndex)).monotype;
+  }
+
+  public isComputerPartnerEvolutionAllowed(pokemon: Pokemon, targetSpeciesId: SpeciesId, forFusion = false): boolean {
+    if (!pokemon.isPlayer() || !pokemon.computerPartnerAce) {
+      return true;
+    }
+    const playerIndex = this.getPlayerIndexForPokemon(pokemon);
+    if (playerIndex === undefined || !this.isComputerPartnerPlayer(playerIndex)) {
+      return true;
+    }
+    const species = forFusion ? pokemon.fusionSpecies : pokemon.species;
+    const profile = getComputerPartnerProfile(this.getComputerPartnerKey(playerIndex));
+    const requiredTarget = species && profile.aceEvolutionTargets?.[species.speciesId];
+    return requiredTarget == null || targetSpeciesId === requiredTarget;
   }
 
   public canPlayerUsePokeballs(playerIndex: PlayerIndex, ballType?: PokeballType): boolean {

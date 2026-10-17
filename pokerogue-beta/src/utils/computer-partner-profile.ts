@@ -62,7 +62,13 @@ export type ComputerPartnerKey =
   | "molly_hale"
   | "amber_two"
   | "whitney"
-  | "sabrina";
+  | "sabrina"
+  | "gardenia"
+  | "blaine"
+  | "jasmine"
+  | "brock"
+  | "acerola"
+  | "valerie";
 
 export type ComputerPartnerRole =
   | "ace"
@@ -96,6 +102,8 @@ export interface ComputerPartnerProfile {
   unlockAchievement?: string;
   monotype?: PokemonType;
   signatureMoves?: Partial<Record<SpeciesId, readonly MoveId[]>>;
+  aceSignatureMoves?: Partial<Record<SpeciesId, readonly MoveId[]>>;
+  aceEvolutionTargets?: Partial<Record<SpeciesId, SpeciesId>>;
   recruitment?: "crystal" | "clone";
 }
 
@@ -471,6 +479,161 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
       { speciesId: SpeciesId.SLOWPOKE },
     ],
   },
+  gardenia: {
+    key: "gardenia",
+    name: "Gardenia",
+    starterSpeciesId: SpeciesId.BUDEW,
+    starterNature: Nature.MODEST,
+    trainerSprite: PlayerTrainerSprite.GARDENIA,
+    trainerGender: PlayerGender.FEMALE,
+    roles: ["ace", "special", "physical", "bulk", "speed", "balanced"],
+    personalityTypes: [PokemonType.GRASS],
+    monotype: PokemonType.GRASS,
+    requiresUnlock: true,
+    unlockAchievement: "MONO_GRASS",
+    startingStarters: [
+      { speciesId: SpeciesId.BUDEW },
+      { speciesId: SpeciesId.CHERUBI },
+      { speciesId: SpeciesId.TURTWIG },
+      { speciesId: SpeciesId.ODDISH },
+      { speciesId: SpeciesId.HOPPIP },
+      { speciesId: SpeciesId.CARNIVINE },
+      { speciesId: SpeciesId.TANGELA },
+      { speciesId: SpeciesId.TROPIUS },
+      { speciesId: SpeciesId.SHROOMISH },
+      { speciesId: SpeciesId.SUNKERN },
+      { speciesId: SpeciesId.CRADILY },
+      { speciesId: SpeciesId.BULBASAUR },
+      { speciesId: SpeciesId.SEEDOT },
+      { speciesId: SpeciesId.DHELMISE },
+      { speciesId: SpeciesId.BELLSPROUT },
+      { speciesId: SpeciesId.CACNEA },
+    ],
+  },
+  blaine: {
+    key: "blaine",
+    name: "Blaine",
+    starterSpeciesId: SpeciesId.GROWLITHE,
+    starterNature: Nature.ADAMANT,
+    trainerSprite: PlayerTrainerSprite.BLAINE,
+    trainerGender: PlayerGender.MALE,
+    roles: ["ace", "special", "physical", "bulk", "speed", "balanced"],
+    personalityTypes: [PokemonType.FIRE],
+    monotype: PokemonType.FIRE,
+    requiresUnlock: true,
+    unlockAchievement: "MONO_FIRE",
+    startingStarters: [
+      { speciesId: SpeciesId.GROWLITHE },
+      { speciesId: SpeciesId.PONYTA },
+      { speciesId: SpeciesId.VULPIX },
+      { speciesId: SpeciesId.SLUGMA },
+      { speciesId: SpeciesId.MAGBY },
+      { speciesId: SpeciesId.NUMEL },
+      { speciesId: SpeciesId.HOUNDOUR },
+      { speciesId: SpeciesId.CHARMANDER },
+      { speciesId: SpeciesId.MOLTRES },
+    ],
+  },
+  jasmine: {
+    key: "jasmine",
+    name: "Jasmine",
+    starterSpeciesId: SpeciesId.ONIX,
+    starterNature: Nature.IMPISH,
+    trainerSprite: PlayerTrainerSprite.JASMINE,
+    trainerGender: PlayerGender.FEMALE,
+    roles: ["ace", "special", "physical", "bulk", "speed", "balanced"],
+    personalityTypes: [PokemonType.STEEL],
+    monotype: PokemonType.STEEL,
+    requiresUnlock: true,
+    unlockAchievement: "MONO_STEEL",
+    startingStarters: [
+      { speciesId: SpeciesId.ONIX },
+      { speciesId: SpeciesId.MAGNEMITE },
+      { speciesId: SpeciesId.BRONZOR },
+      { speciesId: SpeciesId.BELDUM },
+      { speciesId: SpeciesId.SKARMORY },
+      { speciesId: SpeciesId.MAWILE },
+      { speciesId: SpeciesId.FERROSEED },
+      { speciesId: SpeciesId.KLINK },
+      { speciesId: SpeciesId.CELESTEELA },
+    ],
+  },
+  brock: {
+    key: "brock",
+    name: "Brock",
+    starterSpeciesId: SpeciesId.ONIX,
+    starterNature: Nature.IMPISH,
+    trainerSprite: PlayerTrainerSprite.BROCK,
+    trainerGender: PlayerGender.MALE,
+    roles: ["ace", "special", "physical", "bulk", "speed", "balanced"],
+    personalityTypes: [PokemonType.ROCK],
+    monotype: PokemonType.ROCK,
+    requiresUnlock: true,
+    unlockAchievement: "MONO_ROCK",
+    startingStarters: [
+      { speciesId: SpeciesId.ONIX },
+      { speciesId: SpeciesId.GEODUDE },
+      { speciesId: SpeciesId.RHYHORN },
+      { speciesId: SpeciesId.OMANYTE },
+      { speciesId: SpeciesId.KABUTO },
+      { speciesId: SpeciesId.RELICANTH },
+      { speciesId: SpeciesId.CRANIDOS },
+      { speciesId: SpeciesId.AERODACTYL },
+      { speciesId: SpeciesId.LARVITAR },
+      { speciesId: SpeciesId.SHUCKLE },
+    ],
+  },
+  acerola: {
+    key: "acerola",
+    name: "Acerola",
+    starterSpeciesId: SpeciesId.MIMIKYU,
+    starterNature: Nature.JOLLY,
+    trainerSprite: PlayerTrainerSprite.ACEROLA,
+    trainerGender: PlayerGender.FEMALE,
+    roles: ["ace", "special", "physical", "bulk", "speed", "balanced"],
+    personalityTypes: [PokemonType.GHOST],
+    monotype: PokemonType.GHOST,
+    requiresUnlock: true,
+    unlockAchievement: "MONO_GHOST",
+    startingStarters: [
+      { speciesId: SpeciesId.MIMIKYU },
+      { speciesId: SpeciesId.SABLEYE },
+      { speciesId: SpeciesId.DRIFLOON },
+      { speciesId: SpeciesId.DHELMISE },
+      { speciesId: SpeciesId.SANDYGAST },
+      { speciesId: SpeciesId.SHUPPET },
+      { speciesId: SpeciesId.FRILLISH },
+      { speciesId: SpeciesId.GASTLY },
+    ],
+  },
+  valerie: {
+    key: "valerie",
+    name: "Valerie",
+    starterSpeciesId: SpeciesId.EEVEE,
+    starterNature: Nature.MODEST,
+    trainerSprite: PlayerTrainerSprite.VALERIE,
+    trainerGender: PlayerGender.FEMALE,
+    roles: ["ace", "special", "physical", "bulk", "speed", "balanced"],
+    personalityTypes: [PokemonType.FAIRY],
+    monotype: PokemonType.FAIRY,
+    requiresUnlock: true,
+    unlockAchievement: "MONO_FAIRY",
+    aceSignatureMoves: {
+      [SpeciesId.EEVEE]: [MoveId.BABY_DOLL_EYES],
+    },
+    aceEvolutionTargets: {
+      [SpeciesId.EEVEE]: SpeciesId.SYLVEON,
+    },
+    startingStarters: [
+      { speciesId: SpeciesId.EEVEE },
+      { speciesId: SpeciesId.MAWILE },
+      { speciesId: SpeciesId.MIME_JR },
+      { speciesId: SpeciesId.TOGEPI },
+      { speciesId: SpeciesId.MILCERY },
+      { speciesId: SpeciesId.FLABEBE },
+      { speciesId: SpeciesId.CLEFFA },
+    ],
+  },
 };
 
 export const COMPUTER_PARTNER_KEYS = Object.keys(COMPUTER_PARTNER_PROFILES) as ComputerPartnerKey[];
@@ -533,7 +696,7 @@ export function createComputerPartnerStarter(
   return startingStarters.map(starter => createComputerPartnerStarterData(profile, starter, progress));
 }
 
-/** Preserve a trainer's own pool, promoting its first eligible member when the ace is off-type. */
+/** Preserve the trainer's pool and Ace bonus type while applying additional run restrictions. */
 export function getComputerPartnerChallengeProfile(
   profile: ComputerPartnerProfile,
   playerIndex: PlayerIndex,
@@ -549,10 +712,11 @@ export function getComputerPartnerChallengeProfile(
   if (profile.monotype !== undefined) {
     restrictions.push(createMonotypeRestriction(profile.monotype));
   }
-  const starters = candidates.filter(config => {
+  const starters = candidates.filter((config, index) => {
     const starter = createComputerPartnerStarterData(profile, config, progress);
     return checkStarterValidForChallenge(getPokemonSpecies(starter.speciesId), {
       shiny: starter.shiny, female: !!starter.female, variant: starter.variant, formIndex: starter.formIndex,
+      aceType: isComputerPartnerStarterAce(profile, starter, index) ? profile.monotype : undefined,
     }, profile.monotype !== undefined, playerIndex, restrictions);
   });
   const result = { ...profile, startingStarters: starters };

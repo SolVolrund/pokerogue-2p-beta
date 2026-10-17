@@ -88,7 +88,9 @@ describe("Multiplayer menu preparation", () => {
       slotCount: 30,
       centerLastOption: true,
     });
-    for (const entry of entries.slice(10, 30).filter(entry => !["AmberTwo", "Whitney", "Sabrina"].includes(entry.label))) {
+    for (const entry of entries.slice(10, 30).filter(entry =>
+      !["AmberTwo", "Whitney", "Sabrina", "Gardenia", "Blaine", "Jasmine", "Brock", "Acerola", "Valerie"].includes(entry.label),
+    )) {
       expect(entry.disabled).toBe(true);
       expect(entry.style).toBe(TextStyle.SETTINGS_LOCKED);
       expect(entry.handler()).toBe(false);
@@ -97,8 +99,14 @@ describe("Multiplayer menu preparation", () => {
     expect(entries[0].disabled).toBe(picker === "ep" ? true : undefined);
     expect(entries[1].disabled).not.toBe(true);
     expect(entries[10].disabled).not.toBe(true);
+    expect(entries[16].disabled).not.toBe(true);
+    expect(entries[18].disabled).not.toBe(true);
+    expect(entries[20].disabled).not.toBe(true);
+    expect(entries[21].disabled).not.toBe(true);
     expect(entries[24].disabled).not.toBe(true);
     expect(entries[26].disabled).not.toBe(true);
+    expect(entries[27].disabled).not.toBe(true);
+    expect(entries[28].disabled).not.toBe(true);
   });
 
   it("enables AmberTwo in her existing slot after her trainer unlock when the requirement is enabled", () => {
@@ -139,6 +147,84 @@ describe("Multiplayer menu preparation", () => {
     const nextMenu = vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
     select("Sabrina");
     expect(game.scene.getComputerPartnerKey(1)).toBe("sabrina");
+    expect(nextMenu).toHaveBeenCalledWith(GameModes.CLASSIC, 2, [1]);
+  });
+
+  it("enables Gardenia in her existing slot only after a Grass monotype clear", () => {
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    expect(options()[21].label).toBe("Gardenia");
+    expect(options()[21].disabled).toBe(true);
+    expect(options()[21].handler()).toBe(false);
+    game.scene.gameData.achvUnlocks.MONO_GRASS = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    const nextMenu = vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("Gardenia");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("gardenia");
+    expect(nextMenu).toHaveBeenCalledWith(GameModes.CLASSIC, 2, [1]);
+  });
+
+  it("enables Blaine in his existing slot only after a Fire monotype clear", () => {
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    expect(options()[18].label).toBe("Blaine");
+    expect(options()[18].disabled).toBe(true);
+    expect(options()[18].handler()).toBe(false);
+    game.scene.gameData.achvUnlocks.MONO_FIRE = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    const nextMenu = vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("Blaine");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("blaine");
+    expect(nextMenu).toHaveBeenCalledWith(GameModes.CLASSIC, 2, [1]);
+  });
+
+  it("enables Jasmine in her existing slot only after a Steel monotype clear", () => {
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    expect(options()[28].label).toBe("Jasmine");
+    expect(options()[28].disabled).toBe(true);
+    expect(options()[28].handler()).toBe(false);
+    game.scene.gameData.achvUnlocks.MONO_STEEL = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    const nextMenu = vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("Jasmine");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("jasmine");
+    expect(nextMenu).toHaveBeenCalledWith(GameModes.CLASSIC, 2, [1]);
+  });
+
+  it("enables Brock in his existing slot only after a Rock monotype clear", () => {
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    expect(options()[27].label).toBe("Brock");
+    expect(options()[27].disabled).toBe(true);
+    expect(options()[27].handler()).toBe(false);
+    game.scene.gameData.achvUnlocks.MONO_ROCK = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    const nextMenu = vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("Brock");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("brock");
+    expect(nextMenu).toHaveBeenCalledWith(GameModes.CLASSIC, 2, [1]);
+  });
+
+  it("enables Acerola in her existing slot only after a Ghost monotype clear", () => {
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    expect(options()[20].label).toBe("Acerola");
+    expect(options()[20].disabled).toBe(true);
+    expect(options()[20].handler()).toBe(false);
+    game.scene.gameData.achvUnlocks.MONO_GHOST = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    const nextMenu = vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("Acerola");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("acerola");
+    expect(nextMenu).toHaveBeenCalledWith(GameModes.CLASSIC, 2, [1]);
+  });
+
+  it("enables Valerie in her existing slot only after a Fairy monotype clear", () => {
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    expect(options()[16].label).toBe("Valerie");
+    expect(options()[16].disabled).toBe(true);
+    expect(options()[16].handler()).toBe(false);
+    game.scene.gameData.achvUnlocks.MONO_FAIRY = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    const nextMenu = vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("Valerie");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("valerie");
     expect(nextMenu).toHaveBeenCalledWith(GameModes.CLASSIC, 2, [1]);
   });
 

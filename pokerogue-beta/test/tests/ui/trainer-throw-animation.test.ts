@@ -63,6 +63,13 @@ describe("Trainer throw animation", () => {
     "whitney_back_pb",
     "sabrina_back_pb",
     "amber_two_back_pb",
+    "gardenia_back_pb",
+    "blaine_back_pb",
+    "jasmine_back_pb",
+    "brock_back_pb",
+    "acerola_back_pb",
+    "valerie_back_pb",
+    "joy_back_pb",
   ])("plays every pose of %s with frame 4 at ball release", key => {
     const trainer = createTrainer(readTrainerFrames(key));
     playTrainerThrowAnimation(trainer.sprite);
@@ -104,6 +111,60 @@ describe("Trainer throw animation", () => {
       { x: 83, y: 83, w: 80, h: 80 },
       { x: 1, y: 165, w: 80, h: 80 },
     ]);
+  });
+
+  it.each(["gardenia", "joy"])("uses %s's five 80x80 cells without the empty sixth cell", key => {
+    const atlas = JSON.parse(readFileSync(`assets/images/trainer/${key}_back_pb.json`, "utf8"));
+    const png = readFileSync(`assets/images/trainer/${key}_back_pb.png`);
+    expect(atlas.textures[0].size).toEqual({ w: png.readUInt32BE(16), h: png.readUInt32BE(20) });
+    expect(atlas.textures[0].size).toEqual({ w: 160, h: 240 });
+    expect(atlas.textures[0].frames.map(({ frame }) => frame)).toEqual([
+      { x: 0, y: 0, w: 80, h: 80 },
+      { x: 80, y: 0, w: 80, h: 80 },
+      { x: 0, y: 80, w: 80, h: 80 },
+      { x: 80, y: 80, w: 80, h: 80 },
+      { x: 0, y: 160, w: 80, h: 80 },
+    ]);
+    for (const { sourceSize, spriteSourceSize } of atlas.textures[0].frames) {
+      expect(sourceSize).toEqual({ w: 80, h: 80 });
+      expect(spriteSourceSize).toEqual({ x: 0, y: 0, w: 80, h: 80 });
+    }
+  });
+
+  it.each(["blaine", "jasmine", "brock", "valerie"])("uses %s's five 160x160 cells without the magenta borders", key => {
+    const atlas = JSON.parse(readFileSync(`assets/images/trainer/${key}_back_pb.json`, "utf8"));
+    const png = readFileSync(`assets/images/trainer/${key}_back_pb.png`);
+    expect(atlas.textures[0].size).toEqual({ w: png.readUInt32BE(16), h: png.readUInt32BE(20) });
+    expect(atlas.textures[0].size).toEqual({ w: 812, h: 164 });
+    expect(atlas.textures[0].frames.map(({ frame }) => frame)).toEqual([
+      { x: 2, y: 2, w: 160, h: 160 },
+      { x: 164, y: 2, w: 160, h: 160 },
+      { x: 326, y: 2, w: 160, h: 160 },
+      { x: 488, y: 2, w: 160, h: 160 },
+      { x: 650, y: 2, w: 160, h: 160 },
+    ]);
+    for (const { sourceSize, spriteSourceSize } of atlas.textures[0].frames) {
+      expect(sourceSize).toEqual({ w: 160, h: 160 });
+      expect(spriteSourceSize).toEqual({ x: 0, y: 0, w: 160, h: 160 });
+    }
+  });
+
+  it("uses Acerola's five native 80x80 cells without the magenta borders", () => {
+    const atlas = JSON.parse(readFileSync("assets/images/trainer/acerola_back_pb.json", "utf8"));
+    const png = readFileSync("assets/images/trainer/acerola_back_pb.png");
+    expect(atlas.textures[0].size).toEqual({ w: png.readUInt32BE(16), h: png.readUInt32BE(20) });
+    expect(atlas.textures[0].size).toEqual({ w: 406, h: 82 });
+    expect(atlas.textures[0].frames.map(({ frame }) => frame)).toEqual([
+      { x: 1, y: 1, w: 80, h: 80 },
+      { x: 82, y: 1, w: 80, h: 80 },
+      { x: 163, y: 1, w: 80, h: 80 },
+      { x: 244, y: 1, w: 80, h: 80 },
+      { x: 325, y: 1, w: 80, h: 80 },
+    ]);
+    for (const { sourceSize, spriteSourceSize } of atlas.textures[0].frames) {
+      expect(sourceSize).toEqual({ w: 80, h: 80 });
+      expect(spriteSourceSize).toEqual({ x: 0, y: 0, w: 80, h: 80 });
+    }
   });
 
   it.each([184, 256])("aligns five-frame event throws without delaying the event: %d ms poses", frameDuration => {

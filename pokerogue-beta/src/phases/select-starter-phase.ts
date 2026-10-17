@@ -316,6 +316,8 @@ export class SelectStarterPhase extends Phase {
         const computerPartnerProfile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
         starterPokemon.computerPartnerAce = isComputerPartnerStarterAce(computerPartnerProfile, starter, i);
       }
+      // Register ownership before moves and challenges consult the CPU Ace's type.
+      party.push(starterPokemon);
       if (starter.moveset) {
         starterPokemon.tryPopulateMoveset(starter.moveset, globalScene.isComputerPartnerPlayer(playerIndex));
       }
@@ -353,7 +355,6 @@ export class SelectStarterPhase extends Phase {
       if (starterPokemon.computerPartnerAce) {
         this.applyComputerPartnerAceEvs(starterPokemon, starter, playerIndex);
       }
-      party.push(starterPokemon);
       if (chalApplied) {
         // If any challenges modified the starter, it should update
         loadPokemonAssets.push(starterPokemon.updateInfo());

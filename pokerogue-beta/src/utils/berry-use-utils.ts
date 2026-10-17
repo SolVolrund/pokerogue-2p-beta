@@ -43,7 +43,19 @@ export function consumeBerryModifier(
   context: BerryUseContext = { trigger: "turn-end" },
   options: ConsumeBerryModifierOptions = {},
 ): boolean {
-  if (!canUseBerry(pokemon, context.trigger === "turn-end")) {
+  if (
+    berryModifier.consumed
+    || berryModifier.stackCount <= 0
+    || !pokemon.getHeldItems().includes(berryModifier)
+    || !canUseBerry(pokemon, context.trigger === "turn-end")
+  ) {
+    return false;
+  }
+
+  const preserve = new BooleanHolder(false);
+  globalScene.applyModifiersForPokemon(PreserveBerryModifier, pokemon, pokemon, preserve);
+  const consumed = !preserve.value;
+  if (consumed && !pokemon.loseHeldItem(berryModifier, false)) {
     return false;
   }
 
@@ -56,15 +68,10 @@ export function consumeBerryModifier(
     );
   }
 
-  const preserve = new BooleanHolder(false);
-  globalScene.applyModifiersForPokemon(PreserveBerryModifier, pokemon, pokemon, preserve);
-  const consumed = !preserve.value;
-
   applyAbAttrs("PostItemLostAbAttr", { pokemon });
   pokemon.recordEatenBerry(berryModifier.berryType, consumed);
 
   if (consumed) {
-    pokemon.loseHeldItem(berryModifier);
     applySymbiosis(pokemon, berryModifier.berryType);
   }
   if (context.trigger !== "turn-end") {

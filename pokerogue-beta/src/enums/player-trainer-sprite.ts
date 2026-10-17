@@ -24,6 +24,13 @@ export enum PlayerTrainerSprite {
   BIANCA,
   DUPLICA,
   AMBER_TWO,
+  GARDENIA,
+  BLAINE,
+  JASMINE,
+  BROCK,
+  ACEROLA,
+  VALERIE,
+  JOY,
 }
 
 export interface PlayerTrainerSpriteOption {
@@ -229,6 +236,73 @@ export const PLAYER_TRAINER_SPRITE_OPTIONS: PlayerTrainerSpriteOption[] = [
     gender: PlayerGender.FEMALE,
     yOffset: -54,
   },
+  {
+    sprite: PlayerTrainerSprite.GARDENIA,
+    label: "Gardenia",
+    artist: "gopokenohito",
+    atlasKey: "gardenia_back",
+    backAtlasFile: "gardenia_back_pb",
+    gender: PlayerGender.FEMALE,
+    yOffset: -54,
+  },
+  {
+    sprite: PlayerTrainerSprite.BLAINE,
+    label: "Blaine",
+    artist: "mid117",
+    atlasKey: "blaine_back",
+    backAtlasFile: "blaine_back_pb",
+    gender: PlayerGender.MALE,
+    yOffset: -54,
+    scale: 0.5,
+  },
+  {
+    sprite: PlayerTrainerSprite.JASMINE,
+    label: "Jasmine",
+    artist: "mid117",
+    atlasKey: "jasmine_back",
+    backAtlasFile: "jasmine_back_pb",
+    gender: PlayerGender.FEMALE,
+    yOffset: -54,
+    scale: 0.5,
+  },
+  {
+    sprite: PlayerTrainerSprite.BROCK,
+    label: "Brock",
+    artist: "mid117",
+    atlasKey: "brock_back",
+    backAtlasFile: "brock_back_pb",
+    gender: PlayerGender.MALE,
+    yOffset: -54,
+    scale: 0.5,
+  },
+  {
+    sprite: PlayerTrainerSprite.ACEROLA,
+    label: "Acerola",
+    artist: "Bio",
+    atlasKey: "acerola_back",
+    backAtlasFile: "acerola_back_pb",
+    gender: PlayerGender.FEMALE,
+    yOffset: -54,
+  },
+  {
+    sprite: PlayerTrainerSprite.VALERIE,
+    label: "Valerie",
+    artist: "Bio",
+    atlasKey: "valerie_back",
+    backAtlasFile: "valerie_back_pb",
+    gender: PlayerGender.FEMALE,
+    yOffset: -54,
+    scale: 0.5,
+  },
+  {
+    sprite: PlayerTrainerSprite.JOY,
+    label: "Joy",
+    artist: "gopokenohito",
+    atlasKey: "joy_back",
+    backAtlasFile: "joy_back_pb",
+    gender: PlayerGender.FEMALE,
+    yOffset: -54,
+  },
 ];
 
 export const PLAYER_BOY_TRAINER_SPRITES: PlayerTrainerSprite[] = [
@@ -239,6 +313,8 @@ export const PLAYER_BOY_TRAINER_SPRITES: PlayerTrainerSprite[] = [
   PlayerTrainerSprite.RILEY,
   PlayerTrainerSprite.ETHAN,
   PlayerTrainerSprite.SILVER,
+  PlayerTrainerSprite.BLAINE,
+  PlayerTrainerSprite.BROCK,
 ];
 
 export const PLAYER_GIRL_TRAINER_SPRITES: PlayerTrainerSprite[] = [
@@ -258,6 +334,11 @@ export const PLAYER_GIRL_TRAINER_SPRITES: PlayerTrainerSprite[] = [
   PlayerTrainerSprite.BIANCA,
   PlayerTrainerSprite.DUPLICA,
   PlayerTrainerSprite.AMBER_TWO,
+  PlayerTrainerSprite.GARDENIA,
+  PlayerTrainerSprite.JASMINE,
+  PlayerTrainerSprite.ACEROLA,
+  PlayerTrainerSprite.VALERIE,
+  PlayerTrainerSprite.JOY,
 ];
 
 const PLAYER_TRAINER_FRONT_SPRITE_KEYS: Record<PlayerTrainerSprite, string> = {
@@ -284,6 +365,13 @@ const PLAYER_TRAINER_FRONT_SPRITE_KEYS: Record<PlayerTrainerSprite, string> = {
   [PlayerTrainerSprite.BIANCA]: "bianca",
   [PlayerTrainerSprite.DUPLICA]: "duplica",
   [PlayerTrainerSprite.AMBER_TWO]: "amber_two",
+  [PlayerTrainerSprite.GARDENIA]: "gardenia",
+  [PlayerTrainerSprite.BLAINE]: "blaine",
+  [PlayerTrainerSprite.JASMINE]: "jasmine",
+  [PlayerTrainerSprite.BROCK]: "brock",
+  [PlayerTrainerSprite.ACEROLA]: "acerola",
+  [PlayerTrainerSprite.VALERIE]: "valerie",
+  [PlayerTrainerSprite.JOY]: "joy",
 };
 
 export function getPlayerTrainerSpriteOption(sprite: PlayerTrainerSprite): PlayerTrainerSpriteOption {

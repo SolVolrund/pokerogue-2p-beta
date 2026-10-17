@@ -58,7 +58,12 @@ export function chooseComputerPartnerMoveLearningDecision(
   learnMoveType: LearnMoveType,
   context: ComputerPartnerMoveLearningContext = {},
 ): ComputerPartnerMoveLearningDecision {
-  const signatureMoves = context.profile?.signatureMoves?.[pokemon.species.speciesId] ?? [];
+  const signatureMoves = [
+    ...(context.profile?.signatureMoves?.[pokemon.species.speciesId] ?? []),
+    ...(pokemon.isPlayer() && pokemon.computerPartnerAce
+      ? (context.profile?.aceSignatureMoves?.[pokemon.species.speciesId] ?? [])
+      : []),
+  ];
   const isSignatureMove = signatureMoves.includes(newMove.id);
   if (
     (newMove.id !== MoveId.SKETCH && currentMoveIds.includes(newMove.id))

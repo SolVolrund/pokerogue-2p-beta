@@ -2407,7 +2407,7 @@ export class GameData {
 
     const maxIntAttrValue = 0x80000000;
 
-    const systemSaveSource = globalScene.twoPlayerMode ? globalScene.getLocalPlayerGameData() : this;
+    const systemSaveSource = globalScene.twoPlayerMode ? globalScene.getLocalPlayerSystemSave() : this;
     const liveSystemData = systemSaveSource.getSystemSaveData();
     let cachedSystemData: SystemSaveData | undefined;
     const cachedSystemDataStr = localStorage.getItem(`data_${loggedInUser?.username}`);

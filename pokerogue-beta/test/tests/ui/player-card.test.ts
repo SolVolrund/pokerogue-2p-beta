@@ -111,6 +111,13 @@ describe("Player Cards", () => {
     { sprite: PlayerTrainerSprite.BIANCA, characterId: "bianca_back", front: "bianca", name: "Bianca" },
     { sprite: PlayerTrainerSprite.DUPLICA, characterId: "duplica_back_mid117", front: "duplica", name: "Duplica" },
     { sprite: PlayerTrainerSprite.AMBER_TWO, characterId: "amber_two_back", front: "amber_two", name: "AmberTwo" },
+    { sprite: PlayerTrainerSprite.GARDENIA, characterId: "gardenia_back", front: "gardenia", name: "Gardenia" },
+    { sprite: PlayerTrainerSprite.BLAINE, characterId: "blaine_back", front: "blaine", name: "Blaine" },
+    { sprite: PlayerTrainerSprite.JASMINE, characterId: "jasmine_back", front: "jasmine", name: "Jasmine" },
+    { sprite: PlayerTrainerSprite.BROCK, characterId: "brock_back", front: "brock", name: "Brock" },
+    { sprite: PlayerTrainerSprite.ACEROLA, characterId: "acerola_back", front: "acerola", name: "Acerola" },
+    { sprite: PlayerTrainerSprite.VALERIE, characterId: "valerie_back", front: "valerie", name: "Valerie" },
+    { sprite: PlayerTrainerSprite.JOY, characterId: "joy_back", front: "joy", name: "Joy" },
   ])("selects and saves $name with a distinct character ID", ({ sprite, characterId, front, name }) => {
     const handler = game.scene.ui.handlers[UiMode.PLAYER_CHARACTER] as PlayerCharacterUiHandler;
     const preview = vi.spyOn(handler as any, "preview").mockImplementation(() => {});
@@ -133,6 +140,14 @@ describe("Player Cards", () => {
 
   it("keeps existing variant IDs and labels separate from the new regular characters", () => {
     expect(PlayerTrainerSprite.SABRINA).toBe(19);
+    expect(PlayerTrainerSprite.AMBER_TWO).toBe(22);
+    expect(PlayerTrainerSprite.GARDENIA).toBe(23);
+    expect(PlayerTrainerSprite.BLAINE).toBe(24);
+    expect(PlayerTrainerSprite.JASMINE).toBe(25);
+    expect(PlayerTrainerSprite.BROCK).toBe(26);
+    expect(PlayerTrainerSprite.ACEROLA).toBe(27);
+    expect(PlayerTrainerSprite.VALERIE).toBe(28);
+    expect(PlayerTrainerSprite.JOY).toBe(29);
     expect(getPlayerTrainerSpriteOption(PlayerTrainerSprite.BIANCA_LATIAS)).toMatchObject({
       label: "Bianca?", atlasKey: "bianca_latias_back",
     });
@@ -145,6 +160,27 @@ describe("Player Cards", () => {
     expect(getPlayerTrainerSpriteOption(PlayerTrainerSprite.AMBER_TWO)).toMatchObject({
       atlasKey: "amber_two_back", backAtlasFile: "amber_two_back_pb",
     });
+    expect(getPlayerTrainerSpriteOption(PlayerTrainerSprite.GARDENIA)).toMatchObject({
+      atlasKey: "gardenia_back", backAtlasFile: "gardenia_back_pb",
+    });
+    expect(getPlayerTrainerSpriteOption(PlayerTrainerSprite.BLAINE)).toMatchObject({
+      atlasKey: "blaine_back", backAtlasFile: "blaine_back_pb", scale: 0.5,
+    });
+    expect(getPlayerTrainerSpriteOption(PlayerTrainerSprite.JASMINE)).toMatchObject({
+      atlasKey: "jasmine_back", backAtlasFile: "jasmine_back_pb", scale: 0.5,
+    });
+    expect(getPlayerTrainerSpriteOption(PlayerTrainerSprite.BROCK)).toMatchObject({
+      atlasKey: "brock_back", backAtlasFile: "brock_back_pb", scale: 0.5,
+    });
+    expect(getPlayerTrainerSpriteOption(PlayerTrainerSprite.ACEROLA)).toMatchObject({
+      atlasKey: "acerola_back", backAtlasFile: "acerola_back_pb",
+    });
+    expect(getPlayerTrainerSpriteOption(PlayerTrainerSprite.VALERIE)).toMatchObject({
+      atlasKey: "valerie_back", backAtlasFile: "valerie_back_pb", scale: 0.5,
+    });
+    expect(getPlayerTrainerSpriteOption(PlayerTrainerSprite.JOY)).toMatchObject({
+      atlasKey: "joy_back", backAtlasFile: "joy_back_pb",
+    });
   });
 
   it("displays the supplied artist credit for every character", () => {
@@ -155,6 +191,13 @@ describe("Player Cards", () => {
       Lyra: "Takao Unno", Marley: "Ken Sugimori", Mira: "Ken Sugimori", Riley: "Ken Sugimori",
       Silver: "Ken Sugimori", "Bianca?": "Ejay", "Duplica?": "Bio(E)", Molly: "Gopokenohito/Bio",
       Whitney: "mid117", Sabrina: "Mid117", Bianca: "Ejay", Duplica: "Bio(E)", AmberTwo: "Bio",
+      Gardenia: "gopokenohito",
+      Blaine: "mid117",
+      Jasmine: "mid117",
+      Brock: "mid117",
+      Acerola: "Bio",
+      Valerie: "Bio",
+      Joy: "gopokenohito",
     };
     const handler = game.scene.ui.handlers[UiMode.PLAYER_CHARACTER] as PlayerCharacterUiHandler;
     vi.spyOn(handler as any, "preview").mockImplementation(() => {});
