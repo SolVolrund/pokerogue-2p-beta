@@ -695,8 +695,15 @@ export class RunInfoUiHandler extends UiHandler {
 
       switch (chal.id) {
         case Challenges.SINGLE_GENERATION:
-          rules.push(i18next.t(`runHistory:challengeMonoGen${chal.value}`));
+        case Challenges.SINGLE_GENERATION_P1:
+        case Challenges.SINGLE_GENERATION_P2:
+        case Challenges.SINGLE_GENERATION_P3: {
+          const playerLabel = chal.id === Challenges.SINGLE_GENERATION
+            ? ""
+            : `P${chal.id - Challenges.SINGLE_GENERATION_P1 + 1}: `;
+          rules.push(playerLabel + i18next.t(`runHistory:challengeMonoGen${chal.value}`));
           break;
+        }
         case Challenges.SINGLE_TYPE:
         case Challenges.SINGLE_TYPE_P1:
         case Challenges.SINGLE_TYPE_P2:

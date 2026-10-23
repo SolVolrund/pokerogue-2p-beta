@@ -176,6 +176,7 @@ export class Animation {
   public addPokeballOpenParticles(x: number, y: number, pokeballType: PokeballType): void {
     switch (pokeballType) {
       case PokeballType.POKEBALL:
+      case PokeballType.SAFARI_BALL:
         this.doDefaultPbOpenParticles(x, y, 48);
         break;
       case PokeballType.GREAT_BALL:

@@ -2,7 +2,7 @@ import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { modifierTypes } from "#data/data-lists";
 import type { Pokemon } from "#field/pokemon";
-import { HauntingSkullModifier, HauntingSpiritModifier, type HauntingSkullStage } from "#modifiers/modifier";
+import { HauntingSkullModifier, type HauntingSkullStage, HauntingSpiritModifier } from "#modifiers/modifier";
 import type { ModifierTypeFunc } from "#types/modifier-types";
 import { randSeedInt } from "#utils/common";
 import { getModifierType } from "#utils/modifier-utils";
@@ -49,10 +49,19 @@ export function getHauntingStatMultiplier(pokemon: Pokemon): number {
   return 1 + getSpiritCount(owner) / 100 + getSpiritCount(owner, true) / 50;
 }
 
-function grantItem(player: PlayerIndex, type: ModifierTypeFunc): void {
-  if (!globalScene.addModifier(getModifierType(type).newModifier(), true, false, false, true, undefined, player)) {
+function grantItem(player: PlayerIndex, type: ModifierTypeFunc): boolean {
+  const modifier = getModifierType(type).newModifier();
+  // Automatic spirit drops stop at the cap instead of becoming substitute rewards.
+  if (
+    modifier instanceof HauntingSpiritModifier
+    && getSpiritCount(player, modifier.greater) >= modifier.getMaxStackCount()
+  ) {
+    return false;
+  }
+  if (!globalScene.addModifier(modifier, true, false, false, true, undefined, player)) {
     throw new Error(`Unable to grant seasonal reward to player ${player}`);
   }
+  return true;
 }
 
 function upgradeSkull(player: PlayerIndex, stage: HauntingSkullStage): void {
@@ -98,14 +107,15 @@ export function grantHauntingVictoryRewards(): string[] {
       }
       if (spirit) {
         const type = spirit === "greater" ? modifierTypes.GREATER_SPIRIT : modifierTypes.LESSER_SPIRIT;
-        grantItem(player, type);
-        messages.push(
-          i18next.t("battle:hauntingSpiritCaptured", {
-            playerName,
-            spiritName: getModifierType(type).name,
-            skullName: skull.type.name,
-          }),
-        );
+        if (grantItem(player, type)) {
+          messages.push(
+            i18next.t("battle:hauntingSpiritCaptured", {
+              playerName,
+              spiritName: getModifierType(type).name,
+              skullName: skull.type.name,
+            }),
+          );
+        }
         if (skull.stage === "ominous" && getSpiritCount(player) >= 9) {
           upgradeSkull(player, "portent");
           messages.push(i18next.t("battle:hauntingSkullChanged", { playerName, skullName: skull.type.name }));

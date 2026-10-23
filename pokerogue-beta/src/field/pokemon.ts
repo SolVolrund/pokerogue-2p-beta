@@ -198,6 +198,7 @@ import { PlayerBattleInfo } from "#ui/player-battle-info";
 import { getAiMoveTargetData } from "#utils/ai-targeting";
 import { coerceArray } from "#utils/array";
 import { choosePlannerMove } from "#utils/battle-planner-ai";
+import { getJoyBattleSupportBonus } from "#utils/computer-partner-support";
 import { canUseBerry, consumeBerryModifier } from "#utils/berry-use-utils";
 import { getEnemyBattlerIndex, getPlayerBattlerIndex } from "#utils/battler-index-utils";
 import { applyChallenges } from "#utils/challenge-utils";
@@ -1704,6 +1705,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   /** The holder owns reservations; item classes need not import save/recovery machinery. */
   getReservedHeldItemCount(item: PokemonHeldItemModifier): number {
     return this.battleData.removedHeldItems.reduce((count, data) => {
+      if (data.reserveCapacity === false) {
+        return count;
+      }
       const removed = createBattleHeldItem(this, data);
       return count + (removed && item.matchType(removed) ? data.stackCount : 0);
     }, 0);
@@ -6429,7 +6433,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * Should be called once per arena transition (new biome/trainer battle/Mystery Encounter).
    */
   public resetBattleAndWaveData(): void {
-    this.battleData = new PokemonBattleData();
+    // A pending item return must survive an arena transition, even if its owner's item slots are full.
+    this.battleData = new PokemonBattleData({ removedHeldItems: this.battleData.removedHeldItems });
     this.resetWaveData();
   }
 
@@ -8186,7 +8191,7 @@ export class EnemyPokemon extends Pokemon {
                 || globalScene.arena.isMoveTerrainCancelled(this, [mt], move)
               ) {
                 targetScore = -20;
-              } else if (move.is("AttackMove")) {
+              } else if (move.is("AttackMove") && !(move.hasAttr("HealOnAllyAttr") && !targetIsOpponent)) {
                 /**
                  * Attack moves are given extra multipliers to their base benefit score based on
                  * the move's type effectiveness against the target and whether the move is a STAB move.
@@ -8216,6 +8221,7 @@ export class EnemyPokemon extends Pokemon {
                   targetScore = -20;
                 }
               }
+              targetScore += getJoyBattleSupportBonus(this, target, move, Math.max(0, targetScore));
               targetScores.push(targetScore);
             }
             // When a move has multiple targets, its score is equal to the maximum target score across all targets

@@ -588,14 +588,36 @@ export abstract class Challenge {
 
 /** Implements a mono generation challenge. */
 export class SingleGenerationChallenge extends Challenge {
+  public get playerIndex(): PlayerIndex | undefined {
+    switch (this.id) {
+      case Challenges.SINGLE_GENERATION_P1:
+        return 0;
+      case Challenges.SINGLE_GENERATION_P2:
+        return 1;
+      case Challenges.SINGLE_GENERATION_P3:
+        return 2;
+      default:
+        return undefined;
+    }
+  }
+
+  override appliesToPlayer(playerIndex: PlayerIndex): boolean {
+    return this.playerIndex === undefined || this.playerIndex === playerIndex;
+  }
+
+  override getName(): string {
+    const name = i18next.t("challenges:singleGeneration.name");
+    return this.playerIndex === undefined ? name : `${name} P${this.playerIndex + 1}`;
+  }
+
   public override get ribbonAwarded(): RibbonFlag {
     // NOTE: This logic will not work for the eventual mono gen 10 ribbon,
     // as its flag will not be in sequence with the other mono gen ribbons.
     return this.value ? ((RibbonData.MONO_GEN_1 << (BigInt(this.value) - 1n)) as RibbonFlag) : 0n;
   }
 
-  constructor() {
-    super(Challenges.SINGLE_GENERATION, 9);
+  constructor(id: Challenges = Challenges.SINGLE_GENERATION) {
+    super(id, 9);
   }
 
   applyStarterChoice(species: PokemonSpecies, isValid: BooleanHolder): boolean {
@@ -882,7 +904,7 @@ export class SingleGenerationChallenge extends Challenge {
   }
 
   static loadChallenge(source: SingleGenerationChallenge | any): SingleGenerationChallenge {
-    const newChallenge = new SingleGenerationChallenge();
+    const newChallenge = new SingleGenerationChallenge(source.id ?? Challenges.SINGLE_GENERATION);
     newChallenge.value = source.value;
     newChallenge.severity = source.severity;
     return newChallenge;
@@ -1389,6 +1411,9 @@ export class PassivesChallenge extends Challenge {
 export function copyChallenge(source: Challenge | any): Challenge {
   switch (source.id) {
     case Challenges.SINGLE_GENERATION:
+    case Challenges.SINGLE_GENERATION_P1:
+    case Challenges.SINGLE_GENERATION_P2:
+    case Challenges.SINGLE_GENERATION_P3:
       return SingleGenerationChallenge.loadChallenge(source);
     case Challenges.SINGLE_TYPE:
     case Challenges.SINGLE_TYPE_P1:
@@ -1429,7 +1454,9 @@ export function initChallenges() {
     new HardcoreChallenge(),
     new LimitedCatchChallenge(),
     new LimitedSupportChallenge(),
-    new SingleGenerationChallenge(),
+    new SingleGenerationChallenge(Challenges.SINGLE_GENERATION_P1),
+    new SingleGenerationChallenge(Challenges.SINGLE_GENERATION_P2),
+    new SingleGenerationChallenge(Challenges.SINGLE_GENERATION_P3),
     new SingleTypeChallenge(Challenges.SINGLE_TYPE_P1),
     new SingleTypeChallenge(Challenges.SINGLE_TYPE_P2),
     new SingleTypeChallenge(Challenges.SINGLE_TYPE_P3),

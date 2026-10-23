@@ -706,7 +706,7 @@ export class HauntingSpiritModifier extends PersistentModifier {
 
   getArgs(): any[] { return [this.greater]; }
   override apply(): boolean { return true; }
-  getMaxStackCount(): number { return Number.MAX_SAFE_INTEGER; }
+  getMaxStackCount(): number { return this.greater ? 5 : 20; }
 }
 
 export class EonFluteModifier extends PersistentModifier {

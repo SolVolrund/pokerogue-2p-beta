@@ -25,6 +25,7 @@ export class RepositionPhase extends FieldPhase {
       return;
     }
 
+    globalScene.arena.positionalTagManager.captureLegacyPositions();
     const previousPosition = pokemon.fieldPosition;
     const side = pokemon.isPlayer() ? globalScene.getPlayerField(true) : globalScene.getEnemyField(true);
     const swapTarget = side.find(

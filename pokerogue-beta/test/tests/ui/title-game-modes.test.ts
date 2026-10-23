@@ -82,7 +82,7 @@ describe("Title game modes", () => {
     expect(menu.mock.calls.at(-1)?.[0]).toBe(i18next.t("menu:selectPlayerCount"));
     select(i18next.t("menu:cancel"));
     expect(mode.mock.calls.at(-1)?.[0]).toBe(UiMode.CHALLENGE_SELECT);
-    expect(game.scene.gameMode.challenges.find(c => c.id === Challenges.SINGLE_GENERATION)?.value).toBe(3);
+    expect(game.scene.gameMode.challenges.find(c => c.id === Challenges.SINGLE_GENERATION_P1)?.value).toBe(3);
     (mode.mock.calls.at(-1)![1] as ChallengeSelectConfig).onCancel();
     await Promise.resolve();
     expect(menu.mock.calls.at(-1)?.[0]).toBe(i18next.t("menu:selectGameMode"));
@@ -112,14 +112,16 @@ describe("Title game modes", () => {
     vi.spyOn(Phase.prototype, "end").mockImplementation(() => {});
     const queue = vi.spyOn(game.scene.phaseManager, "pushNew");
     title.end();
-    expect(game.scene.gameMode.challenges.find(c => c.id === Challenges.SINGLE_GENERATION)?.value).toBe(3);
+    expect(game.scene.gameMode.challenges.find(c => c.id === Challenges.SINGLE_GENERATION_P1)?.value).toBe(3);
     expect(queue.mock.calls.some(call => call[0] === "SelectStarterPhase")).toBe(true);
     expect(queue.mock.calls.some(call => call[0] === "SelectChallengePhase")).toBe(false);
   });
 
   it.each([2, 3] as const)("sends the host's rules to guests in a %ip run", count => {
     game.scene.gameMode = getGameMode(GameModes.CHALLENGE);
-    game.scene.gameMode.setChallengeValue(Challenges.SINGLE_GENERATION, 4);
+    game.scene.gameMode.setChallengeValue(Challenges.SINGLE_GENERATION_P1, 4);
+    game.scene.gameMode.setChallengeValue(Challenges.SINGLE_GENERATION_P2, 5);
+    game.scene.gameMode.setChallengeValue(Challenges.SINGLE_GENERATION_P3, 6);
     game.scene.gameMode.setChallengeValue(Challenges.SINGLE_TYPE_P1, PokemonType.FIRE + 1);
     game.scene.gameMode.setChallengeValue(Challenges.SINGLE_TYPE_P2, PokemonType.WATER + 1);
     game.scene.gameMode.setChallengeValue(Challenges.SINGLE_TYPE_P3, PokemonType.GRASS + 1);
@@ -131,7 +133,9 @@ describe("Title game modes", () => {
     const broadcast = vi.spyOn(game.scene.uiInputs, "broadcastTwoPlayerTitleStart").mockReturnValue(false);
     title["startMultiplayerRun"](GameModes.CHALLENGE, count, 6);
     const payload: TwoPlayerTitleStart = JSON.parse(JSON.stringify(broadcast.mock.calls[0][0]));
-    expect(payload.challenges?.find(c => c.id === Challenges.SINGLE_GENERATION)?.value).toBe(4);
+    expect(payload.challenges?.find(c => c.id === Challenges.SINGLE_GENERATION_P1)?.value).toBe(4);
+    expect(payload.challenges?.find(c => c.id === Challenges.SINGLE_GENERATION_P2)?.value).toBe(5);
+    expect(payload.challenges?.find(c => c.id === Challenges.SINGLE_GENERATION_P3)?.value).toBe(6);
 
     const guest = new TitlePhase();
     guest["announceTwoPlayerProfileForStartup"] = () => {};
@@ -140,7 +144,9 @@ describe("Title game modes", () => {
     game.scene.gameMode = getGameMode(GameModes.CLASSIC);
     expect(guest["applyRemoteTwoPlayerTitleStart"](payload)).toBe(true);
     expect(game.scene.gameMode.modeId).toBe(GameModes.CHALLENGE);
-    expect(game.scene.gameMode.challenges.find(c => c.id === Challenges.SINGLE_GENERATION)?.value).toBe(4);
+    expect(game.scene.gameMode.challenges.find(c => c.id === Challenges.SINGLE_GENERATION_P1)?.value).toBe(4);
+    expect(game.scene.gameMode.challenges.find(c => c.id === Challenges.SINGLE_GENERATION_P2)?.value).toBe(5);
+    expect(game.scene.gameMode.challenges.find(c => c.id === Challenges.SINGLE_GENERATION_P3)?.value).toBe(count === 3 ? 6 : 0);
     expect(game.scene.gameMode.challenges.find(c => c.id === Challenges.SINGLE_TYPE_P1)?.value).toBe(PokemonType.FIRE + 1);
     expect(game.scene.gameMode.challenges.find(c => c.id === Challenges.SINGLE_TYPE_P2)?.value).toBe(PokemonType.WATER + 1);
     expect(game.scene.gameMode.challenges.find(c => c.id === Challenges.SINGLE_TYPE_P3)?.value)

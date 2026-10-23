@@ -25,6 +25,7 @@ export interface OptionSelectItem {
   label: string;
   handler: () => boolean;
   onHover?: () => void;
+  onCycle?: () => boolean;
   skip?: boolean;
   disabled?: boolean;
   keepOpen?: boolean;

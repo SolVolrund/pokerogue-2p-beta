@@ -25,6 +25,7 @@ import type { TurnMove } from "#types/turn-move";
 import { getAiMoveTargetData, getAiRelevantOpponents } from "#utils/ai-targeting";
 import { withBioInstabilityForecast } from "#utils/bio-instability-ai";
 import { BooleanHolder, NumberHolder } from "#utils/common";
+import { getJoyBattleSupportBonus, isJoyComputerPartner } from "#utils/computer-partner-support";
 import { evaluateItemSuppression, isItemSuppressionMove } from "#utils/held-item-suppression-ai";
 
 const FAIL_SCORE = -100_000;
@@ -122,6 +123,7 @@ interface PlannerMoveScoreBreakdown {
   enemyStatus: number;
   redundancy: number;
   protect: number;
+  supportPreference: number;
 }
 
 interface PlannerMoveDebugEvaluation {
@@ -1391,6 +1393,7 @@ function getPlannerBreakdownColumns(breakdown: PlannerMoveScoreBreakdown | undef
     enemyStatus: formatPlannerScore(breakdown?.enemyStatus ?? 0),
     redundant: formatPlannerScore(breakdown?.redundancy ?? 0),
     protect: formatPlannerScore(breakdown?.protect ?? 0),
+    supportPreference: formatPlannerScore(breakdown?.supportPreference ?? 0),
   };
 }
 
@@ -2202,7 +2205,7 @@ function scoreMoveAgainstTargetDetailed(
   breakdown.benefit = getBenefitScore(user, target, move, targetIsOpponent);
   let score = breakdown.benefit;
 
-  if (move.is("AttackMove")) {
+  if (move.is("AttackMove") && !(move.hasAttr("HealOnAllyAttr") && !targetIsOpponent)) {
     breakdown.attack = scoreAttackMove(user, target, move, targetIsOpponent);
     score += breakdown.attack;
     if (targetIsOpponent) {
@@ -2224,6 +2227,20 @@ function scoreMoveAgainstTargetDetailed(
       breakdown.badStatus = -Math.min(90, 35 + targetThreatScore * 0.2);
       score += breakdown.badStatus;
     }
+  }
+
+  if (isJoyComputerPartner(user) && !targetIsOpponent) {
+    const actualHeal = getProjectedDirectHealAmount(user, target, move, [{
+      pokemon: target, battlerIndex: target.getBattlerIndex(), damage: 0,
+      hpAfterAction: target.hp, actsBeforeUser: false,
+    }]);
+    const urgentHeal = actualHeal > 0 && canHealBeforeLikelyKo(
+      user, target, move, actualHeal, estimateIncomingDamage(target) + estimateEndOfTurnResidualDamage(target),
+    );
+    breakdown.supportPreference = getJoyBattleSupportBonus(user, target, move,
+      Math.max(0, breakdown.benefit) + Math.max(0, breakdown.healing)
+      + Math.max(0, breakdown.sideSupport) + Math.max(0, breakdown.setup), urgentHeal);
+    score += breakdown.supportPreference;
   }
 
   return { score: Number.isNaN(score) ? 0 : score, breakdown };
@@ -2326,6 +2343,7 @@ function createEmptyPlannerMoveScoreBreakdown(): PlannerMoveScoreBreakdown {
     enemyStatus: 0,
     redundancy: 0,
     protect: 0,
+    supportPreference: 0,
   };
 }
 
@@ -2342,6 +2360,7 @@ function mergePlannerMoveScoreBreakdowns(breakdowns: PlannerMoveScoreBreakdown[]
     merged.enemyStatus += breakdown.enemyStatus;
     merged.redundancy += breakdown.redundancy;
     merged.protect += breakdown.protect;
+    merged.supportPreference += breakdown.supportPreference;
     return merged;
   }, createEmptyPlannerMoveScoreBreakdown());
 }

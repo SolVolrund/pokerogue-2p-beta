@@ -222,8 +222,10 @@ export class LoadingScene extends SceneBase {
       .loadAtlas("pb_particles", "effects")
       .loadImage("evo_sparkle", "effects")
       .loadAtlas("tera_sparkle", "effects")
-      .loadAtlas("pb", "")
       .loadAtlas("items", "");
+
+    // Keep the supplied Safari Ball frames intact as additional pages of the ball atlas.
+    this.load.multiatlas("pb", "images/pb.json");
 
     for (const option of PLAYER_TRAINER_SPRITE_OPTIONS) {
       this.loadAtlas(getPlayerTrainerSpriteFrontTextureKey(option.sprite), "trainer");

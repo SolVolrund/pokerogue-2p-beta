@@ -200,7 +200,7 @@ import { addTextObject, getTextColor, RAINBOW_TINT } from "#ui/text";
 import { UI } from "#ui/ui";
 import { addUiThemeOverrides, updateWindowType } from "#ui/ui-theme";
 import { playTween } from "#utils/anim-utils";
-import { removeHeldItemForBattle } from "#utils/battle-held-items";
+import { deferHeldItemRecovery, removeHeldItemForBattle } from "#utils/battle-held-items";
 import { getEnemyBattlerIndex, getFieldIndexFromBattlerIndex, getPlayerBattlerIndex } from "#utils/battler-index-utils";
 import {
   isClassicFinalBossPhaseTwo,
@@ -254,7 +254,7 @@ import { capitalizeFirstLetterOnly } from "#utils/strings";
 import i18next from "i18next";
 import Phaser from "phaser";
 
-type PlayerCatchPokeballType = Exclude<PokeballType, PokeballType.LUXURY_BALL | PokeballType.GLASS_BALL>;
+type PlayerCatchPokeballType = Exclude<PokeballType, PokeballType.LUXURY_BALL | PokeballType.GLASS_BALL | PokeballType.SAFARI_BALL>;
 export type PokeballCounts = Record<PlayerCatchPokeballType, number>;
 export type TwoPlayerIndex = 0 | 1;
 export type PlayerIndex = TwoPlayerIndex | 2;
@@ -368,7 +368,7 @@ interface TwoPlayerRewardDebugState {
 function createDefaultPokeballCounts(): PokeballCounts {
   const pokeballCounts = Object.fromEntries(
     getEnumValues(PokeballType)
-      .filter(pt => pt !== PokeballType.LUXURY_BALL && pt !== PokeballType.GLASS_BALL)
+      .filter(pt => pt !== PokeballType.LUXURY_BALL && pt !== PokeballType.GLASS_BALL && pt !== PokeballType.SAFARI_BALL)
       .map(t => [t, 0]),
   ) as PokeballCounts;
 
@@ -2079,6 +2079,7 @@ export class BattleScene extends SceneBase {
       waveSeed: this.waveSeed ?? null,
       biome: this.arena?.biomeId ?? null,
       seasonalEncounters: { ...this.seasonalEncounters },
+      playerDecisionTieBreakPriorities: { ...this.playerDecisionTieBreakPriorities },
       hauntedTrainer: this.currentBattle?.trainer?.haunted ?? false,
       greatHaunt: this.currentBattle?.greatHauntState,
       horde: this.currentBattle?.horde,
@@ -2380,7 +2381,7 @@ export class BattleScene extends SceneBase {
   }
 
   public isComputerPartnerEvolutionAllowed(pokemon: Pokemon, targetSpeciesId: SpeciesId, forFusion = false): boolean {
-    if (!pokemon.isPlayer() || !pokemon.computerPartnerAce) {
+    if (!pokemon.isPlayer()) {
       return true;
     }
     const playerIndex = this.getPlayerIndexForPokemon(pokemon);
@@ -2389,11 +2390,20 @@ export class BattleScene extends SceneBase {
     }
     const species = forFusion ? pokemon.fusionSpecies : pokemon.species;
     const profile = getComputerPartnerProfile(this.getComputerPartnerKey(playerIndex));
+    if (profile.monogen !== undefined && getPokemonSpecies(targetSpeciesId).generation !== profile.monogen) {
+      return false;
+    }
+    if (!pokemon.computerPartnerAce) {
+      return true;
+    }
     const requiredTarget = species && profile.aceEvolutionTargets?.[species.speciesId];
     return requiredTarget == null || targetSpeciesId === requiredTarget;
   }
 
   public canPlayerUsePokeballs(playerIndex: PlayerIndex, ballType?: PokeballType): boolean {
+    if (ballType === PokeballType.SAFARI_BALL) {
+      return false;
+    }
     if (!this.isComputerPartnerPlayer(playerIndex)) {
       return true;
     }
@@ -2445,7 +2455,7 @@ export class BattleScene extends SceneBase {
     if (playerIndex === 1) {
       this.computerPartnerKey = key;
     }
-    if (key !== "alex") {
+    if (!getComputerPartnerProfile(key).usesPlayerSelectedStarters) {
       delete this.computerPartnerRolePreferences[playerIndex];
     }
 
@@ -3815,6 +3825,8 @@ export class BattleScene extends SceneBase {
   // TODO: Break up function - this does far too much in 1 sitting
   reset(clearScene = false, clearData = false, reloadI18n = false): void {
     this.runPlayerAppearances = {};
+    this.playerDecisionTieBreakPriorities = {};
+    this.twoPlayerMysteryDecisionPriority = 0;
     if (clearData) {
       this.gameData = new GameData();
       this.localPlayerSystemSave = this.gameData;
@@ -5731,21 +5743,19 @@ export class BattleScene extends SceneBase {
   }
 
   recoverBattleTransferredHeldItems(playerIndexes: PlayerIndex[], enemyOnly = false): void {
-    const trackedItems = [
-      ...playerIndexes.flatMap(playerIndex =>
-        this.findModifiersForPlayer(
-          m => m instanceof PokemonHeldItemModifier && !!m.recoverableBattleTransfer,
-          playerIndex,
-        ).map(modifier => ({ modifier: modifier as PokemonHeldItemModifier, playerIndex })),
+    const playerInventories = playerIndexes.map(playerIndex => this.getPlayerModifiers(playerIndex));
+    const sourceLists = [...playerInventories, this.enemyModifiers, this.currentBattle.postBattleLoot];
+    // Older battles may reference the same item in both an inventory and the loot pool.
+    const trackedItems = new Set(
+      sourceLists.flat().filter(
+        (modifier): modifier is PokemonHeldItemModifier =>
+          modifier instanceof PokemonHeldItemModifier && !!modifier.recoverableBattleTransfer,
       ),
-      ...this.findModifiers(m => m instanceof PokemonHeldItemModifier && !!m.recoverableBattleTransfer, false).map(
-        modifier => ({ modifier: modifier as PokemonHeldItemModifier, playerIndex: undefined }),
-      ),
-    ];
+    );
     const recoveredPokemon = new Set<Pokemon>();
 
-    for (const { modifier, playerIndex } of trackedItems) {
-      if (enemyOnly && playerIndex !== undefined) {
+    for (const modifier of trackedItems) {
+      if (enemyOnly && playerInventories.some(inventory => inventory.includes(modifier))) {
         continue;
       }
       const transferSource = modifier.recoverableBattleTransfer;
@@ -5759,33 +5769,41 @@ export class BattleScene extends SceneBase {
         continue;
       }
 
-      if (modifier.pokemonId === originalPokemon.id) {
+      if (
+        modifier.pokemonId === originalPokemon.id
+        && this.getPlayerModifiers(originalPlayerIndex).includes(modifier)
+      ) {
         modifier.recoverableBattleTransfer = undefined;
+        const loot = this.currentBattle.postBattleLoot;
+        for (let index = loot.length - 1; index >= 0; index--) {
+          if (loot[index] === modifier) {
+            loot.splice(index, 1);
+          }
+        }
         continue;
       }
 
-      const currentHolder = modifier.getPokemon();
-      const existingOriginalItem = this.findModifierForPlayer(
-        m => m instanceof PokemonHeldItemModifier && m.matchType(modifier) && m.pokemonId === originalPokemon.id,
-        originalPlayerIndex,
-      ) as PokemonHeldItemModifier | undefined;
-      const originalCanHoldMore =
-        !existingOriginalItem || existingOriginalItem.getStackCount() < existingOriginalItem.getMaxStackCount();
-      const removed = this.removeModifier(modifier, currentHolder?.isEnemy() ?? playerIndex === undefined, playerIndex);
-
-      if (!removed) {
-        continue;
-      }
-
-      if (originalCanHoldMore) {
+      if (modifier.stackCount > 0) {
         const recoveredModifier = modifier.clone() as PokemonHeldItemModifier;
         recoveredModifier.pokemonId = originalPokemon.id;
         recoveredModifier.stackCount = modifier.stackCount;
         recoveredModifier.recoverableBattleTransfer = undefined;
-        this.addModifier(recoveredModifier, true, false, false, true, undefined, originalPlayerIndex);
+        recoveredModifier.eonFluteGuestItem = modifier.eonFluteGuestItem;
+        if (this.addRecoveredHeldItem(recoveredModifier, originalPokemon)) {
+          recoveredPokemon.add(originalPokemon);
+        } else {
+          deferHeldItemRecovery(originalPokemon, recoveredModifier);
+        }
       }
 
-      recoveredPokemon.add(originalPokemon);
+      // Remove every alias only after the item is restored or secured in its owner's saved recovery records.
+      for (const list of sourceLists) {
+        for (let index = list.length - 1; index >= 0; index--) {
+          if (list[index] === modifier) {
+            list.splice(index, 1);
+          }
+        }
+      }
     }
 
     for (const pokemon of recoveredPokemon) {
@@ -5827,6 +5845,10 @@ export class BattleScene extends SceneBase {
   /** Recovery must not convert an over-cap item into a reward or play acquisition effects. */
   addRecoveredHeldItem(item: PokemonHeldItemModifier, pokemon: Pokemon): boolean {
     const playerIndex = pokemon.isPlayer() ? this.getPlayerIndexForPokemon(pokemon) : undefined;
+    const existing = pokemon.getHeldItems().find(held => held.matchType(item));
+    if (item.stackCount + (existing?.getStackCount() ?? 0) > item.getMaxStackCount()) {
+      return false;
+    }
     return item.add(this.getModifierList(pokemon.isPlayer(), playerIndex), false);
   }
 

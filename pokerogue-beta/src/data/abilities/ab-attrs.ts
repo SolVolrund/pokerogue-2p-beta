@@ -5029,7 +5029,7 @@ export class PostBattleLootAbAttr extends PostBattleAbAttr {
   private randItem?: PokemonHeldItemModifier | undefined;
 
   override canApply({ simulated, victory, pokemon }: PostBattleAbAttrParams): boolean {
-    const postBattleLoot = globalScene.currentBattle.postBattleLoot;
+    const postBattleLoot = globalScene.currentBattle.postBattleLoot.filter(item => !item.recoverableBattleTransfer);
     if (!simulated && postBattleLoot.length > 0 && victory) {
       this.randItem = randSeedItem(postBattleLoot);
       return globalScene.canTransferHeldItemModifier(this.randItem, pokemon, 1);
@@ -5039,8 +5039,12 @@ export class PostBattleLootAbAttr extends PostBattleAbAttr {
 
   override apply({ pokemon }: PostBattleAbAttrParams): void {
     const postBattleLoot = globalScene.currentBattle.postBattleLoot;
+    if (!this.randItem || this.randItem.recoverableBattleTransfer || !postBattleLoot.includes(this.randItem)) {
+      const availableLoot = postBattleLoot.filter(item => !item.recoverableBattleTransfer);
+      this.randItem = availableLoot.length > 0 ? randSeedItem(availableLoot) : undefined;
+    }
     if (!this.randItem) {
-      this.randItem = randSeedItem(postBattleLoot);
+      return;
     }
 
     if (globalScene.tryTransferHeldItemModifier(this.randItem, pokemon, true, 1, true, undefined, false)) {

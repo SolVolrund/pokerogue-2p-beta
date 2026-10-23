@@ -124,6 +124,84 @@ describe("Haunting skulls and spirits", () => {
     expect(random).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { greater: false, cap: 20 },
+    { greater: true, cap: 5 },
+  ])("caps greater=$greater at $cap independently for each player", ({ greater, cap }) => {
+    const type = greater ? modifierTypes.GREATER_SPIRIT : modifierTypes.LESSER_SPIRIT;
+    game.scene.configureTwoPlayerMode(true, 6, false, 2);
+    for (const owner of [0, 1] as const) {
+      addItem(modifierTypes.MALEFIC_SKULL, owner);
+      addItem(type, owner, cap - owner);
+    }
+    if (greater) {
+      game.scene.seasonalEncounters.enterTower(51);
+      game.scene.seasonalEncounters.tower!.boss = true;
+    }
+    const add = vi.spyOn(game.scene, "addModifier");
+    const queue = vi.spyOn(game.scene.phaseManager, "queueMessage");
+    const messages = grantHauntingVictoryRewards();
+    expect(getSpiritCount(0, greater)).toBe(cap);
+    expect(getSpiritCount(1, greater)).toBe(cap);
+    expect(add).toHaveBeenCalledTimes(1);
+    expect(add.mock.calls[0][6]).toBe(1);
+    expect(queue).not.toHaveBeenCalled();
+    expect(messages).toHaveLength(greater ? 2 : 1); // A tower boss also ends the hauntings.
+    expect(grantHauntingVictoryRewards()).toEqual([]);
+    for (const owner of [0, 1] as const) {
+      const spirit = game.scene.findModifierForPlayer(
+        m => m instanceof HauntingSpiritModifier && m.greater === greater,
+        owner,
+      ) as HauntingSpiritModifier;
+      expect(spirit.getMaxStackCount()).toBe(cap);
+      expect(spirit.incrementStack(1, false)).toBe(false);
+    }
+    if (greater) {
+      expect(game.scene.seasonalEncounters.tower?.completed).toBe(true);
+    }
+  });
+
+  it.each([0, 10])("skips capped ordinary-victory drops without substitution (kind roll: %i)", kind => {
+    game.scene.currentBattle.trainer!.haunted = false;
+    addItem(modifierTypes.MALEFIC_SKULL);
+    addItem(modifierTypes.LESSER_SPIRIT, 0, 20);
+    addItem(modifierTypes.GREATER_SPIRIT, 0, 5);
+    vi.spyOn(Common, "randSeedInt").mockReturnValueOnce(0).mockReturnValueOnce(kind);
+    const add = vi.spyOn(game.scene, "addModifier");
+    expect(grantHauntingVictoryRewards()).toEqual([]);
+    expect(add).not.toHaveBeenCalled();
+    expect(getSpiritCount(0)).toBe(20);
+    expect(getSpiritCount(0, true)).toBe(5);
+    expect(getHauntingStatMultiplier(addPokemon())).toBeCloseTo(1.3);
+  });
+
+  it.each([
+    { greater: false, cap: 20 },
+    { greater: true, cap: 5 },
+  ])("clamps old over-cap spirit saves to $cap when loading", ({ greater, cap }) => {
+    const type = greater ? modifierTypes.GREATER_SPIRIT : modifierTypes.LESSER_SPIRIT;
+    const original = getModifierType(type).newModifier() as HauntingSpiritModifier;
+    original.stackCount = 100;
+    const raw = JSON.parse(JSON.stringify(new ModifierData(original, true)));
+    const restored = new ModifierData(raw, true).toModifier(HauntingSpiritModifier);
+    expect(restored?.stackCount).toBe(cap);
+    expect(restored?.getArgs()).toEqual(original.getArgs());
+  });
+
+  it("still upgrades a Portent Skull and completes the tower at the Greater Spirit cap", () => {
+    addItem(modifierTypes.PORTENT_SKULL);
+    addItem(modifierTypes.GREATER_SPIRIT, 0, 5);
+    game.scene.seasonalEncounters.enterTower(51);
+    game.scene.seasonalEncounters.tower!.boss = true;
+    const add = vi.spyOn(game.scene, "addModifier");
+    expect(grantHauntingVictoryRewards()).toHaveLength(2);
+    expect(add).not.toHaveBeenCalled();
+    expect(getSpiritCount(0, true)).toBe(5);
+    expect(getHauntingSkull(0)?.stage).toBe("malefic");
+    expect(game.scene.seasonalEncounters.tower?.completed).toBe(true);
+    expect(game.scene.seasonalEncounters.hauntingsResolved).toBe(true);
+  });
+
   it("serializes every item and the per-player reward guard", () => {
     for (const type of [
       modifierTypes.OMINOUS_SKULL,
@@ -134,7 +212,7 @@ describe("Haunting skulls and spirits", () => {
     ]) {
       const original = getModifierType(type).newModifier() as HauntingSkullModifier | HauntingSpiritModifier;
       if (original instanceof HauntingSpiritModifier) {
-        original.stackCount = 14;
+        original.stackCount = Math.min(14, original.getMaxStackCount());
       }
       const raw = JSON.parse(JSON.stringify(new ModifierData(original, true)));
       const restored = new ModifierData(raw, true).toModifier(original.constructor);

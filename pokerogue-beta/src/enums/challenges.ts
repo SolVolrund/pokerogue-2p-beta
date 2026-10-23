@@ -15,6 +15,18 @@ export enum Challenges {
   SINGLE_TYPE_P3,
   MOVESET_RANDOMIZER,
   ABILITY_RANDOMIZER,
+  SINGLE_GENERATION_P1,
+  SINGLE_GENERATION_P2,
+  SINGLE_GENERATION_P3,
+}
+
+export function isSingleGenerationChallenge(id: Challenges): boolean {
+  return (
+    id === Challenges.SINGLE_GENERATION
+    || id === Challenges.SINGLE_GENERATION_P1
+    || id === Challenges.SINGLE_GENERATION_P2
+    || id === Challenges.SINGLE_GENERATION_P3
+  );
 }
 
 export function isSingleTypeChallenge(id: Challenges): boolean {

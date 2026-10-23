@@ -75,7 +75,9 @@ export class MysteryEncounterPhase extends Phase {
       );
     }
 
-    if (globalScene.twoPlayerMode && !this.optionSelectSettings) {
+    if (globalScene.twoPlayerMode && this.optionSelectSettings?.playerIndex != null) {
+      globalScene.waitForPlayerSideProgressionInput(this.optionSelectSettings.playerIndex);
+    } else if (globalScene.twoPlayerMode && !this.optionSelectSettings) {
       globalScene.waitForPlayerSideProgressionInput();
     }
 
@@ -153,7 +155,7 @@ export class MysteryEncounterPhase extends Phase {
     }
 
     if (globalScene.twoPlayerMode) {
-      globalScene.waitForPlayerSideProgressionInput();
+      globalScene.waitForPlayerSideProgressionInput(this.optionSelectSettings?.playerIndex ?? 0);
     } else {
       globalScene.setActivePlayerIndex(0);
     }
@@ -274,9 +276,9 @@ export class MysteryEncounterOptionSelectedPhase extends Phase {
   public readonly phaseName = "MysteryEncounterOptionSelectedPhase";
   onOptionSelect: OptionPhaseCallback;
 
-  constructor() {
+  constructor(onOptionSelect?: OptionPhaseCallback) {
     super();
-    this.onOptionSelect = globalScene.currentBattle.mysteryEncounter!.selectedOption!.onOptionPhase;
+    this.onOptionSelect = onOptionSelect ?? globalScene.currentBattle.mysteryEncounter!.selectedOption!.onOptionPhase;
   }
 
   /**

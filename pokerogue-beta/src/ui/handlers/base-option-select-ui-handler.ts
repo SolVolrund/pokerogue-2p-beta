@@ -26,6 +26,8 @@ export interface OptionSelectItem {
   label: string;
   handler: () => boolean;
   onHover?: () => void;
+  /** Cycle the focused option's variant, including when the current variant is disabled. */
+  onCycle?: () => boolean;
   skip?: boolean;
   disabled?: boolean;
   keepOpen?: boolean;
@@ -398,7 +400,16 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
 
     let playSound = true;
 
-    if (button === Button.ACTION || button === Button.CANCEL) {
+    if (button === Button.STATS) {
+      if (this.blockInput) {
+        return false;
+      }
+      const option = this.config?.options[this.unskippedIndices[this.fullCursor]];
+      success = option?.onCycle?.() ?? false;
+      if (success) {
+        this.setCursor(this.fullCursor);
+      }
+    } else if (button === Button.ACTION || button === Button.CANCEL) {
       if (this.blockInput) {
         ui.playError();
         return false;
@@ -574,7 +585,7 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
 
   private isSelectableOptionIndex(optionIndex: number): boolean {
     const option = this.config?.options[optionIndex];
-    return !!option && !option.skip && !option.disabled;
+    return !!option && !option.skip && (!option.disabled || !!option.onCycle);
   }
 
   protected unblockInput(): void {
@@ -600,7 +611,7 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
 
   private getUnskippedIndices(options: OptionSelectItem[]): number[] {
     const unskippedIndices = options
-      .map((option, index) => (option.skip || option.disabled ? null : index)) // Map to index or null if skipped
+      .map((option, index) => (option.skip || (option.disabled && !option.onCycle) ? null : index))
       .filter(index => index !== null) as number[];
     return unskippedIndices;
   }

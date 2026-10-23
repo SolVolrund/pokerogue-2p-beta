@@ -40,7 +40,7 @@ const PARTNER_TRAINER_TYPES: Partial<Record<ComputerPartnerKey, TrainerType>> = 
   valerie: TrainerType.VALERIE,
 };
 const ELIGIBLE_PARTNER_KEYS = COMPUTER_PARTNER_KEYS.filter(
-  key => key !== "alex" && PARTNER_TRAINER_TYPES[key] !== undefined,
+  key => key !== "alex" && (key === "joy" || PARTNER_TRAINER_TYPES[key] !== undefined),
 );
 
 class SoloPartnerOfferRequirement extends EncounterSceneRequirement {
@@ -86,7 +86,7 @@ export const ItIsDangerousToGoAloneEncounter: MysteryEncounter = MysteryEncounte
     encounter.spriteConfigs = partnerKeys.map((key, index) => {
       const trainerType = PARTNER_TRAINER_TYPES[key]!;
       return {
-        spriteKey: trainerConfigs[trainerType].getSpriteKey(),
+        spriteKey: key === "joy" ? "joy" : trainerConfigs[trainerType].getSpriteKey(),
         fileRoot: "trainer",
         hasShadow: true,
         x: PARTNER_SPRITE_X[index],

@@ -17,6 +17,7 @@ import { BattleType } from "#enums/battle-type";
 import { GameDataType } from "#enums/game-data-type";
 import { GameModes } from "#enums/game-modes";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
+import { PlayerGender } from "#enums/player-gender";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import { Unlockables } from "#enums/unlockables";
@@ -88,7 +89,7 @@ const COMPUTER_PARTNER_MENU_ENTRIES = [
   "duplica_ditto",
   "molly_hale",
   "amber_two",
-  "Joy",
+  "joy",
   "Burgh",
   "Nanu",
   "Raihan",
@@ -107,6 +108,18 @@ const COMPUTER_PARTNER_MENU_ENTRIES = [
   "brock",
   "jasmine",
   "Misty",
+  "red",
+  "kris",
+  "may",
+  "dawn",
+  "rosa",
+  "calem",
+  "elio",
+  "Gloria",
+  "Florian",
+  "-",
+  "-",
+  "-",
 ];
 type MultiplayerLobbyPlayerCount = 1 | 2 | 3;
 type MultiplayerGuestSeat = 1 | 2 | "ep";
@@ -129,6 +142,7 @@ export class TitlePhase extends Phase {
   private onlineLoadAnnounceInterval: ReturnType<typeof setInterval> | undefined;
   private remoteTitleStartApplied = false;
   private selectedChallenges: ChallengeData[] = [];
+  private customPartnerVariant?: "kyle" | "amber";
   private mysteryEncounterFrequency: number | undefined;
   private hauntingSeasonActive: boolean | undefined;
   private profileStartupAnnounceInterval: ReturnType<typeof globalThis.setInterval> | undefined;
@@ -1382,7 +1396,7 @@ export class TitlePhase extends Phase {
           globalScene.getPlayerGameData(0).getComputerPartnerProgress(key),
         );
         if (eligible !== profile && eligible.startingStarters?.length === 0) {
-          message = `${profile.name} has no eligible starters for P${playerIndex + 1}'s Mono Type. Choose another type or partner.`;
+          message = `${profile.name} has no eligible starters for P${playerIndex + 1}'s challenge restrictions. Choose different challenges or another partner.`;
           break;
         }
       }
@@ -1698,6 +1712,7 @@ export class TitlePhase extends Phase {
           Math.max(options.length - 1, COMPUTER_PARTNER_MENU_MIN_SLOT_COUNT) / COMPUTER_PARTNER_MENU_ROWS,
         ),
         slotCount: Math.max(options.length - 1, COMPUTER_PARTNER_MENU_MIN_SLOT_COUNT),
+        columnGap: 6,
         centerLastOption: true,
       },
     });
@@ -1736,7 +1751,7 @@ export class TitlePhase extends Phase {
             return false;
           }
 
-          if (key === "alex") {
+          if (profile.usesPlayerSelectedStarters) {
             this.showAlexPreferenceSelect(
               gameMode,
               playerCount,
@@ -1813,6 +1828,7 @@ export class TitlePhase extends Phase {
           rows: COMPUTER_PARTNER_MENU_ROWS,
           columns: Math.ceil(partnerSlotCount / COMPUTER_PARTNER_MENU_ROWS),
           slotCount: partnerSlotCount,
+          columnGap: 6,
           centerLastOption: true,
         },
       },
@@ -1820,9 +1836,21 @@ export class TitlePhase extends Phase {
   }
 
   private createComputerPartnerMenuOptions(createOption: (key: ComputerPartnerKey) => OptionSelectItem): OptionSelectItem[] {
-    return COMPUTER_PARTNER_MENU_ENTRIES.map(entry => isKnownComputerPartnerKey(entry)
-      ? createOption(entry)
-      : { label: entry, handler: () => false, disabled: true, style: TextStyle.SETTINGS_LOCKED });
+    return COMPUTER_PARTNER_MENU_ENTRIES.map(entry => {
+      if (entry === "alex") {
+        this.customPartnerVariant ??= globalScene.getTrainerGender(0) === PlayerGender.FEMALE ? "kyle" : "amber";
+        const option = createOption(this.customPartnerVariant);
+        option.onCycle = () => {
+          this.customPartnerVariant = this.customPartnerVariant === "kyle" ? "amber" : "kyle";
+          Object.assign(option, { disabled: false, style: undefined }, createOption(this.customPartnerVariant));
+          return true;
+        };
+        return option;
+      }
+      return isKnownComputerPartnerKey(entry)
+        ? createOption(entry)
+        : { label: entry, handler: () => false, disabled: true, style: TextStyle.SETTINGS_LOCKED };
+    });
   }
 
   private getComputerPartnerSelectionIndexes(
@@ -1948,7 +1976,7 @@ export class TitlePhase extends Phase {
       },
     ];
 
-    this.showOptionSelectWithText(`Choose Alex's Slot ${partySlot} Preference`, options);
+    this.showOptionSelectWithText(`Choose ${getComputerPartnerProfile(key).name}'s Slot ${partySlot} Preference`, options);
   }
 
   private setComputerPartner(
@@ -1957,7 +1985,9 @@ export class TitlePhase extends Phase {
     rolePreferences?: ComputerPartnerRolePreferences,
   ): void {
     globalScene.setComputerPartnerKey(playerIndex, key);
-    globalScene.setComputerPartnerRolePreferences(playerIndex, key === "alex" ? rolePreferences : undefined);
+    globalScene.setComputerPartnerRolePreferences(
+      playerIndex, getComputerPartnerProfile(key).usesPlayerSelectedStarters ? rolePreferences : undefined,
+    );
   }
 
   private showTwoPlayerModeSelect(

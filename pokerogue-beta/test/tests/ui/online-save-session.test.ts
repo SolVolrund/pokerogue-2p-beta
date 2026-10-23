@@ -157,6 +157,21 @@ describe("Online saved-run handoff", () => {
     expect(game.scene.getTrainerBackTextureKey(1)).toBe("riley_back");
   });
 
+  it.each(["p1", "p2"] as const)("restores the saved next tie-break winner for %s", async seat => {
+    member.seat = seat;
+    saveMembership();
+    if (seat === "p1") {
+      title["onlineHostLoadSlot"] = 4;
+    }
+    expect(game.scene.resolvePlayerTieBreak([0, 1])).toBe(0);
+    const saved = snapshot();
+    expect(game.scene.resolvePlayerTieBreak([0, 1])).toBe(1);
+    await prepare(saved);
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ type: "load-ready" }));
+    expect(game.scene.playerDecisionTieBreakPriorities).toEqual({ "0-1": 1 });
+    expect(game.scene.resolvePlayerTieBreak([0, 1])).toBe(1);
+  });
+
   it("fails saved-run preparation clearly for an unknown Player Card character", async () => {
     const saved = JSON.parse(snapshot());
     saved.playerAppearances = { 0: "future-character" };

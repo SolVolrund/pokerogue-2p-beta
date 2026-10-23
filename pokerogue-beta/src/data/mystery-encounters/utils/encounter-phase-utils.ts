@@ -993,6 +993,8 @@ export function setEncounterExp(
 }
 
 export class OptionSelectSettings {
+  /** Restore ownership when a queued menu opens, after any intervening phases. */
+  playerIndex?: PlayerIndex;
   hideDescription?: boolean;
   slideInDescription?: boolean;
   overrideTitle?: string;

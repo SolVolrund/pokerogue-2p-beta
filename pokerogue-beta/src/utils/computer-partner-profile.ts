@@ -24,7 +24,8 @@ import { Gender } from "#data/gender";
 import type { PokemonSpecies } from "#data/pokemon-species";
 import { getTypeDamageMultiplier } from "#data/type";
 import { AbilityAttr } from "#enums/ability-attr";
-import { Challenges, isSingleTypeChallenge } from "#enums/challenges";
+import { AbilityId } from "#enums/ability-id";
+import { Challenges, isSingleGenerationChallenge, isSingleTypeChallenge } from "#enums/challenges";
 import { DexAttr } from "#enums/dex-attr";
 import { MoveId } from "#enums/move-id";
 import { Nature } from "#enums/nature";
@@ -44,13 +45,16 @@ import type {
   StarterMoveset,
 } from "#types/save-data";
 import { randSeedInt, randSeedIntRange, randSeedShuffle } from "#utils/common";
-import { checkStarterValidForChallenge, createMonotypeRestriction, getChallengesForPlayer } from "#utils/challenge-utils";
+import { checkStarterValidForChallenge, createMonogenRestriction, createMonotypeRestriction, getChallengesForPlayer } from "#utils/challenge-utils";
 import { getSpeciesEntryHazardAccessScore } from "#utils/computer-partner-hazard-support";
 import { getSpeciesHealingSupportAccessScore } from "#utils/computer-partner-healing-support";
+import { hasPokemonSupportTools, hasSpeciesSupportPotential, JOY_SUPPORT_PREFERENCES } from "#utils/computer-partner-support";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 
 export type ComputerPartnerKey =
   | "alex"
+  | "kyle"
+  | "amber"
   | "cheryl"
   | "riley"
   | "mira"
@@ -68,7 +72,15 @@ export type ComputerPartnerKey =
   | "jasmine"
   | "brock"
   | "acerola"
-  | "valerie";
+  | "valerie"
+  | "joy"
+  | "kris"
+  | "red"
+  | "may"
+  | "dawn"
+  | "rosa"
+  | "calem"
+  | "elio";
 
 export type ComputerPartnerRole =
   | "ace"
@@ -101,10 +113,12 @@ export interface ComputerPartnerProfile {
   requiresUnlock?: boolean;
   unlockAchievement?: string;
   monotype?: PokemonType;
+  monogen?: number;
   signatureMoves?: Partial<Record<SpeciesId, readonly MoveId[]>>;
   aceSignatureMoves?: Partial<Record<SpeciesId, readonly MoveId[]>>;
   aceEvolutionTargets?: Partial<Record<SpeciesId, SpeciesId>>;
   recruitment?: "crystal" | "clone";
+  preferredStarterAbilities?: Partial<Record<SpeciesId, readonly AbilityId[]>>;
 }
 
 export interface ComputerPartnerStarterConfig {
@@ -221,14 +235,32 @@ const REGULAR_TYPES = [
   PokemonType.FAIRY,
 ] as const;
 
+const CUSTOM_PARTNER_PROFILE: Omit<ComputerPartnerProfile, "key" | "name"> = {
+  starterNature: Nature.HARDY,
+  roles: ["ace", "balanced", "balanced", "physical", "special", "bulk"],
+  personalityTypes: [],
+  usesPlayerSelectedStarters: true,
+};
+
 export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartnerProfile> = {
   alex: {
+    ...CUSTOM_PARTNER_PROFILE,
     key: "alex",
     name: "Alex",
-    starterNature: Nature.HARDY,
-    roles: ["ace", "balanced", "balanced", "physical", "special", "bulk"],
-    personalityTypes: [],
-    usesPlayerSelectedStarters: true,
+  },
+  kyle: {
+    ...CUSTOM_PARTNER_PROFILE,
+    key: "kyle",
+    name: "Kyle",
+    trainerSprite: PlayerTrainerSprite.BASE_BOY,
+    trainerGender: PlayerGender.MALE,
+  },
+  amber: {
+    ...CUSTOM_PARTNER_PROFILE,
+    key: "amber",
+    name: "Amber",
+    trainerSprite: PlayerTrainerSprite.BASE_GIRL,
+    trainerGender: PlayerGender.FEMALE,
   },
   cheryl: {
     key: "cheryl",
@@ -634,6 +666,156 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
       { speciesId: SpeciesId.CLEFFA },
     ],
   },
+  red: {
+    key: "red",
+    name: "Red",
+    starterNature: Nature.HARDY,
+    trainerSprite: PlayerTrainerSprite.RED,
+    trainerGender: PlayerGender.MALE,
+    roles: ["ace", "special", "physical", "bulk", "speed", "balanced"],
+    personalityTypes: [],
+    monogen: 1,
+    requiresUnlock: true,
+    unlockAchievement: "MONO_GEN_ONE_VICTORY",
+    randomizeStarterAce: true,
+    startingStarters: [
+      { speciesId: SpeciesId.BULBASAUR },
+      { speciesId: SpeciesId.CHARMANDER },
+      { speciesId: SpeciesId.SQUIRTLE },
+    ],
+  },
+  kris: {
+    key: "kris",
+    name: "Kris",
+    starterNature: Nature.HARDY,
+    trainerSprite: PlayerTrainerSprite.KRIS,
+    trainerGender: PlayerGender.FEMALE,
+    roles: ["ace", "special", "physical", "bulk", "speed", "balanced"],
+    personalityTypes: [],
+    monogen: 2,
+    requiresUnlock: true,
+    unlockAchievement: "MONO_GEN_TWO_VICTORY",
+    randomizeStarterAce: true,
+    startingStarters: [
+      { speciesId: SpeciesId.CHIKORITA },
+      { speciesId: SpeciesId.CYNDAQUIL },
+      { speciesId: SpeciesId.TOTODILE },
+    ],
+  },
+  may: {
+    key: "may",
+    name: "May",
+    starterNature: Nature.HARDY,
+    trainerSprite: PlayerTrainerSprite.MAY,
+    trainerGender: PlayerGender.FEMALE,
+    roles: ["ace", "special", "physical", "bulk", "speed", "balanced"],
+    personalityTypes: [],
+    monogen: 3,
+    requiresUnlock: true,
+    unlockAchievement: "MONO_GEN_THREE_VICTORY",
+    randomizeStarterAce: true,
+    startingStarters: [
+      { speciesId: SpeciesId.TREECKO },
+      { speciesId: SpeciesId.TORCHIC },
+      { speciesId: SpeciesId.MUDKIP },
+    ],
+  },
+  dawn: {
+    key: "dawn",
+    name: "Dawn",
+    starterNature: Nature.HARDY,
+    trainerSprite: PlayerTrainerSprite.DAWN_DP,
+    trainerGender: PlayerGender.FEMALE,
+    roles: ["ace", "special", "physical", "bulk", "speed", "balanced"],
+    personalityTypes: [],
+    monogen: 4,
+    requiresUnlock: true,
+    unlockAchievement: "MONO_GEN_FOUR_VICTORY",
+    randomizeStarterAce: true,
+    startingStarters: [
+      { speciesId: SpeciesId.TURTWIG },
+      { speciesId: SpeciesId.CHIMCHAR },
+      { speciesId: SpeciesId.PIPLUP },
+    ],
+  },
+  rosa: {
+    key: "rosa",
+    name: "Rosa",
+    starterNature: Nature.HARDY,
+    trainerSprite: PlayerTrainerSprite.ROSA,
+    trainerGender: PlayerGender.FEMALE,
+    roles: ["ace", "special", "physical", "bulk", "speed", "balanced"],
+    personalityTypes: [],
+    monogen: 5,
+    requiresUnlock: true,
+    unlockAchievement: "MONO_GEN_FIVE_VICTORY",
+    randomizeStarterAce: true,
+    startingStarters: [
+      { speciesId: SpeciesId.SNIVY },
+      { speciesId: SpeciesId.TEPIG },
+      { speciesId: SpeciesId.OSHAWOTT },
+    ],
+  },
+  calem: {
+    key: "calem",
+    name: "Calem",
+    starterNature: Nature.HARDY,
+    trainerSprite: PlayerTrainerSprite.CALEM,
+    trainerGender: PlayerGender.MALE,
+    roles: ["ace", "special", "physical", "bulk", "speed", "balanced"],
+    personalityTypes: [],
+    monogen: 6,
+    requiresUnlock: true,
+    unlockAchievement: "MONO_GEN_SIX_VICTORY",
+    randomizeStarterAce: true,
+    startingStarters: [
+      { speciesId: SpeciesId.CHESPIN },
+      { speciesId: SpeciesId.FENNEKIN },
+      { speciesId: SpeciesId.FROAKIE },
+    ],
+  },
+  elio: {
+    key: "elio",
+    name: "Elio",
+    starterNature: Nature.HARDY,
+    trainerSprite: PlayerTrainerSprite.ELIO,
+    trainerGender: PlayerGender.MALE,
+    roles: ["ace", "special", "physical", "bulk", "speed", "balanced"],
+    personalityTypes: [],
+    monogen: 7,
+    requiresUnlock: true,
+    unlockAchievement: "MONO_GEN_SEVEN_VICTORY",
+    randomizeStarterAce: true,
+    startingStarters: [
+      { speciesId: SpeciesId.ROWLET },
+      { speciesId: SpeciesId.LITTEN },
+      { speciesId: SpeciesId.POPPLIO },
+    ],
+  },
+  joy: {
+    key: "joy",
+    name: "Joy",
+    starterSpeciesId: SpeciesId.COMFEY,
+    starterNature: Nature.CALM,
+    trainerSprite: PlayerTrainerSprite.JOY,
+    trainerGender: PlayerGender.FEMALE,
+    roles: ["ace", "hpBulk", "specialDefense", "speed", "special", "balanced"],
+    personalityTypes: [],
+    startingStarters: [
+      { speciesId: SpeciesId.COMFEY },
+      { speciesId: SpeciesId.FLABEBE },
+      { speciesId: SpeciesId.CUTIEFLY },
+      { speciesId: SpeciesId.HAPPINY },
+      { speciesId: SpeciesId.POLTCHAGEIST },
+    ],
+    preferredStarterAbilities: {
+      [SpeciesId.COMFEY]: [AbilityId.TRIAGE],
+      [SpeciesId.FLABEBE]: [AbilityId.SYMBIOSIS],
+      [SpeciesId.CUTIEFLY]: [AbilityId.HONEY_GATHER],
+      [SpeciesId.HAPPINY]: [AbilityId.FRIEND_GUARD],
+      [SpeciesId.POLTCHAGEIST]: [AbilityId.HOSPITALITY],
+    },
+  },
 };
 
 export const COMPUTER_PARTNER_KEYS = Object.keys(COMPUTER_PARTNER_PROFILES) as ComputerPartnerKey[];
@@ -655,7 +837,7 @@ export function getComputerPartnerProfileWithRolePreferences(
   rolePreferences?: ComputerPartnerRolePreferences,
 ): ComputerPartnerProfile {
   const profile = getComputerPartnerProfile(key);
-  if (key !== "alex" || !rolePreferences || rolePreferences.length === 0) {
+  if (!profile.usesPlayerSelectedStarters || !rolePreferences || rolePreferences.length === 0) {
     return profile;
   }
 
@@ -702,7 +884,12 @@ export function getComputerPartnerChallengeProfile(
   playerIndex: PlayerIndex,
   progress?: ComputerPartnerProgressData,
 ): ComputerPartnerProfile {
-  if (profile.monotype === undefined && !globalScene.gameMode.hasChallenge(Challenges.SINGLE_TYPE, playerIndex)) {
+  if (
+    profile.monotype === undefined
+    && profile.monogen === undefined
+    && !globalScene.gameMode.hasChallenge(Challenges.SINGLE_TYPE, playerIndex)
+    && !globalScene.gameMode.hasChallenge(Challenges.SINGLE_GENERATION, playerIndex)
+  ) {
     return profile;
   }
   const candidates = profile.startingStarters ?? (profile.starterSpeciesId
@@ -711,6 +898,9 @@ export function getComputerPartnerChallengeProfile(
   const restrictions = getChallengesForPlayer(playerIndex);
   if (profile.monotype !== undefined) {
     restrictions.push(createMonotypeRestriction(profile.monotype));
+  }
+  if (profile.monogen !== undefined) {
+    restrictions.push(createMonogenRestriction(profile.monogen));
   }
   const starters = candidates.filter((config, index) => {
     const starter = createComputerPartnerStarterData(profile, config, progress);
@@ -989,7 +1179,7 @@ function createComputerPartnerStarterData(
     variant: dexProps.variant,
     formIndex: starter.speciesId === progressSpeciesId ? dexProps.formIndex : 0,
     female: dexProps.female,
-    abilityIndex: getComputerPartnerStarterAbilityIndex(species, starterEntry),
+    abilityIndex: getComputerPartnerStarterAbilityIndex(species, starterEntry, profile.preferredStarterAbilities?.[starter.speciesId]),
     passive: !!(
       starterEntry
       && starterEntry.passiveAttr & PassiveAttr.UNLOCKED
@@ -1049,8 +1239,20 @@ function getComputerPartnerStarterNature(
 function getComputerPartnerStarterAbilityIndex(
   species: PokemonSpecies,
   starterEntry?: ComputerPartnerStarterProgressEntry,
+  preferredAbilities: readonly AbilityId[] = [],
 ): number {
   const abilityAttr = starterEntry?.abilityAttr ?? AbilityAttr.ABILITY_1;
+  const unlockedAbilities = [
+    { ability: species.ability1, flag: AbilityAttr.ABILITY_1, index: 0 },
+    { ability: species.ability2, flag: AbilityAttr.ABILITY_2, index: 1 },
+    { ability: species.abilityHidden, flag: AbilityAttr.ABILITY_HIDDEN, index: species.ability2 ? 2 : 1 },
+  ].filter(option => option.ability && (abilityAttr & option.flag));
+  for (const ability of preferredAbilities) {
+    const preferred = unlockedAbilities.find(option => option.ability === ability);
+    if (preferred) {
+      return preferred.index;
+    }
+  }
   if (species.abilityHidden && abilityAttr & AbilityAttr.ABILITY_HIDDEN) {
     return species.ability2 ? 2 : 1;
   }
@@ -1514,6 +1716,13 @@ export function isComputerPartnerCandidateAllowed(
   candidate: ComputerPartnerScoringPokemon,
   playerIndex?: PlayerIndex,
 ): boolean {
+  if (profile.monogen !== undefined) {
+    const species = "species" in candidate ? candidate.species : candidate;
+    if (species.generation !== profile.monogen
+      || ("species" in candidate && candidate.isFusion() && candidate.fusionSpecies!.generation !== profile.monogen)) {
+      return false;
+    }
+  }
   if (profile.monotype !== undefined) {
     const restrictions = playerIndex === undefined ? [] : getChallengesForPlayer(playerIndex);
     restrictions.push(createMonotypeRestriction(profile.monotype));
@@ -1534,7 +1743,15 @@ export function isComputerPartnerCandidateAllowed(
     profile.monotype === undefined
     && playerIndex !== undefined
     && getChallengesForPlayer(playerIndex).some(challenge => {
-      if (!isSingleTypeChallenge(challenge.id) || !challenge.value) {
+      if (!challenge.value) {
+        return false;
+      }
+      if (isSingleGenerationChallenge(challenge.id)) {
+        const species = "species" in candidate ? candidate.species : candidate;
+        return species.generation !== challenge.value
+          || ("species" in candidate && candidate.isFusion() && candidate.fusionSpecies!.generation !== challenge.value);
+      }
+      if (!isSingleTypeChallenge(challenge.id)) {
         return false;
       }
       const type = challenge.value - 1;
@@ -1616,6 +1833,7 @@ export function scorePokemonForPartnerSlot(
     + getPersonalityTypeBonus(profile, projectedPokemon.species)
     + getCherylHealingSupportSpeciesBonus(profile, role, projectedPokemon.species)
     + getDawnHazardSupportSpeciesBonus(profile, role, projectedPokemon.species)
+    + getJoySupportSpeciesBonus(profile, role, projectedPokemon.species, pokemon)
     - getSharedWeaknessPenalty(projectedPokemon.species, projectedComparisonParty)
     - projectedPokemon.growthCost
     - getProjectOverloadPenalty(profile, projectedPokemon.growthCost, comparisonParty)
@@ -1652,6 +1870,21 @@ export function scorePokemonForPartnerRole(pokemon: ComputerPartnerScoringPokemo
   }
 }
 
+function getJoySupportSpeciesBonus(
+  profile: ComputerPartnerProfile,
+  role: ComputerPartnerRole,
+  species: PokemonSpecies,
+  original: ComputerPartnerScoringPokemon,
+): number {
+  if (profile.key !== "joy" || role === "ace") {
+    return 0;
+  }
+  const supportive = hasSpeciesSupportPotential(species)
+    || hasSpeciesSupportPotential(getPokemonSpeciesForScoring(original))
+    || ("getMoveset" in original && hasPokemonSupportTools(original));
+  return supportive ? scorePokemonForPartnerRole(species, role) * JOY_SUPPORT_PREFERENCES.team : 0;
+}
+
 function getProjectedPartnerPokemon(
   profile: ComputerPartnerProfile,
   pokemon: ComputerPartnerScoringPokemon,
@@ -1666,11 +1899,13 @@ function getProjectedPartnerPokemon(
       scorePokemonForPartnerRole(b.species, role)
       + getPersonalityTypeBonus(profile, b.species)
       + getCherylHealingSupportSpeciesBonus(profile, role, b.species)
+      + getJoySupportSpeciesBonus(profile, role, b.species, pokemon)
       - b.growthCost;
     const rightScore =
       scorePokemonForPartnerRole(a.species, role)
       + getPersonalityTypeBonus(profile, a.species)
       + getCherylHealingSupportSpeciesBonus(profile, role, a.species)
+      + getJoySupportSpeciesBonus(profile, role, a.species, pokemon)
       - a.growthCost;
     return leftScore - rightScore;
   })[0];

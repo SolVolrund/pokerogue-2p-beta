@@ -139,6 +139,15 @@ export function removeHeldItemForBattle(pokemon: Pokemon, item: Modifiers.Pokemo
   return true;
 }
 
+/** Secure a failed return on its owner before the current holder or loot pool is cleared. */
+export function deferHeldItemRecovery(pokemon: Pokemon, item: Modifiers.PokemonHeldItemModifier): void {
+  pokemon.battleData.removedHeldItems.push({
+    ...snapshotItem(pokemon, item),
+    stackCount: item.stackCount,
+    reserveCapacity: false,
+  });
+}
+
 export function restoreBattleRemovedHeldItems(pokemon: Pokemon): void {
   const items = pokemon.battleData.removedHeldItems;
   if (items.length === 0) {

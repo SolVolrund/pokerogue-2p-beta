@@ -1,5 +1,6 @@
 import type { TwoPlayerTitleStart } from "#app/two-player-input-transport";
 import { GameModes } from "#enums/game-modes";
+import { PlayerGender } from "#enums/player-gender";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import { CommandPhase } from "#phases/command-phase";
@@ -61,7 +62,8 @@ describe("Multiplayer menu preparation", () => {
     expect(option!.handler()).toBe(true);
   }
 
-  it.each(["ally", "opponent", "ep"] as const)("shows the five-column trainer preview in the %s picker", picker => {
+  it.each(["ally", "opponent", "ep"] as const)("shows the seven-column trainer preview in the %s picker", picker => {
+    vi.spyOn(game.scene, "getTrainerGender").mockReturnValue(PlayerGender.MALE);
     vi.spyOn(game.scene.gameData, "isComputerPartnerUnlocked").mockReturnValue(true);
     if (picker === "ep") {
       title["showEnemyPlayerCpuProfileSelect"](GameModes.CLASSIC, 1);
@@ -70,26 +72,27 @@ describe("Multiplayer menu preparation", () => {
     }
     const entries = options();
     const rows = Array.from({ length: 6 }, (_, row) =>
-      Array.from({ length: 5 }, (_, column) => entries[column * 6 + row].label),
+      Array.from({ length: 7 }, (_, column) => entries[column * 6 + row].label),
     );
     expect(rows).toEqual([
-      ["Alex", "Dawn?", "Burgh", "Blaine", "Whitney"],
-      ["Cheryl", "Bianca?", "Nanu", "Winona", "Roxie"],
-      ["Riley", "Duplica?", "Raihan", "Acerola", "Sabrina"],
-      ["Mira", "Molly", "Iono", "Gardenia", "Brock"],
-      ["Buck", "AmberTwo", "Valerie", "Clay", "Jasmine"],
-      ["Marley", "Joy", "Korrina", "Grusha", "Misty"],
+      ["Amber", "Dawn?", "Burgh", "Blaine", "Whitney", "Red", "Elio"],
+      ["Cheryl", "Bianca?", "Nanu", "Winona", "Roxie", "Kris", "Gloria"],
+      ["Riley", "Duplica?", "Raihan", "Acerola", "Sabrina", "May", "Florian"],
+      ["Mira", "Molly", "Iono", "Gardenia", "Brock", "Dawn", "-"],
+      ["Buck", "AmberTwo", "Valerie", "Clay", "Jasmine", "Rosa", "-"],
+      ["Marley", "Joy", "Korrina", "Grusha", "Misty", "Calem", "-"],
     ]);
-    expect(entries).toHaveLength(31);
+    expect(entries).toHaveLength(43);
     expect(entries.at(-1)!.label).toBe(i18next.t("menu:cancel"));
     expect(menu.mock.calls.at(-1)![2]?.gridLayout).toMatchObject({
       rows: 6,
-      columns: 5,
-      slotCount: 30,
+      columns: 7,
+      slotCount: 42,
+      columnGap: 6,
       centerLastOption: true,
     });
-    for (const entry of entries.slice(10, 30).filter(entry =>
-      !["AmberTwo", "Whitney", "Sabrina", "Gardenia", "Blaine", "Jasmine", "Brock", "Acerola", "Valerie"].includes(entry.label),
+    for (const entry of entries.slice(10, 42).filter(entry =>
+      !["AmberTwo", "Joy", "Whitney", "Sabrina", "Gardenia", "Blaine", "Jasmine", "Brock", "Acerola", "Valerie", "Kris", "Red", "May", "Dawn", "Rosa", "Calem", "Elio"].includes(entry.label),
     )) {
       expect(entry.disabled).toBe(true);
       expect(entry.style).toBe(TextStyle.SETTINGS_LOCKED);
@@ -99,6 +102,7 @@ describe("Multiplayer menu preparation", () => {
     expect(entries[0].disabled).toBe(picker === "ep" ? true : undefined);
     expect(entries[1].disabled).not.toBe(true);
     expect(entries[10].disabled).not.toBe(true);
+    expect(entries[11].disabled).not.toBe(true);
     expect(entries[16].disabled).not.toBe(true);
     expect(entries[18].disabled).not.toBe(true);
     expect(entries[20].disabled).not.toBe(true);
@@ -107,6 +111,114 @@ describe("Multiplayer menu preparation", () => {
     expect(entries[26].disabled).not.toBe(true);
     expect(entries[27].disabled).not.toBe(true);
     expect(entries[28].disabled).not.toBe(true);
+    expect(entries[31].disabled).not.toBe(true);
+    expect(entries[30].disabled).not.toBe(true);
+    expect(entries[32].disabled).not.toBe(true);
+    expect(entries[33].disabled).not.toBe(true);
+    expect(entries[34].disabled).not.toBe(true);
+    expect(entries[35].disabled).not.toBe(true);
+    expect(entries[36].disabled).not.toBe(true);
+  });
+
+  it("unlocks Elio in his existing slot only after a Gen 7 Monogen clear", () => {
+    game.scene.gameData.achvUnlocks.MONO_GEN_SIX_VICTORY = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    expect(options()[36].label).toBe("Elio");
+    expect(options()[36].disabled).toBe(true);
+    expect(options()[36].handler()).toBe(false);
+    game.scene.gameData.achvUnlocks.MONO_GEN_SEVEN_VICTORY = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("Elio");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("elio");
+  });
+
+  it("unlocks Calem in his existing slot only after a Gen 6 Monogen clear", () => {
+    game.scene.gameData.achvUnlocks.MONO_GEN_FIVE_VICTORY = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    expect(options()[35].label).toBe("Calem");
+    expect(options()[35].disabled).toBe(true);
+    expect(options()[35].handler()).toBe(false);
+    game.scene.gameData.achvUnlocks.MONO_GEN_SIX_VICTORY = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("Calem");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("calem");
+  });
+
+  it("unlocks Rosa in her existing slot only after a Gen 5 Monogen clear", () => {
+    game.scene.gameData.achvUnlocks.MONO_GEN_FOUR_VICTORY = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    expect(options()[34].label).toBe("Rosa");
+    expect(options()[34].disabled).toBe(true);
+    expect(options()[34].handler()).toBe(false);
+    game.scene.gameData.achvUnlocks.MONO_GEN_FIVE_VICTORY = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("Rosa");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("rosa");
+  });
+
+  it("unlocks Gen 4 Dawn separately from Dawn? in her existing slot", () => {
+    game.scene.gameData.achvUnlocks.MONO_GEN_THREE_VICTORY = 1;
+    game.scene.gameData.computerPartnerUnlocks.dawn_zorua = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    expect(options()[6].label).toBe("Dawn?");
+    expect(options()[33].label).toBe("Dawn");
+    expect(options()[33].disabled).toBe(true);
+    expect(options()[33].handler()).toBe(false);
+    game.scene.gameData.achvUnlocks.MONO_GEN_FOUR_VICTORY = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("Dawn");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("dawn");
+  });
+
+  it("unlocks May in her existing slot only after a Gen 3 Monogen clear", () => {
+    game.scene.gameData.achvUnlocks.MONO_GEN_TWO_VICTORY = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    expect(options()[32].label).toBe("May");
+    expect(options()[32].disabled).toBe(true);
+    expect(options()[32].handler()).toBe(false);
+    game.scene.gameData.achvUnlocks.MONO_GEN_THREE_VICTORY = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("May");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("may");
+  });
+
+  it("unlocks Red in his existing slot only after a Gen 1 Monogen clear", () => {
+    game.scene.gameData.achvUnlocks.MONO_GEN_TWO_VICTORY = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    expect(options()[30].label).toBe("Red");
+    expect(options()[30].disabled).toBe(true);
+    expect(options()[30].handler()).toBe(false);
+    game.scene.gameData.achvUnlocks.MONO_GEN_ONE_VICTORY = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("Red");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("red");
+  });
+
+  it("unlocks Kris in her existing slot only after a Gen 2 Monogen clear", () => {
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    expect(options()[31].label).toBe("Kris");
+    expect(options()[31].disabled).toBe(true);
+    expect(options()[31].handler()).toBe(false);
+    game.scene.gameData.achvUnlocks.MONO_GEN_TWO_VICTORY = 1;
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("Kris");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("kris");
+  });
+
+  it("makes Joy immediately selectable in her existing slot", () => {
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    expect(options()[11].label).toBe("Joy");
+    const nextMenu = vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("Joy");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("joy");
+    expect(nextMenu).toHaveBeenCalledWith(GameModes.CLASSIC, 2, [1]);
   });
 
   it("enables AmberTwo in her existing slot after her trainer unlock when the requirement is enabled", () => {

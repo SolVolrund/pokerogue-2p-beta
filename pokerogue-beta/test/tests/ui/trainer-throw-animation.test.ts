@@ -39,6 +39,17 @@ function readTrainerFrames(key: string): string[] {
 }
 
 describe("Trainer throw animation", () => {
+  it("plays Diamond/Pearl Dawn's existing three-frame throw", () => {
+    const trainer = createTrainer(readTrainerFrames("dawn_dp_back_pb"));
+    playTrainerThrowAnimation(trainer.sprite);
+    trainer.advanceTo(1000);
+    expect(trainer.changes).toEqual([
+      { at: 0, frame: "1" },
+      { at: 562, frame: "2" },
+      { at: 626, frame: "3" },
+    ]);
+  });
+
   it.each([
     { releaseDelay: 750, windupDelay: 562, frameDuration: 64 },
     { releaseDelay: 512, windupDelay: 512, frameDuration: 256 },
@@ -70,6 +81,12 @@ describe("Trainer throw animation", () => {
     "acerola_back_pb",
     "valerie_back_pb",
     "joy_back_pb",
+    "kris_back_pb",
+    "red_back_pb",
+    "may_back_pb",
+    "rosa_back_pb",
+    "calem_back_pb",
+    "elio_back_pb",
   ])("plays every pose of %s with frame 4 at ball release", key => {
     const trainer = createTrainer(readTrainerFrames(key));
     playTrainerThrowAnimation(trainer.sprite);
@@ -84,6 +101,15 @@ describe("Trainer throw animation", () => {
     trainer.advanceTo(1000);
     expect(trainer.changes.at(-1)).toEqual({ at: 814, frame: "5" });
     expect(trainer.changes).toHaveLength(5);
+  });
+
+  it.each(["kris", "red", "may", "rosa", "calem", "elio"])("uses %s's five 80x80 poses without the sheet borders", key => {
+    const atlas = JSON.parse(readFileSync(`assets/images/trainer/${key}_back_pb.json`, "utf8"));
+    const png = readFileSync(`assets/images/trainer/${key}_back_pb.png`);
+    expect(atlas.textures[0].size).toEqual({ w: png.readUInt32BE(16), h: png.readUInt32BE(20) });
+    expect(atlas.textures[0].frames.map(({ frame }) => frame)).toEqual(
+      [1, 82, 163, 244, 325].map(x => ({ x, y: 1, w: 80, h: 80 })),
+    );
   });
 
   it("cuts Dawn?'s packed poses at their actual boundaries and aligns their bottoms", () => {

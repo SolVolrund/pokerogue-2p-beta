@@ -1516,6 +1516,7 @@ export class GameData {
       greatHauntState: globalScene.currentBattle.greatHauntState,
       unownFinalBossState: globalScene.currentBattle.unownFinalBossState,
       players: playerSessionData,
+      playerDecisionTieBreakPriorities: { ...globalScene.playerDecisionTieBreakPriorities },
       twoPlayerMode: globalScene.twoPlayerMode,
       multiplayerPlayerCount: globalScene.twoPlayerMode ? globalScene.multiplayerPlayerCount : undefined,
       twoPlayerPartySize: globalScene.twoPlayerPartySize,
@@ -1728,6 +1729,8 @@ export class GameData {
 
     this.configureSessionPlayerMode(fromSession);
     globalScene.restoreRunPlayerAppearances(fromSession.playerAppearances);
+    globalScene.playerDecisionTieBreakPriorities = { ...(fromSession.playerDecisionTieBreakPriorities ?? {}) };
+    globalScene.twoPlayerMysteryDecisionPriority = globalScene.playerDecisionTieBreakPriorities["0-1"] ?? 0;
 
     globalScene.setSeed(fromSession.seed || globalScene.game.config.seed[0]);
     globalScene.resetSeed();

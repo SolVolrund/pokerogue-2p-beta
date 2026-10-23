@@ -911,6 +911,10 @@ export class UiInputs {
   }
 
   buttonStats(pressed = true): void {
+    if (pressed && globalScene.ui?.getMode() === UiMode.OPTION_SELECT
+      && globalScene.ui.processInput(Button.STATS)) {
+      return;
+    }
     if (pressed && globalScene.ui?.getMode() === UiMode.MINING_INPUT) {
       globalScene.ui.processInput(Button.STATS);
       return;

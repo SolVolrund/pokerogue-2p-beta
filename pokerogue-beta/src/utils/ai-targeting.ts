@@ -11,6 +11,7 @@ import type { Move } from "#moves/move";
 import { getMoveTargets, isForcedDuelAlly, isForcedDuelOpponent } from "#moves/move-utils";
 import type { MoveTargetSet } from "#types/move-target-set";
 import { areBattlerIndexesAllies } from "#utils/battler-index-utils";
+import { getHealingSupportMoveCapabilities } from "#utils/computer-partner-healing-support";
 
 export interface AiMoveTargetData {
   targetSet: MoveTargetSet;
@@ -116,6 +117,10 @@ export function getAiEmergencyRepositionTarget(user: Pokemon): FieldPosition | u
 }
 
 function isAiOpponentSeekingMove(move: Move): boolean {
+  // Broad target sets also include ally healing (and Pollen Puff's dual purpose).
+  if (getHealingSupportMoveCapabilities(move).healsPartner) {
+    return false;
+  }
   switch (move.moveTarget) {
     case MoveTarget.NEAR_OTHER:
     case MoveTarget.OTHER:

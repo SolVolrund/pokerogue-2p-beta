@@ -70,6 +70,7 @@ export function onlineLoadedState(summary: Record<string, unknown>): string {
         "double",
         "biome",
         "seasonalEncounters",
+        "playerDecisionTieBreakPriorities",
         "hauntedTrainer",
         "twoPlayerEnemyPlayerMode",
         "twoPlayerVsMode",

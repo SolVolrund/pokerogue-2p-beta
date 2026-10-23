@@ -113,7 +113,7 @@ describe("Safari Zone - Mystery Encounter", () => {
       await runSelectMysteryEncounterOption(game, 1);
 
       expect(game).toBeAtPhase("MysteryEncounterPhase");
-      expect(scene.ui.playError).not.toHaveBeenCalled(); // No error sfx, option is disabled
+      expect(scene.ui.playError).toHaveBeenCalledOnce(); // Disabled options reject confirmation with the error sound.
       expect(mysteryEncounterPhase.handleOptionSelect).not.toHaveBeenCalled();
       expect(mysteryEncounterPhase.continueEncounter).not.toHaveBeenCalled();
     });

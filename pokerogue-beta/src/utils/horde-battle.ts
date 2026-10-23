@@ -23,6 +23,7 @@ export async function reformHordePlayers(): Promise<void> {
   if (slots.length === 0 || slots.join() === horde.playerFieldSlots.join()) {
     return;
   }
+  globalScene.arena.positionalTagManager.captureLegacyPositions();
   const pokemon = slots.map(slot => globalScene.getPlayerPokemonForFieldSlot(slot));
   const previousCount = horde.playerCount;
   const visualOrder = [...slots].sort(

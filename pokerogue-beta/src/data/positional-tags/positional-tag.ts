@@ -3,11 +3,13 @@ import { getPokemonNameWithAffix } from "#app/messages";
 import type { ArenaTag } from "#data/arena-tag";
 import { allMoves } from "#data/data-lists";
 import type { BattlerIndex } from "#enums/battler-index";
+import type { FieldPosition } from "#enums/field-position";
 import type { MoveId } from "#enums/move-id";
 import { MoveUseMode } from "#enums/move-use-mode";
 import { PositionalTagType } from "#enums/positional-tag-type";
 import type { Stat } from "#enums/stat";
 import type { Pokemon } from "#field/pokemon";
+import { isPlayerBattlerIndex } from "#utils/battler-index-utils";
 import i18next from "i18next";
 
 /**
@@ -27,9 +29,11 @@ interface PositionalTagBaseArgs {
    */
   turnCount: number;
   /**
-   * The {@linkcode BattlerIndex} targeted by this effect.
+   * The original {@linkcode BattlerIndex}, identifying the side and providing a fallback for older saves.
    */
   readonly targetIndex: BattlerIndex;
+  /** The fixed position on that side. Absent in saves made before position-aware delayed effects. */
+  targetPosition?: FieldPosition;
 }
 
 /**
@@ -45,10 +49,35 @@ export abstract class PositionalTag implements PositionalTagBaseArgs {
   // Left undocumented to inherit doc comments from the interface
   public turnCount: number;
   public readonly targetIndex: BattlerIndex;
+  public targetPosition?: FieldPosition;
 
-  protected constructor({ turnCount, targetIndex }: PositionalTagBaseArgs) {
+  protected constructor({ turnCount, targetIndex, targetPosition }: PositionalTagBaseArgs) {
     this.turnCount = turnCount;
     this.targetIndex = targetIndex;
+    if (targetPosition !== undefined) {
+      this.targetPosition = targetPosition;
+    }
+  }
+
+  /** Anchor new effects, or legacy saved effects before anyone repositions. */
+  public capturePosition(): void {
+    if (this.targetPosition === undefined) {
+      const target = globalScene.getField()[this.targetIndex];
+      if (target) {
+        this.targetPosition = target.fieldPosition;
+      }
+    }
+  }
+
+  /** Whether a battler currently occupies the position reserved by this effect. */
+  public targetsSlot(targetIndex: BattlerIndex): boolean {
+    if (this.targetPosition === undefined) {
+      return this.targetIndex === targetIndex;
+    }
+    return (
+      isPlayerBattlerIndex(this.targetIndex) === isPlayerBattlerIndex(targetIndex)
+      && globalScene.getField()[targetIndex]?.fieldPosition === this.targetPosition
+    );
   }
 
   /** Trigger this tag's effects prior to removal. */
@@ -66,7 +95,16 @@ export abstract class PositionalTag implements PositionalTagBaseArgs {
    * @returns The {@linkcode Pokemon} located in this tag's target position, or `undefined` if none exist in it.
    */
   protected getTarget(): Pokemon | undefined {
-    return globalScene.getField()[this.targetIndex];
+    if (this.targetPosition === undefined) {
+      return globalScene.getField()[this.targetIndex];
+    }
+    return globalScene
+      .getField(true)
+      .find(
+        pokemon =>
+          pokemon.isPlayer() === isPlayerBattlerIndex(this.targetIndex)
+          && pokemon.fieldPosition === this.targetPosition,
+      );
   }
 }
 
@@ -91,8 +129,8 @@ export class DelayedAttackTag extends PositionalTag implements DelayedAttackArgs
   public readonly sourceMove: MoveId;
   public readonly sourceId: number;
 
-  public constructor({ sourceId, turnCount, targetIndex, sourceMove }: DelayedAttackArgs) {
-    super({ turnCount, targetIndex });
+  public constructor({ sourceId, sourceMove, ...position }: DelayedAttackArgs) {
+    super(position);
     this.sourceId = sourceId;
     this.sourceMove = sourceMove;
   }
@@ -114,7 +152,7 @@ export class DelayedAttackTag extends PositionalTag implements DelayedAttackArgs
       // TODO: Find an alternate method of passing the (currently off-field) source pokemon
       // instead of relying on pokemon getter jank
       this.sourceId,
-      [this.targetIndex],
+      [target.getBattlerIndex()],
       allMoves[this.sourceMove],
       MoveUseMode.DELAYED_ATTACK,
     );
@@ -149,8 +187,8 @@ export class WishTag extends PositionalTag implements WishArgs {
   public readonly pokemonName: string;
   public readonly healHp: number;
 
-  constructor({ turnCount, targetIndex, healHp, pokemonName }: WishArgs) {
-    super({ turnCount, targetIndex });
+  constructor({ healHp, pokemonName, ...position }: WishArgs) {
+    super(position);
     this.healHp = healHp;
     this.pokemonName = pokemonName;
   }
@@ -158,7 +196,7 @@ export class WishTag extends PositionalTag implements WishArgs {
   public override trigger(): void {
     // TODO: Rename this locales key later - wish shows a message on REMOVAL, not addition
     // (and is emphatically not an arena tag anymore)
-    globalScene.phaseManager.unshiftNew("PokemonHealPhase", this.targetIndex, this.healHp, {
+    globalScene.phaseManager.unshiftNew("PokemonHealPhase", this.getTarget()!.getBattlerIndex(), this.healHp, {
       message: i18next.t("arenaTag:wishTagOnAdd", { pokemonNameWithAffix: this.pokemonName }),
       showFullHpMessage: false,
     });

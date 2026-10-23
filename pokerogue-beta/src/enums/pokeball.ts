@@ -8,4 +8,6 @@ export enum PokeballType {
   LUXURY_BALL,
   GLASS_BALL,
   CLONE_BALL,
+  // Safari encounter cosmetic; never stocked in the player's ball inventory.
+  SAFARI_BALL,
 }

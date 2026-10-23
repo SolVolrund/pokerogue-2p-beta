@@ -16,7 +16,7 @@ import { parseDailySeed } from "#data/daily-seed/daily-seed-utils";
 import type { PokemonSpecies } from "#data/pokemon-species";
 import { BiomeId } from "#enums/biome-id";
 import { ChallengeType } from "#enums/challenge-type";
-import { Challenges, isSingleTypeChallenge } from "#enums/challenges";
+import { Challenges, isSingleGenerationChallenge, isSingleTypeChallenge } from "#enums/challenges";
 import { GameModes } from "#enums/game-modes";
 import { SpeciesId } from "#enums/species-id";
 import { classicFixedBattles, type FixedBattleConfigs } from "#trainers/fixed-battle-configs";
@@ -84,7 +84,9 @@ export class GameMode implements GameModeConfig {
     }
     this.challenges
       .filter((chal: Challenge) =>
-        chal.id === challenge || (challenge === Challenges.SINGLE_TYPE && isSingleTypeChallenge(chal.id)),
+        chal.id === challenge
+        || (challenge === Challenges.SINGLE_TYPE && isSingleTypeChallenge(chal.id))
+        || (challenge === Challenges.SINGLE_GENERATION && isSingleGenerationChallenge(chal.id)),
       )
       .forEach(chal => {
         chal.value = value;
@@ -101,7 +103,9 @@ export class GameMode implements GameModeConfig {
    */
   hasChallenge(challenge: Challenges, playerIndex?: PlayerIndex): boolean {
     return this.challenges.some(c =>
-      (c.id === challenge || (challenge === Challenges.SINGLE_TYPE && isSingleTypeChallenge(c.id)))
+      (c.id === challenge
+        || (challenge === Challenges.SINGLE_TYPE && isSingleTypeChallenge(c.id))
+        || (challenge === Challenges.SINGLE_GENERATION && isSingleGenerationChallenge(c.id)))
       && c.value !== 0
       && (playerIndex === undefined
         ? globalScene.getActivePlayerIndexes().some(player => c.appliesToPlayer(player))

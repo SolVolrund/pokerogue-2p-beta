@@ -18,7 +18,14 @@ export class PositionalTagManager {
    * This function does not perform any checking if the added tag is valid.
    */
   public addTag<T extends PositionalTagType>(tag: ToSerializedPosTag<T>): void {
-    this.tags.push(loadPositionalTag(tag));
+    const instance = loadPositionalTag(tag);
+    instance.capturePosition();
+    this.tags.push(instance);
+  }
+
+  /** Old saves only recorded battler indexes; anchor those effects before positions change. */
+  public captureLegacyPositions(): void {
+    this.tags.forEach(tag => tag.capturePosition());
   }
 
   /**
@@ -28,7 +35,7 @@ export class PositionalTagManager {
    * @returns Whether the tag can be added.
    */
   public canAddTag(tagType: PositionalTagType, targetIndex: BattlerIndex): boolean {
-    return !this.tags.some(t => t.tagType === tagType && t.targetIndex === targetIndex);
+    return !this.tags.some(t => t.tagType === tagType && t.targetsSlot(targetIndex));
   }
 
   /**

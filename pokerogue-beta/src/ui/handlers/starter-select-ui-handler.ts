@@ -3475,7 +3475,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       const targets: AceDressTarget[] = [{ speciesId, label: species.getName() }];
       if (species.forms.length > 1) {
         species.forms.forEach((form, formIndex) => {
-          if (!form.formKey || formIndex === 0) {
+          if (!form.formKey) {
             return;
           }
           targets.push({

@@ -1,3 +1,4 @@
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
 import type { BattlerIndex } from "#enums/battler-index";
@@ -10,15 +11,21 @@ import i18next from "i18next";
 
 export class ScanIvsPhase extends PokemonPhase {
   public readonly phaseName = "ScanIvsPhase";
-  // biome-ignore lint/complexity/noUselessConstructor: This changes `battlerIndex` to be required
-  constructor(battlerIndex: BattlerIndex) {
+  private readonly ownerPlayerIndex: PlayerIndex | undefined;
+
+  constructor(battlerIndex: BattlerIndex, ownerPlayerIndex?: PlayerIndex) {
     super(battlerIndex);
+    this.ownerPlayerIndex = ownerPlayerIndex;
   }
 
   start() {
     super.start();
 
     const pokemon = this.getPokemon();
+
+    if (globalScene.twoPlayerMode && this.ownerPlayerIndex != null) {
+      globalScene.waitForPlayerSideProgressionInput(this.ownerPlayerIndex);
+    }
 
     for (const enemy of globalScene.getEnemyField()) {
       const enemyIvs = enemy.ivs;
@@ -46,7 +53,7 @@ export class ScanIvsPhase extends PokemonPhase {
       return;
     }
 
-    if (globalScene.twoPlayerMode) {
+    if (globalScene.twoPlayerMode && this.ownerPlayerIndex == null) {
       const playerIndex = this.player ? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex) : 0;
       globalScene.waitForPlayerInput(playerIndex);
     }

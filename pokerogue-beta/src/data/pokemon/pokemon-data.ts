@@ -301,6 +301,8 @@ export interface BattleHeldItem
   extends Pick<ModifierData, "player" | "typeId" | "typePregenArgs" | "args" | "stackCount" | "className"> {
   waveIndex: number;
   eonFluteGuestItem?: boolean;
+  /** Deferred transfers cannot reserve a slot that may already contain a replacement item. */
+  reserveCapacity?: boolean;
 }
 
 function copyBattleHeldItem(item: BattleHeldItem): BattleHeldItem {
@@ -325,7 +327,7 @@ export class PokemonBattleData {
   public berriesEaten: BerryType[] = [];
   /** Undefined in older saves; their berry history is migrated lazily. */
   public consumedHeldItems: BattleHeldItem[] | undefined;
-  /** Actual item units set aside until battle end, not eligible for Recycle. */
+  /** Actual item units awaiting recovery, not eligible for Recycle. Failed returns survive arena resets. */
   public removedHeldItems: BattleHeldItem[] = [];
 
   constructor(source?: PokemonBattleData | Partial<PokemonBattleData>) {

@@ -199,7 +199,7 @@ describe("Player-specific Mono Type", () => {
     const end = vi.spyOn(title, "end").mockImplementation(() => {});
     title["startMultiplayerRun"](GameModes.CHALLENGE, 2, 6, [1]);
     await Promise.resolve();
-    expect(text.mock.calls.at(-1)?.[0]).toContain("Riley has no eligible starters for P2's Mono Type");
+    expect(text.mock.calls.at(-1)?.[0]).toContain("Riley has no eligible starters for P2's challenge restrictions");
     expect(broadcast).not.toHaveBeenCalled();
     expect(end).not.toHaveBeenCalled();
     game.scene.setComputerPartnerKey(1, "alex");

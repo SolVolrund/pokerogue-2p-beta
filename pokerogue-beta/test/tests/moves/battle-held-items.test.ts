@@ -12,7 +12,6 @@ import { SpeciesId } from "#enums/species-id";
 import { Stat } from "#enums/stat";
 import type { Pokemon } from "#field/pokemon";
 import { BerryModifier, type PokemonHeldItemModifier, TypeGemModifier } from "#modifiers/modifier";
-import { AttemptCapturePhase } from "#phases/attempt-capture-phase";
 import { BattleEndPhase } from "#phases/battle-end-phase";
 import { PokemonData } from "#system/pokemon-data";
 import { GameManager } from "#test/framework/game-manager";
@@ -25,6 +24,7 @@ import {
   restoreConsumedHeldItem,
 } from "#utils/battle-held-items";
 import { consumeBerryModifier } from "#utils/berry-use-utils";
+import { createCloneBallCopy } from "#utils/clone-ball";
 import Phaser from "phaser";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -457,13 +457,12 @@ describe("Moves - Recycle and battle-only item removal", () => {
     enemy.loseHeldItem(item);
     recordConsumedHeldItem(enemy, item);
     removeHeldItemForBattle(enemy, item);
-    const capture = new AttemptCapturePhase(0, PokeballType.CLONE_BALL);
-    await capture["addCloneToParty"](enemy);
-    const clone = game.scene.getPlayerParty()[1];
+    const clone = createCloneBallCopy(enemy);
     expect(clone.battleData.removedHeldItems).toEqual([]);
-    expect(clone.battleData.consumedHeldItems).toEqual([]);
+    expect(getConsumedHeldItems(clone)).toEqual([]);
     expect(enemy.battleData.removedHeldItems).toHaveLength(1);
     expect(enemy.battleData.consumedHeldItems).toHaveLength(1);
+    clone.destroy();
   });
 
   it("transferred-item ownership survives saving before Knock Off", async () => {

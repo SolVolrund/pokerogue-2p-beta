@@ -471,8 +471,10 @@ export function trainerThrowPokeball(
   const fpOffset = pokemon.getFieldPositionOffset();
   const pokeballAtlasKey = getPokeballAtlasKey(pokeballType);
   const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
+  const fieldOwners = globalScene.getPlayerFieldOwners();
+  const trainerFieldIndex = Math.max(0, fieldOwners.indexOf(playerIndex)) as PlayerIndex;
   const pokeballX = globalScene.twoPlayerMode
-    ? globalScene.getTrainerBackSpriteX(playerIndex, globalScene.getPlayerFieldOwners().length > 1)
+    ? globalScene.getTrainerBackSpriteX(trainerFieldIndex, fieldOwners.length > 1)
     : 16 + 75;
   const pokeball: Phaser.GameObjects.Sprite = globalScene.addFieldSprite(pokeballX, 80 + 25, "pb", pokeballAtlasKey);
   pokeball.setOrigin(0.5, 0.625);
@@ -662,6 +664,9 @@ export async function catchPokemon(
   playerIndex: PlayerIndex = globalScene.activePlayerIndex,
 ): Promise<void> {
   globalScene.setActivePlayerIndex(playerIndex);
+  if (globalScene.twoPlayerMode && !globalScene.isComputerPartnerPlayer(playerIndex)) {
+    globalScene.waitForPlayerSideProgressionInput(playerIndex);
+  }
   const speciesForm = pokemon.fusionSpecies ? pokemon.getFusionSpeciesForm() : pokemon.getSpeciesForm();
 
   if (!globalScene.isComputerPartnerPlayer(playerIndex)) {

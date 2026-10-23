@@ -129,6 +129,8 @@ export interface SessionSaveData {
   greatHauntState?: import("#data/great-haunt").GreatHauntState;
   unownFinalBossState?: UnownFinalBossState;
   players?: PlayerSessionSaveData[];
+  /** Next tie-break winner for each participant group, shared across voting situations. */
+  playerDecisionTieBreakPriorities?: Partial<Record<string, PlayerIndex>>;
   twoPlayerMode?: boolean;
   multiplayerPlayerCount?: MultiplayerPlayerCount;
   twoPlayerPartySize?: 3 | 6;

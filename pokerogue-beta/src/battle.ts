@@ -295,7 +295,11 @@ export class Battle {
     this.postBattleLoot.push(
       ...globalScene
         .findModifiers(
-          m => m.is("PokemonHeldItemModifier") && m.pokemonId === enemyPokemon.id && m.isTransferable,
+          m =>
+            m.is("PokemonHeldItemModifier")
+            && m.pokemonId === enemyPokemon.id
+            && m.isTransferable
+            && !m.recoverableBattleTransfer,
           false,
         )
         .map(i => {

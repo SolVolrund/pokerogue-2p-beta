@@ -3,11 +3,11 @@ import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import type { SpeciesFormEvolution } from "#balance/pokemon-evolutions";
-import { type Challenge, SingleTypeChallenge } from "#data/challenge";
+import { type Challenge, SingleGenerationChallenge, SingleTypeChallenge } from "#data/challenge";
 import type { PokemonSpecies, PokemonSpeciesForm } from "#data/pokemon-species";
 import type { AbilityId } from "#enums/ability-id";
 import { ChallengeType } from "#enums/challenge-type";
-import { Challenges } from "#enums/challenges";
+import { Challenges, isSingleGenerationChallenge } from "#enums/challenges";
 import type { MoveId } from "#enums/move-id";
 import type { MoveSourceType } from "#enums/move-source-type";
 import type { PokemonType } from "#enums/pokemon-type";
@@ -332,7 +332,18 @@ export function applyChallenges(challengeType: ChallengeType, ...args: any[]): b
       : challengeType === ChallengeType.STARTER_CHOICE || challengeType === ChallengeType.STARTER_SELECT_MODIFY
         ? (args[3] ?? globalScene.activePlayerIndex)
         : globalScene.activePlayerIndex;
-  getChallengesForPlayer(playerIndex, true).forEach(c => {
+  let challenges = getChallengesForPlayer(playerIndex, true);
+  if (challengeType === ChallengeType.FIXED_BATTLES) {
+    // Shared story opponents follow the first participating player's enabled generation, not the UI owner.
+    const generationChallenge = globalScene.getActivePlayerIndexes()
+      .flatMap(player => getChallengesForPlayer(player))
+      .find(c => isSingleGenerationChallenge(c.id) && c.value !== 0);
+    challenges = challenges.filter(c => !isSingleGenerationChallenge(c.id));
+    if (generationChallenge) {
+      challenges.unshift(generationChallenge);
+    }
+  }
+  challenges.forEach(c => {
     if (c.value !== 0) {
       switch (challengeType) {
         case ChallengeType.STARTER_CHOICE:
@@ -488,6 +499,12 @@ export function createMonotypeRestriction(type: PokemonType): SingleTypeChalleng
   return restriction;
 }
 
+export function createMonogenRestriction(generation: number): SingleGenerationChallenge {
+  const restriction = new SingleGenerationChallenge();
+  restriction.value = generation;
+  return restriction;
+}
+
 /** Partner restrictions are used for legality, but never saved as run challenges or awarded ribbons. */
 export function getChallengesForPlayer(
   playerIndex: PlayerIndex = globalScene.activePlayerIndex,
@@ -495,9 +512,13 @@ export function getChallengesForPlayer(
 ): Challenge[] {
   const challenges = globalScene.gameMode.challenges.filter(c => c.appliesToPlayer(playerIndex));
   if (includePartnerRestrictions && globalScene.isComputerPartnerPlayer(playerIndex)) {
-    const type = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex)).monotype;
+    const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(playerIndex));
+    const type = profile.monotype;
     if (type !== undefined) {
       challenges.push(createMonotypeRestriction(type));
+    }
+    if (profile.monogen !== undefined) {
+      challenges.push(createMonogenRestriction(profile.monogen));
     }
   }
   return challenges;

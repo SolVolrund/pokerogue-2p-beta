@@ -13,6 +13,7 @@ import type { Pokemon } from "#field/pokemon";
 import type { Move } from "#moves/move";
 import { getDawnStrategyMoveCapabilities } from "#utils/computer-partner-hazard-support";
 import { getHealingSupportMoveCapabilities } from "#utils/computer-partner-healing-support";
+import { isTeamSupportMove, JOY_SUPPORT_PREFERENCES } from "#utils/computer-partner-support";
 import type { ComputerPartnerProfile, ComputerPartnerRole } from "#utils/computer-partner-profile";
 
 export interface ComputerPartnerMoveLearningDecision {
@@ -203,23 +204,26 @@ function scoreMoveset(
   context: ComputerPartnerMoveLearningContext = {},
 ): number {
   const moves = moveIds.map(moveId => allMoves[moveId]).filter((move): move is Move => !!move);
-  const moveScores = moves.map(move => scoreMove(pokemon, move));
+  const moveScores = moves.map(move => scoreMove(pokemon, move, context));
   return (
     moveScores.reduce((total, score) => total + score, 0)
     + scoreOffensiveCoverage(moves)
     + scoreStabOptions(pokemon, moves)
-    + scoreCherylHealingSupportMoveset(moves, context)
+    + scoreHealingSupportMoveset(moves, context)
+    + scoreJoyTeamUtilityMoveset(moves, context)
     + scoreDawnStrategyMoveset(moves, context)
     - scoreRedundancy(moves, context)
   );
 }
 
-function scoreMove(pokemon: Pokemon, move: Move): number {
+function scoreMove(pokemon: Pokemon, move: Move, context: ComputerPartnerMoveLearningContext): number {
   const damageScore = scoreDamage(pokemon, move);
   const effectScore = scoreMoveEffects(pokemon, move);
   const utilityScore = scoreUtility(move);
   const drawbackPenalty = scoreDrawbacks(move);
-  return Math.max(0, damageScore + effectScore + utilityScore - drawbackPenalty);
+  const supportBonus = context.profile?.key === "joy" && isTeamSupportMove(move)
+    ? Math.max(0, effectScore + utilityScore) * JOY_SUPPORT_PREFERENCES.learning : 0;
+  return Math.max(0, damageScore + effectScore + utilityScore + supportBonus - drawbackPenalty);
 }
 
 function scoreDamage(pokemon: Pokemon, move: Move): number {
@@ -424,7 +428,7 @@ function scoreRedundancy(
     penalty += (statusMoveCount - 2) * 10;
   }
 
-  penalty += scoreCherylHealingRedundancy(moves, context);
+  penalty += scoreHealingRedundancy(moves, context);
   penalty += scoreDawnStrategyRedundancy(moves, context);
 
   const physicalCount = moves.filter(move => move.category === MoveCategory.PHYSICAL).length;
@@ -436,11 +440,11 @@ function scoreRedundancy(
   return penalty;
 }
 
-function scoreCherylHealingSupportMoveset(
+function scoreHealingSupportMoveset(
   moves: readonly Move[],
   context: ComputerPartnerMoveLearningContext,
 ): number {
-  const preferenceScale = getCherylHealingPreferenceScale(context);
+  const preferenceScale = getHealingPreferenceScale(context);
   if (!preferenceScale) {
     return 0;
   }
@@ -457,11 +461,11 @@ function scoreCherylHealingSupportMoveset(
   ) * preferenceScale;
 }
 
-function scoreCherylHealingRedundancy(
+function scoreHealingRedundancy(
   moves: readonly Move[],
   context: ComputerPartnerMoveLearningContext,
 ): number {
-  const preferenceScale = getCherylHealingPreferenceScale(context);
+  const preferenceScale = getHealingPreferenceScale(context);
   if (!preferenceScale) {
     return 0;
   }
@@ -479,7 +483,10 @@ function scoreCherylHealingRedundancy(
   return (Math.max(healCounts.self - 1, 0) * 34 + Math.max(healCounts.partner - 1, 0) * 38) * preferenceScale;
 }
 
-function getCherylHealingPreferenceScale(context: ComputerPartnerMoveLearningContext): number {
+function getHealingPreferenceScale(context: ComputerPartnerMoveLearningContext): number {
+  if (context.profile?.key === "joy") {
+    return 1 + JOY_SUPPORT_PREFERENCES.learning;
+  }
   if (context.profile?.key !== "cheryl") {
     return 0;
   }
@@ -495,6 +502,26 @@ function getCherylHealingPreferenceScale(context: ComputerPartnerMoveLearningCon
     default:
       return 0.3;
   }
+}
+
+function scoreJoyTeamUtilityMoveset(moves: readonly Move[], context: ComputerPartnerMoveLearningContext): number {
+  if (context.profile?.key !== "joy") {
+    return 0;
+  }
+  // Like Cheryl's healing coverage, value distinct support jobs rather than four similar moves.
+  const groups = new Map<string, number>();
+  for (const move of moves) {
+    if (!isTeamSupportMove(move) || getHealingSupportMoveCapabilities(move).healsPartner) {
+      continue;
+    }
+    const group = move.hasAttr("PartyStatusCureAttr") ? "cure"
+      : [MoveId.LIGHT_SCREEN, MoveId.REFLECT, MoveId.AURORA_VEIL].includes(move.id) ? "screen"
+      : [MoveId.TAILWIND, MoveId.HELPING_HAND, MoveId.COACHING].includes(move.id) ? "assist"
+      : "protection";
+    groups.set(group, (groups.get(group) ?? 0) + 1);
+  }
+  return [...groups.values()].reduce((score, count) => score + 24 - Math.max(0, count - 1) * 24, 0)
+    * (1 + JOY_SUPPORT_PREFERENCES.learning);
 }
 
 function scoreDawnStrategyMoveset(
