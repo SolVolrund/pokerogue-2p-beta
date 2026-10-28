@@ -4,12 +4,7 @@ import { globalScene } from "#app/global-scene";
 import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { speciesEggMoves } from "#balance/moves/egg-moves";
 import { EvoCondKey, EvolutionItem, type SpeciesFormEvolution } from "#balance/pokemon-evolutions";
-import {
-  SAME_SPECIES_EGG_HA_RATE,
-  SAME_SPECIES_EGG_SHINY_RATE,
-  SHINY_EPIC_CHANCE,
-  SHINY_VARIANT_CHANCE,
-} from "#balance/rates";
+import { SAME_SPECIES_EGG_HA_RATE } from "#balance/rates";
 import { getPassiveCandyCount, getSameSpeciesEggCandyCounts, getValueReductionCandyCounts } from "#balance/starters";
 import { MAX_STARTER_CANDY_COUNT } from "#constants/game-constants";
 import {
@@ -49,6 +44,12 @@ import { checkStarterValidForChallenge, createMonogenRestriction, createMonotype
 import { getSpeciesEntryHazardAccessScore } from "#utils/computer-partner-hazard-support";
 import { getSpeciesHealingSupportAccessScore } from "#utils/computer-partner-healing-support";
 import { hasPokemonSupportTools, hasSpeciesSupportPotential, JOY_SUPPORT_PREFERENCES } from "#utils/computer-partner-support";
+import {
+  ensureSameSpeciesEggPity,
+  getMissingEggVariants,
+  rollSameSpeciesEggShiny,
+  rollSameSpeciesEggVariant,
+} from "#utils/egg-pity";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 
 export type ComputerPartnerKey =
@@ -1446,13 +1447,12 @@ function trySpendComputerPartnerEggCandy(
   starter: ComputerPartnerStarterConfig,
 ): boolean {
   const starterEntry = ensureComputerPartnerStarterProgressEntry(progress, progressSpeciesId);
-  const dexEntry = ensureComputerPartnerDexProgressEntry(progress, progressSpeciesId);
   const basePoints = getComputerPartnerStarterBasePoints(starter);
   if (basePoints <= 0) {
     return false;
   }
 
-  const eggCost = getSameSpeciesEggCandyCounts(basePoints, dexEntry.hatchedCount);
+  const eggCost = getSameSpeciesEggCandyCounts(basePoints);
   if (starterEntry.candyCount < eggCost) {
     return false;
   }
@@ -1477,8 +1477,17 @@ function hatchComputerPartnerInstantEgg(progress: ComputerPartnerProgressData, s
   const species = getPokemonSpecies(speciesId);
   const dexEntry = ensureComputerPartnerDexProgressEntry(progress, speciesId);
   const starterEntry = ensureComputerPartnerStarterProgressEntry(progress, speciesId);
-  const shiny = !randSeedInt(SAME_SPECIES_EGG_SHINY_RATE);
-  const variant = shiny ? rollComputerPartnerShinyVariant() : 0;
+  const pity = ensureSameSpeciesEggPity(
+    starterEntry,
+    speciesDataRegistry.getStarterCost(speciesId),
+    dexEntry.hatchedCount,
+    dexEntry.caughtAttr,
+    species.hasVariants(),
+  );
+  const shiny = rollSameSpeciesEggShiny(pity);
+  const variant = shiny
+    ? rollSameSpeciesEggVariant(pity, getMissingEggVariants(dexEntry.caughtAttr, species.hasVariants()))
+    : 0;
   const nature = randSeedInt(25) as Nature;
   const ivs = Array.from({ length: 6 }, () => randSeedIntRange(10, 31));
 
@@ -1521,17 +1530,6 @@ function unlockComputerPartnerEggMove(starterEntry: ComputerPartnerStarterProgre
     ? rolledIndex
     : randSeedShuffle([...missingEggMoveIndexes])[0];
   starterEntry.eggMoves |= 1 << eggMoveIndex;
-}
-
-function rollComputerPartnerShinyVariant(): 0 | 1 | 2 {
-  const roll = randSeedInt(10);
-  if (roll >= SHINY_VARIANT_CHANCE) {
-    return 0;
-  }
-  if (roll >= SHINY_EPIC_CHANCE) {
-    return 1;
-  }
-  return 2;
 }
 
 function getComputerPartnerEggDexAttr(species: PokemonSpecies, shiny: boolean, variant: 0 | 1 | 2): bigint {
@@ -1584,6 +1582,7 @@ function ensureComputerPartnerStarterProgressEntry(
   speciesId: SpeciesId,
 ): ComputerPartnerStarterProgressEntry {
   progress.starterData[speciesId] ??= {
+    pity: [0, 0],
     eggMoves: 0,
     candyCount: 0,
     friendship: 0,

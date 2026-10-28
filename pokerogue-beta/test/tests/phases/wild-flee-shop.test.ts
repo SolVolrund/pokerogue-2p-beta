@@ -170,6 +170,15 @@ describe("Shop after wild enemies flee", () => {
       expect(endBattle()).toEqual([]);
     });
 
+    it.each([
+      2, 3,
+    ] as const)("gives no player a reward after running from a partially defeated %i-player battle", count => {
+      game.scene.configureTwoPlayerMode(true, 6, false, count);
+      game.scene.currentBattle.successfulRun = true;
+      game.scene.currentBattle.enemyFaints = 1;
+      expect(endBattle()).toEqual([]);
+    });
+
     it("does not duplicate already queued rewards", () => {
       game.scene.phaseManager.pushNew("SelectModifierPhase");
       expect(endBattle()).toEqual([]);

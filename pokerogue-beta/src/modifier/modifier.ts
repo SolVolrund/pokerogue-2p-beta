@@ -73,6 +73,7 @@ import { addTextObject } from "#ui/text";
 import { hslToHex } from "#utils/color-utils";
 import { BooleanHolder, NumberHolder, randSeedFloat, toDmgValue } from "#utils/common";
 import { areHeldItemEffectsSuppressed } from "#utils/held-item-suppression-state";
+import { canReceiveThread, type ThreadColor } from "#utils/soul-bond";
 import { getEnumValues } from "#utils/enums";
 import { getModifierType } from "#utils/modifier-utils";
 import type { ValueHolder } from "#utils/value-holder";
@@ -2453,6 +2454,42 @@ export class LevelIncrementBoosterModifier extends PersistentModifier {
 
   getMaxStackCount(_forThreshold?: boolean): number {
     return 99;
+  }
+}
+
+export class DestinyKnotModifier extends PokemonHeldItemModifier {
+  constructor(
+    type: ModifierType,
+    pokemonId: number,
+    public color: ThreadColor,
+    stackCount?: number,
+  ) {
+    super(type, pokemonId, stackCount);
+  }
+
+  matchType(modifier: Modifier): boolean {
+    return modifier instanceof DestinyKnotModifier && modifier.color === this.color;
+  }
+
+  clone(): DestinyKnotModifier {
+    return new DestinyKnotModifier(this.type, this.pokemonId, this.color, this.stackCount);
+  }
+
+  getArgs(): any[] {
+    return [...super.getArgs(), this.color];
+  }
+
+  override add(modifiers: PersistentModifier[], virtual: boolean): boolean {
+    const pokemon = this.getPokemon();
+    return !!pokemon && canReceiveThread(pokemon, this.color) && this.stackCount === 1 && super.add(modifiers, virtual);
+  }
+
+  getMaxHeldItemCount(_pokemon: Pokemon): number {
+    return 1;
+  }
+
+  apply(): boolean {
+    return true;
   }
 }
 
@@ -5202,6 +5239,7 @@ const ModifierClassMap = Object.freeze({
   ContactHeldItemTransferChanceModifier,
   IvScannerModifier,
   DowsingMachineModifier,
+  DestinyKnotModifier,
   PokeblockKitModifier,
   ExtraModifierModifier,
   TempExtraModifierModifier,

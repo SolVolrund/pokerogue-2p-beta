@@ -1,6 +1,7 @@
 import { Status } from "#data/status-effect";
 import { AbilityId } from "#enums/ability-id";
 import { BattlerTagType } from "#enums/battler-tag-type";
+import { Challenges } from "#enums/challenges";
 import { MoveId } from "#enums/move-id";
 import { MoveResult } from "#enums/move-result";
 import { SpeciesId } from "#enums/species-id";
@@ -77,6 +78,22 @@ describe("Abilities - Shields Down", () => {
     await game.phaseInterceptor.to("QuietFormChangePhase");
 
     expect(minior.formIndex).toBe(redMeteorForm);
+  });
+
+  it("still changes forms in Ability Randomizer Lite without an ability override", async () => {
+    await game.classicMode.startBattle(SpeciesId.MINIOR);
+    game.override.ability(AbilityId.NONE);
+    game.scene.gameMode.setChallengeValue(Challenges.ABILITY_RANDOMIZER, 3);
+    const minior = game.field.getPlayerPokemon();
+    const meteorForm = minior.formIndex;
+    expect(minior.getAbility().id).toBe(AbilityId.SHIELDS_DOWN);
+    minior.hp = Math.floor(minior.getMaxHp() / 4);
+    game.move.use(MoveId.SPLASH);
+    await game.toNextTurn();
+    expect(minior.formIndex).toBe(meteorForm + 7);
+    game.move.use(MoveId.ROOST);
+    await game.toNextTurn();
+    expect(minior.formIndex).toBe(meteorForm);
   });
 
   // TODO: Move to mold breaker test file

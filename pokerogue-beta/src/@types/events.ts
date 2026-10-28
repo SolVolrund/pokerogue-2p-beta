@@ -5,7 +5,7 @@ import type { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import type { SpeciesId } from "#enums/species-id";
 import type { TrainerType } from "#enums/trainer-type";
 import type { ModifierTypeKeys } from "#modifiers/modifier-type";
-import type { TerrainPool, WeatherPool } from "#types/biomes";
+import type { BiomeLinks, TerrainPool, WeatherPool } from "#types/biomes";
 
 export interface EventBanner {
   readonly bannerKey?: string;
@@ -50,6 +50,8 @@ export interface EventSpriteOptions {
    * Source is a {@linkcode TrainerType} and target is the literal filename of the sprite to use for that trainer type during the event (without file extension).
    */
   readonly trainerReplacements: readonly EventTrainerSpriteReplacement[];
+  /** Texture key to filename in images/events (without its extension). */
+  readonly imageReplacements?: readonly (readonly [string, string])[];
   /**
    * If true, any species not explicitly listed in the replacements array will be replaced with a random species.
    * @defaultValue false
@@ -67,6 +69,9 @@ export interface TimedEvent extends EventBanner {
   readonly eventType: EventType;
   readonly shinyEncounterMultiplier?: number;
   readonly shinyCatchMultiplier?: number;
+  readonly extraCatchCandy?: number;
+  readonly boostSootheBell?: boolean;
+  readonly biomes?: Readonly<Partial<Record<BiomeId, BiomeLinks>>>;
   readonly classicFriendshipMultiplier?: number;
   readonly luckBoost?: number;
   readonly upgradeUnlockedVouchers?: boolean;

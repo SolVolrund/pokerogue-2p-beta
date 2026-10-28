@@ -162,6 +162,8 @@ function isRewardPlayerUnlockAvailable(unlockable: Unlockables, party: readonly 
  */
 function initGreatModifierPool() {
   modifierPool[ModifierTier.GREAT] = [
+    // Keep the tier registered for existing/event Threads, but disable ordinary reward drops for now.
+    new WeightedModifierType(modifierTypes.DESTINY_KNOT, 0),
     new WeightedModifierType(modifierTypes.GREAT_BALL, () => (hasMaximumBalls(PokeballType.GREAT_BALL) ? 0 : 6), 6),
     new WeightedModifierType(modifierTypes.PP_UP, 2),
     new WeightedModifierType(
@@ -316,7 +318,7 @@ function initGreatModifierPool() {
       2,
     ),
     
-    new WeightedModifierType(modifierTypes.SOOTHE_BELL, 2),
+    new WeightedModifierType(modifierTypes.SOOTHE_BELL, () => timedEventManager.isSootheBellBoosted() ? 3 : 2, 3),
     new WeightedModifierType(modifierTypes.TM_GREAT, 3),
     new WeightedModifierType(
       modifierTypes.MEMORY_MUSHROOM,
@@ -803,6 +805,12 @@ function initRogueModifierPool() {
  */
 function initMasterModifierPool() {
   modifierPool[ModifierTier.MASTER] = [
+    new WeightedModifierType(
+      modifierTypes.TM_MASTER,
+      (party: Pokemon[]) =>
+        party.some(p => p.isPlayer() && p.getCompatibleTms(true, true, true).includes(MoveId.YES)) ? 5 : 0,
+      5,
+    ),
     new WeightedModifierType(modifierTypes.MASTER_BALL, () => (hasMaximumBalls(PokeballType.MASTER_BALL) ? 0 : 24), 24),
     new WeightedModifierType(modifierTypes.SHINY_CHARM, 14),
     new WeightedModifierType(modifierTypes.SHINY_BADGE, 0),

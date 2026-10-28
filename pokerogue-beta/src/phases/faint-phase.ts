@@ -1,8 +1,8 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
+import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
-import type { PlayerIndex } from "#app/battle-scene";
 import { FRIENDSHIP_LOSS_FROM_FAINT } from "#balance/starters";
 import { allMoves, modifierTypes } from "#data/data-lists";
 import { getClassicFinalBossDialogue, getUnownRealFinalBossDialogue } from "#data/dialogue";
@@ -39,14 +39,16 @@ import {
   getNextUnownFinalBossHelperSpeciesId,
   getUnownFinalBossHelperSlot,
   isClassicFinalBossPhaseTwo,
-  type MewtwoFinalBossLaneState,
   isMewtwoFinalBossBoss,
   isUnownRealFinalBossWave,
+  type MewtwoFinalBossLaneState,
 } from "#utils/classic-final-boss-utils";
-import { getModifierType } from "#utils/modifier-utils";
+import { toDmgValue } from "#utils/common";
 import { cancelGreatHauntTurn, recordGreatHauntFaint } from "#utils/great-haunt-utils";
-import { getPokemonSpecies } from "#utils/pokemon-utils";
 import { areHeldItemEffectsSuppressed } from "#utils/held-item-suppression-state";
+import { getModifierType } from "#utils/modifier-utils";
+import { getPokemonSpecies } from "#utils/pokemon-utils";
+import { getSoulBondPartner, refreshSoulBondHpForParties } from "#utils/soul-bond";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import i18next from "i18next";
 
@@ -58,10 +60,22 @@ type MewtwoFinalBossFinalFormKey =
 
 export class FaintPhase extends PokemonPhase {
   public readonly phaseName = "FaintPhase";
+  private static readonly resolving = new WeakMap<Pokemon, FaintPhase>();
+  private readonly faintPokemon: Pokemon | undefined;
+  private soulBondPartner: Pokemon | undefined;
+  private bondedFaint: FaintPhase | undefined;
+  private bondParent: FaintPhase | undefined;
+  private continuation: "faint" | "revive" | undefined;
+  private readonly battleOutcomes: FaintPhase[] = [];
+  private ownsResolution = false;
+  private committed = false;
+  private wasOnField = false;
   /**
    * Whether or not instant revive should be prevented
    */
   private readonly preventInstantRevive: boolean;
+  /** Also suppress revival effects that ordinarily override sacrificial moves. */
+  private readonly forceSacrifice: boolean;
 
   /**
    * The source Pokemon that dealt fatal damage; only present for faints triggered by a move.
@@ -69,18 +83,40 @@ export class FaintPhase extends PokemonPhase {
   // TODO: This should be handled by a move in flight object/similar
   private readonly source?: Pokemon | undefined;
 
-  constructor(battlerIndex: BattlerIndex, preventInstantRevive = false, source?: Pokemon) {
-    super(battlerIndex);
+  constructor(target: BattlerIndex | Pokemon, preventInstantRevive = false, source?: Pokemon, forceSacrifice = false) {
+    super(typeof target === "number" ? target : target.getBattlerIndex());
 
     this.preventInstantRevive = preventInstantRevive;
+    this.forceSacrifice = forceSacrifice;
     this.source = source;
+    this.faintPokemon =
+      typeof target === "number"
+        ? target > BattlerIndex.ENEMY_5
+          ? globalScene.getPokemonById(target)
+          : globalScene.getField()[target]
+        : target;
+    if (this.faintPokemon) {
+      this.player = this.faintPokemon.isPlayer();
+    }
   }
 
   public override start(): void {
     super.start();
 
+    if (this.continuation) {
+      const continuation = this.continuation;
+      this.continuation = undefined;
+      if (continuation === "faint") {
+        this.finishFaint();
+      } else {
+        refreshSoulBondHpForParties();
+        this.end();
+      }
+      return;
+    }
+
     const faintPokemon = this.getFaintPokemon();
-    if (!faintPokemon) {
+    if (!faintPokemon || FaintPhase.isResolving(faintPokemon) || faintPokemon.isFainted(true)) {
       this.end();
       return;
     }
@@ -90,6 +126,13 @@ export class FaintPhase extends PokemonPhase {
     if (faintPokemon.hp > 0) {
       this.end();
       return;
+    }
+    FaintPhase.resolving.set(faintPokemon, this);
+    this.ownsResolution = true;
+    this.wasOnField = faintPokemon.isOnField();
+    this.fieldIndex = this.wasOnField ? faintPokemon.getFieldIndex() : -1;
+    if (this.wasOnField) {
+      this.battlerIndex = faintPokemon.getBattlerIndex();
     }
     if (this.source) {
       faintPokemon.getTag(BattlerTagType.DESTINY_BOND)?.lapse(this.source, BattlerTagLapseType.CUSTOM);
@@ -102,31 +145,43 @@ export class FaintPhase extends PokemonPhase {
     }
 
     const heldItemsSuppressed = areHeldItemEffectsSuppressed(faintPokemon);
+    // Embargo and other summon data disappear below; capture the actual pair first.
+    this.soulBondPartner = this.bondParent ? undefined : getSoulBondPartner(faintPokemon, true);
     faintPokemon.resetSummonData();
 
-    const shinyBadgeModifier =
-      !(this.preventInstantRevive && globalScene.currentBattle.greatHauntState?.forcedFaintIds.includes(faintPokemon.id))
-      && !heldItemsSuppressed
-      && globalScene.applyModifierForPokemon(ShinyBadgeModifier, faintPokemon, faintPokemon, "revive");
+    if (this.wasOnField) {
+      const shinyBadgeModifier =
+        !(
+          this.preventInstantRevive
+          && globalScene.currentBattle.greatHauntState?.forcedFaintIds.includes(faintPokemon.id)
+        )
+        && !this.forceSacrifice
+        && !heldItemsSuppressed
+        && globalScene.applyModifierForPokemon(ShinyBadgeModifier, faintPokemon, faintPokemon, "revive");
 
-    if (shinyBadgeModifier) {
-      this.end();
-      return;
-    }
-
-    if (!this.preventInstantRevive && !heldItemsSuppressed) {
-      const instantReviveModifier = globalScene.applyModifier(
-        PokemonInstantReviveModifier,
-        this.player,
-        faintPokemon,
-      ) as PokemonInstantReviveModifier;
-
-      if (instantReviveModifier) {
-        faintPokemon.loseHeldItem(instantReviveModifier);
-        globalScene.updateModifiers(this.player);
-        this.end();
+      if (shinyBadgeModifier) {
+        this.waitForRevive();
         return;
       }
+
+      if (!this.preventInstantRevive && !heldItemsSuppressed) {
+        const instantReviveModifier = globalScene.applyModifierForPokemon(
+          PokemonInstantReviveModifier,
+          faintPokemon,
+          faintPokemon,
+        ) as PokemonInstantReviveModifier;
+
+        if (instantReviveModifier) {
+          faintPokemon.loseHeldItem(instantReviveModifier);
+          globalScene.updateModifiers(this.player, undefined, globalScene.getPlayerIndexForPokemon(faintPokemon));
+          this.waitForRevive();
+          return;
+        }
+      }
+    } else if (!this.forceSacrifice && this.tryOffFieldRevive(faintPokemon, heldItemsSuppressed)) {
+      refreshSoulBondHpForParties();
+      this.end();
+      return;
     }
 
     /**
@@ -156,12 +211,153 @@ export class FaintPhase extends PokemonPhase {
     }
   }
 
+  public override getPokemon(): Pokemon {
+    return this.faintPokemon!;
+  }
+
+  private static isResolving(pokemon: Pokemon): boolean {
+    const phase = FaintPhase.resolving.get(pokemon);
+    const manager = globalScene.phaseManager;
+    // Encounter transitions can cancel a parked continuation. Do not retain its lock.
+    return !!phase && (manager.getCurrentPhase() === phase || manager.hasPhaseOfType("FaintPhase", p => p === phase));
+  }
+
+  public override end(): void {
+    if (!this.continuation) {
+      if (this.ownsResolution && this.faintPokemon) {
+        FaintPhase.resolving.delete(this.faintPokemon);
+        this.ownsResolution = false;
+      }
+      this.resolveBattleOutcomes();
+    }
+    super.end();
+  }
+
+  private resolveBattleOutcomes(): void {
+    if (this.battleOutcomes.length === 0) {
+      return;
+    }
+    let pending: FaintPhase | undefined;
+    globalScene.phaseManager.hasPhaseOfType("FaintPhase", phase => {
+      if (phase === this) {
+        return false;
+      }
+      pending = phase;
+      return true;
+    });
+    const outcomes = this.battleOutcomes.splice(0);
+    if (pending) {
+      // Carry decisions through the existing queue, including instant-revive continuations.
+      // Reordering or ending the battle here could discard another spread victim's revival.
+      pending.battleOutcomes.unshift(...outcomes);
+      return;
+    }
+    const defeatedOwners = new Set<PlayerIndex>();
+    for (const phase of outcomes) {
+      phase.queueBattleOutcome(defeatedOwners);
+    }
+  }
+
+  private waitForRevive(): void {
+    // The modifier queues healing; HP is still zero until that phase has finished.
+    this.continuation = "revive";
+    globalScene.phaseManager.unshiftPhase(this);
+    this.end();
+  }
+
+  private tryOffFieldRevive(pokemon: Pokemon, suppressed: boolean): boolean {
+    if (suppressed) {
+      return false;
+    }
+    const forcedByHaunt =
+      this.preventInstantRevive && globalScene.currentBattle.greatHauntState?.forcedFaintIds.includes(pokemon.id);
+    const badge =
+      !forcedByHaunt
+      && globalScene.findModifierForPokemon(m => m instanceof ShinyBadgeModifier && m.shouldApply(pokemon), pokemon);
+    const chance = Math.min(Math.max(Math.floor(pokemon.friendship / 51), 0), 5);
+    const badgeRevives = badge && chance > 0 && pokemon.randBattleSeedInt(100) < chance;
+    const seed =
+      !badgeRevives
+      && !this.preventInstantRevive
+      && globalScene.findModifierForPokemon(
+        m => m instanceof PokemonInstantReviveModifier && m.shouldApply(pokemon),
+        pokemon,
+      );
+    const modifier = badgeRevives ? badge : seed;
+    if (!modifier) {
+      return false;
+    }
+
+    // The item apply methods address a field slot. A reserve must be revived by identity.
+    pokemon.resetStatus(true, false, false, false);
+    pokemon.resetTurnData();
+    pokemon.heal(toDmgValue(pokemon.getMaxHp() / 2));
+    if (seed) {
+      pokemon.loseHeldItem(seed as PokemonInstantReviveModifier);
+      globalScene.updateModifiers(pokemon.isPlayer(), undefined, globalScene.getPlayerIndexForPokemon(pokemon));
+    }
+    globalScene.phaseManager.queueMessage(
+      i18next.t("modifier:pokemonInstantReviveApply", {
+        pokemonNameWithAffix: getPokemonNameWithAffix(pokemon),
+        typeName: modifier.type.name,
+      }),
+    );
+    void pokemon.updateInfo();
+    return true;
+  }
+
+  private queueSoulBondFaint(): boolean {
+    const partner = this.soulBondPartner;
+    if (
+      !partner
+      || partner.isFainted(true)
+      || FaintPhase.isResolving(partner)
+      || globalScene.getPokemonById(partner.id) !== partner
+    ) {
+      return false;
+    }
+    let phase: FaintPhase | undefined;
+    if (partner.isFainted()) {
+      // A simultaneous KO already has its own cause and revival policy. Resolve it only once.
+      globalScene.phaseManager.tryRemovePhase("FaintPhase", pending => {
+        if (pending.getFaintPokemon() !== partner) {
+          return false;
+        }
+        phase = pending;
+        return true;
+      });
+      if (!phase) {
+        return false;
+      }
+    } else {
+      partner.hp = 0;
+      globalScene.phaseManager.queueMessage(
+        i18next.t("battle:soulBondFaint", {
+          pokemonName: partner.getNameToRender(),
+          partnerName: this.faintPokemon!.getNameToRender(),
+        }),
+      );
+      if (partner.isOnField()) {
+        partner.destroySubstitute();
+        partner.lapseTag(BattlerTagType.COMMANDED);
+      }
+      phase = new FaintPhase(partner);
+    }
+    phase.bondParent = this;
+    this.bondedFaint = phase;
+    this.continuation = "faint";
+    globalScene.phaseManager.unshiftPhase(phase, this);
+    this.end();
+    return true;
+  }
+
   private doFaint(): void {
     const pokemon = this.getFaintPokemon();
     if (!pokemon) {
       this.end();
       return;
     }
+    this.committed = true;
 
     // Track total times pokemon have been KO'd for Last Respects/Supreme Overlord
     if (pokemon.isPlayer()) {
@@ -189,37 +385,63 @@ export class FaintPhase extends PokemonPhase {
 
     pokemon.resetTera();
 
-    // TODO: this can be simplified by just checking whether lastAttack is defined
-    if (pokemon.turnData.attacksReceived?.length > 0) {
-      const lastAttack = pokemon.turnData.attacksReceived[0];
-      applyAbAttrs("PostFaintAbAttr", {
-        pokemon,
-        // TODO: We should refactor lastAttack's sourceId to forbid null and just use undefined
-        attacker: globalScene.getPokemonById(lastAttack.sourceId) ?? undefined,
-        // TODO: improve the way that we provide the move that knocked out the pokemon...
-        move: new PokemonMove(lastAttack.move).getMove(),
-      }); // TODO: is this bang correct?
-    } else {
-      //If killed by indirect damage, apply post-faint abilities without providing a last move
-      applyAbAttrs("PostFaintAbAttr", { pokemon });
-    }
+    if (this.wasOnField) {
+      // A forced bond KO must not credit a move the partner survived earlier this turn.
+      if (pokemon.turnData.attacksReceived?.length > 0 && (!this.bondParent || this.source)) {
+        const lastAttack = pokemon.turnData.attacksReceived[0];
+        applyAbAttrs("PostFaintAbAttr", {
+          pokemon,
+          // TODO: We should refactor lastAttack's sourceId to forbid null and just use undefined
+          attacker: globalScene.getPokemonById(lastAttack.sourceId) ?? undefined,
+          // TODO: improve the way that we provide the move that knocked out the pokemon...
+          move: new PokemonMove(lastAttack.move).getMove(),
+        }); // TODO: is this bang correct?
+      } else {
+        //If killed by indirect damage, apply post-faint abilities without providing a last move
+        applyAbAttrs("PostFaintAbAttr", { pokemon });
+      }
 
-    for (const p of inSpeedOrder(ArenaTagSide.BOTH)) {
-      applyAbAttrs("PostKnockOutAbAttr", { pokemon: p, victim: pokemon });
-    }
-    if (pokemon.turnData.attacksReceived?.length > 0) {
-      const defeatSource = this.source;
+      for (const p of inSpeedOrder(ArenaTagSide.BOTH)) {
+        applyAbAttrs("PostKnockOutAbAttr", { pokemon: p, victim: pokemon });
+      }
+      if (pokemon.turnData.attacksReceived?.length > 0) {
+        const defeatSource = this.source;
 
-      if (defeatSource?.isOnField()) {
-        applyAbAttrs("PostVictoryAbAttr", { pokemon: defeatSource });
-        const pvmove = allMoves[pokemon.turnData.attacksReceived[0].move];
-        const pvattrs = pvmove.getAttrs("PostVictoryStatStageChangeAttr");
-        if (pvattrs.length > 0) {
-          for (const pvattr of pvattrs) {
-            pvattr.applyPostVictory(defeatSource, defeatSource, pvmove);
+        if (defeatSource?.isOnField()) {
+          applyAbAttrs("PostVictoryAbAttr", { pokemon: defeatSource });
+          const pvmove = allMoves[pokemon.turnData.attacksReceived[0].move];
+          const pvattrs = pvmove.getAttrs("PostVictoryStatStageChangeAttr");
+          if (pvattrs.length > 0) {
+            for (const pvattr of pvattrs) {
+              pvattr.applyPostVictory(defeatSource, defeatSource, pvmove);
+            }
           }
         }
       }
+    }
+
+    if (this.queueSoulBondFaint()) {
+      return;
+    }
+    this.finishFaint();
+  }
+
+  private finishFaint(): void {
+    const pokemon = this.faintPokemon!;
+    refreshSoulBondHpForParties();
+    if (!this.wasOnField) {
+      pokemon.lapseTags(BattlerTagLapseType.FAINT);
+      pokemon.doSetStatus(StatusEffect.FAINT);
+      pokemon.destroySubstitute();
+      pokemon.resetTurnData();
+      if (pokemon.isPlayer()) {
+        pokemon.addFriendship(-FRIENDSHIP_LOSS_FROM_FAINT);
+        globalScene.currentBattle.removeFaintedParticipant(pokemon as PlayerPokemon);
+      }
+      void pokemon.updateInfo();
+      this.queueResolvedBattleOutcomes();
+      this.end();
+      return;
     }
 
     const eonFluteGuestOwner = pokemon.isPlayer() ? globalScene.getEonFluteGuestOwner(pokemon) : undefined;
@@ -231,64 +453,7 @@ export class FaintPhase extends PokemonPhase {
       globalScene.phaseManager.queueMessage(i18next.t(lostMessageKey), null, true);
     }
 
-    if (this.player) {
-      const playerIndex =
-        globalScene.getPlayerIndexForPokemon(pokemon) ?? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
-      /** The total number of Pokemon in the player's party that can legally fight */
-      const legalPlayerPokemon = globalScene.getPokemonAllowedInBattle(playerIndex);
-      /** The total number of legal player Pokemon that aren't currently on the field */
-      const legalPlayerPartyPokemon = legalPlayerPokemon.filter(p => !p.isActive(true));
-      if (legalPlayerPokemon.length === 0) {
-        if (
-          globalScene.hasEonFluteProtection(playerIndex)
-          && !(this.preventInstantRevive && globalScene.currentBattle.greatHauntState?.forcedFaintIds.includes(pokemon.id))
-        ) {
-          globalScene.phaseManager.pushNew("EonFluteSummonPhase", playerIndex);
-        } else if (globalScene.queueVsModeVictoryIfDecided()) {
-          // Let the faint animation and field cleanup below finish before the Vs win phase runs.
-        } else if (globalScene.queueVsModeTrainerRoundEndIfPlayerDefeated(playerIndex)) {
-          // In 3P Vs trainer battles, a defeated lane ends the current round so surviving players can reach rewards.
-        } else if (globalScene.areAllActivePlayersOutOfUsablePokemon()) {
-          /** If every active player is out of legal Pokemon, end the game. */
-          globalScene.phaseManager.unshiftNew("GameOverPhase");
-        } else if (
-          globalScene.currentBattle.battleType === BattleType.MYSTERY_ENCOUNTER
-          && globalScene.areAllPlayerFieldOwnersOutOfUsablePokemon()
-        ) {
-          globalScene.phaseManager.clearPhaseQueue(true);
-          handleMysteryEncounterBattleFailed();
-        }
-      } else if (
-        !globalScene.twoPlayerMode
-        && globalScene.currentBattle.double
-        && legalPlayerPokemon.length === 1
-        && legalPlayerPartyPokemon.length === 0
-      ) {
-        /**
-         * If the player has exactly one Pokemon in total at this point in a double battle, and that Pokemon
-         * is already on the field, unshift a phase that moves that Pokemon to center position.
-         */
-        globalScene.phaseManager.unshiftNew("ToggleDoublePositionPhase", true);
-      } else if (legalPlayerPartyPokemon.length > 0) {
-        /**
-         * If previous conditions weren't met, and the player has at least 1 legal Pokemon off the field,
-         * push a phase that prompts the player to summon a Pokemon from their party.
-         */
-        globalScene.phaseManager.pushNew("SwitchPhase", SwitchType.SWITCH, this.fieldIndex, true, false);
-      }
-    } else {
-      globalScene.phaseManager.unshiftNew("VictoryPhase", this.battlerIndex);
-      if ([BattleType.TRAINER, BattleType.MYSTERY_ENCOUNTER].includes(globalScene.currentBattle.battleType)) {
-        const hasReservePartyMember =
-          globalScene
-            .getEnemyParty()
-            .filter(p => p.isActive() && !p.isOnField() && p.trainerSlot === (pokemon as EnemyPokemon).trainerSlot)
-            .length > 0;
-        if (hasReservePartyMember) {
-          globalScene.phaseManager.pushNew("SwitchSummonPhase", SwitchType.SWITCH, this.fieldIndex, -1, false, false);
-        }
-      }
-    }
+    this.queueResolvedBattleOutcomes();
 
     // in double battles redirect potential moves off fainted pokemon
     const allyPokemon = pokemon.getAlly();
@@ -342,6 +507,94 @@ export class FaintPhase extends PokemonPhase {
         },
       });
     });
+  }
+
+  private queueResolvedBattleOutcomes(): void {
+    if (this.bondParent) {
+      return;
+    }
+    this.battleOutcomes.push(this);
+    if (this.bondedFaint?.committed) {
+      this.battleOutcomes.push(this.bondedFaint);
+    }
+  }
+
+  private queueBattleOutcome(defeatedOwners: Set<PlayerIndex>): void {
+    const pokemon = this.faintPokemon!;
+    if (
+      globalScene.phaseManager.hasPhaseOfType("GameOverPhase")
+      || globalScene.phaseManager.hasPhaseOfType("VsModeVictoryPhase")
+    ) {
+      return;
+    }
+    if (this.player) {
+      const owner = globalScene.getPlayerIndexForPokemon(pokemon);
+      if (owner === undefined && !this.wasOnField) {
+        return;
+      }
+      const playerIndex = owner ?? globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
+      /** The total number of Pokemon in the player's party that can legally fight */
+      const legalPlayerPokemon = globalScene.getPokemonAllowedInBattle(playerIndex);
+      /** The total number of legal player Pokemon that aren't currently on the field */
+      const legalPlayerPartyPokemon = legalPlayerPokemon.filter(p => !p.isActive(true));
+      if (legalPlayerPokemon.length === 0) {
+        if (defeatedOwners.has(playerIndex)) {
+          return;
+        }
+        defeatedOwners.add(playerIndex);
+        if (
+          globalScene.hasEonFluteProtection(playerIndex)
+          && !(
+            this.preventInstantRevive && globalScene.currentBattle.greatHauntState?.forcedFaintIds.includes(pokemon.id)
+          )
+        ) {
+          globalScene.phaseManager.pushNew("EonFluteSummonPhase", playerIndex);
+        } else if (globalScene.queueVsModeVictoryIfDecided()) {
+          // Let the faint animation and field cleanup below finish before the Vs win phase runs.
+        } else if (globalScene.queueVsModeTrainerRoundEndIfPlayerDefeated(playerIndex)) {
+          // In 3P Vs trainer battles, a defeated lane ends the current round so surviving players can reach rewards.
+        } else if (globalScene.areAllActivePlayersOutOfUsablePokemon()) {
+          /** If every active player is out of legal Pokemon, end the game. */
+          globalScene.phaseManager.unshiftNew("GameOverPhase");
+        } else if (
+          globalScene.currentBattle.battleType === BattleType.MYSTERY_ENCOUNTER
+          && globalScene.areAllPlayerFieldOwnersOutOfUsablePokemon()
+        ) {
+          globalScene.phaseManager.clearPhaseQueue(true);
+          handleMysteryEncounterBattleFailed();
+        }
+      } else if (
+        this.wasOnField
+        && !globalScene.twoPlayerMode
+        && globalScene.currentBattle.double
+        && legalPlayerPokemon.length === 1
+        && legalPlayerPartyPokemon.length === 0
+      ) {
+        /**
+         * If the player has exactly one Pokemon in total at this point in a double battle, and that Pokemon
+         * is already on the field, unshift a phase that moves that Pokemon to center position.
+         */
+        globalScene.phaseManager.unshiftNew("ToggleDoublePositionPhase", true);
+      } else if (this.wasOnField && legalPlayerPartyPokemon.length > 0) {
+        /**
+         * If previous conditions weren't met, and the player has at least 1 legal Pokemon off the field,
+         * push a phase that prompts the player to summon a Pokemon from their party.
+         */
+        globalScene.phaseManager.pushNew("SwitchPhase", SwitchType.SWITCH, this.fieldIndex, true, false);
+      }
+    } else if (this.wasOnField) {
+      globalScene.phaseManager.unshiftNew("VictoryPhase", this.battlerIndex);
+      if ([BattleType.TRAINER, BattleType.MYSTERY_ENCOUNTER].includes(globalScene.currentBattle.battleType)) {
+        const hasReservePartyMember =
+          globalScene
+            .getEnemyParty()
+            .filter(p => p.isActive() && !p.isOnField() && p.trainerSlot === (pokemon as EnemyPokemon).trainerSlot)
+            .length > 0;
+        if (hasReservePartyMember) {
+          globalScene.phaseManager.pushNew("SwitchSummonPhase", SwitchType.SWITCH, this.fieldIndex, -1, false, false);
+        }
+      }
+    }
   }
 
   private getMewtwoFinalBossFinalFormKey(): MewtwoFinalBossFinalFormKey {
@@ -766,10 +1019,6 @@ export class FaintPhase extends PokemonPhase {
   }
 
   private getFaintPokemon(): Pokemon | undefined {
-    if (this.battlerIndex > BattlerIndex.ENEMY_5) {
-      return globalScene.getPokemonById(this.battlerIndex) ?? undefined;
-    }
-
-    return globalScene.getField()[this.battlerIndex] ?? undefined;
+    return this.faintPokemon;
   }
 }

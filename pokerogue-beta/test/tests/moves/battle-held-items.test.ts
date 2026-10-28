@@ -12,6 +12,7 @@ import { SpeciesId } from "#enums/species-id";
 import { Stat } from "#enums/stat";
 import type { Pokemon } from "#field/pokemon";
 import { BerryModifier, type PokemonHeldItemModifier, TypeGemModifier } from "#modifiers/modifier";
+import { RemoveHeldItemAttr } from "#moves/move";
 import { BattleEndPhase } from "#phases/battle-end-phase";
 import { PokemonData } from "#system/pokemon-data";
 import { GameManager } from "#test/framework/game-manager";
@@ -122,6 +123,22 @@ describe("Moves - Recycle and battle-only item removal", () => {
     const leftovers = player.getHeldItems().find(item => item.type.id === "LEFTOVERS")!;
     removeHeldItemForBattle(player, leftovers);
     expect(allMoves[MoveId.CORROSIVE_GAS].applyConditions(game.field.getEnemyPokemon(), player, -1)).toBe(false);
+  });
+
+  it("Sticky Hold stops protecting a fainted holder, without losing its battle-only item recovery", async () => {
+    game.override.ability(AbilityId.STICKY_HOLD).startingHeldItems([{ name: "LEFTOVERS" }]);
+    await game.classicMode.startBattle(SpeciesId.CHARMANDER);
+    const player = game.field.getPlayerPokemon();
+    const enemy = game.field.getEnemyPokemon();
+    const remove = new RemoveHeldItemAttr();
+    expect(remove.apply(enemy, player, allMoves[MoveId.KNOCK_OFF], [])).toBe(false);
+    player.hp = 0;
+    expect(remove.apply(enemy, player, allMoves[MoveId.KNOCK_OFF], [])).toBe(true);
+    expect(count(player, "LEFTOVERS")).toBe(0);
+    expect(player.battleData.removedHeldItems).toHaveLength(1);
+    restoreBattleRemovedHeldItems(player);
+    restoreBattleRemovedHeldItems(player);
+    expect(count(player, "LEFTOVERS")).toBe(1);
   });
 
   it("temporarily removed items stay absent through switching and restore after escape", async () => {

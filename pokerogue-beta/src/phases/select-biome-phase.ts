@@ -1,4 +1,5 @@
 import type { PlayerIndex } from "#app/battle-scene";
+import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { allBiomes } from "#data/data-lists";
 import { BiomeId } from "#enums/biome-id";
@@ -114,7 +115,7 @@ export class SelectBiomePhase extends BattlePhase {
 
   private getAvailableBiomeLinks(biome: BiomeId): BiomeLinks {
     // Tower access uses a separate skull-holder vote, never an ordinary Map destination.
-    return allBiomes.get(biome).biomeLinks.filter(link =>
+    return [...allBiomes.get(biome).biomeLinks, ...timedEventManager.getEventBiomeLinks(biome)].filter(link =>
       (Array.isArray(link) ? link[0] : link) !== BiomeId.POKEMON_TOWER,
     );
   }

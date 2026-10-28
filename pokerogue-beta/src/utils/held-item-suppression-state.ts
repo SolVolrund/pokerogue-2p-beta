@@ -6,6 +6,10 @@ import type { Pokemon } from "#field/pokemon";
 
 let forecastSuppression: ReadonlyMap<Pokemon, boolean> | undefined;
 
+export function isHeldItemSuppressionForecast(): boolean {
+  return forecastSuppression !== undefined;
+}
+
 /** State checks must not depend on the item classes whose effects they gate. */
 export function areHeldItemEffectsSuppressed(pokemon: Pokemon): boolean {
   const forecast = forecastSuppression?.get(pokemon);

@@ -78,6 +78,9 @@ describe("Clowning Around - Mystery Encounter", () => {
     expect(ClowningAroundEncounter.dialogue.encounterOptionsDialogue?.description).toBe(`${namespace}:description`);
     expect(ClowningAroundEncounter.dialogue.encounterOptionsDialogue?.query).toBe(`${namespace}:query`);
     expect(ClowningAroundEncounter.options.length).toBe(3);
+    expect(ClowningAroundEncounter.spriteConfigs.find(config => config.species === SpeciesId.BLACEPHALON)).toEqual(
+      expect.objectContaining({ isShiny: true, variant: 2 }),
+    );
   });
 
   it("should not run below wave 80", async () => {
@@ -111,6 +114,8 @@ describe("Clowning Around - Mystery Encounter", () => {
     });
     expect(config.pokemonConfigs?.[1]).toEqual({
       species: getPokemonSpecies(SpeciesId.BLACEPHALON),
+      shiny: true,
+      variant: 2,
       customPokemonData: expect.anything(),
       isBoss: true,
       moveSet: [MoveId.TRICK, MoveId.HYPNOSIS, MoveId.SHADOW_BALL, MoveId.MIND_BLOWN],
@@ -173,6 +178,8 @@ describe("Clowning Around - Mystery Encounter", () => {
         new PokemonMove(MoveId.PSYCHIC),
       ]);
       expect(enemyField[1].species.speciesId).toBe(SpeciesId.BLACEPHALON);
+      expect(enemyField[1].isShiny()).toBe(true);
+      expect(enemyField[1].variant).toBe(2);
       expect(enemyField[1].moveset).toEqual([
         new PokemonMove(MoveId.TRICK),
         new PokemonMove(MoveId.HYPNOSIS),

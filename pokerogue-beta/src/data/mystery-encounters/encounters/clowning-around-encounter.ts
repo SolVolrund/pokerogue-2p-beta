@@ -752,6 +752,8 @@ export const ClowningAroundEncounter: MysteryEncounter = MysteryEncounterBuilder
     },
     {
       species: SpeciesId.BLACEPHALON,
+      isShiny: true,
+      variant: 2,
       spriteKey: "",
       fileRoot: "",
       hasShadow: true,
@@ -814,6 +816,8 @@ export const ClowningAroundEncounter: MysteryEncounter = MysteryEncounterBuilder
         {
           // Blacephalon has the random ability from pool, and 2 entirely random types to fit with the theme of the encounter
           species: getPokemonSpecies(SpeciesId.BLACEPHALON),
+          shiny: true,
+          variant: 2,
           customPokemonData: new CustomPokemonData({
             ability,
             types: [firstType, secondType],

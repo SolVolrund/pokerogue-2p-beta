@@ -89,6 +89,10 @@ describe("Clowning Around multiplayer fields and trials", () => {
     expect(scene.getPlayerFieldOwners()).toEqual(owners);
     expect(scene.getEnemyParty()).toHaveLength(expectedEnemies);
     expect(scene.getEnemyField()).toHaveLength(expectedEnemies);
+    const blacephalon = scene.getEnemyParty().filter(pokemon => pokemon.species.speciesId === SpeciesId.BLACEPHALON);
+    expect(blacephalon).toHaveLength(1);
+    expect(blacephalon[0].isShiny()).toBe(true);
+    expect(blacephalon[0].variant).toBe(2);
     const playerField = scene.getPlayerField();
     expect(new Set(playerField).size).toBe(owners.length);
     for (let i = 0; i < owners.length; i++) {
@@ -263,11 +267,12 @@ describe("Clowning Around multiplayer fields and trials", () => {
     const party = scene.getPlayerParty(2);
     party[1].hp = 0;
     vi.spyOn(party[0], "isActive").mockReturnValue(true);
-    vi.spyOn(party[1], "faintCry").mockImplementation(() => {});
+    vi.spyOn(party[1], "isOnField").mockReturnValue(true);
+    vi.spyOn(party[1], "faintCry").mockImplementation(callback => callback?.());
     const push = vi.spyOn(scene.phaseManager, "pushNew");
     const phase = new FaintPhase(scene.getPlayerBattlerIndex(1), true);
-    phase["doFaint"]();
-    expect(push).toHaveBeenCalledWith("SwitchPhase", SwitchType.SWITCH, 1, true, false);
+    phase.start();
+    await vi.waitFor(() => expect(push).toHaveBeenCalledWith("SwitchPhase", SwitchType.SWITCH, 1, true, false));
   });
 
   it("keeps lane restrictions in ordinary Vs battles", async () => {

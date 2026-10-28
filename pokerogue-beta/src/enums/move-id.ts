@@ -1876,4 +1876,6 @@ export enum MoveId {
   /**{@link https://bulbapedia.bulbagarden.net/wiki/Nihil_Light_(move) | Source} */
   NIHIL_LIGHT,
   VEEVEE_ANTE,
+  /** Mew's custom composite move. Keep custom IDs appended for save compatibility. */
+  YES,
 }

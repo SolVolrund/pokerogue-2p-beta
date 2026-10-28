@@ -1436,8 +1436,14 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       starterAttributes.female !== undefined
       && !(starterAttributes.female ? caughtAttr & DexAttr.FEMALE : caughtAttr & DexAttr.MALE)
     ) {
-      // requested gender wasn't unlocked, purging setting
-      starterAttributes.female = undefined;
+      // Challenges may restrict a previously selected gender (e.g. Snorunt in mono-gen IV).
+      if (starterAttributes.female && caughtAttr & DexAttr.MALE) {
+        starterAttributes.female = false;
+      } else if (!starterAttributes.female && caughtAttr & DexAttr.FEMALE) {
+        starterAttributes.female = true;
+      } else {
+        starterAttributes.female = undefined;
+      }
     }
 
     if (starterAttributes.ability !== undefined) {
@@ -1611,9 +1617,8 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   isSameSpeciesEggAvailable(speciesId: SpeciesId): boolean {
     const starterData = globalScene.gameData.starterData[speciesId];
     const starterCost = speciesDataRegistry.getStarterCost(speciesId);
-    const hatchedCount = globalScene.gameData.dexData[speciesId].hatchedCount;
 
-    return starterCost != null && starterData.candyCount >= getSameSpeciesEggCandyCounts(starterCost, hatchedCount);
+    return starterCost != null && starterData.candyCount >= getSameSpeciesEggCandyCounts(starterCost);
   }
 
   /**
@@ -2515,10 +2520,8 @@ export class StarterSelectUiHandler extends MessageUiHandler {
 
             // Same species egg menu option.
             const lastSpeciesId = this.lastSpecies.speciesId;
-            const hatchedCount = globalScene.gameData.dexData[lastSpeciesId].hatchedCount;
             const sameSpeciesEggCost = getSameSpeciesEggCandyCounts(
               speciesDataRegistry.getStarterCost(lastSpeciesId),
-              hatchedCount,
             );
             options.push({
               label: `×${sameSpeciesEggCost} ${i18next.t("starterSelectUiHandler:sameSpeciesEgg")}`,
@@ -6394,6 +6397,9 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     this.starterSelectContainer.setVisible(false);
     this.blockInput = false;
 
+    // Clearing the party must not select another starter or rewrite its preferences.
+    this.starterIconsCursorObj.setVisible(false);
+    this.startCursorObj.setVisible(false);
     while (this.starterSpecies.length > 0) {
       this.popStarter(this.starterSpecies.length - 1);
     }

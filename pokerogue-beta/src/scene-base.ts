@@ -1,3 +1,4 @@
+import { timedEventManager } from "#app/global-event-manager";
 import { coerceArray } from "#utils/array";
 import { getCachedUrl } from "#utils/fetch-utils";
 
@@ -28,6 +29,11 @@ export class SceneBase extends Phaser.Scene {
   }
 
   public loadImage(key: string, folder: string, filename = `${key}.png`, options?: { legacy?: boolean }): this {
+    const replacement = timedEventManager.getEventImageReplacement(key);
+    if (replacement) {
+      folder = "events";
+      filename = `${replacement}.png`;
+    }
     this.load.image(key, getCachedUrl(`images/${folder}/${filename}`));
     if (options?.legacy !== false && folder.startsWith("ui")) {
       folder = folder.replace("ui", "ui/legacy");
@@ -52,6 +58,11 @@ export class SceneBase extends Phaser.Scene {
   }
 
   public loadAtlas(key: string, folder: string, filenameRoot = key): this {
+    const replacement = timedEventManager.getEventImageReplacement(key);
+    if (replacement) {
+      folder = "events";
+      filenameRoot = replacement;
+    }
     if (folder) {
       folder += "/";
     }

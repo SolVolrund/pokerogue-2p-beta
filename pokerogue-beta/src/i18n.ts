@@ -89,7 +89,7 @@ const fonts: LoadingFontFaceProperty[] = [
     extraOptions: { sizeAdjust: "40%" },
   },
   {
-    face: new FontFace("pkmnems", "url(./fonts/terrible-thaifix.ttf)", { unicodeRange: unicodeRanges.thai }),
+    face: new FontFace("pkmnems", `url(${getCachedUrl("./fonts/terrible-thaifix.ttf")})`, { unicodeRange: unicodeRanges.thai }),
     extraOptions: { sizeAdjust: "133%" },
   },
 ];

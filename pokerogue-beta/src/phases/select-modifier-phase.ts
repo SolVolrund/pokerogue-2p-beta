@@ -41,6 +41,8 @@ import {
 } from "#modifiers/modifier";
 import type { CustomModifierSettings, ModifierType } from "#modifiers/modifier-type";
 import {
+  EvolutionItemModifierType,
+  FormChangeItemModifierType,
   FusePokemonModifierType,
   getDowsingItemOptions,
   getPlayerModifierTypeOptions,
@@ -73,6 +75,7 @@ import {
   chooseComputerPartnerRewardOption,
   getComputerPartnerShopReserve,
 } from "#utils/computer-partner-reward-ai";
+import { isDestinyKnot } from "#utils/soul-bond";
 import i18next from "i18next";
 
 export type ModifierSelectCallback = (rowCursor: number, cursor: number) => boolean;
@@ -495,7 +498,9 @@ export class SelectModifierPhase extends BattlePhase {
   }
 
   private applyComputerPartnerRewardModifier(modifier: Modifier): void {
-    this.applyModifier(modifier, -1, true);
+    if (!this.applyModifier(modifier, -1, true) && isDestinyKnot(modifier)) {
+      this.skipComputerPartnerReward();
+    }
   }
 
   private createComputerPartnerChoiceModifier(
@@ -1249,8 +1254,12 @@ export class SelectModifierPhase extends BattlePhase {
    * @param cost - The cost of the modifier if it was purchased, or -1 if selected as the modifier reward
    * @param playSound - Whether the 'obtain modifier' sound should be played when adding the modifier.
    */
-  private applyModifier(modifier: Modifier, cost = -1, playSound = false): void {
+  private applyModifier(modifier: Modifier, cost = -1, playSound = false): boolean {
     const result = globalScene.addModifier(modifier, false, playSound, undefined, undefined, cost, this.playerIndex);
+    if (!result && isDestinyKnot(modifier)) {
+      globalScene.ui.playError();
+      return false;
+    }
     if (result) {
       globalScene.dismissEonFluteGuestIfOwnerRevived(this.playerIndex);
     }
@@ -1280,6 +1289,7 @@ export class SelectModifierPhase extends BattlePhase {
       globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("reward-picked");
       super.end();
     }
+    return result;
   }
 
   private applyPartnerModifier(modifier: Modifier, cost: number, targetPlayerIndex: PlayerIndex): void {
@@ -1362,7 +1372,11 @@ export class SelectModifierPhase extends BattlePhase {
         ? PartyUiMode.TM_MODIFIER
         : isRememberMoveModifier
           ? PartyUiMode.REMEMBER_MOVE_MODIFIER
-          : PartyUiMode.MODIFIER;
+          : modifierType instanceof EvolutionItemModifierType
+            ? PartyUiMode.EVO_ITEM_MODIFIER
+            : modifierType instanceof FormChangeItemModifierType
+              ? PartyUiMode.FORM_CHANGE_ITEM_MODIFIER
+              : PartyUiMode.MODIFIER;
     const tmMoveId = isTmModifier ? (modifierType as TmModifierType).moveId : undefined;
     globalScene.ui
       .setModeWithoutClear(
@@ -1377,7 +1391,9 @@ export class SelectModifierPhase extends BattlePhase {
                 : isRememberMoveModifier
                   ? modifierType.newModifier(party[slotIndex], option as number)
                   : modifierType.newModifier(party[slotIndex]);
-              this.applyModifier(modifier!, cost, true); // TODO: is the bang correct?
+              if (!this.applyModifier(modifier!, cost, true) && modifier && isDestinyKnot(modifier)) {
+                this.resetModifierSelect(modifierSelectCallback);
+              }
             });
           } else {
             this.resetModifierSelect(modifierSelectCallback);

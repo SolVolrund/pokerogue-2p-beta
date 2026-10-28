@@ -55,6 +55,7 @@ import {
   DamageMoneyRewardModifier,
   DoubleBattleChanceBoosterModifier,
   DowsingMachineModifier,
+  DestinyKnotModifier,
   EnemyAttackStatusEffectChanceModifier,
   EnemyDamageBoosterModifier,
   EnemyDamageReducerModifier,
@@ -162,6 +163,7 @@ import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
 import { getModifierPoolForType, getModifierType } from "#utils/modifier-utils";
 import { rollRewardTier } from "#utils/reward-tier";
 import { toCamelCase } from "#utils/strings";
+import { canReceiveThread, getAvailableThreadColors, isThreadColor, type ThreadColor } from "#utils/soul-bond";
 import {
   getReceivableZCrystalsForParty,
   getReceivableZCrystalsForPokemon,
@@ -954,6 +956,33 @@ export class TempStatStageBoosterModifierType extends ModifierType implements Ge
 
   getPregenArgs(): any[] {
     return [this.stat];
+  }
+}
+
+export class DestinyKnotModifierType extends PokemonHeldItemModifierType implements GeneratedPersistentModifierType {
+  constructor(public color: ThreadColor) {
+    super(
+      "modifierType:ModifierType.DestinyKnotModifierType",
+      `destiny_knot_${color}`,
+      (type, args) => new DestinyKnotModifier(type, (args[0] as Pokemon).id, color),
+      "destiny_knot",
+    );
+    this.selectFilter = pokemon =>
+      canReceiveThread(pokemon, color)
+        ? null
+        : i18next.t("modifierType:ModifierType.PokemonHeldItemModifierType.extra.inoperable", {
+            pokemonName: getPokemonNameWithAffix(pokemon),
+          });
+  }
+
+  get name(): string {
+    return i18next.t("modifierType:ModifierType.DestinyKnotModifierType.name", {
+      color: i18next.t(`modifierType:ModifierType.DestinyKnotModifierType.colors.${this.color}`),
+    });
+  }
+
+  getPregenArgs(): any[] {
+    return [this.color];
   }
 }
 
@@ -2431,7 +2460,7 @@ export type GeneratorModifierOverride = {
       type?: FormChangeItem;
     }
   | {
-      name: keyof Pick<typeof modifierTypeInitObj, "TM_COMMON" | "TM_GREAT" | "TM_ULTRA">;
+      name: keyof Pick<typeof modifierTypeInitObj, "TM_COMMON" | "TM_GREAT" | "TM_ULTRA" | "TM_MASTER">;
       type?: MoveId;
     }
 );
@@ -2774,6 +2803,15 @@ const modifierTypeInitObj = Object.freeze({
       return new TerastallizeModifierType(shardType);
     }),
 
+  DESTINY_KNOT: () => new ModifierTypeGenerator((party, pregenArgs) => {
+    // Explicit variants also reconstruct saved items and encounter rewards, independent of drop availability.
+    if (pregenArgs) {
+      return isThreadColor(pregenArgs[0]) ? new DestinyKnotModifierType(pregenArgs[0]) : null;
+    }
+    const colors = getAvailableThreadColors(party);
+    return colors.length > 0 ? new DestinyKnotModifierType(randSeedItem(colors)) : null;
+  }),
+
   BERRY: () =>
     new ModifierTypeGenerator((_party: readonly Pokemon[], pregenArgs?: any[]) => {
       if (pregenArgs && pregenArgs.length === 1 && pregenArgs[0] in BerryType) {
@@ -2787,6 +2825,7 @@ const modifierTypeInitObj = Object.freeze({
   TM_COMMON: () => new TmModifierTypeGenerator(ModifierTier.COMMON),
   TM_GREAT: () => new TmModifierTypeGenerator(ModifierTier.GREAT),
   TM_ULTRA: () => new TmModifierTypeGenerator(ModifierTier.ULTRA),
+  TM_MASTER: () => new TmModifierTypeGenerator(ModifierTier.MASTER),
 
   MEMORY_MUSHROOM: () => new RememberMoveModifierType("modifierType:ModifierType.MEMORY_MUSHROOM", "big_mushroom"),
 

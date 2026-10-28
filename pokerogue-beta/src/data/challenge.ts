@@ -1840,6 +1840,7 @@ export class AbilityRandomizerChallenge extends Challenge {
         AbilityId.BATTLE_BOND,
         AbilityId.DISGUISE,
         AbilityId.ICE_FACE,
+        AbilityId.SHIELDS_DOWN,
         AbilityId.ZERO_TO_HERO,
         AbilityId.TERA_SHIFT,
         AbilityId.TERA_SHELL,

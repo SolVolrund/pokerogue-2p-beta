@@ -2,6 +2,7 @@ import { PostBattleLootAbAttr } from "#abilities/ab-attrs";
 import { Battle } from "#app/battle";
 import { allMoves, modifierTypes } from "#data/data-lists";
 import { PokemonBattleData } from "#data/pokemon/pokemon-data";
+import { AbilityId } from "#enums/ability-id";
 import { BattleType } from "#enums/battle-type";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";
@@ -190,6 +191,49 @@ describe("Battle-only held item recovery", () => {
     expect(ally.getHeldItems()).toHaveLength(2);
     game.scene.recoverBattleTransferredHeldItems([0, 1]);
     expectRecovered(original, ally);
+  });
+
+  it.each([0, 1, 2] as const)("lets player %i pick up detached loot without taking another player's loan", owner => {
+    game.scene.configureTwoPlayerMode(true, 6, false, 3);
+    const third = game.scene.addPlayerPokemon(getPokemonSpecies(SpeciesId.BUNEARY), 50);
+    game.scene.getPlayerParty(2).push(third);
+    game.scene.field.add(third);
+    for (const index of [0, 1, 2] as const) {
+      game.field.mockAbility(game.scene.getPlayerParty(index)[0], AbilityId.BALL_FETCH);
+    }
+    const original = game.scene.getPlayerParty(0)[0];
+    const collector = game.scene.getPlayerParty(owner)[0];
+    game.field.mockAbility(collector, AbilityId.PICKUP);
+    const enemy = game.scene.getEnemyParty()[0];
+    const tail = addItem(original, "LAGGING_TAIL");
+    expect(game.scene.tryTransferHeldItemModifier(tail, enemy, false)).toBe(true);
+    const loan = enemy.getHeldItems()[0];
+    const loot = addItem(enemy, "LEFTOVERS");
+    game.scene.currentBattle.addPostBattleLoot(enemy);
+    expect(game.scene.removeModifier(loot, true)).toBe(true);
+    // Capturing the other enemy can leave a stale holder on an item no longer in its inventory.
+    loot.pokemonId = enemy.id;
+    game.scene.currentBattle.postBattleLoot.push(loan);
+    expect(game.scene.canTransferHeldItemModifier(loot, collector)).toBe(false);
+
+    finishBattle();
+
+    expect(collector.getHeldItems().filter(item => item.type.id === "LEFTOVERS")).toHaveLength(1);
+    const recovered = original.getHeldItems().filter(item => item.type.id === "LAGGING_TAIL");
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0].recoverableBattleTransfer).toBeUndefined();
+    expect(game.scene.currentBattle.postBattleLoot).toHaveLength(0);
+    expect(game.scene.findModifiers(() => true, false)).toHaveLength(0);
+    for (const index of [0, 1, 2] as const) {
+      if (index !== owner) {
+        expect(
+          game.scene
+            .getPlayerParty(index)[0]
+            .getHeldItems()
+            .some(item => item.type.id === "LEFTOVERS"),
+        ).toBe(false);
+      }
+    }
   });
 
   it("preserves ownership when a recovery attempt fails, then restores without duplication", () => {

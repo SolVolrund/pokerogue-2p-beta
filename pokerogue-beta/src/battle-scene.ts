@@ -250,6 +250,13 @@ import {
 } from "#utils/player-card";
 import { normalizePlayerDisplayName } from "#utils/player-display-name";
 import { decodeNickname, getPokemonSpecies } from "#utils/pokemon-utils";
+import {
+  canReceiveThread,
+  invalidateThreadInventories,
+  isDestinyKnot,
+  refreshSoulBondHpForParties,
+  withSoulBondStatRefresh,
+} from "#utils/soul-bond";
 import { capitalizeFirstLetterOnly } from "#utils/strings";
 import i18next from "i18next";
 import Phaser from "phaser";
@@ -5448,6 +5455,17 @@ export class BattleScene extends SceneBase {
     if (!modifier || !modifier.type) {
       return false;
     }
+    if (isDestinyKnot(modifier)) {
+      const pokemon = this.getPokemonById(modifier.pokemonId);
+      if (
+        !pokemon
+        || this.getPlayerIndexForPokemon(pokemon) !== playerIndex
+        || modifier.stackCount !== 1
+        || !canReceiveThread(pokemon, modifier.color)
+      ) {
+        return false;
+      }
+    }
     let success = false;
     const soundName = modifier.type.soundName;
     if (!this.isComputerPartnerPlayer(playerIndex)) {
@@ -5549,6 +5567,9 @@ export class BattleScene extends SceneBase {
   }
 
   addEnemyModifier(modifier: PersistentModifier, ignoreUpdate?: boolean, instant?: boolean): Promise<void> {
+    if (isDestinyKnot(modifier)) {
+      return Promise.resolve();
+    }
     return new Promise(resolve => {
       const modifiersToRemove: PersistentModifier[] = [];
       if ((modifier as PersistentModifier).add(this.enemyModifiers, false)) {
@@ -5642,6 +5663,15 @@ export class BattleScene extends SceneBase {
     }
 
     const source = itemModifier.pokemonId ? (itemModifier.getPokemon() ?? null) : null;
+    if (
+      isDestinyKnot(itemModifier)
+      && (itemModifier.stackCount !== 1
+        || source === target
+        || source?.isEnemy()
+        || !canReceiveThread(target, itemModifier.color, itemModifier))
+    ) {
+      return false;
+    }
     const cancelled = new BooleanHolder(false);
 
     if (source && source.isPlayer() !== target.isPlayer()) {
@@ -5882,6 +5912,15 @@ export class BattleScene extends SceneBase {
 
     const mod = itemModifier.clone() as PokemonHeldItemModifier;
     const source = mod.pokemonId ? mod.getPokemon() : null;
+    if (
+      isDestinyKnot(itemModifier)
+      && (itemModifier.stackCount !== 1
+        || source === target
+        || source?.isEnemy()
+        || !canReceiveThread(target, itemModifier.color, itemModifier))
+    ) {
+      return false;
+    }
     const cancelled = new BooleanHolder(false);
 
     if (source && source.isPlayer() !== target.isPlayer()) {
@@ -6049,6 +6088,7 @@ export class BattleScene extends SceneBase {
 
   // TODO: Document this
   updateModifiers(player = true, instant?: boolean, playerIndex: PlayerIndex = this.activePlayerIndex): void {
+    invalidateThreadInventories();
     const modifiers = this.getModifierList(player, playerIndex);
     for (let m = 0; m < modifiers.length; m++) {
       const modifier = modifiers[m];
@@ -6080,6 +6120,7 @@ export class BattleScene extends SceneBase {
     }
 
     this.updatePartyForModifiers(player ? this.getPlayerParty(playerIndex) : this.getEnemyParty(), instant);
+    refreshSoulBondHpForParties();
     if (!player || !this.twoPlayerMode || playerIndex === this.activePlayerIndex) {
       if (player) {
         this.modifierBar.updateModifiers(this.getPlayerModifierBarModifiers(playerIndex));
@@ -6094,12 +6135,8 @@ export class BattleScene extends SceneBase {
 
   updatePartyForModifiers(party: Pokemon[], instant?: boolean): Promise<void> {
     return new Promise(resolve => {
-      Promise.allSettled(
-        party.map(p => {
-          p.calculateStats();
-          return p.updateInfo(instant);
-        }),
-      ).then(() => resolve());
+      withSoulBondStatRefresh(() => party.forEach(p => p.calculateStats()));
+      Promise.allSettled(party.map(p => p.updateInfo(instant))).then(() => resolve());
     });
   }
 
@@ -6125,6 +6162,9 @@ export class BattleScene extends SceneBase {
     const modifierIndex = modifiers.indexOf(modifier);
     if (modifierIndex > -1) {
       modifiers.splice(modifierIndex, 1);
+      if (isDestinyKnot(modifier)) {
+        refreshSoulBondHpForParties();
+      }
       if (modifier instanceof PokemonFormChangeItemModifier) {
         const pokemon = this.getPokemonById(modifier.pokemonId);
         if (pokemon) {

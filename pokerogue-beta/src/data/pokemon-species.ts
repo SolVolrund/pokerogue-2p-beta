@@ -530,11 +530,17 @@ export abstract class PokemonSpeciesForm {
       case SpeciesId.JELLICENT:
         ret += female ? "-f" : "";
         break;
+      case SpeciesId.HYPNO:
+      case SpeciesId.OCTILLERY:
+        // Female rare/epic frames are not packed in the shipped icon atlases yet.
+        ret += female && !isVariant ? "-f" : "";
+        break;
       case SpeciesId.MEGANIUM:
+      case SpeciesId.STEELIX:
       case SpeciesId.BLAZIKEN:
       case SpeciesId.GARCHOMP:
       case SpeciesId.PYROAR: {
-        const formKey = this.getFormKey();
+        const formKey = this.getFormKey(formIndex);
         if (formKey !== SpeciesFormKey.MEGA && formKey !== SpeciesFormKey.MEGA_Z) {
           ret += female ? "-f" : "";
         }

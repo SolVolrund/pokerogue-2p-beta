@@ -55,6 +55,14 @@ export class BattleEndPhase extends BattlePhase {
       globalScene.phaseManager.unshiftNew("GameOverPhase", true);
     }
 
+    // Loot is no longer held: stale holder IDs can block Pickup after another enemy is captured.
+    // Borrowed items retain their ownership data for the separate recovery pass below.
+    for (const item of globalScene.currentBattle.postBattleLoot) {
+      if (!item.recoverableBattleTransfer) {
+        item.pokemonId = -1;
+      }
+    }
+
     const playerIndexes = globalScene.twoPlayerMode
       ? globalScene.getBattleParticipantPlayerIndexes()
       : [globalScene.activePlayerIndex];

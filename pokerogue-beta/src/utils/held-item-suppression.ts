@@ -2,39 +2,69 @@ import { globalScene } from "#app/global-scene";
 import { TerrainType } from "#data/terrain";
 import { AbilityId } from "#enums/ability-id";
 import { BattlerTagType } from "#enums/battler-tag-type";
+import { Stat } from "#enums/stat";
 import { WeatherType } from "#enums/weather-type";
 import type { Pokemon } from "#field/pokemon";
 import { BoosterEnergyModifier, PokemonNatureWeightModifier } from "#modifiers/modifier";
 import { areHeldItemEffectsSuppressed, withHeldItemSuppressionState } from "#utils/held-item-suppression-state";
+import { getSoulBondStatBonus, isDestinyKnot, refreshSoulBondHpForParties } from "#utils/soul-bond";
 
 /** Soul Dew is cached in the holder's stats, unlike most combat item effects. */
 export function refreshSuppressedHeldItemStats(pokemon: Pokemon): void {
   if (pokemon.getHeldItems().some(item => item instanceof PokemonNatureWeightModifier)) {
     pokemon.calculateStats();
   }
+  refreshSoulBondHpForParties();
 }
 
 /** Synchronous damage previews only: never add tags or activate/deactivate real item effects. */
 export function withHeldItemSuppressionForecast<T>(states: ReadonlyMap<Pokemon, boolean>, evaluate: () => T): T {
-  const cachedStats = [...states]
-    .filter(
-      ([pokemon, suppressed]) =>
-        suppressed !== areHeldItemEffectsSuppressed(pokemon)
-        && pokemon.getHeldItems().some(item => item instanceof PokemonNatureWeightModifier),
-    )
-    .map(([pokemon]) => ({ pokemon, stats: pokemon.stats, hp: pokemon.hp }));
+  // Include benched partners even when the real suppression state currently hides their bond.
+  const candidates = new Set([
+    ...states.keys(),
+    ...globalScene.getActivePlayerIndexes().flatMap(owner => globalScene.getPlayerParty(owner)),
+  ]);
+  const cachedStats = [...candidates].flatMap(pokemon => {
+    const items = pokemon.getHeldItems();
+    const recalculate =
+      states.has(pokemon)
+      && states.get(pokemon) !== areHeldItemEffectsSuppressed(pokemon)
+      && items.some(item => item instanceof PokemonNatureWeightModifier);
+    if (!recalculate && !pokemon.soulBondHpBonus && !items.some(isDestinyKnot)) {
+      return [];
+    }
+    return [
+      {
+        pokemon,
+        stats: pokemon.stats,
+        hp: pokemon.hp,
+        soulBondHpBonus: pokemon.soulBondHpBonus,
+        maxHp: pokemon.stats[Stat.HP] + pokemon.soulBondHpBonus,
+        recalculate,
+      },
+    ];
+  });
   try {
     return withHeldItemSuppressionState(states, () => {
-      for (const { pokemon, stats } of cachedStats) {
-        pokemon.stats = [...stats];
-        pokemon.calculateStats();
+      for (const { pokemon, stats, recalculate } of cachedStats) {
+        if (recalculate) {
+          pokemon.stats = [...stats];
+          pokemon.calculateStats();
+        }
+      }
+      // Real HP refresh is disabled in forecasts. Rescale once, after all raw stats are ready.
+      for (const { pokemon, hp, maxHp } of cachedStats) {
+        pokemon.soulBondHpBonus = getSoulBondStatBonus(pokemon, Stat.HP);
+        const forecastMaxHp = pokemon.stats[Stat.HP] + pokemon.soulBondHpBonus;
+        pokemon.hp = hp <= 0 ? 0 : Math.max(1, Math.min(forecastMaxHp, Math.floor((hp * forecastMaxHp) / maxHp)));
       }
       return evaluate();
     });
   } finally {
-    for (const { pokemon, stats, hp } of cachedStats) {
+    for (const { pokemon, stats, hp, soulBondHpBonus } of cachedStats) {
       pokemon.stats = stats;
       pokemon.hp = hp;
+      pokemon.soulBondHpBonus = soulBondHpBonus;
     }
   }
 }

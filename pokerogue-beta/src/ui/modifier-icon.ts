@@ -2,6 +2,15 @@ import { globalScene } from "#app/global-scene";
 
 const STANDALONE_ITEM_ICONS = new Set([
   "dowsing_machine",
+  "destiny_knot_red",
+  "destiny_knot_pink",
+  "destiny_knot_gold",
+  "destiny_knot_lime",
+  "destiny_knot_sky",
+  "destiny_knot_blue",
+  "destiny_knot_violet",
+  "destiny_knot_silver",
+  "destiny_knot_green",
   "ominous_skull",
   "portent_skull",
   "malefic_skull",

@@ -80,6 +80,10 @@ export const PartyUiMode = {
    * This type of selection can be cancelled.
    */
   ENEMY_SWITCH: 14,
+  /** Select a compatible Pokemon for an evolution item. */
+  EVO_ITEM_MODIFIER: 15,
+  /** Select a compatible Pokemon for a form-change item. */
+  FORM_CHANGE_ITEM_MODIFIER: 16,
 } as const;
 
 export type PartyUiMode = ObjectValues<typeof PartyUiMode>;

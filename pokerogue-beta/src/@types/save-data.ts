@@ -64,6 +64,8 @@ export interface ComputerPartnerDexProgressEntry {
 }
 
 export interface ComputerPartnerStarterProgressEntry {
+  /** Same-species egg shiny/variant pity. Absent in legacy partner profiles. */
+  pity?: [number, number];
   eggMoves: number;
   candyCount: number;
   friendship: number;
@@ -253,6 +255,8 @@ export interface RunEntry {
 }
 
 export interface StarterDataEntry {
+  /** Same-species egg misses: [non-shiny eggs, shinies without a missing variant]. Absent in legacy saves. */
+  pity?: [number, number];
   moveset: StarterMoveset | StarterFormMoveData | null;
   eggMoves: number;
   candyCount: number;

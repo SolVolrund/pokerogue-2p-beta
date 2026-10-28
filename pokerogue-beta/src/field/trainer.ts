@@ -1224,7 +1224,16 @@ export class Trainer extends Phaser.GameObjects.Container {
                   evoThresholdKind,
                 ),
               )
-            : this.genNewPartyMemberSpecies(level, strength, undefined, this.config, template, evoThresholdKind);
+            : this.genNewPartyMemberSpecies(
+                level,
+                strength,
+                undefined,
+                this.config,
+                template,
+                evoThresholdKind,
+                trainerSlot,
+                index,
+              );
 
         // If the species is from newSpeciesPool, we need to adjust it based on the level and strength
         if (newSpeciesPool) {
@@ -1307,7 +1316,16 @@ export class Trainer extends Phaser.GameObjects.Container {
                 evoThresholdKind,
               ),
             )
-          : this.genNewPartyMemberSpecies(level, strength, undefined, config, template, evoThresholdKind);
+          : this.genNewPartyMemberSpecies(
+              level,
+              strength,
+              undefined,
+              config,
+              template,
+              evoThresholdKind,
+              trainerSlot,
+              battlePartyIndex,
+            );
 
         ret = globalScene.addEnemyPokemon(species, level, trainerSlot);
       },
@@ -1339,6 +1357,8 @@ export class Trainer extends Phaser.GameObjects.Container {
     config: TrainerConfig = this.config,
     template: TrainerPartyTemplate = this.getPartyTemplate(config),
     evoThresholdKind = template.evoLevelThresholdKind,
+    trainerSlot: TrainerSlot = TrainerSlot.TRAINER,
+    beforeIndex = globalScene.currentBattle.enemyParty.length,
   ): PokemonSpecies {
     const battle = globalScene.currentBattle;
     let baseSpecies: PokemonSpecies;
@@ -1409,39 +1429,51 @@ export class Trainer extends Phaser.GameObjects.Container {
       }
     }
 
-    // Prompts reroll of party member species if species already present in the enemy party
-    if (this.checkDuplicateSpecies(baseSpecies.speciesId, config)) {
+    // Only compare the resolved evolution with this trainer's already generated members.
+    if (!retry && this.checkDuplicateSpecies(ret.speciesId, trainerSlot, beforeIndex)) {
       console.log("Duplicate species detected, prompting reroll...");
       retry = true;
     }
 
     if (retry && (attempt ?? 0) < 10) {
       console.log("Rerolling party member...");
-      ret = this.genNewPartyMemberSpecies(level, strength, (attempt ?? 0) + 1, config, template, evoThresholdKind);
+      ret = this.genNewPartyMemberSpecies(
+        level,
+        strength,
+        (attempt ?? 0) + 1,
+        config,
+        template,
+        evoThresholdKind,
+        trainerSlot,
+        beforeIndex,
+      );
     }
 
     return ret;
   }
 
   /**
-   * Checks if the enemy trainer already has the Pokemon species in their party
-   * @param baseSpecies - The base {@linkcode SpeciesId} of the current Pokemon
-   * @returns `true` if the species is already present in the party
+   * Check for the same species or a direct ancestor/descendant on this trainer's team.
+   * Split evolutions, other trainers, and not-yet-generated signature choices are independent.
+   * Reading the party avoids stale bookkeeping when an encounter is loaded or regenerated.
    */
-  checkDuplicateSpecies(baseSpecies: SpeciesId, config: TrainerConfig = this.config): boolean {
-    const staticSpecies = (signatureSpecies[TrainerType[config.trainerType]] ?? []).flat(1).map(s => {
-      let root = s;
-      while (speciesDataRegistry.hasPrevolution(root)) {
-        root = speciesDataRegistry.getPrevolution(root)!;
+  checkDuplicateSpecies(
+    speciesId: SpeciesId,
+    trainerSlot: TrainerSlot = TrainerSlot.TRAINER,
+    beforeIndex = globalScene.currentBattle.enemyParty.length,
+  ): boolean {
+    const prevolutions = speciesDataRegistry.getPrevolutionChain(speciesId);
+    return globalScene.currentBattle.enemyParty.slice(0, beforeIndex).some(pokemon => {
+      if (pokemon.trainerSlot !== trainerSlot) {
+        return false;
       }
-      return root;
+      const existingSpecies = pokemon.species.speciesId;
+      return (
+        existingSpecies === speciesId
+        || prevolutions.includes(existingSpecies)
+        || speciesDataRegistry.getPrevolutionChain(existingSpecies).includes(speciesId)
+      );
     });
-
-    const currentSpecies = globalScene.getEnemyParty().map(p => {
-      return p.species.getRootSpeciesId();
-    });
-
-    return currentSpecies.includes(baseSpecies) || staticSpecies.includes(baseSpecies);
   }
 
   getPartyMemberMatchupScores(

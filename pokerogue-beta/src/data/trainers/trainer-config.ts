@@ -233,7 +233,7 @@ export class TrainerConfig {
 
     const replacement = timedEventManager.getEventTrainerSpriteReplacement(this.trainerType);
     if (replacement) {
-      ret = replacement;
+      ret = replacement === "halloween_rival" ? `${replacement}_${female ? "f" : "m"}` : replacement;
     }
 
     return ret;
@@ -1899,7 +1899,7 @@ export const trainerConfigs: TrainerConfigs = {
       trainerPartyTemplates.ONE_AVG,
       trainerPartyTemplates.ONE_STRONG,
       trainerPartyTemplates.TWO_AVG,
-      trainerPartyTemplates.TWO_WEAK_SAME_ONE_AVG,
+      trainerPartyTemplates.TWO_WEAK_ONE_AVG,
     )
     .setSpeciesPools({
       [TrainerPoolTier.COMMON]: [
@@ -1921,8 +1921,8 @@ export const trainerConfigs: TrainerConfigs = {
     .setMoneyMultiplier(1.55)
     .setEncounterBgm(TrainerType.PARASOL_LADY)
     .setPartyTemplates(
-      trainerPartyTemplates.TWO_AVG_SAME_ONE_AVG,
-      trainerPartyTemplates.TWO_AVG_SAME_ONE_STRONG,
+      trainerPartyTemplates.THREE_AVG,
+      trainerPartyTemplates.TWO_AVG_ONE_STRONG,
       trainerPartyTemplates.TWO_AVG,
       trainerPartyTemplates.FOUR_WEAK,
       trainerPartyTemplates.ONE_STRONG,
@@ -5215,6 +5215,7 @@ export const trainerConfigs: TrainerConfigs = {
       getRandomPartyMemberFunc([SpeciesId.RESHIRAM], TrainerSlot.TRAINER, true, p => {
         p.generateAndPopulateMoveset();
         p.pokeball = PokeballType.MASTER_BALL;
+        replaceInMoveset(p.moveset, MoveId.FIRE_FANG, MoveId.FUSION_FLARE);
       }),
     )
     .setPartyMemberFunc(
@@ -6448,7 +6449,15 @@ export const trainerConfigs: TrainerConfigs = {
     .setPartyMemberFunc(0, getRandomPartyMemberFunc([SpeciesId.MIENSHAO]))
     .setPartyMemberFunc(1, getRandomPartyMemberFunc([SpeciesId.HONCHKROW, SpeciesId.TALONFLAME]))
     .setPartyMemberFunc(2, getRandomPartyMemberFunc([SpeciesId.MALAMAR]))
-    .setPartyMemberFunc(3, getRandomPartyMemberFunc([SpeciesId.AEGISLASH, SpeciesId.HISUI_GOODRA]))
+    .setPartyMemberFunc(
+      3,
+      getRandomPartyMemberFunc([SpeciesId.AEGISLASH, SpeciesId.HISUI_GOODRA], TrainerSlot.TRAINER, false, p => {
+        p.generateAndPopulateMoveset();
+        if (p.species.speciesId === SpeciesId.AEGISLASH && !p.moveset.some(move => move.moveId === MoveId.KINGS_SHIELD)) {
+          p.moveset[3] = new PokemonMove(MoveId.KINGS_SHIELD);
+        }
+      }),
+    )
     .setPartyMemberFunc(
       4,
       getRandomPartyMemberFunc([SpeciesId.PYROAR], TrainerSlot.TRAINER, true, p => {
@@ -6481,7 +6490,15 @@ export const trainerConfigs: TrainerConfigs = {
       }),
     )
     .setPartyMemberFunc(1, getRandomPartyMemberFunc([SpeciesId.MIENSHAO]))
-    .setPartyMemberFunc(2, getRandomPartyMemberFunc([SpeciesId.AEGISLASH, SpeciesId.HISUI_GOODRA]))
+    .setPartyMemberFunc(
+      2,
+      getRandomPartyMemberFunc([SpeciesId.AEGISLASH, SpeciesId.HISUI_GOODRA], TrainerSlot.TRAINER, false, p => {
+        p.generateAndPopulateMoveset();
+        if (p.species.speciesId === SpeciesId.AEGISLASH && !p.moveset.some(move => move.moveId === MoveId.KINGS_SHIELD)) {
+          p.moveset[3] = new PokemonMove(MoveId.KINGS_SHIELD);
+        }
+      }),
+    )
     .setPartyMemberFunc(
       3,
       getRandomPartyMemberFunc([SpeciesId.VOLCANION], TrainerSlot.TRAINER, true, p => {

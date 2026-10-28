@@ -5,7 +5,7 @@ import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getStarterColors } from "#app/global-vars/starter-colors";
 import { activeOverrides } from "#app/overrides";
 import { speciesEggMoves } from "#balance/moves/egg-moves";
-import type { SpeciesFormEvolution } from "#balance/pokemon-evolutions";
+import { EvoCondKey, type SpeciesFormEvolution } from "#balance/pokemon-evolutions";
 import {
   getPassiveCandyCount,
   getSameSpeciesEggCandyCounts,
@@ -45,7 +45,7 @@ import { SettingKeyboard } from "#system/settings-keyboard";
 import type { BiomeTierTimeOfDay } from "#types/biomes";
 import type { DexEntry } from "#types/dex-data";
 import type { LevelMoves } from "#types/pokemon-species";
-import type { StarterAttributes } from "#types/save-data";
+import type { DexAttrProps, StarterAttributes } from "#types/save-data";
 import type { OptionSelectItem } from "#ui/base-option-select-ui-handler";
 import { BaseStatsOverlay } from "#ui/base-stats-overlay";
 import { MessageUiHandler } from "#ui/message-ui-handler";
@@ -748,13 +748,11 @@ export class PokedexPageUiHandler extends MessageUiHandler {
       return false;
     }
     this.species = args[0];
-    this.savedStarterAttributes = args[1] ?? {
-      shiny: false,
-      female: true,
-      variant: 0,
-      form: 0,
-    };
-    this.formIndex = this.savedStarterAttributes.form ?? 0;
+    this.savedStarterAttributes = { ...args[1] };
+    this.speciesStarterDexEntry = this.species ? globalScene.gameData.dexData[this.species.speciesId] : null;
+    this.starterAttributes = this.initStarterPrefs();
+    this.formIndex = this.getCurrentDexProps(this.species.speciesId).formIndex;
+    this.starterAttributes.form = this.formIndex;
     this.filteredIndices = args[2] ?? null;
     this.starterSetup();
 
@@ -770,13 +768,10 @@ export class PokedexPageUiHandler extends MessageUiHandler {
     this.starterSelectContainer.setVisible(true);
     this.getUi().bringToTop(this.starterSelectContainer);
 
-    this.starterAttributes = this.initStarterPrefs();
-
     this.menuOptions = getEnumValues(MenuOptions);
 
     this.menuContainer.setVisible(true);
 
-    this.speciesStarterDexEntry = this.species ? globalScene.gameData.dexData[this.species.speciesId] : null;
     this.setSpecies();
     this.updateInstructions();
 
@@ -822,11 +817,13 @@ export class PokedexPageUiHandler extends MessageUiHandler {
     this.isFormGender = formKey === "male" || formKey === "female";
     if (
       this.isFormGender
-      && ((this.savedStarterAttributes.female === true && formKey === "male")
-        || (this.savedStarterAttributes.female === false && formKey === "female"))
+      && ((this.starterAttributes.female === true && formKey === "male")
+        || (this.starterAttributes.female === false && formKey === "female"))
     ) {
       this.formIndex = (this.formIndex + 1) % 2;
       formKey = this.species.forms[this.formIndex].formKey;
+      this.starterAttributes.form = this.formIndex;
+      this.savedStarterAttributes.form = this.formIndex;
     }
 
     // TODO: if `this.formIndex` can be `undefined`, then why is that not in its type signature; or why not initialize it with a value of `0`?
@@ -859,6 +856,16 @@ export class PokedexPageUiHandler extends MessageUiHandler {
       this.baseStats = species.baseStats.slice();
       this.baseTotal = species.baseTotal;
     }
+
+    this.evolutions = this.evolutions.filter(
+      evolution =>
+        !evolution.condition?.data.some(
+          condition =>
+            condition.key === EvoCondKey.GENDER
+            && ((this.starterAttributes.female === true && condition.gender === Gender.MALE)
+              || (this.starterAttributes.female === false && condition.gender === Gender.FEMALE)),
+        ),
+    );
 
     this.eggMoves = speciesEggMoves[this.starterId] ?? [];
     this.hasEggMoves = Array.from(
@@ -986,7 +993,7 @@ export class PokedexPageUiHandler extends MessageUiHandler {
     const species = otherSpecies ? otherSpecies : this.species;
 
     if (globalScene.dexForDevs) {
-      species.getFullUnlocksData();
+      return species.getFullUnlocksData();
     }
 
     const dexEntry = globalScene.gameData.dexData[species.speciesId];
@@ -1051,7 +1058,6 @@ export class PokedexPageUiHandler extends MessageUiHandler {
       starterAttributes.variant = 0;
     } else if (!hasNonShiny || (starterAttributes.shiny === undefined && hasShiny)) {
       starterAttributes.shiny = true;
-      starterAttributes.variant = 0;
     }
 
     this.unlockedVariants = [
@@ -1059,12 +1065,13 @@ export class PokedexPageUiHandler extends MessageUiHandler {
       !!(hasShiny && caughtAttr & DexAttr.VARIANT_2),
       !!(hasShiny && caughtAttr & DexAttr.VARIANT_3),
     ];
+    const firstUnlockedVariant = Math.max(0, this.unlockedVariants.findIndex(unlocked => unlocked));
     if (
       starterAttributes.variant === undefined
       || Number.isNaN(starterAttributes.variant)
       || starterAttributes.variant < 0
     ) {
-      starterAttributes.variant = 0;
+      starterAttributes.variant = starterAttributes.shiny ? firstUnlockedVariant : 0;
     } else if (!this.unlockedVariants[starterAttributes.variant]) {
       let highestValidIndex = -1;
       for (let i = 0; i <= starterAttributes.variant && i < this.unlockedVariants.length; i++) {
@@ -1072,8 +1079,7 @@ export class PokedexPageUiHandler extends MessageUiHandler {
           highestValidIndex = i;
         }
       }
-      // Set to the highest valid index found or default to 0
-      starterAttributes.variant = highestValidIndex === -1 ? 0 : highestValidIndex;
+      starterAttributes.variant = highestValidIndex === -1 ? firstUnlockedVariant : highestValidIndex;
     }
 
     if (starterAttributes.female !== undefined) {
@@ -1083,10 +1089,13 @@ export class PokedexPageUiHandler extends MessageUiHandler {
       ) {
         starterAttributes.female = !starterAttributes.female;
       }
-    } else if (caughtAttr & DexAttr.FEMALE) {
-      starterAttributes.female = true;
-    } else if (caughtAttr & DexAttr.MALE) {
-      starterAttributes.female = false;
+    } else {
+      starterAttributes.female = globalScene.dexForDevs
+        ? this.species.malePercent === 0
+        : globalScene.gameData.getSpeciesDexAttrProps(
+            this.species,
+            globalScene.gameData.getSpeciesDefaultDexAttr(this.species),
+          ).female;
     }
 
     return starterAttributes;
@@ -1816,10 +1825,7 @@ export class PokedexPageUiHandler extends MessageUiHandler {
             break;
         }
       } else {
-        const props = globalScene.gameData.getSpeciesDexAttrProps(
-          this.species,
-          this.getCurrentDexProps(this.species.speciesId),
-        );
+        const props = this.getCurrentDexProps(this.species.speciesId);
         switch (button) {
           case Button.CYCLE_SHINY: {
             if (!this.canCycleShiny) {
@@ -2022,10 +2028,8 @@ export class PokedexPageUiHandler extends MessageUiHandler {
             }
 
             // Same species egg menu option.
-            const hatchCount = globalScene.gameData.dexData[this.starterId].hatchedCount;
             const sameSpeciesEggCost = getSameSpeciesEggCandyCounts(
               speciesDataRegistry.getStarterCost(this.starterId),
-              hatchCount,
             );
             options.push({
               label: `×${sameSpeciesEggCost} ${i18next.t("pokedexUiHandler:sameSpeciesEgg")}`,
@@ -2367,11 +2371,10 @@ export class PokedexPageUiHandler extends MessageUiHandler {
    */
   private isSameSpeciesEggAvailable(): boolean {
     const starterData = globalScene.gameData.starterData[this.starterId];
-    const hatchCount = globalScene.gameData.dexData[this.starterId].hatchedCount;
 
     return (
       starterData.candyCount
-      >= getSameSpeciesEggCandyCounts(speciesDataRegistry.getStarterCost(this.starterId), hatchCount)
+      >= getSameSpeciesEggCandyCounts(speciesDataRegistry.getStarterCost(this.starterId))
     );
   }
 
@@ -2397,18 +2400,16 @@ export class PokedexPageUiHandler extends MessageUiHandler {
       this.pokemonNumberText.setText(padInt(getDexNumber(species.speciesId), 4));
 
       if (this.isCaught()) {
-        const defaultDexAttr = this.getCurrentDexProps(species.speciesId);
-        // Set default attributes if for some reason starterAttributes does not exist or attributes missing
-        const props: StarterAttributes = globalScene.gameData.getSpeciesDexAttrProps(species, defaultDexAttr);
+        const props = this.getCurrentDexProps(species.speciesId);
         if (starterAttributes?.variant && !Number.isNaN(starterAttributes.variant) && props.shiny) {
           props.variant = starterAttributes.variant as Variant;
         }
-        props.form = starterAttributes?.form ?? props.form;
+        props.formIndex = starterAttributes?.form ?? props.formIndex;
         props.female = starterAttributes?.female ?? props.female;
 
         this.setSpeciesDetails(species, {
           shiny: props.shiny,
-          formIndex: props.form,
+          formIndex: props.formIndex,
           female: props.female,
           variant: props.variant ?? 0,
         });
@@ -2490,9 +2491,9 @@ export class PokedexPageUiHandler extends MessageUiHandler {
     }
 
     if (species?.forms?.find(f => f.formKey === "female")) {
-      if (female !== undefined) {
+      if (female !== undefined && (formIndex === 0 || formIndex === 1 || formIndex === undefined)) {
         formIndex = female ? 1 : 0;
-      } else if (formIndex !== undefined) {
+      } else if (formIndex !== undefined && (formIndex === 0 || formIndex === 1)) {
         female = formIndex === 1;
       }
     }
@@ -2522,23 +2523,6 @@ export class PokedexPageUiHandler extends MessageUiHandler {
 
     if (species) {
       const caughtAttr = this.isCaught(species);
-
-      if (!caughtAttr) {
-        const props = this.starterAttributes;
-
-        if (shiny === undefined || shiny !== props.shiny) {
-          shiny = props.shiny;
-        }
-        if (formIndex === undefined || formIndex !== props.form) {
-          formIndex = props.form;
-        }
-        if (female === undefined || female !== props.female) {
-          female = props.female;
-        }
-        if (variant === undefined || variant !== props.variant) {
-          variant = props.variant;
-        }
-      }
 
       const isFormCaught = this.isFormCaught();
       const isFormSeen = this.isSeen();
@@ -2591,7 +2575,8 @@ export class PokedexPageUiHandler extends MessageUiHandler {
       // If the dev option for the dex is selected, all forms can be cycled through
       this.canCycleForm = globalScene.dexForDevs
         ? species.forms.length > 1
-        : species.forms.filter(f => f.isStarterSelectable).filter(f => f).length > 1;
+        : species.forms.filter(f => f.isStarterSelectable).length > 1
+          && !!species.forms[this.formIndex]?.isStarterSelectable;
 
       if (caughtAttr && species.malePercent !== null) {
         const gender = female ? Gender.FEMALE : Gender.MALE;
@@ -2706,8 +2691,7 @@ export class PokedexPageUiHandler extends MessageUiHandler {
         }
         this.pokemonHatchedCountText.setText(`${this.speciesStarterDexEntry?.hatchedCount}`);
 
-        const defaultDexAttr = this.getCurrentDexProps(species.speciesId);
-        const defaultProps = globalScene.gameData.getSpeciesDexAttrProps(species, defaultDexAttr);
+        const defaultProps = this.getCurrentDexProps(species.speciesId);
 
         for (let v = 0; v < 3; v++) {
           const icon = this.pokemonShinyIcons[v];
@@ -2818,54 +2802,25 @@ export class PokedexPageUiHandler extends MessageUiHandler {
    * @param speciesId - The id of the species to get props for
    * @returns the dex props
    */
-  private getCurrentDexProps(speciesId: SpeciesId): bigint {
-    let props = 0n;
+  private getCurrentDexProps(speciesId: SpeciesId): DexAttrProps {
     const species = speciesDataRegistry.getSpecies(speciesId);
-    const caughtAttr =
-      globalScene.gameData.dexData[speciesId].caughtAttr
-      & globalScene.gameData.dexData[this.getStarterSpeciesId(speciesId)].caughtAttr
-      & (species?.getFullUnlocksData() ?? 0n);
+    const gameData = globalScene.gameData;
+    const props: DexAttrProps = globalScene.dexForDevs
+      ? { female: species.malePercent === 0, formIndex: 0, shiny: false, variant: 0 }
+      : gameData.getSpeciesDexAttrProps(species, gameData.getSpeciesDefaultDexAttr(species));
 
-    // This checks the gender of the pokemon by checking:
-    // a) That the starter preferences for the species exist, and if so whether it's female.
-    //    If this is true, it'll add `DexAttr.FEMALE` to our temp props.
-    // b) If the `caughtAttr` for the pokemon is female and NOT male.
-    //    This means that the ONLY gender we've gotten is female, and we need to add `DexAttr.FEMALE` to our temp props.
-    // If neither of these pass, we add `DexAttr.MALE` to our temp props
-    if (this.starterAttributes?.female || ((caughtAttr & DexAttr.FEMALE) > 0n && (caughtAttr & DexAttr.MALE) === 0n)) {
-      props += DexAttr.FEMALE;
-    } else {
-      props += DexAttr.MALE;
+    if (this.starterAttributes.female !== undefined) {
+      props.female = this.starterAttributes.female;
     }
-    // This part is very similar to above, but instead of for gender, it checks for shiny within starter preferences.
-    // If they're not there, it enables shiny state by default if any shiny was caught
-    if (
-      this.starterAttributes?.shiny
-      || ((caughtAttr & DexAttr.SHINY) > 0n && this.starterAttributes?.shiny !== false)
-    ) {
-      props += DexAttr.SHINY;
-      if (this.starterAttributes?.variant !== undefined) {
-        props += BigInt(Math.pow(2, this.starterAttributes?.variant)) * DexAttr.DEFAULT_VARIANT;
-        // This chunk calculates the correct variant if there's no starter preferences for it.
-        // This gets the highest tier variant that you've caught and adds it to the temp props
-      } else if ((caughtAttr & DexAttr.VARIANT_3) > 0) {
-        props += DexAttr.VARIANT_3;
-      } else if ((caughtAttr & DexAttr.VARIANT_2) > 0) {
-        props += DexAttr.VARIANT_2;
-      } else {
-        props += DexAttr.DEFAULT_VARIANT;
-      }
-    } else {
-      props += DexAttr.NON_SHINY;
-      props += DexAttr.DEFAULT_VARIANT; // we add the default variant here because non shiny versions are listed as default variant
+    if (this.starterAttributes.shiny !== undefined) {
+      props.shiny = this.starterAttributes.shiny;
     }
-    if (this.starterAttributes?.form) {
-      props += BigInt(Math.pow(2, this.starterAttributes?.form)) * DexAttr.DEFAULT_FORM;
-    } else {
-      // Get the first unlocked form
-      props += globalScene.gameData.getFormAttr(globalScene.gameData.getFormIndex(caughtAttr));
+    if (this.starterAttributes.variant !== undefined) {
+      props.variant = this.starterAttributes.variant as Variant;
     }
-
+    if (this.starterAttributes.form !== undefined) {
+      props.formIndex = this.starterAttributes.form;
+    }
     return props;
   }
 

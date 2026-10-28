@@ -80,6 +80,70 @@ describe("Trainer generation correctness", () => {
     );
   }
 
+  describe("Evolution-line duplicate prevention", () => {
+    function withExisting(species: SpeciesId, trainerType = TrainerType.YOUNGSTER) {
+      const config = new TrainerConfig(trainerType)
+        .setPartyTemplates(new TrainerPartyTemplate(1, PartyMemberStrength.STRONGER))
+        .setPartyMemberFunc(0, getRandomPartyMemberFunc([species], TrainerSlot.TRAINER, true));
+      const trainer = makeTrainer(config);
+      generateParty(trainer);
+      return trainer;
+    }
+
+    it.each([
+      [SpeciesId.BULBASAUR, SpeciesId.VENUSAUR, true],
+      [SpeciesId.VENUSAUR, SpeciesId.BULBASAUR, true],
+      [SpeciesId.VENUSAUR, SpeciesId.IVYSAUR, true],
+      [SpeciesId.VENUSAUR, SpeciesId.VENUSAUR, true],
+      [SpeciesId.EEVEE, SpeciesId.SYLVEON, true],
+      [SpeciesId.ESPEON, SpeciesId.UMBREON, false],
+      [SpeciesId.VENUSAUR, SpeciesId.CHARIZARD, false],
+    ] as const)("existing %i / candidate %i is a duplicate: %s", (existing, candidate, expected) => {
+      expect(withExisting(existing).checkDuplicateSpecies(candidate)).toBe(expected);
+    });
+
+    it("does not reserve all unselected signature alternatives", () => {
+      const trainer = withExisting(SpeciesId.GEODUDE, TrainerType.BROCK);
+      expect(trainer.checkDuplicateSpecies(SpeciesId.ONIX)).toBe(false);
+    });
+
+    it("reads restored parties without stale generation state and ignores the slot being regenerated", () => {
+      const trainer = withExisting(SpeciesId.VENUSAUR);
+      const restoredTrainer = makeTrainer(trainer.config);
+      expect(restoredTrainer.checkDuplicateSpecies(SpeciesId.IVYSAUR)).toBe(true);
+      expect(restoredTrainer.checkDuplicateSpecies(SpeciesId.IVYSAUR, TrainerSlot.TRAINER, 0)).toBe(false);
+      game.scene.currentBattle.enemyParty = [];
+      expect(restoredTrainer.checkDuplicateSpecies(SpeciesId.IVYSAUR)).toBe(false);
+    });
+
+    it("rerolls a resolved evolution already represented on the team", () => {
+      const trainer = withExisting(SpeciesId.VENUSAUR);
+      const roll = vi
+        .spyOn(game.scene, "randomSpecies")
+        .mockReturnValueOnce(getPokemonSpecies(SpeciesId.BULBASAUR))
+        .mockReturnValue(getPokemonSpecies(SpeciesId.CHARMANDER));
+      const species = trainer.genNewPartyMemberSpecies(100, PartyMemberStrength.STRONGER);
+      expect(roll).toHaveBeenCalledTimes(2);
+      expect(species.speciesId).toBe(SpeciesId.CHARIZARD);
+    });
+
+    it.each([2, 3] as const)("keeps %ip enemy trainers' random rosters independent", count => {
+      game.scene.configureTwoPlayerMode(true, 6, false, count);
+      const configs = Array.from({ length: count }, () =>
+        new TrainerConfig(TrainerType.YOUNGSTER)
+          .setPartyTemplates(new TrainerPartyTemplate(1, PartyMemberStrength.STRONGER))
+          .setSpeciesPools([SpeciesId.BULBASAUR]),
+      );
+      const trainer = makeTrainer(configs[0], TrainerVariant.DEFAULT, configs.slice(1));
+      const rolls = vi.spyOn(trainer, "genNewPartyMemberSpecies");
+      const party = generateParty(trainer);
+      expect(rolls).toHaveBeenCalledTimes(count);
+      expect(party).toHaveLength(count);
+      expect(new Set(party.map(pokemon => pokemon.species.speciesId)).size).toBe(1);
+      expect(new Set(party.map(pokemon => pokemon.trainerSlot)).size).toBe(count);
+    });
+  });
+
   it("resolves nested evolution thresholds by local template index", () => {
     const template = new TrainerPartyCompoundTemplate(
       new TrainerPartyTemplate(2, PartyMemberStrength.AVERAGE),

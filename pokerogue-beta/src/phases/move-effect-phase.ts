@@ -42,9 +42,10 @@ import { DamageAchv } from "#system/achv";
 import type { nil } from "#types/common";
 import type { DamageResult } from "#types/damage-result";
 import type { TurnMove } from "#types/turn-move";
-import { tryEatBerries } from "#utils/berry-use-utils";
 import { recordConsumedHeldItem } from "#utils/battle-held-items";
+import { tryEatBerries } from "#utils/berry-use-utils";
 import { BooleanHolder, NumberHolder } from "#utils/common";
+import { finishYes } from "#utils/yes-move";
 import i18next from "i18next";
 
 export type HitCheckEntry = [HitCheckResult, TypeDamageMultiplier];
@@ -66,6 +67,7 @@ export class MoveEffectPhase extends PokemonPhase {
   public move: Move;
   protected targets: BattlerIndex[];
   protected useMode: MoveUseMode;
+  private readonly yesPrepared: boolean;
 
   /** The result of the hit check against each target */
   private hitChecks: HitCheckEntry[];
@@ -86,10 +88,17 @@ export class MoveEffectPhase extends PokemonPhase {
   /**
    * @param useMode - The {@linkcode MoveUseMode} corresponding to how this move was used.
    */
-  constructor(battlerIndex: BattlerIndex, targets: BattlerIndex[], move: Move, useMode: MoveUseMode) {
+  constructor(
+    battlerIndex: BattlerIndex,
+    targets: BattlerIndex[],
+    move: Move,
+    useMode: MoveUseMode,
+    yesPrepared = false,
+  ) {
     super(battlerIndex);
     this.move = move;
     this.useMode = useMode;
+    this.yesPrepared = yesPrepared;
 
     /**
      * In double battles, if the right Pokemon selects a spread move and the left Pokemon dies
@@ -111,6 +120,11 @@ export class MoveEffectPhase extends PokemonPhase {
     /** The Pokemon using this phase's invoked move */
     const user = this.getUserPokemon();
     if (!user) {
+      super.end();
+      return;
+    }
+    if (this.move.id === MoveId.YES && !this.yesPrepared) {
+      globalScene.phaseManager.unshiftNew("YesMoveSetupPhase", user, this.targets.slice(), this.useMode);
       super.end();
       return;
     }
@@ -185,6 +199,7 @@ export class MoveEffectPhase extends PokemonPhase {
     // Play the animation if the move was successful against any of its targets or it has a POST_TARGET effect (like self destruct)
     if (
       this.moveHistoryEntry.result === MoveResult.SUCCESS
+      || move.id === MoveId.YES
       || move.getAttrs("MoveEffectAttr").some(attr => attr.trigger === MoveEffectTrigger.POST_TARGET)
     ) {
       const moveTargets = this.getTargets();
@@ -277,6 +292,9 @@ export class MoveEffectPhase extends PokemonPhase {
       this.applyToTargets(user, targets);
     } catch (e) {
       console.warn(e.message || "Unexpected error in move effect phase");
+      if (this.move.id === MoveId.YES) {
+        finishYes(user);
+      }
       this.end();
       return;
     }
@@ -289,6 +307,9 @@ export class MoveEffectPhase extends PokemonPhase {
 
     if (this.lastHit) {
       this.triggerMoveEffects(MoveEffectTrigger.POST_TARGET, user, null);
+      if (this.move.id === MoveId.YES) {
+        finishYes(user);
+      }
     }
 
     this.updateSubstitutes();
@@ -316,9 +337,7 @@ export class MoveEffectPhase extends PokemonPhase {
 
     const typeGem = globalScene.findModifierForPokemon(
       modifier =>
-        modifier instanceof TypeGemModifier
-        && modifier.pokemonId === user.id
-        && modifier.moveType === boostedMoveType,
+        modifier instanceof TypeGemModifier && modifier.pokemonId === user.id && modifier.moveType === boostedMoveType,
       user,
     ) as TypeGemModifier | undefined;
 
@@ -410,11 +429,7 @@ export class MoveEffectPhase extends PokemonPhase {
     }
 
     // Commander causes moves used against the target to miss
-    if (
-      !fieldTargeted
-      && globalScene.currentBattle.double
-      && target.isCommandingDondozo()
-    ) {
+    if (!fieldTargeted && globalScene.currentBattle.double && target.isCommandingDondozo()) {
       return [HitCheckResult.MISS, 0];
     }
 
@@ -715,7 +730,11 @@ export class MoveEffectPhase extends PokemonPhase {
     applyMoveAttrs("StatChangeBeforeDmgCalcAttr", user, target, this.move);
 
     const moveCategory = user.getMoveCategory(target, this.move);
-    const { result, damage: initialDmg, usedDamageReductionBerry } = target.getAttackDamage({
+    const {
+      result,
+      damage: initialDmg,
+      usedDamageReductionBerry,
+    } = target.getAttackDamage({
       source: user,
       move: this.move,
       ignoreAbility: false,
@@ -729,7 +748,8 @@ export class MoveEffectPhase extends PokemonPhase {
 
     // TODO: Verify if flash fire/charge are consumed if damage is prevented
     const typeBoost = user.findTag(
-      (t): t is TypeBoostTag => t instanceof TypeBoostTag && t.boostedType === user.getMoveType(this.move, true, target),
+      (t): t is TypeBoostTag =>
+        t instanceof TypeBoostTag && t.boostedType === user.getMoveType(this.move, true, target),
     );
     if (typeBoost?.oneUse) {
       user.removeTag(typeBoost.tagType);
@@ -979,7 +999,9 @@ export class MoveEffectPhase extends PokemonPhase {
       globalScene.phaseManager.queueMessage(i18next.t("battle:attackHitsCount", { count: hitsTotal }));
     }
 
-    globalScene.applyModifiersForPokemon(HitHealModifier, user, user);
+    if (this.move.id !== MoveId.YES) {
+      globalScene.applyModifiersForPokemon(HitHealModifier, user, user);
+    }
     this.getTargets().forEach(target => {
       target.turnData.moveEffectiveness = null;
     });

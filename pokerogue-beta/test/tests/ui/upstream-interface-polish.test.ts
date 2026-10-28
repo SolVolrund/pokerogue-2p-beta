@@ -1,0 +1,321 @@
+import { EvolutionItem } from "#balance/pokemon-evolutions";
+import { modifierTypes } from "#data/data-lists";
+import { getPokeballAtlasKey, getPokeballName } from "#data/pokeball";
+import { AbilityId } from "#enums/ability-id";
+import { Button } from "#enums/buttons";
+import { Command } from "#enums/command";
+import { FormChangeItem } from "#enums/form-change-item";
+import { MoveId } from "#enums/move-id";
+import { PartyUiMode } from "#enums/party-ui-mode";
+import { PokeballType } from "#enums/pokeball";
+import { SpeciesId } from "#enums/species-id";
+import { TextStyle } from "#enums/text-style";
+import { UiMode } from "#enums/ui-mode";
+import { EvolutionItemModifierType, FormChangeItemModifierType } from "#modifiers/modifier-type";
+import { CommandPhase } from "#phases/command-phase";
+import { SelectModifierPhase } from "#phases/select-modifier-phase";
+import { GameManager } from "#test/framework/game-manager";
+import type { BallUiHandler } from "#ui/ball-ui-handler";
+import type { MenuUiHandler } from "#ui/menu-ui-handler";
+import { PartyOption, type PartyUiHandler } from "#ui/party-ui-handler";
+import { type SummaryUiHandler, SummaryUiMode } from "#ui/summary-ui-handler";
+import { getBBCodeFrag } from "#ui/text";
+import { getPokemonSpecies } from "#utils/pokemon-utils";
+import i18next from "i18next";
+import Phaser from "phaser";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+describe("UI - Upstream interface polish", () => {
+  let phaserGame: Phaser.Game;
+  let game: GameManager;
+  let balls: BallUiHandler;
+  let party: PartyUiHandler;
+  let menu: MenuUiHandler;
+
+  beforeAll(() => {
+    phaserGame = new Phaser.Game({ type: Phaser.HEADLESS });
+  });
+
+  beforeEach(async () => {
+    game = new GameManager(phaserGame);
+    game.override
+      .battleStyle("single")
+      .ability(AbilityId.BALL_FETCH)
+      .moveset(MoveId.SPLASH)
+      .enemySpecies(SpeciesId.MAGIKARP)
+      .enemyAbility(AbilityId.BALL_FETCH)
+      .enemyMoveset(MoveId.SPLASH);
+    await game.classicMode.startBattle(SpeciesId.EEVEE, SpeciesId.CHARMANDER);
+    balls = game.scene.ui.handlers[UiMode.BALL] as BallUiHandler;
+    party = game.scene.ui.handlers[UiMode.PARTY] as PartyUiHandler;
+    menu = game.scene.ui.handlers[UiMode.MENU] as MenuUiHandler;
+    await game.scene.ui.setMode(UiMode.OPTION_SELECT, { options: [{ label: "Cancel", handler: () => true }] });
+  });
+
+  afterEach(() => {
+    balls.clear();
+    if (party["optionsMode"]) {
+      party.clearOptions();
+    }
+    party.clear();
+    game.scene.ui.resetModeChain();
+    game.scene.configureTwoPlayerMode(false);
+    game.scene.activePlayerIndex = 0;
+    game.scene.inputOwner = "none";
+  });
+
+  const ballTypes = [
+    PokeballType.POKEBALL,
+    PokeballType.GREAT_BALL,
+    PokeballType.ULTRA_BALL,
+    PokeballType.ROGUE_BALL,
+    PokeballType.MASTER_BALL,
+    PokeballType.CLONE_BALL,
+  ];
+
+  function openBalls(fieldIndex = 0) {
+    const command = new CommandPhase(fieldIndex);
+    vi.spyOn(game.scene.phaseManager, "getCurrentPhase").mockReturnValue(command);
+    balls.show([]);
+    return command;
+  }
+
+  it("shows icons for the actual ball keys, including Clone but not event-only Safari balls", () => {
+    const image = vi.spyOn(game.scene.add, "image");
+    balls["pokeballTypes"] = [];
+    openBalls();
+    expect(balls["pokeballTypes"]).toEqual(ballTypes);
+    expect(balls["pokeballImages"]).toHaveLength(6);
+    expect(balls["optionsText"].text.split("\n")).toEqual(ballTypes.map(getPokeballName));
+    for (const type of ballTypes) {
+      expect(image).toHaveBeenCalledWith(0, 0, "pb", getPokeballAtlasKey(type));
+    }
+    expect(image).not.toHaveBeenCalledWith(0, 0, "pb", getPokeballAtlasKey(PokeballType.SAFARI_BALL));
+  });
+
+  it("displays the command owner's inventory in multiplayer", () => {
+    game.scene.configureTwoPlayerMode(true, 6, false, 3);
+    game.scene.getPlayerPokeballCounts(0)[PokeballType.CLONE_BALL] = 1;
+    game.scene.getPlayerPokeballCounts(2)[PokeballType.CLONE_BALL] = 7;
+    openBalls(2);
+    expect(balls["countsText"].text.split("\n")[5]).toBe("\u00d77");
+  });
+
+  it("confirms the non-contiguous Clone Ball enum instead of the row number", () => {
+    game.scene.pokeballCounts[PokeballType.CLONE_BALL] = 1;
+    const command = openBalls();
+    const handle = vi.spyOn(command, "handleCommand").mockReturnValue(false);
+    balls.setCursor(5);
+    balls.processInput(Button.ACTION);
+    expect(handle).toHaveBeenCalledWith(Command.BALL, PokeballType.CLONE_BALL);
+  });
+
+  it("rejects an empty ball row and wraps through Cancel", () => {
+    const command = openBalls();
+    game.scene.pokeballCounts[PokeballType.CLONE_BALL] = 0;
+    const handle = vi.spyOn(command, "handleCommand");
+    const error = vi.spyOn(game.scene.ui, "playError");
+    balls.setCursor(5);
+    balls.processInput(Button.ACTION);
+    expect(handle).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledOnce();
+    balls.processInput(Button.DOWN);
+    expect(balls.getCursor()).toBe(6);
+    balls.processInput(Button.DOWN);
+    expect(balls.getCursor()).toBe(0);
+    balls.processInput(Button.UP);
+    expect(balls.getCursor()).toBe(6);
+  });
+
+  it("stops the selected icon animation on Cancel and when leaving the menu", () => {
+    const stopped = vi.fn();
+    const destroyed = vi.fn();
+    balls.setCursor(0);
+    const chain = vi.spyOn(game.scene.tweens, "chain").mockImplementation(config => {
+      return {
+        stop() {
+          stopped();
+          (config as { onStop?: () => void }).onStop?.();
+          return this;
+        },
+        destroy: destroyed,
+      } as unknown as Phaser.Tweens.TweenChain;
+    });
+    openBalls();
+    expect(chain).toHaveBeenLastCalledWith(expect.objectContaining({ targets: balls["pokeballImages"][0] }));
+    balls.setCursor(6);
+    expect(stopped).toHaveBeenCalledOnce();
+    expect(destroyed).toHaveBeenCalledOnce();
+    expect(balls["pokeballWiggleTween"]).toBeNull();
+    balls.setCursor(5);
+    balls.clear();
+    expect(stopped).toHaveBeenCalledTimes(2);
+    expect(destroyed).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not animate a private selection for an enemy-player observer", () => {
+    game.scene.configureTwoPlayerMode(true, 6, false, 2);
+    game.scene.twoPlayerEnemyPlayerMode = true;
+    game.scene.twoPlayerLocalInputSeat = "ep";
+    game.scene.inputOwner = 0;
+    const chain = vi.spyOn(game.scene.tweens, "chain");
+    openBalls();
+    balls.setCursor(5);
+    expect(chain).not.toHaveBeenCalled();
+  });
+
+  async function openItem(mode: PartyUiMode, type: EvolutionItemModifierType | FormChangeItemModifierType) {
+    await game.scene.ui.setMode(UiMode.PARTY, mode, 0, vi.fn(), type.selectFilter);
+  }
+
+  function labels() {
+    return party["partySlots"].map(slot => slot.slotDescriptionLabel.text);
+  }
+
+  it("shows Able/Not Able for evolution stones and retains the Apply action", async () => {
+    await openItem(PartyUiMode.EVO_ITEM_MODIFIER, new EvolutionItemModifierType(EvolutionItem.FIRE_STONE));
+    expect(labels()).toEqual([i18next.t("partyUiHandler:able"), i18next.t("partyUiHandler:notAble")]);
+    party.showOptions();
+    expect(party["options"]).toContain(PartyOption.APPLY);
+  });
+
+  it("recognizes an evolution item for the fusion half", async () => {
+    const pokemon = game.scene.getPlayerParty()[1];
+    pokemon.fusionSpecies = getPokemonSpecies(SpeciesId.EEVEE);
+    pokemon.fusionFormIndex = 0;
+    const type = new EvolutionItemModifierType(EvolutionItem.FIRE_STONE);
+    expect(type.selectFilter!(pokemon)).toBeNull();
+    await openItem(PartyUiMode.EVO_ITEM_MODIFIER, type);
+    expect(labels()).toEqual([i18next.t("partyUiHandler:able"), i18next.t("partyUiHandler:able")]);
+  });
+
+  it("recognizes form items for the fusion half without replacing our eligibility rules", async () => {
+    const pokemon = game.scene.getPlayerParty()[1];
+    pokemon.fusionSpecies = getPokemonSpecies(SpeciesId.CHARIZARD);
+    pokemon.fusionFormIndex = 0;
+    const type = new FormChangeItemModifierType(FormChangeItem.CHARIZARDITE_X);
+    expect(type.selectFilter!(pokemon)).toBeNull();
+    await openItem(PartyUiMode.FORM_CHANGE_ITEM_MODIFIER, type);
+    expect(labels()).toEqual([i18next.t("partyUiHandler:notAble"), i18next.t("partyUiHandler:able")]);
+  });
+
+  it.each([true, false])("respects the custom Legend Plate ability condition (%s)", async multitype => {
+    const pokemon = game.scene.getPlayerParty()[1];
+    pokemon.fusionSpecies = getPokemonSpecies(SpeciesId.ARCEUS);
+    pokemon.fusionFormIndex = 0;
+    vi.spyOn(pokemon, "hasAbility").mockImplementation(ability => ability === AbilityId.MULTITYPE && multitype);
+    await openItem(PartyUiMode.FORM_CHANGE_ITEM_MODIFIER, new FormChangeItemModifierType(FormChangeItem.LEGEND_PLATE));
+    expect(labels()[1]).toBe(i18next.t(multitype ? "partyUiHandler:able" : "partyUiHandler:notAble"));
+  });
+
+  it.each(["evolution", "form"])("routes %s rewards to compatibility mode with the original filter", kind => {
+    const type =
+      kind === "evolution"
+        ? new EvolutionItemModifierType(EvolutionItem.FIRE_STONE)
+        : new FormChangeItemModifierType(FormChangeItem.CHARIZARDITE_X);
+    const mode = kind === "evolution" ? PartyUiMode.EVO_ITEM_MODIFIER : PartyUiMode.FORM_CHANGE_ITEM_MODIFIER;
+    const setMode = vi.spyOn(game.scene.ui, "setModeWithoutClear").mockResolvedValue(undefined);
+    new SelectModifierPhase()["openModifierMenu"](type, 0, () => true);
+    expect(setMode).toHaveBeenCalledWith(
+      UiMode.PARTY,
+      mode,
+      0,
+      expect.any(Function),
+      type.selectFilter,
+      undefined,
+      undefined,
+      false,
+    );
+    expect(mode).not.toBe(PartyUiMode.ENEMY_SWITCH);
+    expect(PartyUiMode.ENEMY_SWITCH).toBe(14);
+  });
+
+  it("leaves ordinary party checks on their HP display", async () => {
+    await game.scene.ui.setMode(UiMode.PARTY, PartyUiMode.CHECK, 0, vi.fn());
+    expect(labels()).toEqual(["", ""]);
+  });
+
+  it("keeps item eligibility and confirmation on the second player's party", async () => {
+    game.scene.configureTwoPlayerMode(true, 6, false, 3);
+    const eevee = game.scene.addPlayerPokemon(getPokemonSpecies(SpeciesId.EEVEE), 20);
+    const charmander = game.scene.addPlayerPokemon(getPokemonSpecies(SpeciesId.CHARMANDER), 20);
+    game.scene.getPlayerParty(1).push(eevee, charmander);
+    const type = new EvolutionItemModifierType(EvolutionItem.FIRE_STONE);
+    const confirm = vi.fn();
+    await game.scene.ui.setMode(UiMode.PARTY, PartyUiMode.EVO_ITEM_MODIFIER, 1, confirm, type.selectFilter);
+    expect(party["partySlots"].map(slot => slot.getPokemon())).toEqual([eevee, charmander]);
+    expect(labels()).toEqual([i18next.t("partyUiHandler:able"), i18next.t("partyUiHandler:notAble")]);
+    expect(game.scene.inputOwner).toBe(1);
+    party.setCursor(1);
+    party.showOptions();
+    party["processActionButtonForOptions"](PartyOption.APPLY);
+    expect(confirm).not.toHaveBeenCalled();
+    party.setCursor(0);
+    party.showOptions();
+    party["processActionButtonForOptions"](PartyOption.APPLY);
+    expect(confirm).toHaveBeenCalledWith(0, PartyOption.APPLY);
+  });
+
+  it("allows cancelling an evolution item without applying it", async () => {
+    const confirm = vi.fn();
+    const type = new EvolutionItemModifierType(EvolutionItem.FIRE_STONE);
+    await game.scene.ui.setMode(UiMode.PARTY, PartyUiMode.EVO_ITEM_MODIFIER, 0, confirm, type.selectFilter);
+    party.processInput(Button.CANCEL);
+    expect(confirm).toHaveBeenCalledWith(6, PartyOption.CANCEL);
+  });
+
+  function renderMenu(reward = true) {
+    vi.spyOn(game.scene.phaseManager, "getCurrentPhase").mockReturnValue(
+      reward ? new SelectModifierPhase() : new CommandPhase(0),
+    );
+    menu.render();
+  }
+
+  it("keeps gacha visible but grey and blocked during rewards, while egg viewing remains available", () => {
+    renderMenu();
+    const text = menu["optionSelectText"].text;
+    expect(text).toContain(getBBCodeFrag(i18next.t("menuUiHandler:eggGacha"), TextStyle.SUMMARY_GRAY));
+    expect(text).toContain(getBBCodeFrag(i18next.t("menuUiHandler:eggList"), TextStyle.WINDOW));
+    const overlay = vi.spyOn(game.scene.ui, "setOverlayMode");
+    const error = vi.spyOn(game.scene.ui, "playError");
+    menu.setCursor(menu["menuOptions"].indexOf(4));
+    menu.processInput(Button.ACTION);
+    expect(overlay).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledOnce();
+  });
+
+  it("still opens gacha outside the reward phase", () => {
+    renderMenu(false);
+    const overlay = vi.spyOn(game.scene.ui, "setOverlayMode").mockResolvedValue(undefined);
+    vi.spyOn(game.scene.ui, "revertMode").mockResolvedValue(true);
+    menu.setCursor(menu["menuOptions"].indexOf(4));
+    menu.processInput(Button.ACTION);
+    expect(overlay).toHaveBeenCalledWith(UiMode.EGG_GACHA);
+  });
+
+  it("retains enemy-player menu restrictions", () => {
+    game.scene.twoPlayerEnemyPlayerMode = true;
+    game.scene.twoPlayerLocalInputSeat = "ep";
+    renderMenu();
+    expect(menu["menuOptions"]).not.toContain(3);
+    expect(menu["menuOptions"]).not.toContain(4);
+    expect(menu["menuOptions"]).toContain(9);
+  });
+
+  it("layers held item icons below stats and still shows the inspected player's items", async () => {
+    const pokemon = game.scene.getPlayerParty()[0];
+    const heldItem = modifierTypes.LEFTOVERS().newModifier(pokemon);
+    game.scene.getPlayerModifiers(0).push(heldItem);
+    const icon = game.scene.add.container(0, 0);
+    const getIcon = vi.spyOn(heldItem, "getIcon").mockReturnValue(icon);
+    await game.scene.ui.setMode(UiMode.SUMMARY, pokemon, SummaryUiMode.DEFAULT, 1);
+    const summary = game.scene.ui.getHandler<SummaryUiHandler>();
+    const stats = summary["statsContainer"];
+    const items = stats.list[0] as Phaser.GameObjects.Container;
+    expect(items.list).toContain(icon);
+    expect(stats.list.indexOf(summary["permStatsContainer"])).toBeGreaterThan(0);
+    expect(stats.list.indexOf(summary["ivContainer"])).toBeGreaterThan(0);
+    expect(stats.list.indexOf(summary["contestStatsContainer"])).toBeGreaterThan(0);
+    expect(getIcon).toHaveBeenCalledWith(true);
+  });
+});

@@ -357,24 +357,27 @@ export class Arena {
    * Sets weather to the override specified in `overrides.ts`
    */
   // TODO: make this apply at the start of a new biome like the terrain one - this would be a lot more useful for tests
-  private overrideWeather(): void {
+  private overrideWeather(quiet = false): void {
     const weather = activeOverrides.WEATHER_OVERRIDE;
     this.weather = new Weather(weather, 0);
 
     this.eventTarget.dispatchEvent(new WeatherChangedEvent(weather, 0));
     globalScene.phaseManager.unshiftNew("CommonAnimPhase", undefined, undefined, getWeatherAnimation(weather));
-    globalScene.phaseManager.queueMessage(getWeatherStartMessage(weather)!); // TODO: is this bang correct?
+    if (!quiet) {
+      globalScene.phaseManager.queueMessage(getWeatherStartMessage(weather)!); // TODO: is this bang correct?
+    }
   }
 
   /**
    * Attempts to set a new weather to the battle
    * @param weather {@linkcode WeatherType} new {@linkcode WeatherType} to set
    * @param user {@linkcode Pokemon} that caused the weather effect
+   * @param quiet - Whether to suppress weather announcements; default `false`.
    * @returns true if new weather set, false if no weather provided or attempting to set the same weather as currently in use
    */
-  public trySetWeather(weather: WeatherType, user?: Pokemon): boolean {
+  public trySetWeather(weather: WeatherType, user?: Pokemon, quiet = false): boolean {
     if (activeOverrides.WEATHER_OVERRIDE) {
-      this.overrideWeather();
+      this.overrideWeather(quiet);
       return true;
     }
 
@@ -394,7 +397,9 @@ export class Arena {
         undefined,
         getWeatherAnimation(oldWeatherType),
       );
-      globalScene.phaseManager.queueMessage(getLegendaryWeatherContinuesMessage(oldWeatherType)!);
+      if (!quiet) {
+        globalScene.phaseManager.queueMessage(getLegendaryWeatherContinuesMessage(oldWeatherType)!);
+      }
       return false;
     }
 
@@ -408,7 +413,9 @@ export class Arena {
     if (weather === WeatherType.NONE) {
       this.weather = null;
       this.eventTarget.dispatchEvent(new WeatherChangedEvent(WeatherType.NONE));
-      globalScene.phaseManager.queueMessage(getWeatherClearMessage(oldWeatherType)!); // TODO: is this bang correct?
+      if (!quiet) {
+        globalScene.phaseManager.queueMessage(getWeatherClearMessage(oldWeatherType)!); // TODO: is this bang correct?
+      }
     } else {
       this.weather = new Weather(weather, weatherDuration.value, weatherDuration.value);
       this.eventTarget.dispatchEvent(
@@ -416,7 +423,9 @@ export class Arena {
       );
 
       globalScene.phaseManager.unshiftNew("CommonAnimPhase", undefined, undefined, getWeatherAnimation(weather));
-      globalScene.phaseManager.queueMessage(getWeatherStartMessage(weather)!); // TODO: is this bang correct?
+      if (!quiet) {
+        globalScene.phaseManager.queueMessage(getWeatherStartMessage(weather)!); // TODO: is this bang correct?
+      }
     }
 
     for (const pokemon of inSpeedOrder(ArenaTagSide.BOTH)) {
@@ -510,9 +519,10 @@ export class Arena {
    * @param terrain - The {@linkcode TerrainType} to try and set.
    * @param ignoreAnim - (Default `false`) Whether to prevent showing an the animation
    * @param user - (Optional) The {@linkcode Pokemon} creating the terrain
+   * @param quiet - Whether to suppress terrain announcements; default `false`.
    * @returns Whether the terrain was successfully set.
    */
-  public trySetTerrain(terrain: TerrainType, ignoreAnim = false, user?: Pokemon): boolean {
+  public trySetTerrain(terrain: TerrainType, ignoreAnim = false, user?: Pokemon, quiet = false): boolean {
     if (!this.canSetTerrain(terrain)) {
       return false;
     }
@@ -530,7 +540,9 @@ export class Arena {
       this.terrain = null;
       this.eventTarget.dispatchEvent(new TerrainChangedEvent(TerrainType.NONE));
 
-      globalScene.phaseManager.queueMessage(getTerrainClearMessage(oldTerrainType));
+      if (!quiet) {
+        globalScene.phaseManager.queueMessage(getTerrainClearMessage(oldTerrainType));
+      }
     } else {
       this.terrain = new Terrain(terrain, terrainDuration.value, terrainDuration.value);
       this.eventTarget.dispatchEvent(new TerrainChangedEvent(terrain, terrainDuration.value));
@@ -542,7 +554,9 @@ export class Arena {
           CommonAnim.MISTY_TERRAIN + (terrain - 1),
         );
       }
-      globalScene.phaseManager.queueMessage(getTerrainStartMessage(terrain));
+      if (!quiet) {
+        globalScene.phaseManager.queueMessage(getTerrainStartMessage(terrain));
+      }
     }
 
     for (const pokemon of inSpeedOrder(ArenaTagSide.BOTH)) {
@@ -868,7 +882,7 @@ export class Arena {
   ): boolean {
     const existingTag = this.getTagOnSide(tagType, side, vsLane);
     if (existingTag) {
-      existingTag.onOverlap(globalScene.getPokemonById(sourceId));
+      existingTag.onOverlap(globalScene.getPokemonById(sourceId), quiet);
       return false;
     }
 

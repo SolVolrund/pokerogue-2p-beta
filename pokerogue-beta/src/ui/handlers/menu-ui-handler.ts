@@ -13,13 +13,14 @@ import type { AwaitableUiHandler } from "#ui/awaitable-ui-handler";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/base-option-select-ui-handler";
 import { BgmBar } from "#ui/bgm-bar";
 import { MessageUiHandler } from "#ui/message-ui-handler";
-import { addTextObject, getTextStyleOptions } from "#ui/text";
+import { addBBCodeTextObject, addTextObject, getBBCodeFrag, getTextStyleOptions } from "#ui/text";
 import { addWindow, WindowVariant } from "#ui/ui-theme";
 import { fixedInt, sessionIdKey } from "#utils/common";
 import { getCookie } from "#utils/cookies";
 import { getEnumValues } from "#utils/enums";
 import { toCamelCase } from "#utils/strings";
 import i18next from "i18next";
+import type BBCodeText from "phaser3-rex-plugins/plugins/gameobjects/tagtext/bbcodetext/BBCodeText";
 
 enum MenuOptions {
   GAME_SETTINGS,
@@ -51,7 +52,7 @@ export class MenuUiHandler extends MessageUiHandler {
   private menuOverlay: Phaser.GameObjects.Rectangle;
 
   private menuBg: Phaser.GameObjects.NineSlice;
-  protected optionSelectText: Phaser.GameObjects.Text;
+  protected optionSelectText: BBCodeText;
 
   private cursorObj: Phaser.GameObjects.Image | null;
 
@@ -90,6 +91,10 @@ export class MenuUiHandler extends MessageUiHandler {
       globalScene.twoPlayerEnemyPlayerMode
       && (globalScene.twoPlayerLocalInputSeat === "ep" || globalScene.inputOwner === "ep")
     );
+  }
+
+  private isMenuOptionDisabled(option: MenuOptions): boolean {
+    return option === MenuOptions.EGG_GACHA && globalScene.phaseManager.getCurrentPhase().is("SelectModifierPhase");
   }
 
   setup(): void {
@@ -133,10 +138,6 @@ export class MenuUiHandler extends MessageUiHandler {
   render() {
     const ui = this.getUi();
     this.excludedMenus = () => [
-      {
-        condition: globalScene.phaseManager.getCurrentPhase().is("SelectModifierPhase"),
-        options: [MenuOptions.EGG_GACHA],
-      },
       { condition: bypassLogin, options: [MenuOptions.LOG_OUT] },
       { condition: !globalScene.currentBattle, options: [MenuOptions.SAVE_AND_QUIT] },
       {
@@ -159,10 +160,16 @@ export class MenuUiHandler extends MessageUiHandler {
       return !this.excludedMenus().some(exclusion => exclusion.condition && exclusion.options.includes(m));
     });
 
-    this.optionSelectText = addTextObject(
+    this.optionSelectText = addBBCodeTextObject(
       0,
       0,
-      this.menuOptions.map(o => `${i18next.t(`menuUiHandler:${toCamelCase(MenuOptions[o])}`)}`).join("\n"),
+      this.menuOptions
+        .map(option => {
+          const label = i18next.t(`menuUiHandler:${toCamelCase(MenuOptions[option])}`);
+          const style = this.isMenuOptionDisabled(option) ? TextStyle.SUMMARY_GRAY : TextStyle.WINDOW;
+          return `${getBBCodeFrag(label, style)}[/color][/shadow]`;
+        })
+        .join("\n"),
       TextStyle.WINDOW,
       { maxLines: this.menuOptions.length },
     );
@@ -177,7 +184,7 @@ export class MenuUiHandler extends MessageUiHandler {
     );
     this.menuBg.setOrigin(0, 0);
 
-    this.optionSelectText.setPositionRelative(this.menuBg, 10 + 24 * this.scale, 6);
+    this.optionSelectText.setPosition(this.menuBg.x + 10 + 24 * this.scale, this.menuBg.y + 6);
 
     this.menuContainer.add(this.menuBg);
 
@@ -564,7 +571,7 @@ export class MenuUiHandler extends MessageUiHandler {
 
     if (button === Button.ACTION) {
       const selectedOption = this.menuOptions[this.cursor];
-      if (selectedOption === undefined) {
+      if (selectedOption === undefined || this.isMenuOptionDisabled(selectedOption)) {
         error = true;
       } else {
         this.showText("", 0);

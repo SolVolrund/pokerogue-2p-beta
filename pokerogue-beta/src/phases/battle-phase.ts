@@ -1,8 +1,14 @@
 import { globalScene } from "#app/global-scene";
 import { Phase } from "#app/phase";
 import { getTrainerSlotIndex, TrainerSlot } from "#enums/trainer-slot";
+import { refreshSoulBondHpForParties } from "#utils/soul-bond";
 
 export abstract class BattlePhase extends Phase {
+  override start(): void {
+    super.start();
+    refreshSoulBondHpForParties();
+  }
+
   showEnemyTrainer(trainerSlot: TrainerSlot = TrainerSlot.NONE): void {
     if (!globalScene.currentBattle.trainer) {
       console.warn("Enemy trainer is missing!");

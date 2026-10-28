@@ -21,6 +21,11 @@ body {
   flex-direction: column;
   align-items: center;
   background: #484050;
+  /* Keep the fitted canvas inside display cutouts; fixed touch controls stay independent. */
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top);
+  padding-left: max(env(safe-area-inset-left), env(safe-area-inset-right));
+  padding-right: max(env(safe-area-inset-left), env(safe-area-inset-right));
 }
 
 @media (display-mode: fullscreen) {
@@ -230,7 +235,8 @@ input:-internal-autofill-selected {
   #apadCycleGender,
 #touchControls:not(.config-mode):not(
     [data-ui-mode="STARTER_SELECT"],
-    [data-ui-mode="POKEDEX"]
+    [data-ui-mode="POKEDEX"],
+    [data-ui-mode="POKEDEX_PAGE"]
   )
   #apadCycleTera {
   display: none;
@@ -241,7 +247,7 @@ input:-internal-autofill-selected {
 #configToolbar {
   width: 100%;
   position: fixed;
-  top: 1rem;
+  top: calc(1rem + env(safe-area-inset-top));
   left: 0;
   z-index: 9;
   user-select: none;

@@ -3,7 +3,7 @@ import { MoveId } from "#enums/move-id";
 import { padInt } from "#utils/common";
 
 interface TmPoolTiers {
-  [key: number]: Exclude<ModifierTier, ModifierTier.ROGUE | ModifierTier.MASTER | ModifierTier.LUXURY>;
+  [key: number]: Exclude<ModifierTier, ModifierTier.ROGUE | ModifierTier.LUXURY>;
 }
 
 export const tmPoolTiers: TmPoolTiers = {
@@ -329,6 +329,7 @@ export const tmPoolTiers: TmPoolTiers = {
   [MoveId.SUPERCELL_SLAM]: ModifierTier.ULTRA,
   [MoveId.PSYCHIC_NOISE]: ModifierTier.GREAT,
   [MoveId.UPPER_HAND]: ModifierTier.COMMON,
+  [MoveId.YES]: ModifierTier.MASTER,
 };
 
 /** The displayed TM number, or null for moves outside the TM pool. */

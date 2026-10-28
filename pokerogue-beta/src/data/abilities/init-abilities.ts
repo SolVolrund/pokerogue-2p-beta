@@ -526,7 +526,6 @@ export function initAbilities() {
       .build(),
     new AbBuilder(AbilityId.STICKY_HOLD, 3) //
       .attr(BlockItemTheftAbAttr)
-      .bypassFaint()
       .ignorable()
       .build(),
     new AbBuilder(AbilityId.SHED_SKIN, 3) //
@@ -1467,7 +1466,9 @@ export function initAbilities() {
         () => 0,
       )
       .conditionalAttr(
-        p => !p.hasSpecies(SpeciesId.BATTLE_BOND_GRENINJA) && !p.summonData.abilitiesApplied.has(AbilityId.BATTLE_BOND),
+        p =>
+          (p.isFusion() || p.species.speciesId !== SpeciesId.BATTLE_BOND_GRENINJA)
+          && !p.summonData.abilitiesApplied.has(AbilityId.BATTLE_BOND),
         PostVictoryStatStageChangeAbAttr,
         groupStatChange([Stat.ATK, Stat.SPATK, Stat.SPD], 1),
       )

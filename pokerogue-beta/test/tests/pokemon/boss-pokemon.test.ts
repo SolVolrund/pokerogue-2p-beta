@@ -2,11 +2,13 @@ import { AbilityId } from "#enums/ability-id";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";
 import { EFFECTIVE_STATS, Stat } from "#enums/stat";
+import { StatusEffect } from "#enums/status-effect";
 import type { EnemyPokemon } from "#field/pokemon";
 import { GameManager } from "#test/framework/game-manager";
 import { toDmgValue } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import * as randomUtils from "#utils/random";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("Boss Pokemon / Shields", () => {
   let phaserGame: Phaser.Game;
@@ -201,6 +203,53 @@ describe("Boss Pokemon / Shields", () => {
     expect(enemyPokemon.bossSegmentIndex).toBe(0);
     expect(enemyPokemon.hp).toBe(1);
     expect(getTotalStatStageBoosts(enemyPokemon)).toBe(1);
+  });
+
+  it("breaks every shield without rolling a stat when all stages are maxed", async () => {
+    game.override.enemyHealthSegments(5).enemyAbility(AbilityId.BALL_FETCH);
+    await game.classicMode.startBattle(SpeciesId.MEWTWO);
+    const enemy = game.field.getEnemyPokemon();
+    for (const stat of EFFECTIVE_STATS) {
+      enemy.setStatStage(stat, 6);
+    }
+    const pick = vi.spyOn(randomUtils, "weightedPick");
+    enemy["handleBossSegmentCleared"](0);
+    expect(enemy.bossSegmentIndex).toBe(0);
+    expect(pick).not.toHaveBeenCalled();
+    expect(getTotalStatStageBoosts(enemy)).toBe(EFFECTIVE_STATS.length * 6);
+  });
+
+  it("stops selecting stats once pending shield boosts reach the cap", async () => {
+    game.override.enemyHealthSegments(10).enemyAbility(AbilityId.BALL_FETCH);
+    await game.classicMode.startBattle(SpeciesId.MEWTWO);
+    const enemy = game.field.getEnemyPokemon();
+    for (const stat of EFFECTIVE_STATS) {
+      enemy.setStatStage(stat, stat === Stat.ATK ? 0 : 6);
+    }
+    const pick = vi.spyOn(randomUtils, "weightedPick");
+    enemy["handleBossSegmentCleared"](0);
+    expect(enemy.bossSegmentIndex).toBe(0);
+    expect(pick).toHaveBeenCalledTimes(6);
+    expect(pick.mock.results.every(result => result.value === Stat.ATK)).toBe(true);
+  });
+
+  it("survives the poison-damage shield path when every stat stage is maxed", async () => {
+    game.override
+      .enemySpecies(SpeciesId.BLISSEY)
+      .enemyAbility(AbilityId.BALL_FETCH)
+      .enemyStatusEffect(StatusEffect.POISON)
+      .enemyHealthSegments(200)
+      .enemyLevel(100);
+    await game.classicMode.startBattle(SpeciesId.MILOTIC);
+    const enemy = game.field.getEnemyPokemon();
+    for (const stat of EFFECTIVE_STATS) {
+      enemy.setStatStage(stat, 6);
+    }
+    expect(enemy.bossSegmentIndex).toBe(199);
+    game.move.use(MoveId.SPLASH);
+    await game.toNextTurn();
+    expect(enemy.bossSegmentIndex).toBeLessThan(199);
+    expect(getTotalStatStageBoosts(enemy)).toBe(EFFECTIVE_STATS.length * 6);
   });
 
   /**

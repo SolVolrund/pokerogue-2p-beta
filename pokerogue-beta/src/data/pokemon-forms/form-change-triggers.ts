@@ -130,7 +130,7 @@ export class SpeciesFormChangeStatusEffectTrigger extends SpeciesFormChangeTrigg
     super();
     this.statusEffects = coerceArray(statusEffects);
     this.invert = invert;
-    // this.description = i18next.t("pokemonEvolutions:forms.statusEffect");
+    this.description = i18next.t("pokemonEvolutions:forms.statusEffect");
   }
 
   canChange(pokemon: Pokemon): boolean {
@@ -237,13 +237,23 @@ export class SpeciesDefaultFormMatchTrigger extends SpeciesFormChangeTrigger {
  * Class used for triggering form changes based on the user's Tera type.
  * Used by Ogerpon and Terapagos.
  */
-export class SpeciesFormChangeTeraTrigger extends SpeciesFormChangeTrigger {}
+export class SpeciesFormChangeTeraTrigger extends SpeciesFormChangeTrigger {
+  constructor() {
+    super();
+    this.description = i18next.t("pokemonEvolutions:forms.tera");
+  }
+}
 
 /**
  * Class used for triggering form changes based on the user's lapsed Tera type.
  * Used by Ogerpon and Terapagos.
  */
-export class SpeciesFormChangeLapseTeraTrigger extends SpeciesFormChangeTrigger {}
+export class SpeciesFormChangeLapseTeraTrigger extends SpeciesFormChangeTrigger {
+  constructor() {
+    super();
+    this.description = i18next.t("pokemonEvolutions:forms.teraLapse");
+  }
+}
 
 /**
  * Class used for triggering form changes based on weather.

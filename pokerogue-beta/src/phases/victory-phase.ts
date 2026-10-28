@@ -71,6 +71,7 @@ export class VictoryPhase extends PokemonPhase {
       && (!globalScene.currentBattle.greatHauntState
         || defeatedPokemon.id === globalScene.currentBattle.greatHauntState.marowakId)
       && !globalScene.phaseManager.hasPhaseOfType("TrainerVictoryPhase") // temporary hotfix
+      && !globalScene.phaseManager.hasPhaseOfType("BattleEndPhase")
     ) {
       globalScene.phaseManager.pushNew("BattleEndPhase", true);
       if (globalScene.currentBattle.battleType === BattleType.TRAINER) {

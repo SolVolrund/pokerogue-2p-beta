@@ -222,9 +222,10 @@ export abstract class ArenaTag implements BaseArenaTag {
   /**
    * Apply effects when this Tag overlaps by creating a new instance while one is already present.
    * @param source - The `Pokemon` having added the tag
+   * @param quiet - Whether to suppress overlap announcements; default `false`
    */
   // biome-ignore lint/correctness/noUnusedFunctionParameters: pseudo-abstract method
-  public onOverlap(source?: Pokemon): void {}
+  public onOverlap(source?: Pokemon, quiet = false): void {}
 
   /**
    * Reduce this {@linkcode ArenaTag}'s duration and apply any end-of-turn effects.
@@ -844,13 +845,13 @@ export abstract class EntryHazardTag extends SerializableArenaTag {
   /**
    * Add a new layer to this tag upon overlap, triggering the tag's normal {@linkcode onAdd} effects upon doing so.
    */
-  public override onOverlap(): void {
+  public override onOverlap(_source?: Pokemon, quiet = false): void {
     if (!this.canAdd()) {
       return;
     }
 
     (this as Mutable<this>).layers++;
-    this.onAdd();
+    this.onAdd(quiet);
     globalScene.arena.eventTarget.dispatchEvent(
       new ArenaTagAddedEvent(this.tagType, this.side, 0, [this.layers, this.maxLayers]),
     );
@@ -1211,8 +1212,8 @@ abstract class RoomArenaTag extends SerializableArenaTag {
    * Immediately remove this Tag upon overlapping.
    * @sealed
    */
-  override onOverlap(): void {
-    globalScene.arena.removeTagOnSide(this.tagType, this.side);
+  override onOverlap(_source?: Pokemon, quiet = false): void {
+    globalScene.arena.removeTagOnSide(this.tagType, this.side, quiet);
   }
 }
 
@@ -1308,7 +1309,7 @@ export class GravityTag extends SerializableArenaTag {
         if (pokemon.getTag(BattlerTagType.FLYING)) {
           pokemon.addTag(BattlerTagType.INTERRUPTED);
         }
-        if (!wasGrounded) {
+        if (!wasGrounded && !quiet) {
           globalScene.phaseManager.queueMessage(
             i18next.t("arenaTag:gravityGroundsPokemon", {
               pokemonNameWithAffix: getPokemonNameWithAffix(pokemon),

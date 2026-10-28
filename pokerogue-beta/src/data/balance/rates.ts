@@ -44,11 +44,17 @@ export const SAME_SPECIES_EGG_SHINY_RATE = 12;
 export const SAME_SPECIES_EGG_HA_RATE = 8;
 export const MANAPHY_EGG_MANAPHY_RATE = 8;
 export const GACHA_EGG_HA_RATE = 192;
+/** Same-species eggs purchased without a shiny before the shiny rate starts increasing. */
+export const BASE_SAME_SPECIES_SHINY_INCREASE_COUNT = 15;
+/** A shiny is guaranteed by this consecutive same-species egg purchase. */
+export const MAX_SAME_SPECIES_SHINY_INCREASE_COUNT = 21;
+/** Same-species shiny eggs without a missing variant before the next guarantee, including that egg. */
+export const MISSING_VARIANT_PITY_GUARANTEE = 11;
 
 // Odds are 1/x
 // [COMMON, RARE, EPIC/MANAPHY, LEGEND]
-export const RARE_EGGMOVE_RATES: readonly number[] = [48, 24, 12, 6];
-export const BOOSTED_RARE_EGGMOVE_RATES: readonly number[] = [16, 12, 6, 3];
+export const RARE_EGGMOVE_RATES: readonly number[] = [36, 24, 12, 6];
+export const BOOSTED_RARE_EGGMOVE_RATES: readonly number[] = [12, 8, 6, 4];
 
 // #endregion Egg properties
 

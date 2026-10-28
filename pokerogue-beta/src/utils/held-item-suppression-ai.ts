@@ -27,6 +27,7 @@ interface ForecastAttack {
 }
 
 interface ForecastTurn {
+  hp: Map<Pokemon, number>;
   attacks: Map<Pokemon, ForecastAttack>;
   incoming: Map<Pokemon, number>;
   recovery: Map<Pokemon, number>;
@@ -108,7 +109,7 @@ export function evaluateItemSuppression(user: Pokemon, target: Pokemon, move: Mo
         (sum, pokemon) => sum + (before.attacks.get(pokemon)?.damage.get(user) ?? 0),
         0,
       );
-      if (damageBeforeAction >= user.hp) {
+      if (damageBeforeAction >= before.hp.get(user)!) {
         return { ...result, score: -100, survivalScore: -100 };
       }
     }
@@ -123,17 +124,20 @@ export function evaluateItemSuppression(user: Pokemon, target: Pokemon, move: Mo
     for (const pokemon of field) {
       const sign = user.isOpponent(pokemon) ? -1 : 1;
       const maxHp = Math.max(1, pokemon.getMaxHp());
+      const beforeHp = before.hp.get(pokemon)!;
+      const afterHp = after.hp.get(pokemon)!;
       // Future equipment value is uncertain, especially when the holder is close to fainting.
       const firstIncoming = Math.max(firstBefore?.incoming.get(pokemon) ?? 0, firstAfter?.incoming.get(pokemon) ?? 0);
-      const longevity = turn === 0 ? 1 : Math.min(1, pokemon.hp / Math.max(1, firstIncoming * (turn + 1)));
+      const longevity =
+        turn === 0 ? 1 : Math.min(1, Math.min(beforeHp, afterHp) / Math.max(1, firstIncoming * (turn + 1)));
       const scale = (sign * weight * longevity * accuracy * 130) / maxHp;
-      const beforeDamage = Math.min(pokemon.hp, before.incoming.get(pokemon) ?? 0);
-      const afterDamage = Math.min(pokemon.hp, after.incoming.get(pokemon) ?? 0);
+      const beforeDamage = Math.min(beforeHp, before.incoming.get(pokemon) ?? 0);
+      const afterDamage = Math.min(afterHp, after.incoming.get(pokemon) ?? 0);
       result.damageScore += (beforeDamage - afterDamage) * scale;
       result.healingScore += ((after.recovery.get(pokemon) ?? 0) - (before.recovery.get(pokemon) ?? 0)) * scale;
       if (turn === 0) {
-        const beforeFaints = (before.incoming.get(pokemon) ?? 0) >= pokemon.hp + (before.recovery.get(pokemon) ?? 0);
-        const afterFaints = (after.incoming.get(pokemon) ?? 0) >= pokemon.hp + (after.recovery.get(pokemon) ?? 0);
+        const beforeFaints = (before.incoming.get(pokemon) ?? 0) >= beforeHp + (before.recovery.get(pokemon) ?? 0);
+        const afterFaints = (after.incoming.get(pokemon) ?? 0) >= afterHp + (after.recovery.get(pokemon) ?? 0);
         result.survivalScore += (Number(beforeFaints) - Number(afterFaints)) * sign * accuracy * 100;
       }
     }
@@ -170,6 +174,7 @@ function forecastTurn(
   earlier = new Set<Pokemon>(),
   beforeStates?: ReadonlyMap<Pokemon, boolean>,
 ): ForecastTurn {
+  const hp = new Map(field.map(pokemon => [pokemon, pokemon.hp]));
   const attacks = new Map(
     field.map(attacker => [
       attacker,
@@ -211,7 +216,7 @@ function forecastTurn(
       return [pokemon, actualShell + Math.max(0, leftovers)];
     }),
   );
-  return { attacks, incoming, recovery };
+  return { hp, attacks, incoming, recovery };
 }
 
 function predictAttack(attacker: Pokemon, viewer: Pokemon): ForecastAttack {

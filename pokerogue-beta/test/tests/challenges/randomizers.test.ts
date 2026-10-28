@@ -180,12 +180,43 @@ describe("Challenges - Randomizers", () => {
     expect(pokemon.getPassiveAbility().id).toBe(AbilityId.ROUGH_SKIN);
   });
 
-  it("Lite keeps form-critical abilities while the All setting randomizes them", () => {
-    const species = getPokemonSpecies(SpeciesId.MIMIKYU);
+  it.each([
+    [SpeciesId.MIMIKYU, AbilityId.DISGUISE],
+    [SpeciesId.MINIOR, AbilityId.SHIELDS_DOWN],
+  ])("Lite keeps species %i's form-critical ability while other settings randomize it", (speciesId, ability) => {
+    const species = getPokemonSpecies(speciesId);
     enable(Challenges.ABILITY_RANDOMIZER, 3);
-    expect(species.getAbility(0)).toBe(AbilityId.DISGUISE);
-    enable(Challenges.ABILITY_RANDOMIZER, 2);
-    expect(species.getAbility(0)).not.toBe(AbilityId.DISGUISE);
+    expect(species.getAbility(0)).toBe(ability);
+    for (const setting of [1, 2]) {
+      enable(Challenges.ABILITY_RANDOMIZER, setting);
+      expect(species.getAbility(0)).not.toBe(ability);
+    }
+  });
+
+  it("keeps Shields Down on every Minior form without changing its custom passive data or RNG", () => {
+    const species = getPokemonSpecies(SpeciesId.MINIOR);
+    const originalPassives = species.forms.map(form => [
+      form.getPassiveAbility(form.formIndex, 0),
+      form.getPassiveAbility(form.formIndex, 1),
+    ]);
+    const rng = Phaser.Math.RND.state();
+    enable(Challenges.ABILITY_RANDOMIZER, 3);
+    for (const owner of [0, 1, 2] as const) {
+      game.scene.activePlayerIndex = owner;
+      for (const [index, form] of species.forms.entries()) {
+        expect(form.getAbility(0)).toBe(AbilityId.SHIELDS_DOWN);
+        for (const slot of [0, 1]) {
+          const expected = new ValueHolder(originalPassives[index][slot]);
+          applyChallenges(ChallengeType.PASSIVE_ABILITY_MODIFY, species.speciesId, expected);
+          expect(form.getPassiveAbility(form.formIndex, slot)).toBe(expected.value);
+        }
+      }
+    }
+    expect(Phaser.Math.RND.state()).toBe(rng);
+    game.scene.gameMode.challenges = [];
+    expect(
+      species.forms.map(form => [form.getPassiveAbility(form.formIndex, 0), form.getPassiveAbility(form.formIndex, 1)]),
+    ).toEqual(originalPassives);
   });
 
   it("updates ribbon eligibility for each player's challenges and suppresses it under randomizers", () => {

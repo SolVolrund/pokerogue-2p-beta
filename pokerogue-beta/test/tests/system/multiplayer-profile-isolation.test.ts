@@ -40,6 +40,7 @@ describe("Multiplayer permanent profile isolation", () => {
     own.dexData[SpeciesId.MEWTWO].caughtAttr = 0n;
     own.starterData[SpeciesId.BULBASAUR].candyCount = 17;
     own.starterData[SpeciesId.BULBASAUR].passiveAttr = 0;
+    own.starterData[SpeciesId.BULBASAUR].pity = [5, 6];
     game.scene.markLocalPlayerSystemSaveLoaded();
     own.saveSystemLocal();
     window.history.replaceState({}, "", "?onlineLobby=1&twoPlayerSession=profile-isolation");
@@ -75,6 +76,7 @@ describe("Multiplayer permanent profile isolation", () => {
       remote.dexData[SpeciesId.MEWTWO].caughtAttr = DexAttr.NON_SHINY | DexAttr.DEFAULT_FORM;
       remote.starterData[SpeciesId.BULBASAUR].candyCount = 999;
       remote.starterData[SpeciesId.BULBASAUR].passiveAttr = 3;
+      remote.starterData[SpeciesId.BULBASAUR].pity = [20, 10];
       expect(
         game.scene.applyTwoPlayerProfileSnapshot({
           playerIndex,
@@ -101,6 +103,7 @@ describe("Multiplayer permanent profile isolation", () => {
     expect(profile.dexData[SpeciesId.MEWTWO].caughtAttr).toBe(0n);
     expect(profile.starterData[SpeciesId.BULBASAUR].candyCount).toBe(17);
     expect(profile.starterData[SpeciesId.BULBASAUR].passiveAttr).toBe(0);
+    expect(profile.starterData[SpeciesId.BULBASAUR].pity).toEqual([5, 6]);
   }
 
   it.each([0, 1, 2, "ep"] as const)("seat %s autosaves only its own permanent progress", async seat => {

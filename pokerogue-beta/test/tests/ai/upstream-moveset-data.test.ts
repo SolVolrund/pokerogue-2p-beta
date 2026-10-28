@@ -49,6 +49,12 @@ describe("Upstream moveset-selection data", () => {
     [MoveId.MIRROR_SHOT, MoveId.FLASH_CANNON],
     [MoveId.STRUGGLE_BUG, MoveId.BUG_BUZZ],
     [MoveId.REST, MoveId.RECOVER],
+    [MoveId.FLAMETHROWER, MoveId.TORCH_SONG],
+    [MoveId.AQUA_JET, MoveId.JET_PUNCH],
+    [MoveId.GIGA_DRAIN, MoveId.MATCHA_GOTCHA],
+    [MoveId.POISON_JAB, MoveId.DIRE_CLAW],
+    [MoveId.LIQUIDATION, MoveId.SURGING_STRIKES],
+    [MoveId.HEX, MoveId.INFERNAL_PARADE],
   ])("replaces move %i only when move %i is available", (oldMove, replacement) => {
     const pool = new Map([[oldMove, 100]]);
     __INTERNAL_TEST_EXPORTS.filterSupercededMoves(pool);
@@ -66,6 +72,15 @@ describe("Upstream moveset-selection data", () => {
     ]);
     __INTERNAL_TEST_EXPORTS.filterSupercededMoves(pool);
     expect(pool.has(MoveId.LIFE_DEW)).toBe(true);
+  });
+
+  it("keeps Hex as a status-synergy alternative to Shadow Ball", () => {
+    const pool = new Map([
+      [MoveId.HEX, 10],
+      [MoveId.SHADOW_BALL, 10],
+    ]);
+    __INTERNAL_TEST_EXPORTS.filterSupercededMoves(pool);
+    expect(pool.has(MoveId.HEX)).toBe(true);
   });
 
   it.each([
@@ -151,7 +166,7 @@ describe("Upstream moveset-selection data", () => {
         [true, true],
       ]) {
         const pool = new Map([[MoveId.BODY_SLAM, 10]]);
-        __INTERNAL_TEST_EXPORTS.filterMovePool(pool, false, trainer, pokemon, fallback);
+        __INTERNAL_TEST_EXPORTS.filterMovePool(pool, false, trainer, pokemon, false, fallback);
         expect(pool.has(MoveId.BODY_SLAM)).toBe(true);
       }
     });
@@ -236,6 +251,26 @@ describe("Upstream moveset-selection data", () => {
         LearnMoveType.LEARN_MOVE,
       );
       expect(downgrade.shouldLearn).toBe(false);
+    });
+
+    it.each([
+      [MoveId.FLAMETHROWER, MoveId.TORCH_SONG],
+      [MoveId.AQUA_JET, MoveId.JET_PUNCH],
+      [MoveId.GIGA_DRAIN, MoveId.MATCHA_GOTCHA],
+      [MoveId.POISON_JAB, MoveId.DIRE_CLAW],
+    ])("uses the new CPU learning preference %i -> %i without a reverse downgrade", (oldMove, newMove) => {
+      const decision = chooseComputerPartnerMoveLearningDecision(
+        pokemon,
+        [oldMove],
+        allMoves[newMove],
+        LearnMoveType.LEARN_MOVE,
+      );
+      expect(decision.shouldLearn).toBe(true);
+      expect(decision.replaceIndex).toBe(0);
+      expect(
+        chooseComputerPartnerMoveLearningDecision(pokemon, [newMove], allMoves[oldMove], LearnMoveType.LEARN_MOVE)
+          .shouldLearn,
+      ).toBe(false);
     });
 
     it("does not treat a CPU partner's Life Dew as an automatic self-healing replacement", () => {

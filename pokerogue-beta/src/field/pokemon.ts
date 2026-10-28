@@ -10,6 +10,14 @@ import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { HORDE_ENEMY_SPRITE_OFFSETS } from "#data/horde-battle";
 import { getHauntingStatMultiplier, isHauntedByMaleficSkull } from "#utils/haunting-utils";
+import {
+  bothHoldThreads,
+  getSoulBondStatBonus,
+  isDestinyKnot,
+  isSoulBondStatRefreshDeferred,
+  refreshSoulBondHp,
+  refreshSoulBondHpForParties,
+} from "#utils/soul-bond";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { activeOverrides } from "#app/overrides";
@@ -316,6 +324,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   public gender: Gender;
   public hp: number;
   public stats: number[];
+  /** HP contribution already accounted for in current HP; raw stats never contain bond bonuses. */
+  public soulBondHpBonus = 0;
   public ivs: number[];
   public nature: Nature;
   public moveset: PokemonMove[];
@@ -2009,11 +2019,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * @returns The numeric values of this {@linkcode Pokemon}'s stats as an array.
    */
   getStats(bypassSummonData = true): number[] {
-    if (!bypassSummonData) {
-      // Only grab summon data stats if nonzero
-      return this.summonData.stats.map((s, i) => s || this.stats[i]);
-    }
-    return this.stats;
+    return PERMANENT_STATS.map(stat => this.getStat(stat, bypassSummonData));
   }
 
   /**
@@ -2023,11 +2029,11 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * @returns The numeric value of the desired {@linkcode Stat}.
    */
   getStat(stat: PermanentStat, bypassSummonData = true): number {
-    if (!bypassSummonData) {
-      // 0 = no override
-      return this.summonData.stats[stat] || this.stats[stat];
+    // 0 = no override
+    if (!bypassSummonData && this.summonData.stats[stat]) {
+      return this.summonData.stats[stat];
     }
-    return this.stats[stat];
+    return this.stats[stat] + getSoulBondStatBonus(this, stat);
   }
 
   /**
@@ -2243,6 +2249,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   calculateStats(): void {
     const oldHp = this.hp;
     const oldMaxHp = this.stats?.[Stat.HP] ?? 0;
+    const oldSoulBondHpBonus = this.soulBondHpBonus;
     const spiritMultiplier = getHauntingStatMultiplier(this);
     const spiritMultiplierChanged = spiritMultiplier !== this.hauntingStatMultiplier;
     this.hauntingStatMultiplier = spiritMultiplier;
@@ -2280,7 +2287,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
         if (this.hp > statHolder.value || this.hp === undefined) {
           this.hp = statHolder.value;
         } else if (this.hp) {
-          const lastMaxHp = this.getMaxHp();
+          const lastMaxHp = this.stats[Stat.HP];
           if (lastMaxHp && statHolder.value > lastMaxHp) {
             this.hp += statHolder.value - lastMaxHp;
           }
@@ -2312,8 +2319,18 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       this.setStat(s, statHolder.value);
     }
     if (spiritMultiplierChanged && oldMaxHp > 0 && oldHp !== undefined) {
-      this.hp = oldHp === 0 ? 0 : Math.max(1, Math.min(this.getMaxHp(), Math.floor(oldHp * this.getMaxHp() / oldMaxHp)));
+      this.hp = oldHp === 0 ? 0 : Math.max(1, Math.min(this.stats[Stat.HP], Math.floor(oldHp * this.stats[Stat.HP] / oldMaxHp)));
     }
+    if (!isSoulBondStatRefreshDeferred() && oldSoulBondHpBonus && oldMaxHp > 0 && oldHp !== undefined) {
+      // Recalculate once from the old bonded maximum; do not repeatedly unscale and rescale HP.
+      this.soulBondHpBonus = getSoulBondStatBonus(this, Stat.HP);
+      const maxHp = this.stats[Stat.HP] + this.soulBondHpBonus;
+      this.hp =
+        oldHp === 0 ? 0 : Math.max(1, Math.min(maxHp, Math.floor((oldHp * maxHp) / (oldMaxHp + oldSoulBondHpBonus))));
+    } else {
+      refreshSoulBondHp(this);
+    }
+    refreshSoulBondHpForParties();
   }
 
   private getShadowPokemonStatMultiplier(stat: PermanentStat): number {
@@ -2744,6 +2761,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
    * @param useIllusion - (Default `false`) Whether to consider an active illusion
    * @param ignoreThirdType - (Default `false`) Whether to ignore the typing added by Forest's Curse or Trick-or-Treat
    * @param ignoreAceType - (Default `false`) Whether to exclude the permanent Ace bonus typing
+   * @param forMoveGen - (Default `false`) Whether to anticipate Tera when includeTeraType is enabled
    * @returns A non-empty array of {@linkcode PokemonType}s corresponding to this Pokemon's typing (real or perceived).
    */
   public getTypes({
@@ -2753,6 +2771,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     useIllusion = false,
     ignoreThirdType = false,
     ignoreAceType = false,
+    forMoveGen = false,
   }: {
     includeTeraType?: boolean;
     returnOriginalTypesIfStellar?: boolean;
@@ -2760,12 +2779,13 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     useIllusion?: boolean;
     ignoreThirdType?: boolean;
     ignoreAceType?: boolean;
+    forMoveGen?: boolean;
   } = {}): Mutable<NonEmptyTuple<PokemonType>> {
     const teraType = this.getTeraType();
     // Stellar tera does nothing defensively (uses original types)
     const shouldUseTeraStellar = !(returnOriginalTypesIfStellar && teraType === PokemonType.STELLAR);
 
-    if (includeTeraType && this.isTerastallized && shouldUseTeraStellar) {
+    if (includeTeraType && (this.isTerastallized || forMoveGen) && shouldUseTeraStellar) {
       return [teraType];
     }
 
@@ -7198,7 +7218,14 @@ export class PlayerPokemon extends Pokemon {
     if (this.fusionSpecies) {
       this.fusionSpecies.getTms(this.getFusionFormKey() ?? undefined).forEach(tm => tms.add(tm));
     }
+    // This reward is exclusive to a real Mew, not Transform or a fusion's secondary species.
+    if (this.species.speciesId === SpeciesId.MEW) {
+      tms.add(MoveId.YES);
+    }
     applyChallenges(ChallengeType.PLAYER_TM_COMPATIBILITY, this, tms);
+    if (this.species.speciesId !== SpeciesId.MEW) {
+      tms.delete(MoveId.YES);
+    }
     if (excludeKnown) {
       this.moveset.forEach(move => tms.delete(move.moveId));
     }
@@ -7614,6 +7641,16 @@ export class PlayerPokemon extends Pokemon {
    * @param pokemon - The PlayerPokemon to fuse to this one
    */
   fuse(pokemon: PlayerPokemon, fusionOptions?: FusionOptions): void {
+    if (bothHoldThreads(this, pokemon)) {
+      // The primary keeps its Thread; the donor's Thread is deliberately discarded, not stacked.
+      const owner = globalScene.getPlayerIndexForPokemon(pokemon);
+      for (const item of pokemon.getHeldItems().filter(isDestinyKnot)) {
+        globalScene.removeModifier(item, false, owner);
+      }
+      pokemon.battleData.removedHeldItems = pokemon.battleData.removedHeldItems.filter(
+        item => item.typeId !== "DESTINY_KNOT",
+      );
+    }
     this.fusionOptions = fusionOptions ? new FusionOptions(fusionOptions) : null;
     if (this.fusionOptions) {
       this.fusionOptions.donorNature = pokemon.getNature();
@@ -8472,14 +8509,14 @@ export class EnemyPokemon extends Pokemon {
       }
       // Filter out already maxed out stat stages and weigh the rest based on existing stats
       const leftoverStats = EFFECTIVE_STATS.filter(
-        (s: EffectiveStat) => this.getStatStage(s) + (changes.find(c => c.stat === s)?.stages ?? 0) < 6,
+        (s: EffectiveStat) =>
+          this.getStatStage(s) + changes.reduce((total, c) => total + (c.stat === s ? c.stages : 0), 0) < 6,
       );
-      const boostedStat = weightedPick(new Map(leftoverStats.map(s => [s, this.getStat(s, false)])));
-
-      if (boostedStat === undefined) {
+      if (leftoverStats.length === 0) {
         doStatBoost = false;
         continue;
       }
+      const boostedStat = weightedPick(new Map(leftoverStats.map(s => [s, this.getStat(s, false)])));
 
       let stages = 1;
 

@@ -1,12 +1,16 @@
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { SHINY_CATCH_RATE_MULTIPLIER } from "#balance/rates";
 import { CLASSIC_CANDY_FRIENDSHIP_MULTIPLIER } from "#balance/starters";
+import { halloweenSprites } from "#data/halloween-cosmetics";
 import type { PokemonSpeciesFilter } from "#data/pokemon-species";
+import { isHauntingSeason } from "#data/seasonal-encounters";
+import type { BiomeId } from "#enums/biome-id";
 import type { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import type { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import type { SpeciesId } from "#enums/species-id";
 import type { TrainerType } from "#enums/trainer-type";
 import type { ModifierTypeKeys } from "#modifiers/modifier-type";
+import type { BiomeLinks } from "#types/biomes";
 import type { EventEncounter, EventMysteryEncounterTier, EventWeatherPools, TimedEvent } from "#types/events";
 import { randSeedShuffle } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
@@ -69,6 +73,33 @@ export class TimedEventManager {
    */
   getShinyCatchMultiplier(): number {
     return this.activeEvent()?.shinyCatchMultiplier ?? SHINY_CATCH_RATE_MULTIPLIER;
+  }
+
+  getExtraCatchCandy(): number {
+    return this.activeEvent()?.extraCatchCandy ?? 0;
+  }
+
+  isSootheBellBoosted(): boolean {
+    return this.activeEvent()?.boostSootheBell ?? false;
+  }
+
+  getEventBiomeLinks(biome: BiomeId): BiomeLinks {
+    return [...(this.activeEvent()?.biomes?.[biome] ?? [])];
+  }
+
+  isHalloweenCosmeticsActive(): boolean {
+    return !this.disabled && isHauntingSeason();
+  }
+
+  getEventImageReplacement(key: string): string | null {
+    const replacements = this.activeEvent()?.sprites?.imageReplacements ?? [];
+    return (
+      replacements.find(([source]) => source === key)?.[1]
+      ?? (this.isHalloweenCosmeticsActive()
+        ? halloweenSprites.imageReplacements?.find(([source]) => source === key)?.[1]
+        : null)
+      ?? null
+    );
   }
 
   getEventBannerFilename(): string {
@@ -207,7 +238,7 @@ export class TimedEventManager {
         return emr[1];
       }
     }
-    return bgm;
+    return bgm === "title" && this.isHalloweenCosmeticsActive() ? "halloween_title" : bgm;
   }
 
   /**
@@ -287,16 +318,15 @@ export class TimedEventManager {
    */
   public getEventTrainerSpriteReplacement(trainerType: TrainerType): string | null {
     const event = this.activeEvent();
-    if (!event) {
-      return null;
-    }
-    const trainerReplacements = event.sprites?.trainerReplacements ?? [];
+    const trainerReplacements = event?.sprites?.trainerReplacements ?? [];
     for (const tr of trainerReplacements) {
       if (tr[0] === trainerType) {
         return tr[1];
       }
     }
-    return null;
+    return this.isHalloweenCosmeticsActive()
+      ? (halloweenSprites.trainerReplacements.find(([source]) => source === trainerType)?.[1] ?? null)
+      : null;
   }
 
   /**

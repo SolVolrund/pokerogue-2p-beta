@@ -153,6 +153,7 @@ export function cancelGreatHauntTurn(): void {
     "MoveChargePhase",
     "CheckInterludePhase",
     "TurnEndPhase",
+    "SoulBondPhase",
     "WeatherEffectPhase",
     "PositionalTagPhase",
     "BerryPhase",

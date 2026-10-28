@@ -28,6 +28,7 @@ const moveCallingMoves = [
 
 /** Set of moves that cannot be called by {@linkcode MoveId.METRONOME | Metronome}. */
 export const invalidMetronomeMoves: ReadonlySet<MoveId> = new Set([
+  MoveId.YES,
   ...moveCallingMoves,
   MoveId.AFTER_YOU,
   MoveId.BANEFUL_BUNKER,
@@ -69,6 +70,7 @@ export const invalidMetronomeMoves: ReadonlySet<MoveId> = new Set([
 /** Set of moves that cannot be called by {@linkcode MoveId.ASSIST | Assist} */
 // TODO: Decide on whether to remove event exclusives like Hold Hands/Celebrate
 export const invalidAssistMoves: ReadonlySet<MoveId> = new Set([
+  MoveId.YES,
   ...moveCallingMoves,
   MoveId.BANEFUL_BUNKER,
   MoveId.BEAK_BLAST,

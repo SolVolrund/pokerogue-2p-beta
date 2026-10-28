@@ -23,8 +23,6 @@ import {
   RARE_EGGMOVE_RATES,
   SAME_SPECIES_EGG_HA_RATE,
   SAME_SPECIES_EGG_SHINY_RATE,
-  SHINY_EPIC_CHANCE,
-  SHINY_VARIANT_CHANCE,
 } from "#balance/rates";
 import { EggSourceType } from "#enums/egg-source-types";
 import { EggTier } from "#enums/egg-type";
@@ -32,6 +30,13 @@ import { SpeciesId } from "#enums/species-id";
 import { VariantTier } from "#enums/variant-tier";
 import type { PlayerPokemon } from "#field/pokemon";
 import { getIvsFromId, randomString, randSeedInt } from "#utils/common";
+import {
+  ensureSameSpeciesEggPity,
+  getMissingEggVariants,
+  rollEggShinyVariant,
+  rollSameSpeciesEggShiny,
+  rollSameSpeciesEggVariant,
+} from "#utils/egg-pity";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
 
@@ -180,8 +185,11 @@ export class Egg {
       this._timestamp = eggOptions?.timestamp ?? Date.now();
 
       // First roll shiny and variant so we can filter if species with an variant exist
-      this._isShiny = eggOptions?.isShiny ?? (activeOverrides.EGG_SHINY_OVERRIDE || this.rollShiny());
-      this._variantTier = eggOptions?.variantTier ?? activeOverrides.EGG_VARIANT_OVERRIDE ?? this.rollVariant();
+      // Restoring an older egg must not advance the owner's purchase pity.
+      const pitySpecies = eggOptions?.fromSave ? undefined : eggOptions?.species;
+      this._isShiny = eggOptions?.isShiny ?? (activeOverrides.EGG_SHINY_OVERRIDE || this.rollShiny(pitySpecies));
+      this._variantTier =
+        eggOptions?.variantTier ?? activeOverrides.EGG_VARIANT_OVERRIDE ?? this.rollVariant(pitySpecies);
       this._species = eggOptions?.species ?? this.rollSpecies()!; // TODO: Is this bang correct?
 
       this._overrideHiddenAbility = eggOptions?.overrideHiddenAbility ?? false;
@@ -534,7 +542,10 @@ export class Egg {
    * Rolls whether the egg is shiny or not.
    * @returns `true` if the egg is shiny
    */
-  private rollShiny(): boolean {
+  private rollShiny(species?: SpeciesId): boolean {
+    if (this._sourceType === EggSourceType.SAME_SPECIES_EGG && species) {
+      return rollSameSpeciesEggShiny(this.getSameSpeciesPity(species));
+    }
     let shinyChance = GACHA_DEFAULT_SHINY_RATE;
     switch (this._sourceType) {
       case EggSourceType.GACHA_SHINY:
@@ -553,19 +564,37 @@ export class Egg {
   // Uses the same logic as pokemon.generateVariant(). I would like to only have this logic in one
   // place but I don't want to touch the pokemon class.
   // TODO: Remove this or replace the one in the Pokemon class.
-  private rollVariant(): VariantTier {
+  private rollVariant(species?: SpeciesId): VariantTier {
     if (!this.isShiny) {
       return VariantTier.STANDARD;
     }
 
-    const rand = randSeedInt(10);
-    if (rand >= SHINY_VARIANT_CHANCE) {
-      return VariantTier.STANDARD; // 6/10
+    if (this._sourceType === EggSourceType.SAME_SPECIES_EGG && species) {
+      const data = this.getOwnerGameData();
+      const pendingVariants = data.eggs
+        .filter(egg => egg.species === species && egg.isShiny)
+        .map(egg => egg.variantTier);
+      return rollSameSpeciesEggVariant(
+        this.getSameSpeciesPity(species),
+        getMissingEggVariants(
+          data.dexData[species]?.caughtAttr ?? 0n,
+          getPokemonSpecies(species).hasVariants(),
+          pendingVariants,
+        ),
+      );
     }
-    if (rand >= SHINY_EPIC_CHANCE) {
-      return VariantTier.RARE; // 3/10
-    }
-    return VariantTier.EPIC; // 1/10
+    return rollEggShinyVariant();
+  }
+
+  private getSameSpeciesPity(species: SpeciesId) {
+    const data = this.getOwnerGameData();
+    return ensureSameSpeciesEggPity(
+      data.starterData[species],
+      speciesDataRegistry.getStarterCost(species),
+      data.dexData[species]?.hatchedCount ?? 0,
+      data.dexData[species]?.caughtAttr ?? 0n,
+      getPokemonSpecies(species).hasVariants(),
+    );
   }
 
   private checkForPityTierOverrides(): void {

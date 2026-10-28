@@ -35,6 +35,7 @@ import { addWindow } from "#ui/ui-theme";
 import { applyChallenges } from "#utils/challenge-utils";
 import { BooleanHolder, getLocalizedSpriteKey } from "#utils/common";
 import { isMysteryEncounterSwitchProtectedPokemon } from "#utils/mystery-encounter-switch-protection";
+import { isDestinyKnot } from "#utils/soul-bond";
 import { toCamelCase, toTitleCase } from "#utils/strings";
 import i18next from "i18next";
 import type BBCodeText from "phaser3-rex-plugins/plugins/bbcodetext";
@@ -252,6 +253,11 @@ export class PartyUiHandler extends MessageUiHandler {
   }
 
   public static FilterItemMaxStacks = (pokemon: PlayerPokemon, modifier: PokemonHeldItemModifier) => {
+    if (isDestinyKnot(modifier)) {
+      return globalScene.canTransferHeldItemModifier(modifier, pokemon)
+        ? null
+        : i18next.t("partyUiHandler:tooManyItems", { pokemonName: getPokemonNameWithAffix(pokemon, false) });
+    }
     const matchingModifier = globalScene.findModifierForPokemon(
       m => m.is("PokemonHeldItemModifier") && m.pokemonId === pokemon.id && m.matchType(modifier),
       pokemon,
@@ -652,6 +658,8 @@ export class PartyUiHandler extends MessageUiHandler {
 
       let ableToTransferText: string;
       const party = this.getParty();
+      const selectedItems =
+        this.transferOptionCursor === allCursorIndex ? allItems : [allItems[this.transferOptionCursor]];
       for (let p = 0; p < party.length; p++) {
         // this for loop goes through each of the party pokemon
         const newPokemon = party[p];
@@ -686,6 +694,14 @@ export class PartyUiHandler extends MessageUiHandler {
           // this relates to the transfer pokemon. We set the text to be blank so there's no "Able"/"Not able" text
           ableToTransferText = "";
           // this skips adding the able/not able labels on the pokemon doing the transfer
+        } else if (selectedItems.some(isDestinyKnot)) {
+          const ableAmount = selectedItems.filter((item, index) =>
+            isDestinyKnot(item)
+              ? globalScene.canTransferHeldItemModifier(item, newPokemon)
+              : !matchingModifiers[index] || matchingModifiers[index].getCountUnderMax() > 0,
+          ).length;
+          ableToTransferText = i18next.t(ableAmount ? "partyUiHandler:able" : "partyUiHandler:notAble");
+          ableToTransferText += ableAmount && selectedItems.length > 1 ? ` (${ableAmount})` : "";
         } else if (hasMatchingModifier) {
           // if matchingModifier exists then the item exists on the new pokemon
           ableToTransferText = i18next.t("partyUiHandler:notAble"); // start with not able
@@ -1357,6 +1373,9 @@ export class PartyUiHandler extends MessageUiHandler {
         this.partyUiMode,
         this.tmMoveId,
         this.getActivePartySlotCount(),
+        this.partyUiMode === PartyUiMode.EVO_ITEM_MODIFIER || this.partyUiMode === PartyUiMode.FORM_CHANGE_ITEM_MODIFIER
+          ? (this.selectFilter as PokemonSelectFilter)(party[p] as PlayerPokemon) === null
+          : undefined,
       );
       globalScene.add.existing(partySlot);
       this.partySlotsContainer.add(partySlot);
@@ -1685,6 +1704,8 @@ export class PartyUiHandler extends MessageUiHandler {
         this.addCommonOptions(pokemon);
         break;
       case PartyUiMode.MODIFIER:
+      case PartyUiMode.EVO_ITEM_MODIFIER:
+      case PartyUiMode.FORM_CHANGE_ITEM_MODIFIER:
         this.options.push(PartyOption.APPLY);
         this.addCommonOptions(pokemon);
         break;
@@ -2189,6 +2210,7 @@ class PartySlot extends Phaser.GameObjects.Container {
     partyUiMode: PartyUiMode,
     tmMoveId: MoveId,
     private readonly activePartySlotCount = globalScene.getBattleFieldSlotCount(),
+    itemCompatible?: boolean,
   ) {
     const isBenched = slotIndex >= activePartySlotCount;
     const isDoubleBattle = activePartySlotCount > 1;
@@ -2225,14 +2247,14 @@ class PartySlot extends Phaser.GameObjects.Container {
     this.pokemon = pokemon;
     this.iconAnimHandler = iconAnimHandler;
 
-    this.setup(partyUiMode, tmMoveId);
+    this.setup(partyUiMode, tmMoveId, itemCompatible);
   }
 
   getPokemon(): Pokemon {
     return this.pokemon;
   }
 
-  setup(partyUiMode: PartyUiMode, tmMoveId: MoveId) {
+  setup(partyUiMode: PartyUiMode, tmMoveId: MoveId, itemCompatible?: boolean) {
     const isItemManageMode = partyUiMode === PartyUiMode.MODIFIER_TRANSFER || partyUiMode === PartyUiMode.DISCARD;
 
     this.slotBgKey = this.isBenched
@@ -2433,14 +2455,16 @@ class PartySlot extends Phaser.GameObjects.Container {
       this.slotDescriptionLabel,
     ]);
 
-    if (partyUiMode === PartyUiMode.TM_MODIFIER) {
+    if (partyUiMode === PartyUiMode.TM_MODIFIER || itemCompatible !== undefined) {
       this.slotHpLabel.setVisible(false);
       this.slotHpBar.setVisible(false);
       this.slotHpOverlay.setVisible(false);
       this.slotHpText.setVisible(false);
       let slotTmText: string;
 
-      if (this.pokemon.getMoveset().some(m => m.moveId === tmMoveId)) {
+      if (itemCompatible !== undefined) {
+        slotTmText = i18next.t(itemCompatible ? "partyUiHandler:able" : "partyUiHandler:notAble");
+      } else if (this.pokemon.getMoveset().some(m => m.moveId === tmMoveId)) {
         slotTmText = i18next.t("partyUiHandler:learned");
       } else if (this.pokemon.isPlayer() && this.pokemon.isTmCompatible(tmMoveId)) {
         slotTmText = i18next.t("partyUiHandler:able");

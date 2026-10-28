@@ -1,6 +1,7 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { allMoves } from "#data/data-lists";
+import { loadYesAnimationAssets, playYesAnimation } from "#data/yes-move-animation";
 import type { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { EncounterAnim } from "#enums/encounter-anims";
@@ -432,6 +433,10 @@ export async function initCommonAnims(): Promise<void> {
 }
 
 export function initMoveAnim(move: MoveId): Promise<void> {
+  if (move === MoveId.YES) {
+    moveAnims.set(move, new AnimConfig({ frames: [], frameTimedEvents: {}, graphic: "" }));
+    return initMoveAnim(MoveId.FUTURE_SIGHT);
+  }
   return new Promise(resolve => {
     if (moveAnims.has(move)) {
       if (moveAnims.get(move) === null) {
@@ -605,6 +610,10 @@ export async function loadEncounterAnimAssets(startLoad?: boolean): Promise<void
 }
 
 export function loadMoveAnimAssets(moveIds: MoveId[], startLoad?: boolean): Promise<void> {
+  if (moveIds.includes(MoveId.YES)) {
+    loadYesAnimationAssets();
+    moveIds = Array.from(new Set([...moveIds, MoveId.FUTURE_SIGHT]));
+  }
   return new Promise(resolve => {
     const moveAnimations = moveIds.flatMap(m => moveAnims.get(m) as AnimConfig);
     for (const moveId of moveIds) {
@@ -1336,6 +1345,14 @@ export class CommonBattleAnim extends BattleAnim {
 
 export class MoveAnim extends BattleAnim {
   public move: MoveId;
+
+  override play(onSubstitute?: boolean, callback?: () => void): void {
+    if (this.move === MoveId.YES && this.user) {
+      playYesAnimation(this.user, callback);
+      return;
+    }
+    super.play(onSubstitute, callback);
+  }
 
   constructor(move: MoveId, user: Pokemon, target: BattlerIndex, playOnEmptyField = false) {
     // Set target to the user pokemon if no target is found to avoid crashes

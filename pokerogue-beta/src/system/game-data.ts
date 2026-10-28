@@ -4,6 +4,7 @@ import type { MultiplayerPlayerCount, PlayerIndex } from "#app/battle-scene";
 import { defaultStarterSpecies, saveKey } from "#app/constants";
 import { getGameMode } from "#app/game-mode";
 import { audioManager } from "#app/global-audio-manager";
+import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { activeOverrides } from "#app/overrides";
@@ -109,6 +110,7 @@ import {
   isComputerPartnerKey as isKnownComputerPartnerKey,
 } from "#utils/computer-partner-profile";
 import { decrypt, encrypt } from "#utils/data";
+import { ensureSameSpeciesEggPity } from "#utils/egg-pity";
 import { getEnumKeys } from "#utils/enums";
 import type { MewtwoFinalBossState } from "#utils/classic-final-boss-utils";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
@@ -685,7 +687,11 @@ export class GameData {
     }
 
     GameData.mergeDexDataProgress(target.dexData, source.dexData);
-    GameData.mergeStarterDataProgress(target.starterData, source.starterData);
+    GameData.mergeStarterDataProgress(
+      target.starterData,
+      source.starterData,
+      (source.eggGenerationCount ?? 0) > (target.eggGenerationCount ?? 0),
+    );
     GameData.mergeGameStatsProgress(target.gameStats, source.gameStats);
     target.eggGenerationCount = Math.max(target.eggGenerationCount ?? 0, source.eggGenerationCount ?? 0);
     GameData.mergeBooleanUnlocks(target.unlocks, source.unlocks);
@@ -885,7 +891,7 @@ export class GameData {
     return GameData.mergeContestStatsProgress(entry.contestStats, legacyStats);
   }
 
-  private static mergeStarterDataProgress(target: StarterData, source?: StarterData): void {
+  private static mergeStarterDataProgress(target: StarterData, source?: StarterData, newerEggs = false): void {
     if (!source) {
       return;
     }
@@ -908,6 +914,10 @@ export class GameData {
       };
 
       const targetEntry = target[speciesId];
+      // Pity resets on success, so taking a maximum could resurrect an already-used guarantee.
+      if (sourceEntry.pity && (!targetEntry.pity || newerEggs)) {
+        targetEntry.pity = [...sourceEntry.pity];
+      }
       targetEntry.eggMoves |= sourceEntry.eggMoves ?? 0;
       targetEntry.friendship = Math.max(targetEntry.friendship ?? 0, sourceEntry.friendship ?? 0);
       targetEntry.abilityAttr |= sourceEntry.abilityAttr ?? 0;
@@ -964,6 +974,7 @@ export class GameData {
 
   private static createComputerPartnerStarterProgressEntry(): ComputerPartnerStarterProgressEntry {
     return {
+      pity: [0, 0],
       eggMoves: 0,
       candyCount: 0,
       friendship: 0,
@@ -1031,6 +1042,20 @@ export class GameData {
         aceEvs: normalizeAceEvState(sourceEntry.aceEvTotal, sourceEntry.aceEvs).spread,
         upgradePurchases: sourceEntry.upgradePurchases ?? 0,
       };
+      const id = Number(speciesId) as SpeciesId;
+      if (sourceEntry.pity) {
+        normalized.starterData[id]!.pity = [...sourceEntry.pity];
+      }
+      const dexEntry = normalized.dexData[id];
+      if (speciesDataRegistry.getSpeciesData(id)) {
+        ensureSameSpeciesEggPity(
+          normalized.starterData[id]!,
+          speciesDataRegistry.getStarterCost(id),
+          dexEntry?.hatchedCount ?? 0,
+          dexEntry?.caughtAttr ?? 0n,
+          getPokemonSpecies(id).hasVariants(),
+        );
+      }
     }
 
     normalized.eggPurchases = progress.eggPurchases ?? 0;
@@ -1062,6 +1087,7 @@ export class GameData {
     target: ComputerPartnerProgressData,
     source: ComputerPartnerProgressData,
   ): void {
+    const newerEggs = (source.eggPurchases ?? 0) > (target.eggPurchases ?? 0);
     target.eggPurchases = Math.max(target.eggPurchases ?? 0, source.eggPurchases ?? 0);
 
     for (const speciesId of Object.keys(source.dexData)) {
@@ -1099,8 +1125,12 @@ export class GameData {
         continue;
       }
 
+      const missingStarter = !target.starterData[speciesId];
       target.starterData[speciesId] ??= GameData.createComputerPartnerStarterProgressEntry();
       const targetEntry = target.starterData[speciesId]!;
+      if (sourceEntry.pity && (missingStarter || !targetEntry.pity || newerEggs)) {
+        targetEntry.pity = [...sourceEntry.pity];
+      }
       targetEntry.eggMoves |= sourceEntry.eggMoves ?? 0;
       targetEntry.candyCount = Math.max(targetEntry.candyCount ?? 0, sourceEntry.candyCount ?? 0);
       targetEntry.friendship = Math.max(targetEntry.friendship ?? 0, sourceEntry.friendship ?? 0);
@@ -2775,6 +2805,7 @@ export class GameData {
 
   private createStarterDataEntry(speciesId: SpeciesId): StarterDataEntry {
     return {
+      pity: [0, 0],
       moveset: null,
       eggMoves: 0,
       candyCount: 0,
@@ -2803,6 +2834,14 @@ export class GameData {
 
     for (const speciesId of speciesDataRegistry.getAllStarters()) {
       this.starterData[speciesId] ??= this.createStarterDataEntry(speciesId);
+      const dexEntry = this.dexData[speciesId];
+      ensureSameSpeciesEggPity(
+        this.starterData[speciesId],
+        speciesDataRegistry.getStarterCost(speciesId),
+        dexEntry.hatchedCount,
+        dexEntry.caughtAttr,
+        getPokemonSpecies(speciesId).hasVariants(),
+      );
     }
   }
 
@@ -2972,7 +3011,8 @@ export class GameData {
         // TODO: remove `?? 0`, `pokemon.variant` shouldn't be able to be nullish
         const shinyBonus = pokemon.isShiny() ? 5 * Math.pow(2, pokemon.variant ?? 0) : 1;
         const eggOrBossBonus = fromEgg || pokemon.isBoss() ? 2 : 1;
-        this.addStarterCandy(species.speciesId, shinyBonus * eggOrBossBonus);
+        const eventBonus = fromEgg ? 0 : timedEventManager.getExtraCatchCandy();
+        this.addStarterCandy(species.speciesId, shinyBonus * eggOrBossBonus + eventBonus);
       }
     }
 
@@ -3179,7 +3219,8 @@ export class GameData {
 
     const shinyBonus = pokemon.isShiny() ? 5 * Math.pow(2, pokemon.variant ?? 0) : 1;
     const eggOrBossBonus = fromEgg || pokemon.isBoss() ? 2 : 1;
-    this.addComputerPartnerStarterCandy(key, speciesId, shinyBonus * eggOrBossBonus);
+    const eventBonus = fromEgg ? 0 : timedEventManager.getExtraCatchCandy();
+    this.addComputerPartnerStarterCandy(key, speciesId, shinyBonus * eggOrBossBonus + eventBonus);
   }
 
   /**

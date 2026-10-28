@@ -3,17 +3,22 @@ import { getGameMode } from "#app/game-mode";
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { Phase } from "#app/phase";
+import { timedEvents } from "#balance/timed-events";
 import { modifierTypes } from "#data/data-lists";
+import { TrainerConfig } from "#data/trainers/trainer-config";
 import { BattleType } from "#enums/battle-type";
 import { BattlerIndex } from "#enums/battler-index";
+import { BiomeId } from "#enums/biome-id";
 import { GameModes } from "#enums/game-modes";
 import { ModifierTier } from "#enums/modifier-tier";
 import { SpeciesId } from "#enums/species-id";
 import { TrainerSlot } from "#enums/trainer-slot";
+import { TrainerType } from "#enums/trainer-type";
 import { Pokemon } from "#field/pokemon";
 import type { PersistentModifier } from "#modifiers/modifier";
 import type { ModifierTypeKeys } from "#modifiers/modifier-type";
 import { ModifierRewardPhase } from "#phases/modifier-reward-phase";
+import { SelectBiomePhase } from "#phases/select-biome-phase";
 import { VictoryPhase } from "#phases/victory-phase";
 import { GameManager } from "#test/framework/game-manager";
 import type { ModifierTypeFunc } from "#types/modifier-types";
@@ -113,6 +118,42 @@ describe("Timed event wave rewards", () => {
     expect(calls.some(call => call[0] === "SelectModifierPhase")).toBe(true);
   });
 
+  it.each([
+    [false, false, false, 2],
+    [false, true, false, 3],
+    [false, false, true, 6],
+    [false, true, true, 11],
+    [true, false, false, 2],
+    [true, false, true, 10],
+  ] as const)("adds event candy only to catches (egg=%s, boss=%s, shiny=%s)", async (fromEgg, boss, shiny, expected) => {
+    vi.spyOn(timedEventManager, "getExtraCatchCandy").mockReturnValue(1);
+    const pokemon = game.scene.addEnemyPokemon(getPokemonSpecies(SpeciesId.BULBASAUR), 5, TrainerSlot.NONE);
+    vi.spyOn(pokemon, "isBoss").mockReturnValue(boss);
+    vi.spyOn(pokemon, "isShiny").mockReturnValue(shiny);
+    pokemon.variant = 0;
+    const human = vi.spyOn(game.scene.gameData, "addStarterCandy");
+    const cpu = vi.spyOn(game.scene.gameData, "addComputerPartnerStarterCandy");
+    await game.scene.gameData.setPokemonCaught(pokemon, true, fromEgg, false);
+    game.scene.gameData.recordComputerPartnerPokemonCaught("joy", pokemon, fromEgg);
+    expect(human).toHaveBeenCalledExactlyOnceWith(SpeciesId.BULBASAUR, expected);
+    expect(cpu).toHaveBeenCalledExactlyOnceWith("joy", SpeciesId.BULBASAUR, expected);
+  });
+
+  it("adds event routes without bypassing the separate Pokemon Tower entry vote", () => {
+    vi.spyOn(timedEventManager, "activeEvent").mockReturnValue(timedEvents.find(e => e.name === "Halloween 26"));
+    const phase = new SelectBiomePhase();
+    expect(phase["getAvailableBiomeLinks"](BiomeId.METROPOLIS)).toContain(BiomeId.GRAVEYARD);
+    expect(phase["getAvailableBiomeLinks"](BiomeId.TALL_GRASS)).toContain(BiomeId.GRAVEYARD);
+    expect(phase["getAvailableBiomeLinks"](BiomeId.GRAVEYARD)).not.toContain(BiomeId.POKEMON_TOWER);
+  });
+
+  it("loads the male and female Halloween rival atlases by their actual filenames", () => {
+    vi.spyOn(timedEventManager, "getEventTrainerSpriteReplacement").mockReturnValue("halloween_rival");
+    const trainer = new TrainerConfig(TrainerType.RIVAL);
+    expect(trainer.getSpriteKey(false)).toBe("halloween_rival_m");
+    expect(trainer.getSpriteKey(true)).toBe("halloween_rival_f");
+  });
+
   it.each([2, 3] as const)("queues each event reward once per seat for %i players", count => {
     game.scene.configureTwoPlayerMode(true, 6, false, count);
     game.scene.twoPlayerEnemyPlayerMode = true;
@@ -144,6 +185,35 @@ describe("Timed event wave rewards", () => {
       ["ROGUE_BALL", 2],
     ]);
     expect(game.scene.activePlayerIndex).toBe(1);
+  });
+
+  it("delivers the Halloween Z-Ring reward to all three player seats", () => {
+    game.scene.configureTwoPlayerMode(true, 6, false, 3);
+    vi.mocked(timedEventManager.getFixedBattleEventRewards).mockReturnValue([
+      "MEGA_BRACELET",
+      "DYNAMAX_BAND",
+      "Z_RING",
+    ]);
+    expect(win().filter(call => call[0] === "ModifierRewardPhase")).toEqual(
+      [modifierTypes.MEGA_BRACELET, modifierTypes.DYNAMAX_BAND, modifierTypes.Z_RING].flatMap(type =>
+        game.scene.getActivePlayerIndexes().map(player => ["ModifierRewardPhase", type, player, true]),
+      ),
+    );
+  });
+
+  it("uses the Z-Ring recipient's own inventory for duplicate equipment", async () => {
+    game.scene.configureTwoPlayerMode(true, 6, false, 3);
+    game.scene.setActivePlayerIndex(0);
+    give(1, modifierTypes.Z_RING);
+    const add = vi.spyOn(game.scene, "addModifier").mockReturnValue(true);
+    for (const player of game.scene.getActivePlayerIndexes()) {
+      await new ModifierRewardPhase(modifierTypes.Z_RING, player, true).doReward();
+    }
+    expect(add.mock.calls.map(call => [call[0]?.type.id, call[6]])).toEqual([
+      ["Z_RING", 0],
+      ["ROGUE_BALL", 1],
+      ["Z_RING", 2],
+    ]);
   });
 
   it.each([

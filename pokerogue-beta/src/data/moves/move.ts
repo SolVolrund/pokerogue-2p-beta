@@ -107,6 +107,7 @@ import {
   lastResortCondition,
   MoveCondition,
   MoveRestriction,
+  RequireTypeCondition,
   targetSleptOrComatoseCondition,
   upperHandCondition,
   userSleptOrComatoseCondition,
@@ -544,10 +545,15 @@ export abstract class Move implements Localizable {
 
   /**
    * Check whether the move has the specified condition in any of its condition arrays.
-   * @param condition - The {@linkcode MoveCondition}, must be the same instance.
+   * @param condition - Either a {@linkcode MoveCondition} instance or a function that takes a {@linkcode MoveCondition} and returns a boolean.
    * @returns Whether the move has the specified condition
    */
-  public hasCondition(condition: MoveCondition): boolean {
+  public hasCondition(condition: MoveCondition | ((condition: MoveCondition) => boolean)): boolean {
+    if (typeof condition === "function") {
+      return (
+        this.conditions.some(condition) || this.conditionsSeq2.some(condition) || this.conditionsSeq3.some(condition)
+      );
+    }
     return (
       this.conditions.includes(condition)
       || this.conditionsSeq2.includes(condition)
@@ -1398,6 +1404,7 @@ export abstract class Move implements Localizable {
     }
 
     const exceptMoves: readonly MoveId[] = [
+      MoveId.YES, // Its sacrifice is coordinated outside the ordinary move attributes.
       MoveId.FLING,
       MoveId.UPROAR,
       MoveId.ROLLOUT,
@@ -3699,7 +3706,6 @@ export class RemoveHeldItemAttr extends MoveEffectAttr {
    */
   apply(user: Pokemon, target: Pokemon, move: Move, _args: any[]): boolean {
     // Check for abilities that block item theft
-    // TODO: This should not trigger if the target would faint beforehand
     const cancelled = new BooleanHolder(false);
     applyAbAttrs("BlockItemTheftAbAttr", { pokemon: target, cancelled });
 
@@ -12422,7 +12428,7 @@ export function initMoves() {
       .attr(PositiveStatStagePowerAttr),
     new AttackMove(MoveId.BURN_UP, PokemonType.FIRE, MoveCategory.SPECIAL, 130, 100, 5, -1, 0, 7)
       // fail if the user is not currently Fire-type (including being Terastallized to Stellar)
-      .condition(user => user.isOfType(PokemonType.FIRE, { returnOriginalTypesIfStellar: true }), 2)
+      .condition(new RequireTypeCondition(PokemonType.FIRE), 2)
       .attr(HealStatusEffectAttr, true, StatusEffect.FREEZE)
       .attr(AddBattlerTagAttr, BattlerTagType.BURNED_UP, true, false)
       .attr(RemoveTypeAttr, PokemonType.FIRE, user => {
@@ -13285,7 +13291,7 @@ export function initMoves() {
       .healingMove(),
     new AttackMove(MoveId.DOUBLE_SHOCK, PokemonType.ELECTRIC, MoveCategory.PHYSICAL, 120, 100, 5, -1, 0, 9)
       // Pass `true` to `isOfType` to fail if the user is terastallized to a type other than ELECTRIC
-      .condition(user => user.isOfType(PokemonType.ELECTRIC, { returnOriginalTypesIfStellar: true }), 2)
+      .condition(new RequireTypeCondition(PokemonType.ELECTRIC), 2)
       .attr(AddBattlerTagAttr, BattlerTagType.DOUBLE_SHOCKED, true, false)
       .attr(RemoveTypeAttr, PokemonType.ELECTRIC, user => {
         globalScene.phaseManager.queueMessage(
@@ -13403,6 +13409,21 @@ export function initMoves() {
     new StatusMove(MoveId.VEEVEE_ANTE, PokemonType.NORMAL, -1, 10, -1, 0, 9)
       .attr(VeeveeAnteAttr)
       .condition(user => user.isBioInstabilityEevee())
+      .target(MoveTarget.NEAR_ENEMY),
+    // Setup and unconditional Lunar Dance are coordinated by YesMoveSetupPhase / MoveEffectPhase.
+    new AttackMove(MoveId.YES, PokemonType.NORMAL, MoveCategory.SPECIAL, 999, 100, 1, 100, 0, 9)
+      .attr(TypelessAttr)
+      .attr(MultiStatusEffectAttr, [
+        StatusEffect.BURN,
+        StatusEffect.PARALYSIS,
+        StatusEffect.FREEZE,
+        StatusEffect.POISON,
+        StatusEffect.SLEEP,
+      ])
+      .makesContact(false)
+      .ignoresAbilities()
+      .ignoresProtect()
+      .ignoresSubstitute()
       .target(MoveTarget.NEAR_ENEMY),
   );
 }

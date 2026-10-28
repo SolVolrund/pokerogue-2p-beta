@@ -117,6 +117,7 @@ import { TitlePhase } from "#phases/title-phase";
 import { ToggleDoublePositionPhase } from "#phases/toggle-double-position-phase";
 import { TrainerVictoryPhase } from "#phases/trainer-victory-phase";
 import { TurnEndPhase } from "#phases/turn-end-phase";
+import { SoulBondPhase } from "#phases/soul-bond-phase";
 import { TurnInitPhase } from "#phases/turn-init-phase";
 import { TurnStartPhase } from "#phases/turn-start-phase";
 import { UnavailablePhase } from "#phases/unavailable-phase";
@@ -126,6 +127,7 @@ import { VsModeSuddenDeathPhase } from "#phases/vs-mode-sudden-death-phase";
 import { VsModeVictoryPhase } from "#phases/vs-mode-victory-phase";
 import { VoltorbFlipPhase } from "#phases/voltorb-flip-phase";
 import { WeatherEffectPhase } from "#phases/weather-effect-phase";
+import { YesMoveSetupPhase } from "#phases/yes-move-setup-phase";
 import { ZMovePhase } from "#phases/z-move-phase";
 import type { PhaseConditionFunc, PhaseMap, PhaseString } from "#types/phase-types";
 import type { NonEmptyTuple } from "type-fest";
@@ -262,6 +264,7 @@ const PHASES = Object.freeze({
   ToggleDoublePositionPhase,
   TrainerVictoryPhase,
   TurnEndPhase,
+  SoulBondPhase,
   TurnInitPhase,
   TurnStartPhase,
   UnavailablePhase,
@@ -271,6 +274,7 @@ const PHASES = Object.freeze({
   VsModeVictoryPhase,
   VoltorbFlipPhase,
   WeatherEffectPhase,
+  YesMoveSetupPhase,
   ZMovePhase,
 });
 
@@ -285,6 +289,7 @@ const turnEndPhases: readonly PhaseString[] = [
   "BerryPhase",
   "CheckStatusEffectPhase",
   "TurnEndPhase",
+  "SoulBondPhase",
 ] as const;
 
 /**
@@ -656,6 +661,7 @@ export class PhaseManager {
       "WeatherEffectPhase",
       "BerryPhase",
       "CheckStatusEffectPhase",
+      "SoulBondPhase",
     ] as const;
     for (const phaseName of phasesToRemove) {
       this.phaseQueue.removeAll(phaseName);
