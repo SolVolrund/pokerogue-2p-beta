@@ -384,6 +384,7 @@ export abstract class PokemonSpeciesForm {
     const showGenderDiffs =
       (this.genderDiffs || forceFemaleCosplaySprite)
       && useFemaleSprite
+      && !(this.speciesId === SpeciesId.PIKACHU && formSpriteKey === "partner-cap")
       && ![
         SpeciesFormKey.MEGA,
         SpeciesFormKey.MEGA_X,
@@ -556,6 +557,9 @@ export abstract class PokemonSpeciesForm {
     }
     if (this.speciesId === SpeciesId.ARCEUS && formSpriteKey === "legend") {
       formSpriteKey = "unknown";
+    }
+    if (this.speciesId === SpeciesId.PIKACHU && formSpriteKey === "partner-cap") {
+      formSpriteKey = "partner"; // The party icon atlas already contains all four Partner Pikachu tiers.
     }
     if (formSpriteKey) {
       switch (this.speciesId) {

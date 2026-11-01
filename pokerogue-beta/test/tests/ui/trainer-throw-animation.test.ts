@@ -74,6 +74,7 @@ describe("Trainer throw animation", () => {
     "whitney_back_pb",
     "sabrina_back_pb",
     "amber_two_back_pb",
+    "ash_ketchum_back_pb",
     "gardenia_back_pb",
     "blaine_back_pb",
     "jasmine_back_pb",

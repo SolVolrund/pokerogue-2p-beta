@@ -7,7 +7,9 @@ import { MAX_PER_TYPE_POKEBALLS } from "#data/pokeball";
 import { AbilityId } from "#enums/ability-id";
 import { BerryType } from "#enums/berry-type";
 import { ModifierTier } from "#enums/modifier-tier";
+import { MoveCategory } from "#enums/move-category";
 import { MoveId } from "#enums/move-id";
+import { MoveTarget } from "#enums/move-target";
 import { PokeballType } from "#enums/pokeball";
 import { SpeciesId } from "#enums/species-id";
 import { StatusEffect } from "#enums/status-effect";
@@ -33,6 +35,7 @@ import type { initModifierTypes } from "#modifiers/modifier-type";
 import { WeightedModifierType } from "#modifiers/modifier-type";
 import type { WeightedModifierTypeWeightFunc } from "#types/modifier-types";
 import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
+import { getAvailableThreadColors } from "#utils/soul-bond";
 import { getReceivableZCrystalsForParty, hasZMoveAccessForParty } from "#utils/z-move-utils";
 
 /**
@@ -162,8 +165,11 @@ function isRewardPlayerUnlockAvailable(unlockable: Unlockables, party: readonly 
  */
 function initGreatModifierPool() {
   modifierPool[ModifierTier.GREAT] = [
-    // Keep the tier registered for existing/event Threads, but disable ordinary reward drops for now.
-    new WeightedModifierType(modifierTypes.DESTINY_KNOT, 0),
+    new WeightedModifierType(
+      modifierTypes.DESTINY_KNOT,
+      (party: Pokemon[]) => (getAvailableThreadColors(party).length > 0 ? 2 : 0),
+      2,
+    ),
     new WeightedModifierType(modifierTypes.GREAT_BALL, () => (hasMaximumBalls(PokeballType.GREAT_BALL) ? 0 : 6), 6),
     new WeightedModifierType(modifierTypes.PP_UP, 2),
     new WeightedModifierType(
@@ -759,6 +765,20 @@ function initRogueModifierPool() {
     new WeightedModifierType(modifierTypes.LEFTOVERS, 3),
     new WeightedModifierType(modifierTypes.SHELL_BELL, 3),
     new WeightedModifierType(modifierTypes.BERRY_POUCH, 4),
+    new WeightedModifierType(
+      modifierTypes.BUDDY_BALL,
+      (party: Pokemon[]) => {
+        const parties = globalScene.twoPlayerMode
+          ? globalScene.getActivePlayerIndexes().map(playerIndex => globalScene.getPlayerParty(playerIndex))
+          : [party];
+        return parties.some(team => team.some(pokemon => pokemon.getMoveset(true).some(slot => {
+          const move = slot.getMove();
+          return move.category !== MoveCategory.STATUS
+            && [MoveTarget.ALL_NEAR_OTHERS, MoveTarget.ALL_OTHERS, MoveTarget.ALL].includes(move.moveTarget);
+        }))) ? 3 : 0;
+      },
+      3,
+    ),
     new WeightedModifierType(modifierTypes.GRIP_CLAW, 5),
     new WeightedModifierType(modifierTypes.SCOPE_LENS, 4),
     new WeightedModifierType(modifierTypes.BATON, 2),

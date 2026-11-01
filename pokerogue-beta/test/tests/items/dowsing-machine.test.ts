@@ -136,8 +136,9 @@ describe("Items - Dowsing Machine", () => {
     machine.preferences.Z_CRYSTAL = ZCrystal.FLYINIUM_Z;
     const data = new ModifierData(JSON.parse(JSON.stringify(new ModifierData(machine, true))), true);
     const restored = data.toModifier(DowsingMachineModifier) as DowsingMachineModifier;
-    expect(restored.preferences).toEqual(machine.preferences);
+    expect(restored.preferences).toEqual({ ...machine.preferences, FORM_CHANGE_ITEM: FormChangeItem.ROTOM_CATALOGUE });
     const cloned = machine.clone();
+    expect(cloned.preferences).toEqual(restored.preferences);
     delete cloned.preferences.EVOLUTION_ITEM;
     expect(machine.preferences.EVOLUTION_ITEM).toBe(EvolutionItem.THUNDER_STONE);
     expect(restored.preferences.EVOLUTION_ITEM).toBe(EvolutionItem.THUNDER_STONE);

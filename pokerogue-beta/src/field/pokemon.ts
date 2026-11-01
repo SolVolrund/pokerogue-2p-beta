@@ -3049,6 +3049,14 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       abilityAttrs.push(...this.getPassiveAbility().getAttrs(attrType));
     }
 
+    if (attrType === "MoveImmunityAbAttr" && this.hasBuddyBallTelepathy(canApply)) {
+      for (const attr of allAbilities[AbilityId.TELEPATHY].getAttrs(attrType)) {
+        if (!abilityAttrs.includes(attr)) {
+          abilityAttrs.push(attr);
+        }
+      }
+    }
+
     return abilityAttrs;
   }
 
@@ -3154,7 +3162,10 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     if (passive && !this.hasPassive()) {
       return false;
     }
-    const ability = passive ? this.getPassiveAbility() : this.getAbility();
+    return this.canApplyAbilityEffect(passive ? this.getPassiveAbility() : this.getAbility());
+  }
+
+  private canApplyAbilityEffect(ability: Ability): boolean {
     if (this.isFusion() && ability.hasAttr("NoFusionAbilityAbAttr")) {
       return false;
     }
@@ -3191,6 +3202,11 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     return (this.hp > 0 || ability.bypassFaint) && !ability.conditions.find(condition => !condition(this));
   }
 
+  private hasBuddyBallTelepathy(canApply: boolean): boolean {
+    const ball = this.getHeldItems().find(item => item.is("BuddyBallModifier"));
+    return !!ball && (!canApply || (ball.isEffectActive(this) && this.canApplyAbilityEffect(allAbilities[AbilityId.TELEPATHY])));
+  }
+
   /**
    * Check whether a pokemon has the specified ability in effect, either as a normal or passive ability.
    * Accounts for all the various effects which can disable or modify abilities.
@@ -3203,7 +3219,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     if (this.getAbility(ignoreOverride).id === ability && (!canApply || this.canApplyAbility())) {
       return true;
     }
-    return this.getPassiveAbility().id === ability && this.hasPassive() && (!canApply || this.canApplyAbility(true));
+    return (this.getPassiveAbility().id === ability && this.hasPassive() && (!canApply || this.canApplyAbility(true)))
+      || (ability === AbilityId.TELEPATHY && this.hasBuddyBallTelepathy(canApply));
   }
 
   /**
@@ -3218,7 +3235,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     if ((!canApply || this.canApplyAbility()) && this.getAbility(ignoreOverride).hasAttr(attrType)) {
       return true;
     }
-    return this.hasPassive() && (!canApply || this.canApplyAbility(true)) && this.getPassiveAbility().hasAttr(attrType);
+    return (this.hasPassive() && (!canApply || this.canApplyAbility(true)) && this.getPassiveAbility().hasAttr(attrType))
+      || (attrType === "MoveImmunityAbAttr" && this.hasBuddyBallTelepathy(canApply));
   }
 
   /**
@@ -3510,6 +3528,21 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
       if (!cancelledHolder.value) {
         applyAbAttrs("MoveImmunityAbAttr", commonAbAttrParams);
+      }
+
+      // Native immunities resolve first. The held item uses Telepathy's own rule without revealing the holder's ability.
+      if (!cancelledHolder.value && this.isAlly(source) && this.hasBuddyBallTelepathy(true)) {
+        for (const immunity of allAbilities[AbilityId.TELEPATHY].getAttrs("MoveImmunityAbAttr")) {
+          if (immunity.canApply(commonAbAttrParams)) {
+            immunity.apply(commonAbAttrParams);
+            if (!simulated) {
+              globalScene.phaseManager.queueMessage(i18next.t("battle:buddyBallProtected", {
+                pokemonNameWithAffix: getPokemonNameWithAffix(this),
+                itemName: i18next.t("modifierType:ModifierType.BUDDY_BALL.name"),
+              }));
+            }
+          }
+        }
       }
 
       // Do not check queenly majesty unless this is being simulated

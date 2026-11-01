@@ -1,18 +1,21 @@
 import { getGameMode } from "#app/game-mode";
+import { isDamageReductionBerryType } from "#data/berry";
 import { modifierTypes } from "#data/data-lists";
 import { SpeciesFormChangeManualTrigger } from "#data/form-change-triggers";
 import { SpeciesFormChange } from "#data/pokemon-forms";
 import { BattleType } from "#enums/battle-type";
+import { BerryType } from "#enums/berry-type";
 import { GameModes } from "#enums/game-modes";
 import { SpeciesId } from "#enums/species-id";
 import { Stat, type PermanentStat } from "#enums/stat";
 import { TrainerSlot } from "#enums/trainer-slot";
 import { Pokemon, type EnemyPokemon } from "#field/pokemon";
-import { BaseStatModifier } from "#modifiers/modifier";
-import { ModifierTypeGenerator } from "#modifiers/modifier-type";
+import { BaseStatModifier, BerryModifier, GammaRayBurstModifier, type PokemonHeldItemModifier } from "#modifiers/modifier";
+import { BerryModifierType, ModifierTypeGenerator } from "#modifiers/modifier-type";
 import { BattlePhase } from "#phases/battle-phase";
 import { QuietFormChangePhase } from "#phases/quiet-form-change-phase";
 import { QuietSpeciesChangePhase } from "#phases/quiet-Species-change-phase";
+import { TurnEndPhase } from "#phases/turn-end-phase";
 import { ModifierData } from "#system/modifier-data";
 import { PokemonData } from "#system/pokemon-data";
 import { GameManager } from "#test/framework/game-manager";
@@ -86,6 +89,11 @@ describe("Alternate final boss defensive vitamins", () => {
       .reduce((total, modifier) => total + modifier.stackCount, 0));
   }
 
+  function berries(pokemon: Pokemon): BerryModifier[] {
+    return game.scene["enemyModifiers"].filter((modifier): modifier is BerryModifier =>
+      modifier instanceof BerryModifier && modifier.pokemonId === pokemon.id);
+  }
+
   it.each([
     [SpeciesId.NECROZMA, "ultra"],
     [SpeciesId.ARCEUS, "legend"],
@@ -118,7 +126,7 @@ describe("Alternate final boss defensive vitamins", () => {
     expect(stacks(pokemon)).toEqual([0, 0, 0]);
   });
 
-  it.each([0, 5, 10, 31])("adds to existing %i vitamin stacks without replacing them", count => {
+  it.each([0, 5, 10, 20, 31])("adds to existing %i vitamin stacks without replacing them", count => {
     const pokemon = boss(SpeciesId.NECROZMA, "ultra");
     for (const stat of bulkStats) {
       if (count) vitamin(pokemon, stat, count);
@@ -140,6 +148,124 @@ describe("Alternate final boss defensive vitamins", () => {
     expect(stacks(restored)).toEqual([41, 41, 41]);
     expect(applyClassicFinalBossBulkBonus(restored)).toBe(false);
     expect(stacks(restored)).toEqual([41, 41, 41]);
+  });
+
+  it("adds defensive vitamins and one of each resist berry when Necrozma enters Ultra form", async () => {
+    const pokemon = boss(SpeciesId.NECROZMA, "dusk-mane");
+    for (const stat of bulkStats) vitamin(pokemon, stat, 20);
+    const formChange = new SpeciesFormChange({
+      speciesId: SpeciesId.NECROZMA,
+      preFormKey: "dusk-mane",
+      evoFormKey: "ultra",
+      trigger: new SpeciesFormChangeManualTrigger(),
+      quiet: true,
+    });
+    vi.spyOn(pokemon, "updateInfo").mockResolvedValue();
+    vi.spyOn(game.scene, "updateFieldScale").mockResolvedValue();
+    const phase = new QuietFormChangePhase(pokemon, formChange);
+    await phase["doChangeForm"]();
+    phase.end();
+    expect(pokemon.getFormKey()).toBe("ultra");
+    expect(stacks(pokemon)).toEqual([30, 30, 30]);
+    const gamma = game.scene.findModifierForPokemon(m => m instanceof GammaRayBurstModifier, pokemon) as GammaRayBurstModifier;
+    expect(gamma).toBeInstanceOf(GammaRayBurstModifier);
+    expect(berries(pokemon)).toHaveLength(18);
+    expect(new Set(berries(pokemon).map(berry => berry.berryType)).size).toBe(18);
+    expect(berries(pokemon).every(berry => isDamageReductionBerryType(berry.berryType)
+      && berry.stackCount === 1 && berry.isTransferable)).toBe(true);
+
+    const player = game.scene.addPlayerPokemon(getPokemonSpecies(SpeciesId.EEVEE), 50);
+    game.scene.getPlayerParty().push(player);
+    vi.spyOn(pokemon, "randBattleSeedInt").mockReturnValue(0);
+    expect(gamma.apply(pokemon)).toBe(true);
+    expect(berries(pokemon)).toHaveLength(17);
+    expect(stacks(pokemon)).toEqual([31, 30, 30]);
+  });
+
+  it("does not replenish Necrozma's spent berries on a repeated transition or after loading", () => {
+    const pokemon = boss(SpeciesId.NECROZMA, "ultra");
+    const formChange = new SpeciesFormChange({
+      speciesId: SpeciesId.NECROZMA, preFormKey: "dusk-mane", evoFormKey: "ultra",
+      trigger: new SpeciesFormChangeManualTrigger(), quiet: true,
+    });
+    const phase = new QuietFormChangePhase(pokemon, formChange);
+    phase.end();
+    expect(berries(pokemon)).toHaveLength(18);
+    game.scene.removeModifier(berries(pokemon)[0], true);
+    phase.end();
+    expect(berries(pokemon)).toHaveLength(17);
+    const saved = JSON.parse(JSON.stringify(new PokemonData(pokemon)));
+    const restored = new PokemonData(saved).toPokemon(BattleType.WILD) as EnemyPokemon;
+    game.scene.currentBattle.enemyParty = [restored];
+    game.scene["enemyModifiers"] = game.scene["enemyModifiers"].map(modifier => {
+      const data = JSON.parse(JSON.stringify(new ModifierData(modifier, false)));
+      return new ModifierData(data, false).toModifier(modifier.constructor)!;
+    });
+    vi.spyOn(restored, "cry").mockReturnValue(null);
+    new QuietFormChangePhase(restored, formChange).end();
+    expect(berries(restored)).toHaveLength(17);
+    expect(berries(restored).every(berry => berry.stackCount === 1)).toBe(true);
+  });
+
+  it("adds to Necrozma's existing resist berries without replacing other berries", () => {
+    const pokemon = boss(SpeciesId.NECROZMA, "ultra");
+    for (const berryType of [BerryType.OCCA, BerryType.SITRUS]) {
+      void game.scene.addEnemyModifier(new BerryModifierType(berryType).newModifier(pokemon), true, true);
+    }
+    new QuietFormChangePhase(pokemon, new SpeciesFormChange({
+      speciesId: SpeciesId.NECROZMA, preFormKey: "dusk-mane", evoFormKey: "ultra",
+      trigger: new SpeciesFormChangeManualTrigger(), quiet: true,
+    })).end();
+    expect(berries(pokemon)).toHaveLength(19);
+    expect(berries(pokemon).find(berry => berry.berryType === BerryType.OCCA)?.stackCount).toBe(2);
+    expect(berries(pokemon).find(berry => berry.berryType === BerryType.SITRUS)?.stackCount).toBe(1);
+  });
+
+  it("still cannot fuel Gamma Ray Burst with vitamins after the resist berries are gone", () => {
+    const pokemon = boss(SpeciesId.NECROZMA, "ultra");
+    for (const stat of bulkStats) vitamin(pokemon, stat, 20);
+    const gamma = getModifierType(modifierTypes.GAMMA_RAY_BURST).newModifier(pokemon) as GammaRayBurstModifier;
+    void game.scene.addEnemyModifier(gamma, true, true);
+    const roll = vi.spyOn(pokemon, "randBattleSeedInt");
+    expect(gamma.apply(pokemon)).toBe(false);
+    expect(roll).not.toHaveBeenCalled();
+    expect(stacks(pokemon)).toEqual([20, 20, 20]);
+  });
+
+  it("runs Gamma Ray Burst at turn end, consuming one item for all living party members' rolls", () => {
+    game.scene.configureTwoPlayerMode(true, 6, false, 2);
+    for (const owner of [0, 1, 1] as const) {
+      const player = game.scene.addPlayerPokemon(getPokemonSpecies(SpeciesId.EEVEE), 50);
+      game.scene.getPlayerParty(owner).push(player);
+    }
+    const pokemon = boss(SpeciesId.NECROZMA, "ultra");
+    applyClassicFinalBossBulkBonus(pokemon);
+    const gamma = getModifierType(modifierTypes.GAMMA_RAY_BURST).newModifier(pokemon) as GammaRayBurstModifier;
+    const fuel = getModifierType(modifierTypes.LEFTOVERS).newModifier(pokemon) as PokemonHeldItemModifier;
+    fuel.stackCount = 2;
+    void game.scene.addEnemyModifier(gamma, true, true);
+    void game.scene.addEnemyModifier(fuel, true, true);
+    const roll = vi.spyOn(pokemon, "randBattleSeedInt").mockReturnValue(0);
+    const phase = new TurnEndPhase();
+    vi.spyOn(phase, "executeForAll").mockImplementation(callback => callback(pokemon));
+    phase.start();
+    expect(fuel.stackCount).toBe(1);
+    expect(stacks(pokemon)).toEqual([13, 10, 10]);
+    expect(roll.mock.calls.filter(([range]) => range === 8)).toHaveLength(3);
+  });
+
+  it.each([6, 7])("allows Gamma Ray Burst's no-vitamin outcome %i even with fuel", outcome => {
+    const player = game.scene.addPlayerPokemon(getPokemonSpecies(SpeciesId.EEVEE), 50);
+    game.scene.getPlayerParty().push(player);
+    const pokemon = boss(SpeciesId.NECROZMA, "ultra");
+    const gamma = getModifierType(modifierTypes.GAMMA_RAY_BURST).newModifier(pokemon) as GammaRayBurstModifier;
+    const fuel = getModifierType(modifierTypes.LEFTOVERS).newModifier(pokemon) as PokemonHeldItemModifier;
+    void game.scene.addEnemyModifier(gamma, true, true);
+    void game.scene.addEnemyModifier(fuel, true, true);
+    vi.spyOn(pokemon, "randBattleSeedInt").mockImplementation(range => range === 8 ? outcome : 0);
+    expect(gamma.apply(pokemon)).toBe(false);
+    expect(game.scene["enemyModifiers"]).not.toContain(fuel);
+    expect(stacks(pokemon)).toEqual([0, 0, 0]);
   });
 
   it("does not increase offensive or player vitamin limits", () => {
@@ -179,6 +305,7 @@ describe("Alternate final boss defensive vitamins", () => {
     }));
     phase.end();
     expect(stacks(pokemon)).toEqual([10, 10, 10]);
+    expect(berries(pokemon)).toHaveLength(speciesId === SpeciesId.NECROZMA ? 18 : 0);
     expect(queue.mock.calls.find(call => call[0] === "PokemonHealPhase")?.[2]).toBe(pokemon.getMaxHp());
   });
 

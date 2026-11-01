@@ -14,7 +14,25 @@ import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesFormKey } from "#enums/species-form-key";
 import { SpeciesId } from "#enums/species-id";
 import { TimeOfDay } from "#enums/time-of-day";
-import type { SpeciesDataMapConfig } from "#types/pokemon-species";
+import type { LevelMoves, SpeciesDataMapConfig } from "#types/pokemon-species";
+
+function createPartnerPikachuForm(capped: boolean): PokemonForm {
+  return new PokemonForm({
+    formName: capped ? "Partner Cap" : "Partner",
+    formKey: capped ? "partner-cap" : "partner",
+    type1: PokemonType.ELECTRIC, type2: null,
+    height: 0.4, weight: 6,
+    ability1: AbilityId.STATIC, ability2: AbilityId.NONE, abilityHidden: AbilityId.LIGHTNING_ROD,
+    baseTotal: 430, baseHp: 45, baseAtk: 80, baseDef: 50, baseSpatk: 75, baseSpdef: 60, baseSpd: 120,
+    catchRate: 190, baseFriendship: 50, baseExp: 112,
+    genderDiffs: !capped, isStarterSelectable: !capped,
+  });
+}
+
+const partnerPikachuMoves: LevelMoves = [
+  [20, MoveId.ZIPPY_ZAP], [30, MoveId.FLOATY_FALL], [40, MoveId.SPLISHY_SPLASH],
+  [50, MoveId.PIKA_PAPOW], [55, MoveId.WILD_CHARGE],
+];
 
 function createCosplayPikachuScarfFormChanges(): SpeciesFormChange[] {
   const sourceForms = [COSPLAY_PIKACHU_BASE_FORM_KEY, ...COSPLAY_PIKACHU_SCARF_FORMS.map(form => form.formKey)];
@@ -2374,30 +2392,7 @@ export function initGenerationOne(): SpeciesDataMapConfig {
           formSpriteKey: null,
           isStarterSelectable: true,
         }),
-        new PokemonForm({
-          formName: "Partner",
-          formKey: "partner",
-          type1: PokemonType.ELECTRIC,
-          type2: null,
-          height: 0.4,
-          weight: 6,
-          ability1: AbilityId.STATIC,
-          ability2: AbilityId.NONE,
-          abilityHidden: AbilityId.LIGHTNING_ROD,
-          baseTotal: 430,
-          baseHp: 45,
-          baseAtk: 80,
-          baseDef: 50,
-          baseSpatk: 75,
-          baseSpdef: 60,
-          baseSpd: 120,
-          catchRate: 190,
-          baseFriendship: 50,
-          baseExp: 112,
-          genderDiffs: true,
-          formSpriteKey: null,
-          isStarterSelectable: true,
-        }),
+        createPartnerPikachuForm(false),
         new PokemonForm({
           formName: "Cosplay",
           formKey: "cosplay",
@@ -2563,6 +2558,7 @@ export function initGenerationOne(): SpeciesDataMapConfig {
           baseFriendship: 50,
           baseExp: 112,
         }),
+        createPartnerPikachuForm(true),
       ],
     }),
     starter: SpeciesId.PICHU,
@@ -2628,6 +2624,7 @@ export function initGenerationOne(): SpeciesDataMapConfig {
       6: [AbilityId.TINTED_LENS, AbilityId.COMPOUND_EYES],
       7: [AbilityId.LIBERO, AbilityId.MOLD_BREAKER],
       8: [AbilityId.THICK_FAT, AbilityId.CHEEK_POUCH],
+      9: [AbilityId.STURDY, AbilityId.BATTLE_BOND],
     },
     levelMoves: [
       [1, MoveId.TAIL_WHIP],
@@ -2653,13 +2650,8 @@ export function initGenerationOne(): SpeciesDataMapConfig {
     ],
     formLevelMoves: {
       "": [[50, MoveId.WILD_CHARGE]],
-      partner: [
-        [20, MoveId.ZIPPY_ZAP],
-        [30, MoveId.FLOATY_FALL],
-        [40, MoveId.SPLISHY_SPLASH],
-        [50, MoveId.PIKA_PAPOW],
-        [55, MoveId.WILD_CHARGE],
-      ],
+      partner: [...partnerPikachuMoves],
+      "partner-cap": [...partnerPikachuMoves],
       [SpeciesFormKey.GIGANTAMAX]: [
         [20, MoveId.ZIPPY_ZAP],
         [30, MoveId.FLOATY_FALL],

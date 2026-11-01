@@ -3,6 +3,8 @@ import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { isCosplayPikachuScarfItem } from "#data/cosplay-pikachu";
 import { allMoves } from "#data/data-lists";
+import { getFormSelectionTarget, isFormSelectionItem, isLegacyFormItemSuperseded } from "#data/form-selection-items";
+import { getFormSelectionChange } from "#data/pokemon-forms";
 import { SpeciesFormChangeItemTrigger } from "#data/form-change-triggers";
 import { Gender, getGenderColor, getGenderSymbol } from "#data/gender";
 import { Button } from "#enums/buttons";
@@ -28,6 +30,7 @@ import { getVariantTint } from "#sprites/variant";
 import type { PlayerIndex } from "#app/battle-scene";
 import type { TurnMove } from "#types/turn-move";
 import { MessageUiHandler } from "#ui/message-ui-handler";
+import type { OptionSelectItem } from "#ui/base-option-select-ui-handler";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
 import { PokemonIconAnimHelper, PokemonIconAnimMode } from "#ui/pokemon-icon-anim-helper";
 import { addBBCodeTextObject, addTextObject, getTextColor } from "#ui/text";
@@ -66,6 +69,11 @@ export enum PartyOption {
   RENAME,
   SELECT,
   DISCARD,
+  CHANGE_TRIM,
+  CHANGE_FORM,
+  CHANGE_COSTUME,
+  CHANGE_APPLIANCE,
+  CHANGE_STYLE,
   SCROLL_UP = 1000,
   SCROLL_DOWN = 1001,
   FORM_CHANGE_ITEM = 2000,
@@ -76,6 +84,14 @@ export enum PartyOption {
   MOVE_4,
   ALL = 4000,
 }
+
+const formSelectionOptions = new Map<PartyOption, FormChangeItem>([
+  [PartyOption.CHANGE_TRIM, FormChangeItem.FASHION_CASE],
+  [PartyOption.CHANGE_FORM, FormChangeItem.BIG_METEOR],
+  [PartyOption.CHANGE_COSTUME, FormChangeItem.PROP_CASE],
+  [PartyOption.CHANGE_APPLIANCE, FormChangeItem.ROTOM_CATALOGUE],
+  [PartyOption.CHANGE_STYLE, FormChangeItem.NECTAR_CASE],
+]);
 
 export type PartySelectCallback = (cursor: number, option: PartyOption) => void;
 export type PartyModifierTransferSelectCallback = (
@@ -313,6 +329,7 @@ export class PartyUiHandler extends MessageUiHandler {
     PartyOption.UNPAUSE_EVOLUTION,
     PartyOption.PASS_BATON,
     PartyOption.RENAME,
+    ...formSelectionOptions.keys(),
     PartyOption.SELECT,
   ];
 
@@ -589,6 +606,48 @@ export class PartyUiHandler extends MessageUiHandler {
       },
       pokemon,
     );
+    return true;
+  }
+
+  private canOpenFormSelectionMenu(pokemon: Pokemon, owner: PlayerIndex): boolean {
+    return this.partyUiMode === PartyUiMode.CHECK
+      && globalScene.phaseManager.getCurrentPhase().is("SelectModifierPhase")
+      && globalScene.activePlayerIndex === owner
+      && globalScene.inputOwner !== "ep"
+      && (typeof globalScene.inputOwner !== "number" || globalScene.inputOwner === owner)
+      && globalScene.getPlayerIndexForPokemon(pokemon) === owner;
+  }
+
+  private processFormSelection(pokemon: PlayerPokemon, item: FormChangeItem): boolean {
+    const ui = this.getUi();
+    const owner = this.getPlayerIndex();
+    const target = getFormSelectionTarget(pokemon, item);
+    if (!target || !this.canOpenFormSelectionMenu(pokemon, owner)) {
+      return false;
+    }
+
+    const indices = target.species.forms.flatMap((form, index) =>
+      !target.formKeys || target.formKeys.includes(form.formKey) ? [index] : [],
+    );
+    const options: OptionSelectItem[] = indices.map(index => ({
+      label: target.species.getFormNameToDisplay(index),
+      style: index === target.index ? TextStyle.SUMMARY_GOLD : TextStyle.WINDOW,
+      handler: () => {
+        ui.revertMode().then(restored => {
+          if (!restored || ui.getMode() !== UiMode.PARTY || !this.canOpenFormSelectionMenu(pokemon, owner)) {
+            return;
+          }
+          const change = getFormSelectionChange(pokemon, item, index);
+          if (change) {
+            this.clearOptions();
+            globalScene.phaseManager.overridePhase(globalScene.phaseManager.create("FormChangePhase", pokemon, change, true, owner));
+          }
+        });
+        return true;
+      },
+    }));
+    options.push({ label: i18next.t("partyUiHandler:cancel"), handler: () => { ui.revertMode(); return true; } });
+    ui.setOverlayMode(UiMode.OPTION_SELECT, { options, maxOptions: 7, initialCursor: indices.indexOf(target.index) });
     return true;
   }
 
@@ -967,6 +1026,11 @@ export class PartyUiHandler extends MessageUiHandler {
     }
     if (option === PartyOption.RENAME) {
       return this.processRenameOption(pokemon);
+    }
+
+    const selectionItem = formSelectionOptions.get(option);
+    if (selectionItem !== undefined) {
+      return this.processFormSelection(playerPokemon, selectionItem);
     }
 
     if (
@@ -1737,6 +1801,13 @@ export class PartyUiHandler extends MessageUiHandler {
             this.options.push(PartyOption.UNSPLICE);
           }
           this.options.push(PartyOption.RELEASE);
+          if (this.canOpenFormSelectionMenu(pokemon, this.getPlayerIndex())) {
+            for (const [option, item] of formSelectionOptions) {
+              if (getFormSelectionTarget(pokemon, item)) {
+                this.options.push(option);
+              }
+            }
+          }
           const formChangeItemModifiers = this.getFormChangeItemsModifiers(pokemon);
           for (let i = 0; i < formChangeItemModifiers.length; i++) {
             this.options.push(PartyOption.FORM_CHANGE_ITEM + i);
@@ -2094,7 +2165,8 @@ export class PartyUiHandler extends MessageUiHandler {
 
   getFormChangeItemsModifiers(pokemon: Pokemon) {
     let formChangeItemModifiers = globalScene.findModifiersForPlayer(
-      m => m.is("PokemonFormChangeItemModifier") && m.pokemonId === pokemon.id,
+      m => m.is("PokemonFormChangeItemModifier") && m.pokemonId === pokemon.id
+        && !isFormSelectionItem(m.formChangeItem) && !isLegacyFormItemSuperseded(pokemon, m.formChangeItem),
       this.getPlayerIndex(),
     ) as PokemonFormChangeItemModifier[];
     const ultraNecrozmaModifiers = formChangeItemModifiers.filter(

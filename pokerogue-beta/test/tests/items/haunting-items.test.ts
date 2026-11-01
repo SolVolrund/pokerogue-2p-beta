@@ -172,7 +172,7 @@ describe("Haunting skulls and spirits", () => {
     expect(add).not.toHaveBeenCalled();
     expect(getSpiritCount(0)).toBe(20);
     expect(getSpiritCount(0, true)).toBe(5);
-    expect(getHauntingStatMultiplier(addPokemon())).toBeCloseTo(1.3);
+    expect(getHauntingStatMultiplier(addPokemon())).toBeCloseTo(1.15);
   });
 
   it.each([
@@ -240,8 +240,8 @@ describe("Haunting skulls and spirits", () => {
     addItem(modifierTypes.GREATER_SPIRIT);
     owner.calculateStats();
     other.calculateStats();
-    expect(getHauntingStatMultiplier(owner)).toBeCloseTo(1.11);
-    expect(owner.stats).toEqual(base.map(value => Math.floor(value * 1.11)));
+    expect(getHauntingStatMultiplier(owner)).toBeCloseTo(1.055);
+    expect(owner.stats).toEqual(base.map(value => Math.floor(value * 1.055)));
     expect(other.stats).toEqual(otherBase);
     expect(owner.hp).toBe(Math.floor(fraction * owner.getMaxHp()));
     const boostedHp = owner.hp;
@@ -255,6 +255,22 @@ describe("Haunting skulls and spirits", () => {
     expect(addPokemon(0).isHaunted()).toBe(false);
   });
 
+  it.each([
+    [1, 0, 1.005],
+    [0, 1, 1.01],
+    [20, 5, 1.15],
+  ])("applies the reduced bonus for %i Lesser and %i Greater Spirits", (lesser, greater, multiplier) => {
+    const pokemon = addPokemon(0);
+    const base = [...pokemon.stats];
+    if (lesser) addItem(modifierTypes.LESSER_SPIRIT, 0, lesser);
+    if (greater) addItem(modifierTypes.GREATER_SPIRIT, 0, greater);
+    expect(getHauntingStatMultiplier(pokemon)).toBe(1);
+    addItem(modifierTypes.MALEFIC_SKULL);
+    pokemon.calculateStats();
+    expect(getHauntingStatMultiplier(pokemon)).toBeCloseTo(multiplier);
+    expect(pokemon.stats).toEqual(base.map(value => Math.floor(value * multiplier)));
+  });
+
   it("preserves naturally Haunted party members with or without a Malefic Skull", () => {
     game.scene.configureTwoPlayerMode(true, 6, false, 2);
     const pokemon = addPokemon(0);
@@ -263,7 +279,7 @@ describe("Haunting skulls and spirits", () => {
     addItem(modifierTypes.LESSER_SPIRIT, 0, 9);
     pokemon.calculateStats();
     pokemon.resetSummonData();
-    expect(getHauntingStatMultiplier(pokemon)).toBeCloseTo(1.09);
+    expect(getHauntingStatMultiplier(pokemon)).toBeCloseTo(1.045);
     expect(pokemon.isHaunted()).toBe(true);
     expect(pokemon.getTypes()).toContain(PokemonType.GHOST);
     game.scene.getPlayerParty(0).splice(0, 1);

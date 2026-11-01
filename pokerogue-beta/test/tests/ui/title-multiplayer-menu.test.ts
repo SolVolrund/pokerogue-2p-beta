@@ -236,6 +236,25 @@ describe("Multiplayer menu preparation", () => {
     expect(game.scene.getComputerPartnerKey(1)).toBe("amber_two");
   });
 
+  it("cycles a locked AmberTwo slot to a selectable Ash and back without changing her unlock", () => {
+    game.scene.gameData.computerPartnerUnlocks = {};
+    title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
+    const slot = options()[10];
+    expect(slot.label).toBe("AmberTwo");
+    expect(slot.disabled).toBe(true);
+    expect(slot.onCycle?.()).toBe(true);
+    expect(slot.label).toBe("Ash Ketchum");
+    expect(slot.disabled).toBe(false);
+    slot.onCycle!();
+    expect(slot.label).toBe("AmberTwo");
+    expect(slot.handler()).toBe(false);
+    slot.onCycle!();
+    vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
+    select("Ash Ketchum");
+    expect(game.scene.getComputerPartnerKey(1)).toBe("ash_ketchum");
+    expect(game.scene.gameData.computerPartnerUnlocks).toEqual({});
+  });
+
   it("enables Whitney in her existing slot only after a Normal monotype clear", () => {
     title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
     expect(options()[24].label).toBe("Whitney");

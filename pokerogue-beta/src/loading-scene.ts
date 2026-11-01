@@ -7,7 +7,7 @@ import { isMobile } from "#app/touch-controls";
 import { loadPokemonAccessoryAnchors } from "#data/pokemon-accessory-anchors";
 import { BiomeId } from "#enums/biome-id";
 import { GachaType } from "#enums/gacha-types";
-import { getPlayerTrainerSpriteBackTextureKey, getPlayerTrainerSpriteFrontTextureKey, PLAYER_TRAINER_SPRITE_OPTIONS } from "#enums/player-trainer-sprite";
+import { ALL_TRAINER_SPRITE_OPTIONS, getPlayerTrainerSpriteBackTextureKey, getPlayerTrainerSpriteFrontTextureKey } from "#enums/player-trainer-sprite";
 import { getBiomeAssetKey, getBiomeHasProps, getBiomePropCount } from "#field/arena";
 import { CacheBustedLoaderPlugin } from "#plugins/cache-busted-loader-plugin";
 import { getWindowVariantSuffix, WindowVariant } from "#ui/ui-theme";
@@ -107,6 +107,12 @@ export class LoadingScene extends SceneBase {
       .loadImage("pokeblock_rainbow_plus", "items")
       .loadImage("roseli_berry", "items")
       .loadImage("dowsing_machine", "items")
+      .loadImage("buddy_ball", "items")
+      .loadImage("fashion_case", "items")
+      .loadImage("big_meteor", "items")
+      .loadImage("prop_case", "items")
+      .loadImage("rotom_catalogue", "items")
+      .loadImage("nectar_case", "items")
       .loadImage("destiny_knot_red", "items")
       .loadImage("destiny_knot_pink", "items")
       .loadImage("destiny_knot_gold", "items")
@@ -236,7 +242,7 @@ export class LoadingScene extends SceneBase {
     // Keep the supplied Safari Ball frames intact as additional pages of the ball atlas.
     this.load.multiatlas("pb", "images/pb.json");
 
-    for (const option of PLAYER_TRAINER_SPRITE_OPTIONS) {
+    for (const option of ALL_TRAINER_SPRITE_OPTIONS) {
       this.loadAtlas(getPlayerTrainerSpriteFrontTextureKey(option.sprite), "trainer");
       this.loadAtlas(
         getPlayerTrainerSpriteBackTextureKey(option.sprite),

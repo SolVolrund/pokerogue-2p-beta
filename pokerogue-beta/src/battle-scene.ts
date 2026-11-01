@@ -289,7 +289,7 @@ const TWO_PLAYER_SESSION_STARTER_PREF_KEYS = [
   "pokerogue_3p_session_starter_prefs_2",
 ] as const;
 const TWO_PLAYER_PROFILE_HANDSHAKE_BUILD = "profile-handshake-2026-06-17c";
-const TWO_PLAYER_SYNC_SETTING_TYPES = new Set<SettingType>([SettingType.GENERAL, SettingType.DISPLAY]);
+const TWO_PLAYER_SYNC_SETTING_TYPES = new Set<SettingType>([SettingType.GENERAL, SettingType.DISPLAY, SettingType.ITEMS]);
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_WAVE: number | null = null;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE: MysteryEncounterType | null = null;
 const DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS = false;

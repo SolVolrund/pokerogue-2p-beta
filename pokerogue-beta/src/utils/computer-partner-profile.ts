@@ -66,6 +66,7 @@ export type ComputerPartnerKey =
   | "duplica_ditto"
   | "molly_hale"
   | "amber_two"
+  | "ash_ketchum"
   | "whitney"
   | "sabrina"
   | "gardenia"
@@ -124,6 +125,7 @@ export interface ComputerPartnerProfile {
 
 export interface ComputerPartnerStarterConfig {
   speciesId: SpeciesId;
+  formKey?: string;
   points?: number;
   nature?: Nature;
   moveset?: Starter["moveset"];
@@ -409,6 +411,16 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
       { speciesId: SpeciesId.DITTO },
       { speciesId: SpeciesId.DITTO },
     ],
+  },
+  ash_ketchum: {
+    key: "ash_ketchum",
+    name: "Ash Ketchum",
+    trainerSprite: PlayerTrainerSprite.ASH_KETCHUM,
+    trainerGender: PlayerGender.MALE,
+    starterNature: Nature.HARDY,
+    roles: ["ace", "physical", "special", "bulk", "speed", "balanced"],
+    personalityTypes: [],
+    startingStarters: [{ speciesId: SpeciesId.PIKACHU, formKey: "partner-cap" }],
   },
   amber_two: {
     key: "amber_two",
@@ -1173,12 +1185,18 @@ function createComputerPartnerStarterData(
   const species = getPokemonSpecies(starter.speciesId);
   const dexProps = getComputerPartnerStarterDexProps(species, dexEntry);
   const ivs = dexEntry?.ivs;
+  const formIndex = starter.formKey !== undefined
+    ? species.forms.findIndex(form => form.formKey === starter.formKey)
+    : starter.speciesId === progressSpeciesId ? dexProps.formIndex : 0;
+  if (formIndex < 0) {
+    throw new Error(`Unknown starter form "${starter.formKey}" for CPU partner ${profile.key}`);
+  }
 
   const ret: ComputerPartnerStarter = {
     speciesId: starter.speciesId,
     shiny: dexProps.shiny,
     variant: dexProps.variant,
-    formIndex: starter.speciesId === progressSpeciesId ? dexProps.formIndex : 0,
+    formIndex,
     female: dexProps.female,
     abilityIndex: getComputerPartnerStarterAbilityIndex(species, starterEntry, profile.preferredStarterAbilities?.[starter.speciesId]),
     passive: !!(

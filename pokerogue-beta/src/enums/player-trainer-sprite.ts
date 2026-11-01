@@ -37,6 +37,7 @@ export enum PlayerTrainerSprite {
   ROSA,
   CALEM,
   ELIO,
+  ASH_KETCHUM,
 }
 
 export interface PlayerTrainerSpriteOption {
@@ -365,6 +366,21 @@ export const PLAYER_TRAINER_SPRITE_OPTIONS: PlayerTrainerSpriteOption[] = [
   },
 ];
 
+// CPU-only appearances must load and round-trip as run identities, but aren't player costumes.
+export const ALL_TRAINER_SPRITE_OPTIONS: PlayerTrainerSpriteOption[] = [
+  ...PLAYER_TRAINER_SPRITE_OPTIONS,
+  {
+    sprite: PlayerTrainerSprite.ASH_KETCHUM,
+    label: "Ash Ketchum",
+    artist: "Streakofsprites and Akuma (front); PKMNTrainerRick (back)",
+    atlasKey: "ash_ketchum_back",
+    backAtlasFile: "ash_ketchum_back_pb",
+    gender: PlayerGender.MALE,
+    scale: 0.5,
+    yOffset: -54,
+  },
+];
+
 export const PLAYER_BOY_TRAINER_SPRITES: PlayerTrainerSprite[] = [
   PlayerTrainerSprite.BASE_BOY,
   PlayerTrainerSprite.LUCAS_DP,
@@ -444,10 +460,11 @@ const PLAYER_TRAINER_FRONT_SPRITE_KEYS: Record<PlayerTrainerSprite, string> = {
   [PlayerTrainerSprite.ROSA]: "rosa",
   [PlayerTrainerSprite.CALEM]: "calem",
   [PlayerTrainerSprite.ELIO]: "elio",
+  [PlayerTrainerSprite.ASH_KETCHUM]: "ash_ketchum",
 };
 
 export function getPlayerTrainerSpriteOption(sprite: PlayerTrainerSprite): PlayerTrainerSpriteOption {
-  return PLAYER_TRAINER_SPRITE_OPTIONS[sprite] ?? PLAYER_TRAINER_SPRITE_OPTIONS[PlayerTrainerSprite.BASE_BOY];
+  return ALL_TRAINER_SPRITE_OPTIONS[sprite] ?? PLAYER_TRAINER_SPRITE_OPTIONS[PlayerTrainerSprite.BASE_BOY];
 }
 
 export function getPlayerTrainerSpriteName(sprite: PlayerTrainerSprite): string {

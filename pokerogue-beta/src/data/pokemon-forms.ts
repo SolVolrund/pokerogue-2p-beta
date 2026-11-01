@@ -1,5 +1,7 @@
 import { globalScene } from "#app/global-scene";
-import { SpeciesFormChangeCompoundTrigger, type SpeciesFormChangeTrigger } from "#data/form-change-triggers";
+import { SpeciesFormChangeCompoundTrigger, SpeciesFormChangeManualTrigger, type SpeciesFormChangeTrigger } from "#data/form-change-triggers";
+import { getFormSelectionTarget } from "#data/form-selection-items";
+import type { FormChangeItem } from "#enums/form-change-item";
 import type { SpeciesId } from "#enums/species-id";
 import type { Pokemon } from "#field/pokemon";
 import type { Constructor, nil } from "#types/common";
@@ -73,6 +75,20 @@ export class SpeciesFormChange {
 
     return trigger;
   }
+}
+
+export function getFormSelectionChange(pokemon: Pokemon, item: FormChangeItem, formIndex: number): SpeciesFormChange | undefined {
+  const target = getFormSelectionTarget(pokemon, item);
+  const next = target?.species.forms[formIndex];
+  if (!target || !next || target.index === formIndex || (target.formKeys && !target.formKeys.includes(next.formKey))) {
+    return;
+  }
+  return new SpeciesFormChange({
+    speciesId: target.species.speciesId,
+    preFormKey: target.species.forms[target.index].formKey,
+    evoFormKey: next.formKey,
+    trigger: new SpeciesFormChangeManualTrigger(),
+  });
 }
 
 export class SpeciesFormChangeCondition {

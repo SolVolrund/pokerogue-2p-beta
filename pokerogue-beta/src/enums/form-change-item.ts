@@ -184,6 +184,11 @@ export enum FormChangeItem {
   ROTOM_FAN,
   ROTOM_MOWER,
   STRANGE_HELMET,
+  FASHION_CASE,
+  BIG_METEOR,
+  PROP_CASE,
+  ROTOM_CATALOGUE,
+  NECTAR_CASE,
 
   // #endregion Form Change Items
 }

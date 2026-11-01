@@ -41,6 +41,10 @@ export function isModifierAllowedByItemSettings(modifierId: string | undefined, 
     return areTypeGemsEnabled();
   }
 
+  if (modifierId === "DESTINY_KNOT") {
+    return isSettingEnabled(SettingKeys.Item_Set_Destiny_Knots);
+  }
+
   if (Z_ITEM_IDS.has(modifierId)) {
     return isSettingEnabled(SettingKeys.Item_Set_Z_Ring);
   }

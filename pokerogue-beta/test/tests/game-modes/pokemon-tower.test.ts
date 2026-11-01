@@ -32,7 +32,7 @@ describe("Pokemon Tower framework", () => {
   it("registers an indoor branch from Graveyard to Ancient Ruins", () => {
     expect(allBiomes.get(BiomeId.GRAVEYARD).biomeLinks).toEqual([BiomeId.ABYSS, BiomeId.POKEMON_TOWER]);
     expect(allBiomes.get(BiomeId.POKEMON_TOWER).biomeLinks).toEqual([BiomeId.RUINS]);
-    expect(allBiomes.get(BiomeId.POKEMON_TOWER).bgm).toBe("graveyard");
+    expect(allBiomes.get(BiomeId.POKEMON_TOWER).bgm).toBe("Haunting");
     expect(game.scene.arena.isOutside()).toBe(false);
     expect(getBiomeAssetKey(BiomeId.POKEMON_TOWER)).toBe("pokemon_tower");
     expect(getBiomePropCount(BiomeId.POKEMON_TOWER)).toBe(4);

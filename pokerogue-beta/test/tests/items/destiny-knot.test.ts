@@ -2,13 +2,19 @@ import { modifierTypes } from "#data/data-lists";
 import { AbilityId } from "#enums/ability-id";
 import { ArenaTagType } from "#enums/arena-tag-type";
 import { BattlerTagType } from "#enums/battler-tag-type";
+import { ModifierPoolType } from "#enums/modifier-pool-type";
 import { ModifierTier } from "#enums/modifier-tier";
 import { SpeciesId } from "#enums/species-id";
 import { PERMANENT_STATS, Stat } from "#enums/stat";
 import { Pokemon } from "#field/pokemon";
 import type { DestinyKnotModifier } from "#modifiers/modifier";
 import { modifierPool } from "#modifiers/modifier-pools";
-import type { ModifierTypeGenerator, WeightedModifierType } from "#modifiers/modifier-type";
+import {
+  itemPoolChecks,
+  type ModifierTypeGenerator,
+  regenerateModifierPoolThresholds,
+  type WeightedModifierType,
+} from "#modifiers/modifier-type";
 import { GameManager } from "#test/framework/game-manager";
 import { withHeldItemSuppressionForecast } from "#utils/held-item-suppression";
 import { getModifierType } from "#utils/modifier-utils";
@@ -67,12 +73,19 @@ describe("Destiny Knot soul bonds", () => {
     return item;
   }
 
-  it("keeps its Great-tier registration without appearing in ordinary rewards", () => {
+  it("offers eligible Threads in ordinary Great-tier rewards", () => {
+    const pokemon = addPokemon();
     const entry = (modifierPool[ModifierTier.GREAT] as WeightedModifierType[]).find(
       candidate => candidate.modifierType.id === "DESTINY_KNOT",
     );
-    expect(entry).toMatchObject({ weight: 0, maxWeight: 0 });
-    expect(equip(addPokemon()).type.getOrInferTier()).toBe(ModifierTier.GREAT);
+    expect(entry?.maxWeight).toBe(2);
+    itemPoolChecks.set("DESTINY_KNOT", false);
+    regenerateModifierPoolThresholds([pokemon], ModifierPoolType.PLAYER);
+    expect(itemPoolChecks.get("DESTINY_KNOT")).toBe(true);
+    expect(equip(pokemon).type.getOrInferTier()).toBe(ModifierTier.GREAT);
+    regenerateModifierPoolThresholds([pokemon], ModifierPoolType.PLAYER);
+    expect(itemPoolChecks.get("DESTINY_KNOT")).toBe(false);
+    itemPoolChecks.delete("DESTINY_KNOT");
   });
 
   it.each([

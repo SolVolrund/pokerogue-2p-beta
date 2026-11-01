@@ -1,4 +1,5 @@
 import { globalScene } from "#app/global-scene";
+import { getModifierIconTexture } from "#ui/modifier-icon";
 import { Button } from "#enums/buttons";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
@@ -213,7 +214,7 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
 
     optionsWithScroll.forEach((option: OptionSelectItem, i: number) => {
       if (option.item) {
-        const itemIcon = globalScene.add.sprite(0, 0, "items", option.item);
+        const itemIcon = globalScene.add.sprite(0, 0, ...getModifierIconTexture(option.item));
         itemIcon.setScale(3 * this.scale);
         this.optionSelectIcons.push(itemIcon);
 
@@ -333,7 +334,7 @@ export abstract class BaseOptionSelectUiHandler extends UiHandler {
       return;
     }
 
-    const itemIcon = globalScene.add.sprite(x + 36 * this.scale, y + 7, "items", option.item);
+    const itemIcon = globalScene.add.sprite(x + 36 * this.scale, y + 7, ...getModifierIconTexture(option.item));
     itemIcon.setScale(3 * this.scale);
     this.optionSelectIcons.push(itemIcon);
     this.optionSelectTextContainer.add(itemIcon);

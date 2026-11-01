@@ -27,6 +27,6 @@ export const pokemonTowerBiome: Biome = {
     ]),
   ) as TrainerPools,
   trainerChance: TOWER_TRAINER_CHANCE,
-  bgm: "graveyard",
+  bgm: "Haunting",
   biomeLinks: [BiomeId.RUINS],
 };

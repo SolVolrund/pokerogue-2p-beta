@@ -1,5 +1,6 @@
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
+import { isLegacyFormItemSuperseded } from "#data/form-selection-items";
 import type { SpeciesFormChange } from "#data/pokemon-forms";
 import { AbilityId } from "#enums/ability-id";
 import { isSingleTypeChallenge } from "#enums/challenges";
@@ -80,6 +81,9 @@ export class SpeciesFormChangeItemTrigger extends SpeciesFormChangeTrigger {
   }
 
   canChange(pokemon: Pokemon): boolean {
+    if (isLegacyFormItemSuperseded(pokemon, this.item)) {
+      return false;
+    }
     return !!globalScene.findModifierForPokemon(r => {
       // Assume that if m has the `formChangeItem` property, then it is a PokemonFormChangeItemModifier
       const m = r as PokemonFormChangeItemModifier;

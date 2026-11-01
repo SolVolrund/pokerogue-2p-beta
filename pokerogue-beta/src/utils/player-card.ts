@@ -3,7 +3,7 @@ import {
   getPlayerTrainerSpriteOption,
   PLAYER_BOY_TRAINER_SPRITES,
   PLAYER_GIRL_TRAINER_SPRITES,
-  PLAYER_TRAINER_SPRITE_OPTIONS,
+  ALL_TRAINER_SPRITE_OPTIONS,
 } from "#enums/player-trainer-sprite";
 import { normalizePlayerDisplayName } from "#utils/player-display-name";
 
@@ -16,7 +16,7 @@ export type RunPlayerAppearances = Partial<Record<0 | 1 | 2 | "ep", string>>;
 
 // Atlas keys are stable identifiers; the selector's display order is not save data.
 export function getPlayerCharacter(characterId: unknown) {
-  return PLAYER_TRAINER_SPRITE_OPTIONS.find(option => option.atlasKey === characterId);
+  return ALL_TRAINER_SPRITE_OPTIONS.find(option => option.atlasKey === characterId);
 }
 
 export const LEGACY_PLAYER_APPEARANCE_SETTINGS = new Set([

@@ -269,6 +269,7 @@ export const SettingKeys = {
   Item_Set_Type_Gems: "ITEM_SET_TYPE_GEMS",
   Item_Set_Resist_Berries: "ITEM_SET_RESIST_BERRIES",
   Item_Set_Z_Ring: "ITEM_SET_Z_RING",
+  Item_Set_Destiny_Knots: "ITEM_SET_DESTINY_KNOTS",
 };
 
 export enum MusicPreference {
@@ -949,6 +950,13 @@ export const Setting: Setting[] = [
   {
     key: SettingKeys.Item_Set_Z_Ring,
     label: "Z Ring",
+    options: OFF_ON,
+    default: 1,
+    type: SettingType.ITEMS,
+  },
+  {
+    key: SettingKeys.Item_Set_Destiny_Knots,
+    label: "Destiny Knots",
     options: OFF_ON,
     default: 1,
     type: SettingType.ITEMS,

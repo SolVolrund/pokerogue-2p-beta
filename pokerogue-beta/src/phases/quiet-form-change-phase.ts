@@ -3,23 +3,26 @@ import { modifierTypes } from "#data/data-lists";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
+import { isDamageReductionBerryType } from "#data/berry";
 import { getSpeciesFormChangeMessage } from "#data/form-change-triggers";
 import type { SpeciesFormChange } from "#data/pokemon-forms";
 import { getTypeRgb } from "#data/type";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import { ArenaTagType } from "#enums/arena-tag-type";
 import { BattlerTagType } from "#enums/battler-tag-type";
+import { BerryType } from "#enums/berry-type";
 import { FormChangeItem } from "#enums/form-change-item";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";
 import { Stat } from "#enums/stat";
 import type { Pokemon } from "#field/pokemon";
 import { GammaRayBurstModifier, PokemonFormChangeItemModifier } from "#modifiers/modifier";
-import { FormChangeItemModifierType } from "#modifiers/modifier-type";
+import { BerryModifierType, FormChangeItemModifierType } from "#modifiers/modifier-type";
 import { BattlePhase } from "#phases/battle-phase";
 import { playTween } from "#utils/anim-utils";
 import { applyClassicFinalBossBulkBonus } from "#utils/classic-final-boss-bulk";
 import { CLASSIC_FINAL_BOSS_SEGMENTS, isClassicFinalBossPhaseTwo } from "#utils/classic-final-boss-utils";
+import { getEnumValues } from "#utils/enums";
 import { getModifierType } from "#utils/modifier-utils";
 import { groupStatChange } from "#utils/stat-change";
 
@@ -256,6 +259,11 @@ export class QuietFormChangePhase extends BattlePhase {
           false,
         )
       ) {
+        // Gamma Ray Burst's permanent presence also prevents replenishing spent berries.
+        for (const berryType of getEnumValues(BerryType).filter(isDamageReductionBerryType)) {
+          const berry = new BerryModifierType(berryType).newModifier(this.pokemon);
+          void globalScene.addEnemyModifier(berry, true, true);
+        }
         const gammaRayBurst = getModifierType(modifierTypes.GAMMA_RAY_BURST).newModifier(
           this.pokemon,
         ) as GammaRayBurstModifier;

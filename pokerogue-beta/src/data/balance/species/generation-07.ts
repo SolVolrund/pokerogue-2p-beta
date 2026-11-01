@@ -1626,7 +1626,7 @@ export function initGenerationSeven(): SpeciesDataMapConfig {
       growthRate: GrowthRate.MEDIUM_FAST,
       malePercent: 25,
       genderDiffs: false,
-      canChangeForm: false,
+      canChangeForm: true,
       forms: [
         new PokemonForm({
           formName: "Baile Style",

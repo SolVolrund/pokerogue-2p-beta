@@ -143,6 +143,7 @@ export class TitlePhase extends Phase {
   private remoteTitleStartApplied = false;
   private selectedChallenges: ChallengeData[] = [];
   private customPartnerVariant?: "kyle" | "amber";
+  private eventPartnerVariant: "amber_two" | "ash_ketchum" = "amber_two";
   private mysteryEncounterFrequency: number | undefined;
   private hauntingSeasonActive: boolean | undefined;
   private profileStartupAnnounceInterval: ReturnType<typeof globalThis.setInterval> | undefined;
@@ -1837,12 +1838,17 @@ export class TitlePhase extends Phase {
 
   private createComputerPartnerMenuOptions(createOption: (key: ComputerPartnerKey) => OptionSelectItem): OptionSelectItem[] {
     return COMPUTER_PARTNER_MENU_ENTRIES.map(entry => {
-      if (entry === "alex") {
-        this.customPartnerVariant ??= globalScene.getTrainerGender(0) === PlayerGender.FEMALE ? "kyle" : "amber";
-        const option = createOption(this.customPartnerVariant);
+      if (entry === "alex" || entry === "amber_two") {
+        const current = () => entry === "amber_two" ? this.eventPartnerVariant
+          : (this.customPartnerVariant ??= globalScene.getTrainerGender(0) === PlayerGender.FEMALE ? "kyle" : "amber");
+        const option = createOption(current());
         option.onCycle = () => {
-          this.customPartnerVariant = this.customPartnerVariant === "kyle" ? "amber" : "kyle";
-          Object.assign(option, { disabled: false, style: undefined }, createOption(this.customPartnerVariant));
+          if (entry === "amber_two") {
+            this.eventPartnerVariant = this.eventPartnerVariant === "amber_two" ? "ash_ketchum" : "amber_two";
+          } else {
+            this.customPartnerVariant = this.customPartnerVariant === "kyle" ? "amber" : "kyle";
+          }
+          Object.assign(option, { disabled: false, style: undefined }, createOption(current()));
           return true;
         };
         return option;

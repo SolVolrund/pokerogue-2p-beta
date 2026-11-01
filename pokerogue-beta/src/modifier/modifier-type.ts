@@ -15,6 +15,7 @@ import { allMoves, modifierTypes } from "#data/data-lists";
 import type { AlphLegendaryHelperId } from "#data/alph/legendary-helpers";
 import type { FusionOptions } from "#data/fusion-options";
 import { SpeciesFormChangeItemTrigger } from "#data/form-change-triggers";
+import { canReceiveFormSelectionItem, FORM_SELECTION_ITEMS, getReplacementFormItem, isFormSelectionItem } from "#data/form-selection-items";
 import { getNatureName, getNatureStatMultiplier } from "#data/nature";
 import { getPokeballCatchMultiplier, getPokeballName } from "#data/pokeball";
 import { SpeciesFormChangeCondition } from "#data/pokemon-forms";
@@ -43,6 +44,7 @@ import {
   AddVoucherModifier,
   AttackTypeBoosterModifier,
   BerryPotModifier,
+  BuddyBallModifier,
   BaseStatModifier,
   BerryModifier,
   BerserkGeneModifier,
@@ -1738,8 +1740,13 @@ export class FormChangeItemModifierType extends PokemonModifierType implements G
     super(
       "",
       FormChangeItem[formChangeItem].toLowerCase(),
-      (_type, args) => new PokemonFormChangeItemModifier(this, (args[0] as PlayerPokemon).id, formChangeItem, true),
+      (_type, args) => new PokemonFormChangeItemModifier(
+        this, (args[0] as PlayerPokemon).id, formChangeItem, !isFormSelectionItem(formChangeItem),
+      ),
       (pokemon: PlayerPokemon) => {
+        if (isFormSelectionItem(formChangeItem)) {
+          return canReceiveFormSelectionItem(pokemon, formChangeItem) ? null : PartyUiHandler.NoEffectMessage;
+        }
         if (this.formChangeItem === FormChangeItem.LEGEND_PLATE) {
           return pokemon.hasSpecies(SpeciesId.ARCEUS) && pokemon.hasAbility(AbilityId.MULTITYPE)
             ? null
@@ -1769,6 +1776,9 @@ export class FormChangeItemModifierType extends PokemonModifierType implements G
   }
 
   getDescription(): string {
+    if (isFormSelectionItem(this.formChangeItem)) {
+      return i18next.t(`modifierType:ModifierType.${FormChangeItem[this.formChangeItem]}.description`);
+    }
     if (this.formChangeItem === FormChangeItem.STRANGE_HELMET) {
       return i18next.t("modifierType:ModifierType.STRANGE_HELMET.description");
     }
@@ -2147,7 +2157,7 @@ class EvolutionItemModifierTypeGenerator extends ModifierTypeGenerator {
 }
 
 function getFormChangeItemPool(party: readonly Pokemon[], isRareFormChangeItem: boolean): FormChangeItem[] {
-  return [
+  const items = [
     ...new Set(
       party.flatMap(p => {
         const playerIndex = globalScene.getPlayerIndexForPokemon(p) ?? globalScene.activePlayerIndex;
@@ -2228,8 +2238,16 @@ function getFormChangeItemPool(party: readonly Pokemon[], isRareFormChangeItem: 
   ]
     .flat()
     .flatMap(fc => fc.item)
-    .filter(i => i !== FormChangeItem.STRANGE_HELMET && (i && i < 100) === isRareFormChangeItem);
-  // convert it into a set to remove duplicate values, which can appear when the same species with a potential form change is in the party.
+    .filter(i => i !== FormChangeItem.STRANGE_HELMET && getReplacementFormItem(i) === undefined && (i && i < 100) === isRareFormChangeItem);
+  // Menu items have no automatic form-change trigger. Add one candidate per eligible family.
+  if (!isRareFormChangeItem) {
+    for (const { item } of FORM_SELECTION_ITEMS) {
+      if (party.some(p => canReceiveFormSelectionItem(p, item))) {
+        items.push(item);
+      }
+    }
+  }
+  return items;
 }
 
 export class FormChangeItemModifierTypeGenerator extends ModifierTypeGenerator {
@@ -2273,7 +2291,8 @@ export function getDowsingItemOptions(party: readonly Pokemon[], group: DowsingG
     case "FORM_CHANGE_ITEM": {
       const mega = group === "RARE_FORM_CHANGE_ITEM";
       items = getEnumValues(FormChangeItem).filter(
-        item => item !== FormChangeItem.NONE && item !== FormChangeItem.STRANGE_HELMET && (item < 100) === mega,
+        item => item !== FormChangeItem.NONE && item !== FormChangeItem.STRANGE_HELMET
+          && getReplacementFormItem(item) === undefined && (item < 100) === mega,
       );
       eligible = getFormChangeItemPool(party, mega);
       tier = mega ? ModifierTier.ROGUE : ModifierTier.ULTRA;
@@ -2808,6 +2827,9 @@ const modifierTypeInitObj = Object.freeze({
     if (pregenArgs) {
       return isThreadColor(pregenArgs[0]) ? new DestinyKnotModifierType(pregenArgs[0]) : null;
     }
+    if (!isModifierAllowedByItemSettings("DESTINY_KNOT")) {
+      return null;
+    }
     const colors = getAvailableThreadColors(party);
     return colors.length > 0 ? new DestinyKnotModifierType(randSeedItem(colors)) : null;
   }),
@@ -2972,6 +2994,13 @@ const modifierTypeInitObj = Object.freeze({
       "modifierType:ModifierType.BERRY_POT",
       "berry_pot",
       (type, args) => new BerryPotModifier(type, (args[0] as Pokemon).id),
+    ),
+
+  BUDDY_BALL: () =>
+    new PokemonHeldItemModifierType(
+      "modifierType:ModifierType.BUDDY_BALL",
+      "buddy_ball",
+      (type, args) => new BuddyBallModifier(type, (args[0] as Pokemon).id),
     ),
 
   FOCUS_BAND: () =>

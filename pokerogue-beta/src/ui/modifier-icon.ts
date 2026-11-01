@@ -1,6 +1,12 @@
 import { globalScene } from "#app/global-scene";
 
 const STANDALONE_ITEM_ICONS = new Set([
+  "buddy_ball",
+  "fashion_case",
+  "big_meteor",
+  "prop_case",
+  "rotom_catalogue",
+  "nectar_case",
   "dowsing_machine",
   "destiny_knot_red",
   "destiny_knot_pink",

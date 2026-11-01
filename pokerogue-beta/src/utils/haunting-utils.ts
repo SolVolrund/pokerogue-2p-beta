@@ -46,7 +46,7 @@ export function getHauntingStatMultiplier(pokemon: Pokemon): number {
     return 1;
   }
   const owner = globalScene.getPlayerIndexForPokemon(pokemon)!;
-  return 1 + getSpiritCount(owner) / 100 + getSpiritCount(owner, true) / 50;
+  return 1 + (getSpiritCount(owner) + getSpiritCount(owner, true) * 2) / 200;
 }
 
 function grantItem(player: PlayerIndex, type: ModifierTypeFunc): boolean {

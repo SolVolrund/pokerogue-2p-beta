@@ -17,6 +17,7 @@ import { isCosplayPikachuScarfItem } from "#data/cosplay-pikachu";
 import { getLevelTotalExp } from "#data/exp";
 import type { FusionOptions } from "#data/fusion-options";
 import { SpeciesFormChangeItemTrigger, SpeciesFormChangeManualTrigger } from "#data/form-change-triggers";
+import { getReplacementFormItem, isFormSelectionItem, isLegacyFormItemSuperseded } from "#data/form-selection-items";
 import { MAX_PER_TYPE_POKEBALLS } from "#data/pokeball";
 import { SpeciesFormChange } from "#data/pokemon-forms";
 import { isRotomApplianceItem } from "#data/rotom";
@@ -2337,6 +2338,24 @@ export class StickyBarbModifier extends PokemonHeldItemModifier {
   }
 }
 
+export class BuddyBallModifier extends PokemonHeldItemModifier {
+  matchType(modifier: Modifier): boolean {
+    return modifier instanceof BuddyBallModifier;
+  }
+
+  clone(): BuddyBallModifier {
+    return new BuddyBallModifier(this.type, this.pokemonId, this.stackCount);
+  }
+
+  apply(): boolean {
+    return true;
+  }
+
+  getMaxHeldItemCount(): number {
+    return 1;
+  }
+}
+
 export class LaggingTailModifier extends PokemonHeldItemModifier {
   matchType(modifier: Modifier): boolean {
     return modifier instanceof LaggingTailModifier;
@@ -4026,6 +4045,9 @@ export class PokemonFormChangeItemModifier extends PokemonHeldItemModifier {
    * @returns `true` if the form change item was applied
    */
   override apply(pokemon: Pokemon, active: boolean): boolean {
+    if (isFormSelectionItem(this.formChangeItem) || isLegacyFormItemSuperseded(pokemon, this.formChangeItem)) {
+      return false;
+    }
     const switchActive = this.active && !active;
 
     if (switchActive) {
@@ -4590,7 +4612,9 @@ export class DowsingMachineModifier extends PersistentModifier {
     for (const group of DOWSING_GROUPS) {
       const value = preferences?.[group];
       if (typeof value === "number" || typeof value === "string") {
-        this.preferences[group] = value;
+        this.preferences[group] = group === "FORM_CHANGE_ITEM" && typeof value === "number"
+          ? getReplacementFormItem(value) ?? value
+          : value;
       }
     }
   }
@@ -5181,6 +5205,7 @@ const ModifierClassMap = Object.freeze({
   TurnHealModifier,
   TurnStatusEffectModifier,
   StickyBarbModifier,
+  BuddyBallModifier,
   LaggingTailModifier,
   IronBallModifier,
   HitHealModifier,

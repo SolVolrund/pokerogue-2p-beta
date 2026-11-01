@@ -370,6 +370,13 @@ export class Battle {
       return null;
     }
     if (
+      globalScene.arena?.biomeId === BiomeId.POKEMON_TOWER
+      || this.trainer?.haunted
+      || this.enemyParty.some(pokemon => pokemon.isHaunted())
+    ) {
+      return "Haunting";
+    }
+    if (
       this.battleType === BattleType.TRAINER
       || this.mysteryEncounter?.encounterMode === MysteryEncounterMode.TRAINER_BATTLE
     ) {
