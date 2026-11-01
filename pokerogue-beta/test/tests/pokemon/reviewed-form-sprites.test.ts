@@ -69,3 +69,31 @@ it("uses the existing EXP coat colors on Natural Furfrou's 16-frame back", () =>
   }
   expect(read("images/pokemon/exp/back/676.json").textures[0].frames).toHaveLength(16);
 });
+
+it.each(["", "heart", "star", "diamond", "debutante", "matron", "dandy", "la-reine", "kabuki", "pharaoh"])(
+  "keeps Furfrou %s on a stable, tightly bounded animation canvas",
+  form => {
+    const stem = "676" + (form ? "-" + form : "");
+    for (const view of ["", "back/"]) {
+      const base = read(`images/pokemon/exp/${view}${stem}.json`).textures[0];
+      const shiny = read(`images/pokemon/exp/${view}shiny/${stem}.json`).textures[0];
+      expect(shiny.frames).toEqual(base.frames);
+      const size = base.frames[0].sourceSize;
+      // The old full 96x96 cells left 15-16 empty rows below most forms' feet.
+      expect(size.w).toBeLessThan(96);
+      expect(size.h).toBeLessThanOrEqual(80);
+      const png = fs.readFileSync(path.join(assets, `images/pokemon/exp/${view}${stem}.png`));
+      expect(base.size).toEqual({ w: png.readUInt32BE(16), h: png.readUInt32BE(20) });
+      for (const frame of base.frames) {
+        expect(frame.sourceSize).toEqual(size);
+        expect(frame.rotated).toBe(false);
+        expect(frame.trimmed).toBe(false);
+        expect(frame.spriteSourceSize).toEqual({ x: 0, y: 0, ...size });
+        expect(frame.frame.w).toBe(size.w);
+        expect(frame.frame.h).toBe(size.h);
+        expect(frame.frame.x + size.w).toBeLessThanOrEqual(base.size.w);
+        expect(frame.frame.y + size.h).toBeLessThanOrEqual(base.size.h);
+      }
+    }
+  },
+);
