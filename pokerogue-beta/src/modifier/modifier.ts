@@ -69,6 +69,7 @@ import type { Move } from "#moves/move";
 import type { VoucherType } from "#system/voucher";
 import type { ModifierInstanceMap, ModifierString } from "#types/modifier-types";
 import type { StatChange } from "#types/stat-change";
+import type { CooldownHeldItemId } from "#data/cooldown-held-items";
 import { addModifierIconSprite } from "#ui/modifier-icon";
 import { addTextObject } from "#ui/text";
 import { hslToHex } from "#utils/color-utils";
@@ -2761,9 +2762,40 @@ export class PokemonInstantReviveModifier extends PokemonHeldItemModifier {
 }
 
 /**
- * Modifier used for held items, namely White Herb, that restore adverse stat
- * stages in battle.
+ * Equipment whose battle effects share per-player cooldowns and ownership limits.
  */
+export class CooldownHeldItemModifier extends PokemonHeldItemModifier {
+  constructor(
+    type: ModifierType,
+    pokemonId: number,
+    public readonly cooldownItemId: CooldownHeldItemId,
+    stackCount?: number,
+  ) {
+    super(type, pokemonId, stackCount);
+  }
+
+  matchType(modifier: Modifier): boolean {
+    return modifier instanceof CooldownHeldItemModifier && modifier.cooldownItemId === this.cooldownItemId;
+  }
+
+  clone(): CooldownHeldItemModifier {
+    return new CooldownHeldItemModifier(this.type, this.pokemonId, this.cooldownItemId, this.stackCount);
+  }
+
+  getArgs(): unknown[] {
+    return [this.pokemonId, this.cooldownItemId];
+  }
+
+  apply(): boolean {
+    return true;
+  }
+
+  getMaxHeldItemCount(): number {
+    return 1;
+  }
+}
+
+/** White Herb's stat restoration effect; ownership and recharge are shared with the cooldown item set. */
 export class ResetNegativeStatStageModifier extends PokemonHeldItemModifier {
   matchType(modifier: Modifier) {
     return modifier instanceof ResetNegativeStatStageModifier;
@@ -2801,7 +2833,7 @@ export class ResetNegativeStatStageModifier extends PokemonHeldItemModifier {
   }
 
   getMaxHeldItemCount(_pokemon: Pokemon): number {
-    return 2;
+    return 1;
   }
 }
 
@@ -5215,6 +5247,7 @@ const ModifierClassMap = Object.freeze({
   PreserveBerryModifier,
   PokemonInstantReviveModifier,
   ResetNegativeStatStageModifier,
+  CooldownHeldItemModifier,
   MirrorHerbModifier,
   FieldEffectModifier,
   ScreenEffectModifier,

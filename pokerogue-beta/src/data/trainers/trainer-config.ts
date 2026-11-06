@@ -1161,7 +1161,54 @@ function getPokemonTowerTrainerConfig(entry: TowerTrainerEntry): TrainerConfig {
   return config;
 }
 
+function createFairyTrainerConfig(type: TrainerType): TrainerConfig {
+  return new TrainerConfig(type)
+    .setMoneyMultiplier(1.2)
+    .setEncounterBgm(TrainerType.PSYCHIC)
+    .setPartyTemplates(
+      trainerPartyTemplates.TWO_AVG,
+      trainerPartyTemplates.ONE_AVG_ONE_STRONG,
+      trainerPartyTemplates.TWO_AVG_SAME_ONE_AVG,
+      trainerPartyTemplates.THREE_AVG,
+      trainerPartyTemplates.TWO_STRONG,
+      trainerPartyTemplates.FOUR_WEAK,
+    )
+    .setSpeciesFilter(s => s.isOfType(PokemonType.FAIRY));
+}
+
+function createVeteranTrainerConfig(type: TrainerType): TrainerConfig {
+  return new TrainerConfig(type)
+    .setMoneyMultiplier(2.5)
+    .setEncounterBgm(TrainerType.ACE_TRAINER)
+    .setPartyTemplates(
+      trainerPartyTemplates.THREE_AVG,
+      trainerPartyTemplates.TWO_AVG_ONE_STRONG,
+      trainerPartyTemplates.TWO_WEAK_ONE_STRONG,
+      trainerPartyTemplates.FOUR_WEAK,
+    )
+    .setSpeciesFilter(s => s.baseTotal >= 500);
+}
+
 export const trainerConfigs: TrainerConfigs = {
+  [TrainerType.FURISODE_GIRL_BLOSSOM]: createFairyTrainerConfig(TrainerType.FURISODE_GIRL_BLOSSOM),
+  [TrainerType.FURISODE_GIRL_KATHERINE]: createFairyTrainerConfig(TrainerType.FURISODE_GIRL_KATHERINE),
+  [TrainerType.FURISODE_GIRL_KALI]: createFairyTrainerConfig(TrainerType.FURISODE_GIRL_KALI),
+  [TrainerType.FURISODE_GIRL_LINNEA]: createFairyTrainerConfig(TrainerType.FURISODE_GIRL_LINNEA),
+  [TrainerType.GARDENER]: new TrainerConfig(TrainerType.GARDENER)
+    .setHasGenders()
+    .setEncounterBgm(TrainerType.PARASOL_LADY)
+    .setPartyTemplates(trainerPartyTemplates.TWO_AVG, trainerPartyTemplates.TWO_WEAK_ONE_AVG)
+    .setSpeciesFilter(s => s.isOfType(PokemonType.GRASS) || s.isOfType(PokemonType.BUG)),
+  [TrainerType.KINDLER]: new TrainerConfig(TrainerType.KINDLER)
+    .setEncounterBgm(TrainerType.ROUGHNECK)
+    .setSpecialtyType(PokemonType.FIRE)
+    .setSpeciesFilter(s => s.isOfType(PokemonType.FIRE)),
+  [TrainerType.DRACONID]: new TrainerConfig(TrainerType.DRACONID)
+    .setEncounterBgm(TrainerType.ACE_TRAINER)
+    .setPartyTemplates(trainerPartyTemplates.TWO_STRONG, trainerPartyTemplates.TWO_AVG_ONE_STRONG)
+    .setSpecialtyType(PokemonType.DRAGON)
+    .setSpeciesFilter(s => s.isOfType(PokemonType.DRAGON)),
+  [TrainerType.EXPERT]: createVeteranTrainerConfig(TrainerType.EXPERT).setHasGenders(),
   ...Object.fromEntries(towerTrainers.map(entry => [entry.type, getPokemonTowerTrainerConfig(entry)])),
   [TrainerType.POKEMON_TOWER_HAUNT]: getPokemonTowerPlaceholderConfig(TrainerType.POKEMON_TOWER_HAUNT, false),
   [TrainerType.POKEMON_TOWER_GREAT_HAUNT]: getPokemonTowerPlaceholderConfig(TrainerType.POKEMON_TOWER_GREAT_HAUNT, true),
@@ -1681,18 +1728,7 @@ export const trainerConfigs: TrainerConfigs = {
       trainerPartyTemplates.FOUR_WEAK,
     )
     .setSpeciesFilter(s => s.isOfType(PokemonType.DRAGON)),
-  [TrainerType.FAIRY_TALE_GIRL]: new TrainerConfig(++t)
-    .setMoneyMultiplier(1.2)
-    .setEncounterBgm(TrainerType.PSYCHIC)
-    .setPartyTemplates(
-      trainerPartyTemplates.TWO_AVG,
-      trainerPartyTemplates.ONE_AVG_ONE_STRONG,
-      trainerPartyTemplates.TWO_AVG_SAME_ONE_AVG,
-      trainerPartyTemplates.THREE_AVG,
-      trainerPartyTemplates.TWO_STRONG,
-      trainerPartyTemplates.FOUR_WEAK,
-    )
-    .setSpeciesFilter(s => s.isOfType(PokemonType.FAIRY)),
+  [TrainerType.FAIRY_TALE_GIRL]: createFairyTrainerConfig(++t),
   [TrainerType.FIREBREATHER]: new TrainerConfig(++t)
     .setMoneyMultiplier(1.4)
     .setEncounterBgm(TrainerType.ROUGHNECK)
@@ -2416,18 +2452,9 @@ export const trainerConfigs: TrainerConfigs = {
       ),
     )
     .setEncounterBgm(TrainerType.TWINS),
-  [TrainerType.VETERAN]: new TrainerConfig(++t)
+  [TrainerType.VETERAN]: createVeteranTrainerConfig(++t)
     .setHasGenders("Veteran Female")
-    .setHasDouble("Veteran Duo")
-    .setMoneyMultiplier(2.5)
-    .setEncounterBgm(TrainerType.ACE_TRAINER)
-    .setPartyTemplates(
-      trainerPartyTemplates.THREE_AVG,
-      trainerPartyTemplates.TWO_AVG_ONE_STRONG,
-      trainerPartyTemplates.TWO_WEAK_ONE_STRONG,
-      trainerPartyTemplates.FOUR_WEAK,
-    )
-    .setSpeciesFilter(s => s.baseTotal >= 500),
+    .setHasDouble("Veteran Duo"),
   [TrainerType.WAITER]: new TrainerConfig(++t)
     .setHasGenders("Waitress")
     .setHasDouble("Restaurant Staff")

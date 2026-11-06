@@ -9,7 +9,8 @@ import { ArenaTagType } from "#enums/arena-tag-type";
 import { type BattleStat, getStatKey, getStatStageChangeDescriptionKey, Stat } from "#enums/stat";
 import { StatChangeSource } from "#enums/stat-change-source";
 import type { Pokemon } from "#field/pokemon";
-import { MirrorHerbModifier, PreserveBerryModifier, ResetNegativeStatStageModifier } from "#modifiers/modifier";
+import { MirrorHerbModifier, PreserveBerryModifier } from "#modifiers/modifier";
+import { activateCooldownHeldItem, findReadyCooldownHeldItem } from "#utils/cooldown-held-items";
 import { PokemonPhase } from "#phases/pokemon-phase";
 import type { ConditionalUserFieldProtectStatAbAttrParams, PreStatStageChangeAbAttrParams } from "#types/ability-types";
 import type { StatChange, StatStageChangePhaseOptions } from "#types/stat-change";
@@ -289,7 +290,7 @@ export class StatStageChangePhase extends PokemonPhase {
 
   /**
    * If this is the last queued {@linkcode StatStageChangePhase} for the target,
-   * consume a held White Herb (if any) to reset negative stat stages.
+   * activate a held White Herb (if any) to reset negative stat stages.
    *
    * @param pokemon - The Pokemon to check
    */
@@ -301,20 +302,9 @@ export class StatStageChangePhase extends PokemonPhase {
     if (hasMoreStatPhases) {
       return;
     }
-
-    const whiteHerb = globalScene.applyModifierForPokemon(
-      ResetNegativeStatStageModifier,
-      pokemon,
-      pokemon,
-    ) as ResetNegativeStatStageModifier;
-
-    if (whiteHerb && pokemon.loseHeldItem(whiteHerb)) {
-      recordConsumedHeldItem(pokemon, whiteHerb);
-      globalScene.updateModifiers(
-        this.player,
-        undefined,
-        pokemon.isPlayer() ? globalScene.getPlayerIndexForPokemon(pokemon) : undefined,
-      );
+    const whiteHerb = findReadyCooldownHeldItem(pokemon, "WHITE_HERB");
+    if (whiteHerb?.apply(pokemon)) {
+      activateCooldownHeldItem(pokemon, "WHITE_HERB");
     }
   }
 

@@ -1887,6 +1887,8 @@ export class GameData {
       playerZMovesUsed,
       playerZMovesUsedByPlayer,
       playerZMoveReadyWaveByPlayer,
+      playerWhiteHerbReadyWaveByPlayer,
+      playerHeldItemReadyWaves,
       tags,
       positionalTags,
     } = fromSession.arena;
@@ -1908,6 +1910,8 @@ export class GameData {
     globalScene.arena.restorePlayerTerasUsed(playerTerasUsed ?? 0, playerTerasUsedByPlayer);
     globalScene.arena.restorePlayerZMovesUsed(playerZMovesUsed ?? 0, playerZMovesUsedByPlayer);
     globalScene.arena.restorePlayerZMoveReadyWaves(playerZMoveReadyWaveByPlayer);
+    globalScene.arena.restorePlayerWhiteHerbReadyWaves(playerWhiteHerbReadyWaveByPlayer);
+    globalScene.arena.restorePlayerHeldItemReadyWaves(playerHeldItemReadyWaves);
 
     globalScene.arena.tags = tags;
     for (const tag of tags) {

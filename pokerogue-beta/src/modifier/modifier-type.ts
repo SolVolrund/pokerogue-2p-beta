@@ -39,12 +39,14 @@ import { getStatKey, Stat, TEMP_BATTLE_STATS } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
 import { ZCrystal } from "#enums/z-crystal";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
+import { getCooldownHeldItemId, isCooldownHeldItem } from "#data/cooldown-held-items";
 import {
   AddPokeballModifier,
   AddVoucherModifier,
   AttackTypeBoosterModifier,
   BerryPotModifier,
   BuddyBallModifier,
+  CooldownHeldItemModifier,
   BaseStatModifier,
   BerryModifier,
   BerserkGeneModifier,
@@ -493,6 +495,12 @@ export class PokemonHeldItemModifierType extends PokemonModifierType {
       newModifierFunc,
       (pokemon: PlayerPokemon) => {
         const dummyModifier = this.newModifier(pokemon);
+        if (isCooldownHeldItem(dummyModifier)) {
+          const owner = globalScene.getPlayerIndexForPokemon(pokemon);
+          if (owner === undefined || !globalScene.canReceiveCooldownHeldItem(getCooldownHeldItemId(dummyModifier), owner)) {
+            return PartyUiHandler.NoEffectMessage;
+          }
+        }
         const matchingModifier = globalScene.findModifier(
           m => m instanceof PokemonHeldItemModifier && m.pokemonId === pokemon.id && m.matchType(dummyModifier),
         ) as PokemonHeldItemModifier;
@@ -2673,6 +2681,31 @@ const modifierTypeInitObj = Object.freeze({
     ),
 
   MIRROR_HERB: () => getMirrorHerbModifierType(),
+
+  POWER_HERB: () =>
+    new PokemonHeldItemModifierType(
+      "modifierType:ModifierType.POWER_HERB",
+      "power_herb",
+      (type, args) => new CooldownHeldItemModifier(type, (args[0] as Pokemon).id, "POWER_HERB"),
+    ),
+  BLUNDER_POLICY: () =>
+    new PokemonHeldItemModifierType(
+      "modifierType:ModifierType.BLUNDER_POLICY",
+      "blunder_policy",
+      (type, args) => new CooldownHeldItemModifier(type, (args[0] as Pokemon).id, "BLUNDER_POLICY"),
+    ),
+  WEAKNESS_POLICY: () =>
+    new PokemonHeldItemModifierType(
+      "modifierType:ModifierType.WEAKNESS_POLICY",
+      "weakness_policy",
+      (type, args) => new CooldownHeldItemModifier(type, (args[0] as Pokemon).id, "WEAKNESS_POLICY"),
+    ),
+  AIR_BALLOON: () =>
+    new PokemonHeldItemModifierType(
+      "modifierType:ModifierType.AIR_BALLOON",
+      "air_balloon",
+      (type, args) => new CooldownHeldItemModifier(type, (args[0] as Pokemon).id, "AIR_BALLOON"),
+    ),
 
   ETHER: () => new PokemonPpRestoreModifierType("modifierType:ModifierType.ETHER", "ether", 10),
   MAX_ETHER: () => new PokemonPpRestoreModifierType("modifierType:ModifierType.MAX_ETHER", "max_ether", -1),

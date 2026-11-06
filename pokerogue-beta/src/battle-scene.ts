@@ -2,6 +2,7 @@ import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { Animation } from "#app/animations";
 import { Battle } from "#app/battle";
 import { createHordeBattleState, getHordeChanceDenominator, HORDE_ENEMY_SPRITE_OFFSETS, HORDE_MIN_WAVE } from "#data/horde-battle";
+import { getCooldownHeldItemId, isCooldownHeldItem, type CooldownHeldItemId } from "#data/cooldown-held-items";
 import {
   ANTI_VARIANCE_WEIGHT_MODIFIER,
   BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT,
@@ -47,6 +48,7 @@ import {
 import { ALPH_LEGENDARY_HELPER_CONFIGS, type AlphLegendaryHelperId } from "#data/alph/legendary-helpers";
 import { initCommonAnims, initMoveAnim, loadCommonAnimAssets, loadMoveAnimAssets } from "#data/battle-anims";
 import { isContestHallScheduledEncounterDue } from "#data/contests/contest-hall-schedule";
+import type { ContestMoveSelection } from "#data/contests/contest-state";
 import { getDailyMysteryEncounter } from "#data/daily-seed/daily-run";
 import { allMoves, biomeDepths, modifierTypes } from "#data/data-lists";
 import { getClassicFinalBossDialogue } from "#data/dialogue";
@@ -192,6 +194,7 @@ import { AbilityBar } from "#ui/ability-bar";
 import { ArenaFlyout } from "#ui/arena-flyout";
 import { CandyBar } from "#ui/candy-bar";
 import { CharSprite } from "#ui/char-sprite";
+import type { ContestInputUiHandler } from "#ui/contest-input-ui-handler";
 import { MessageUiHandler } from "#ui/message-ui-handler";
 import { PartyExpBar } from "#ui/party-exp-bar";
 import { PokeballTray } from "#ui/pokeball-tray";
@@ -338,6 +341,7 @@ export interface TwoPlayerDebugStateCheckpoint {
   fingerprint: string;
   summary: Record<string, unknown>;
   inputContext?: TwoPlayerInputContext;
+  contestMoveSelection?: ContestMoveSelection;
 }
 
 const STRICT_TWO_PLAYER_INPUT_CONTEXT_UI_MODES = new Set<UiMode>([
@@ -2078,6 +2082,9 @@ export class BattleScene extends SceneBase {
     const uiMode = this.ui?.getMode() ?? null;
     const currentPhase = this.phaseManager.getCurrentPhase();
     const inputContext = this.getTwoPlayerInputContext(uiMode, currentPhase);
+    const contestMoveSelection = uiMode === UiMode.CONTEST_INPUT
+      ? this.ui.getHandler<ContestInputUiHandler>().getMoveSelection()
+      : undefined;
     const summary = {
       waveIndex: this.currentBattle?.waveIndex ?? null,
       battleType: this.currentBattle?.battleType ?? null,
@@ -2109,6 +2116,7 @@ export class BattleScene extends SceneBase {
       activePlayerIndex: this.activePlayerIndex,
       inputOwner: this.inputOwner,
       inputContext,
+      ...(contestMoveSelection ? { contestMoveSelection } : {}),
       lastReward: this.twoPlayerLastRewardDebugState ?? null,
       fieldOwners: this.getPlayerFieldOwners(),
       players: this.getActivePlayerIndexes().map(playerIndex => ({
@@ -2131,6 +2139,7 @@ export class BattleScene extends SceneBase {
       fingerprint: getTwoPlayerDebugHash(JSON.stringify(summary)),
       summary,
       ...(inputContext ? { inputContext } : {}),
+      ...(contestMoveSelection ? { contestMoveSelection } : {}),
     };
   }
 
@@ -4568,9 +4577,12 @@ export class BattleScene extends SceneBase {
 
   newArena(biome: BiomeId, playerFaints = 0, preserveZMoveRecharge = false): Arena {
     const playerZMoveReadyWaveByPlayer = preserveZMoveRecharge ? this.arena?.playerZMoveReadyWaveByPlayer : undefined;
-
+    const playerWhiteHerbReadyWaveByPlayer = preserveZMoveRecharge ? this.arena?.playerWhiteHerbReadyWaveByPlayer : undefined;
+    const playerHeldItemReadyWaves = preserveZMoveRecharge ? this.arena?.playerHeldItemReadyWaves : undefined;
     this.arena = new Arena(biome, playerFaints);
     this.arena.restorePlayerZMoveReadyWaves(playerZMoveReadyWaveByPlayer);
+    this.arena.restorePlayerWhiteHerbReadyWaves(playerWhiteHerbReadyWaveByPlayer);
+    this.arena.restorePlayerHeldItemReadyWaves(playerHeldItemReadyWaves);
     this.eventTarget.dispatchEvent(new NewArenaEvent());
 
     this.arenaBg.pipelineData = {
@@ -4579,6 +4591,8 @@ export class BattleScene extends SceneBase {
 
     return this.arena;
   }
+  
+
 
   /**
    * Loads the visual assets for a given biome, including background, arena layers, and props. \
@@ -4822,6 +4836,9 @@ export class BattleScene extends SceneBase {
 
     switch (species.speciesId) {
       case SpeciesId.UNOWN:
+        return randSeedInt(28); // A-Z, ! and ?; Schooling is an Alph Wall transformation.
+      case SpeciesId.MAGEARNA:
+        return randSeedInt(2); // Normal and Original Color; both Mega forms require Magearnite.
       case SpeciesId.SHELLOS:
       case SpeciesId.GASTRODON:
       case SpeciesId.ROTOM:
@@ -4838,7 +4855,6 @@ export class BattleScene extends SceneBase {
       case SpeciesId.PUMPKABOO:
       case SpeciesId.GOURGEIST:
       case SpeciesId.ORICORIO:
-      case SpeciesId.MAGEARNA:
       case SpeciesId.ZARUDE:
       case SpeciesId.SQUAWKABILLY:
       case SpeciesId.PALDEA_TAUROS:
@@ -5440,6 +5456,29 @@ export class BattleScene extends SceneBase {
     return Math.floor(moneyValue / 10) * 10;
   }
 
+  canReceiveWhiteHerb(playerIndex: PlayerIndex, transferring?: PokemonHeldItemModifier): boolean {
+    return this.canReceiveCooldownHeldItem("WHITE_HERB", playerIndex, transferring);
+  }
+
+  canReceiveCooldownHeldItem(
+    itemId: CooldownHeldItemId,
+    playerIndex: PlayerIndex,
+    transferring?: PokemonHeldItemModifier,
+  ): boolean {
+    const alreadyOwned = this.getPlayerModifiers(playerIndex).some(
+      item =>
+        item !== transferring
+        && isCooldownHeldItem(item)
+        && getCooldownHeldItemId(item) === itemId
+        && item.getStackCount() > 0,
+    );
+
+    const awaitingReturn = this.getPlayerParty(playerIndex).some(
+      pokemon => pokemon.battleData.removedHeldItems.some(item => item.typeId === itemId && item.stackCount > 0),
+    );
+
+    return !alreadyOwned && !awaitingReturn;
+  }
   addModifier(
     modifier: Modifier | null,
     ignoreUpdate?: boolean,
@@ -5455,6 +5494,20 @@ export class BattleScene extends SceneBase {
     if (!modifier || !modifier.type) {
       return false;
     }
+    
+    if (isCooldownHeldItem(modifier)) {
+      const holder = this.getPokemonById(modifier.pokemonId);
+
+      if (
+        !holder
+        || this.getPlayerIndexForPokemon(holder) !== playerIndex
+        || modifier.getStackCount() !== 1
+        || !this.canReceiveCooldownHeldItem(getCooldownHeldItemId(modifier), playerIndex)
+      ) {
+        return false;
+      }
+    }
+    
     if (isDestinyKnot(modifier)) {
       const pokemon = this.getPokemonById(modifier.pokemonId);
       if (
@@ -5661,7 +5714,20 @@ export class BattleScene extends SceneBase {
     if (!itemModifier.isTransferable) {
       return false;
     }
+    if (
+      isCooldownHeldItem(itemModifier)
+      && target.isPlayer()
+    ) {
+      const owner = this.getPlayerIndexForPokemon(target);
 
+      if (
+        owner === undefined
+        || itemModifier.getStackCount() !== 1
+        || !this.canReceiveCooldownHeldItem(getCooldownHeldItemId(itemModifier), owner, itemModifier)
+      ) {
+        return false;
+      }
+    }
     const source = itemModifier.pokemonId ? (itemModifier.getPokemon() ?? null) : null;
     if (
       isDestinyKnot(itemModifier)
@@ -5909,7 +5975,20 @@ export class BattleScene extends SceneBase {
     if (!itemModifier.isTransferable) {
       return false;
     }
+    if (
+      isCooldownHeldItem(itemModifier)
+      && target.isPlayer()
+    ) {
+      const owner = this.getPlayerIndexForPokemon(target);
 
+      if (
+        owner === undefined
+        || itemModifier.getStackCount() !== 1
+        || !this.canReceiveCooldownHeldItem(getCooldownHeldItemId(itemModifier), owner, itemModifier)
+      ) {
+        return false;
+      }
+    }
     const mod = itemModifier.clone() as PokemonHeldItemModifier;
     const source = mod.pokemonId ? mod.getPokemon() : null;
     if (

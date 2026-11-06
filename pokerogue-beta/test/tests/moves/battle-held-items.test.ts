@@ -372,17 +372,21 @@ describe("Moves - Recycle and battle-only item removal", () => {
     expect(harvest.canApply({ pokemon: player })).toBe(false);
   });
 
-  it("White Herb consumption is recoverable", async () => {
+  it("White Herb recharges without creating a Recycle claim", async () => {
     game.override.moveset([MoveId.SHELL_SMASH, MoveId.RECYCLE]).startingHeldItems([{ name: "WHITE_HERB" }]);
     await game.classicMode.startBattle(SpeciesId.CHARMANDER);
     const player = game.field.getPlayerPokemon();
     game.move.select(MoveId.SHELL_SMASH);
     await game.toNextTurn();
-    expect(count(player, "WHITE_HERB")).toBe(0);
-    expect(getRecycleItemIndex(player)).toBeGreaterThanOrEqual(0);
+    expect(count(player, "WHITE_HERB")).toBe(1);
+    expect(getRecycleItemIndex(player)).toBe(-1);
+    expect(getConsumedHeldItems(player)).toHaveLength(0);
+    const readyWave = game.scene.currentBattle.waveIndex + 5;
+    expect(game.scene.arena.getPlayerWhiteHerbReadyWave(0)).toBe(readyWave);
     game.move.select(MoveId.RECYCLE);
     await game.toNextTurn();
     expect(count(player, "WHITE_HERB")).toBe(1);
+    expect(game.scene.arena.getPlayerWhiteHerbReadyWave(0)).toBe(readyWave);
   });
 
   it("Mirror Herb consumption is recoverable", async () => {

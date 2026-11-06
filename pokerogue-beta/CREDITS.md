@@ -63,7 +63,7 @@ SPDX-License-Identifier: CC-BY-NC-SA-4.0
 - GAMEFREAK (Pokémon Black/White 2, Pokémon Diamond/Pearl)
 - Brumirage
 - IceJkai
-- kyledove
+- kyledove (including the Furisode Girls, Gardeners, Kindler, Draconid, and Experts)
 - Leparagon
 - pkmn_realidea (Paid Commissions)
 - wormhood

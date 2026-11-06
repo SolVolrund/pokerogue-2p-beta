@@ -6,6 +6,7 @@ import { isDev } from "#constants/app-constants";
 import { onlineSaveSession } from "#utils/online-save-session";
 import { Button } from "#enums/buttons";
 import { GameChallengesUiHandler } from "#ui/handlers/challenges-select-ui-handler";
+import { ContestInputUiHandler } from "#ui/contest-input-ui-handler";
 import { UiMode } from "#enums/ui-mode";
 import { Setting, SettingKeys, settingIndex } from "#system/settings";
 import {
@@ -36,6 +37,9 @@ import { SummaryUiHandler } from "#ui/summary-ui-handler";
 import Phaser from "phaser";
 
 type ActionKeys = Record<Button, () => void>;
+const CONTEST_MOVE_BUTTONS = new Set([
+  Button.UP, Button.DOWN, Button.LEFT, Button.RIGHT, Button.ACTION, Button.SUBMIT, Button.CANCEL,
+]);
 type RemoteButtonInput = Button | keyof typeof Button;
 type RemoteDebugPlayer =
   | 1
@@ -105,7 +109,7 @@ export class UiInputs {
     this.listenInputs();
     this.twoPlayerInputTransport = TwoPlayerInputTransport.create(
       globalScene.twoPlayerLocalInputSeat,
-      (playerIndex, button, pressed) => this.processRemoteInput(playerIndex, button, pressed),
+      (playerIndex, button, pressed, checkpoint) => this.processRemoteInput(playerIndex, button, pressed, checkpoint),
       runBootstrap => this.applyRunBootstrap(runBootstrap),
       titleStart => this.applyTitleStart(titleStart),
       settingsSnapshot => this.applySettingsSnapshot(settingsSnapshot),
@@ -180,7 +184,12 @@ export class UiInputs {
     );
   }
 
-  public processRemoteInput(inputSeat: InputSeat, button: Button, pressed = true): boolean {
+  public processRemoteInput(
+    inputSeat: InputSeat,
+    button: Button,
+    pressed = true,
+    checkpoint?: TwoPlayerStateCheckpoint,
+  ): boolean {
     if (!globalScene.canAcceptRemoteInput(inputSeat)) {
       this.recordInputDebugEvent({
         action: "rejected",
@@ -200,7 +209,12 @@ export class UiInputs {
       globalScene.setActivePlayerIndex(inputSeat);
     }
 
-    const processed = this.processButtonInput(button, pressed);
+    const contestInput = pressed ? this.getContestMoveInput(button) : undefined;
+    const contestReplay = pressed && CONTEST_MOVE_BUTTONS.has(button) && checkpoint?.contestMoveSelection;
+    const processed = contestInput || contestReplay
+      ? !!contestInput && !globalScene.ui.isOverlayActive()
+        && contestInput.processSyncedInput(button, checkpoint?.contestMoveSelection)
+      : this.processButtonInput(button, pressed);
     this.recordInputDebugEvent({
       action: processed ? "accepted" : "rejected",
       source: "remote",
@@ -256,6 +270,10 @@ export class UiInputs {
   }
 
   private processButtonInput(button: Button, pressed: boolean): boolean {
+    if (pressed && this.getContestMoveInput(button)) {
+      // Unlike the generic action wrapper, report whether the contest actually consumed the input.
+      return globalScene.ui.processInput(button);
+    }
     const actions = pressed ? this.getActionsKeyDown() : this.getActionsKeyUp();
     if (!Object.hasOwn(actions, button)) {
       return false;
@@ -265,7 +283,20 @@ export class UiInputs {
     return true;
   }
 
+  private getContestMoveInput(button: Button): ContestInputUiHandler | undefined {
+    if (globalScene.ui?.getMode() !== UiMode.CONTEST_INPUT
+      || !CONTEST_MOVE_BUTTONS.has(button)) {
+      return;
+    }
+    const handler = globalScene.ui.getHandler();
+    return handler instanceof ContestInputUiHandler && handler.getMoveSelection() ? handler : undefined;
+  }
+
   private processLocalButtonInput(button: Button, pressed: boolean): boolean {
+    const contestInput = pressed ? this.getContestMoveInput(button) : undefined;
+    if (contestInput && (globalScene.ui.isOverlayActive() || !contestInput.isInputReady())) {
+      return false;
+    }
     const localSaveMenu = onlineSaveSession.localMenu;
     const inputCheckpoint = this.getInputCheckpoint();
     const inputSeat = globalScene.getLocalInputSeatForInput();

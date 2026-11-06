@@ -3,6 +3,8 @@ import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { modifierTypes } from "#data/data-lists";
+import { COOLDOWN_HELD_ITEM_IDS, getCooldownHeldItemId, isCooldownHeldItem } from "#data/cooldown-held-items";
+import { isCooldownHeldItemUseful } from "#utils/cooldown-held-items";
 import { MAX_PER_TYPE_POKEBALLS } from "#data/pokeball";
 import { AbilityId } from "#enums/ability-id";
 import { BerryType } from "#enums/berry-type";
@@ -38,9 +40,29 @@ import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
 import { getAvailableThreadColors } from "#utils/soul-bond";
 import { getReceivableZCrystalsForParty, hasZMoveAccessForParty } from "#utils/z-move-utils";
 
-/**
- * Initialize the wild modifier pool
- */
+function getCooldownHeldItemPoolEntries(weight: number): WeightedModifierType[] {
+  return COOLDOWN_HELD_ITEM_IDS.map(itemId =>
+    new WeightedModifierType(
+      modifierTypes[itemId],
+      (party: Pokemon[]) => {
+        const hasRecipient = party.some(pokemon => {
+          if (!isCooldownHeldItemUseful(pokemon, itemId)) {
+            return false;
+          }
+          if (pokemon.isPlayer()) {
+            const owner = globalScene.getPlayerIndexForPokemon(pokemon);
+            return owner !== undefined && globalScene.canReceiveCooldownHeldItem(itemId, owner);
+          }
+          return !pokemon.getHeldItems().some(item => isCooldownHeldItem(item) && getCooldownHeldItemId(item) === itemId);
+        });
+        return hasRecipient ? weight : 0;
+      },
+      weight,
+    ),
+  );
+}
+
+/** Initialize the wild modifier pool. */
 function initWildModifierPool() {
   wildModifierPool[ModifierTier.COMMON] = [new WeightedModifierType(modifierTypes.BERRY, 1)].map(m => {
     m.setTier(ModifierTier.COMMON);
@@ -55,7 +77,7 @@ function initWildModifierPool() {
   });
   wildModifierPool[ModifierTier.ULTRA] = [
     new WeightedModifierType(modifierTypes.ATTACK_TYPE_BOOSTER, 10),
-    new WeightedModifierType(modifierTypes.WHITE_HERB, 0),
+    ...getCooldownHeldItemPoolEntries(1),
   ].map(m => {
     m.setTier(ModifierTier.ULTRA);
     return m;
@@ -424,6 +446,7 @@ function hasUnownBoxTarget(pokemon: Pokemon): boolean {
 
 function initUltraModifierPool() {
   modifierPool[ModifierTier.ULTRA] = [
+    ...getCooldownHeldItemPoolEntries(3),
     new WeightedModifierType(modifierTypes.ULTRA_BALL, () => (hasMaximumBalls(PokeballType.ULTRA_BALL) ? 0 : 15), 15),
     new WeightedModifierType(modifierTypes.MAX_LURE, lureWeightFunc(30, 4)),
     new WeightedModifierType(modifierTypes.BIG_NUGGET, skipInLastClassicWaveOrDefault(12)),
@@ -910,7 +933,7 @@ function initTrainerModifierPool() {
   });
   trainerModifierPool[ModifierTier.ULTRA] = [
     new WeightedModifierType(modifierTypes.ATTACK_TYPE_BOOSTER, 10),
-    new WeightedModifierType(modifierTypes.WHITE_HERB, 0),
+    ...getCooldownHeldItemPoolEntries(1),
   ].map(m => {
     m.setTier(ModifierTier.ULTRA);
     return m;

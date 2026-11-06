@@ -1,4 +1,5 @@
 import type { PlayerIndex } from "#app/battle-scene";
+import { COOLDOWN_HELD_ITEM_IDS, getCooldownHeldItemId, isCooldownHeldItem, type CooldownHeldItemId } from "#data/cooldown-held-items";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
@@ -498,7 +499,10 @@ export class SelectModifierPhase extends BattlePhase {
   }
 
   private applyComputerPartnerRewardModifier(modifier: Modifier): void {
-    if (!this.applyModifier(modifier, -1, true) && isDestinyKnot(modifier)) {
+    if (
+      !this.applyModifier(modifier, -1, true)
+      && (isDestinyKnot(modifier) || isCooldownHeldItem(modifier))
+    ) {
       this.skipComputerPartnerReward();
     }
   }
@@ -1022,7 +1026,20 @@ export class SelectModifierPhase extends BattlePhase {
             return;
           }
 
-          this.tradePlayerPokemon(sourcePlayerIndex, sourcePartyIndex, targetPlayerIndex, targetPartyIndex);
+          if (!this.tradePlayerPokemon(sourcePlayerIndex, sourcePartyIndex, targetPlayerIndex, targetPartyIndex)) {
+            globalScene.ui.playError();
+            globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+              globalScene.ui.showText(
+                "This trade would exceed the one-per-player limit for a cooldown item.",
+                null,
+                restoreRewardScreen,
+                null,
+                true,
+              );
+              globalScene.waitForPlayerInput(sourcePlayerIndex);
+            });
+            return;
+          }
           restoreRewardScreen();
         },
         sourcePlayerIndex,
@@ -1195,23 +1212,63 @@ export class SelectModifierPhase extends BattlePhase {
     }
   }
 
+  private getCooldownHeldItemCountAfterTrade(
+    itemId: CooldownHeldItemId,
+    playerIndex: PlayerIndex,
+    outgoingPokemon: PlayerPokemon,
+    incomingPokemon: PlayerPokemon,
+    incomingHeldItems: PokemonHeldItemModifier[],
+  ): number {
+    const heldItemCount = [...globalScene.getPlayerModifiers(playerIndex), ...incomingHeldItems].reduce(
+      (count, item) =>
+        isCooldownHeldItem(item) && getCooldownHeldItemId(item) === itemId && item.pokemonId !== outgoingPokemon.id
+          ? count + item.getStackCount()
+          : count,
+      0,
+    );
+    const partyAfterTrade = [
+      ...globalScene.getPlayerParty(playerIndex).filter(pokemon => pokemon !== outgoingPokemon),
+      incomingPokemon,
+    ];
+    return partyAfterTrade.reduce(
+      (count, pokemon) =>
+        count
+        + pokemon.battleData.removedHeldItems.reduce(
+          (removedCount, item) =>
+            item.typeId === itemId && item.stackCount > 0 ? removedCount + item.stackCount : removedCount,
+          0,
+        ),
+      heldItemCount,
+    );
+  }
+
   private tradePlayerPokemon(
     firstPlayerIndex: PlayerIndex,
     firstPartyIndex: number,
     secondPlayerIndex: PlayerIndex,
     secondPartyIndex: number,
-  ): void {
+  ): boolean {
     const firstParty = globalScene.getPlayerParty(firstPlayerIndex);
     const secondParty = globalScene.getPlayerParty(secondPlayerIndex);
     const firstPokemon = firstParty[firstPartyIndex];
     const secondPokemon = secondParty[secondPartyIndex];
 
     if (!firstPokemon || !secondPokemon) {
-      return;
+      return false;
     }
 
     const firstPokemonHeldItems = this.getPlayerHeldItemModifiers(firstPokemon.id, firstPlayerIndex);
     const secondPokemonHeldItems = this.getPlayerHeldItemModifiers(secondPokemon.id, secondPlayerIndex);
+
+    // Check the complete exchange before changing either party or its held items.
+    if (
+      COOLDOWN_HELD_ITEM_IDS.some(itemId =>
+        this.getCooldownHeldItemCountAfterTrade(itemId, firstPlayerIndex, firstPokemon, secondPokemon, secondPokemonHeldItems) > 1
+        || this.getCooldownHeldItemCountAfterTrade(itemId, secondPlayerIndex, secondPokemon, firstPokemon, firstPokemonHeldItems) > 1
+      )
+    ) {
+      return false;
+    }
 
     firstParty[firstPartyIndex] = secondPokemon;
     secondParty[secondPartyIndex] = firstPokemon;
@@ -1225,6 +1282,7 @@ export class SelectModifierPhase extends BattlePhase {
     for (const playerIndex of [firstPlayerIndex, secondPlayerIndex]) {
       globalScene.updateModifiers(true, true, playerIndex);
     }
+    return true;
   }
 
   // Toggle reroll lock
@@ -1256,7 +1314,10 @@ export class SelectModifierPhase extends BattlePhase {
    */
   private applyModifier(modifier: Modifier, cost = -1, playSound = false): boolean {
     const result = globalScene.addModifier(modifier, false, playSound, undefined, undefined, cost, this.playerIndex);
-    if (!result && isDestinyKnot(modifier)) {
+    if (
+      !result
+      && (isDestinyKnot(modifier) || isCooldownHeldItem(modifier))
+    ) {
       globalScene.ui.playError();
       return false;
     }
@@ -1391,7 +1452,11 @@ export class SelectModifierPhase extends BattlePhase {
                 : isRememberMoveModifier
                   ? modifierType.newModifier(party[slotIndex], option as number)
                   : modifierType.newModifier(party[slotIndex]);
-              if (!this.applyModifier(modifier!, cost, true) && modifier && isDestinyKnot(modifier)) {
+              if (
+                !this.applyModifier(modifier!, cost, true)
+                && modifier
+                && (isDestinyKnot(modifier) || isCooldownHeldItem(modifier))
+              ) {
                 this.resetModifierSelect(modifierSelectCallback);
               }
             });

@@ -81,6 +81,20 @@ describe("Egg Generation Tests", () => {
 
     expect(result).toBe(expectedSpecies);
   });
+
+  it.each([
+    { species: SpeciesId.MAGEARNA, allowedForms: ["", "original"] },
+    { species: SpeciesId.UNOWN, allowedForms: [..."abcdefghijklmnopqrstuvwxyz", "exclamation", "question"] },
+  ])("hatches every natural form of species $species, but no transformations", ({ species, allowedForms }) => {
+    const hatchedForms = new Set<string>();
+    for (let id = 1; id <= 256; id++) {
+      const pokemon = new Egg({ species, id }).generatePlayerPokemon();
+      hatchedForms.add(pokemon.getFormKey());
+      pokemon.destroy();
+    }
+    expect(hatchedForms).toEqual(new Set(allowedForms));
+  });
+
   it("should return an common tier egg", () => {
     const scene = game.scene;
     const expectedTier = EggTier.COMMON;

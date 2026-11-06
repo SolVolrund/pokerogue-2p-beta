@@ -1,5 +1,6 @@
 import type { InputOwner, InputSeat, LocalInputSeat, PlayerIndex } from "#app/battle-scene";
 import { Button } from "#enums/buttons";
+import type { ContestMoveSelection } from "#data/contests/contest-state";
 import type { PlayerCardIdentity } from "#utils/player-card";
 import { onlineSaveSession, type OnlineSaveControl } from "#utils/online-save-session";
 import type { ComputerPartnerKey, ComputerPartnerRolePreferences } from "#utils/computer-partner-profile";
@@ -39,6 +40,7 @@ export interface TwoPlayerStateCheckpoint {
   fingerprint: string;
   summary: Record<string, unknown>;
   inputContext?: TwoPlayerInputContext;
+  contestMoveSelection?: ContestMoveSelection;
 }
 
 export interface TwoPlayerRunBootstrap {
@@ -113,7 +115,12 @@ export interface TwoPlayerInputTransportStatus {
   authoritySequence: number;
 }
 
-export type RemoteInputHandler = (inputSeat: InputSeat, button: Button, pressed: boolean) => boolean;
+export type RemoteInputHandler = (
+  inputSeat: InputSeat,
+  button: Button,
+  pressed: boolean,
+  checkpoint?: TwoPlayerStateCheckpoint,
+) => boolean;
 export type TwoPlayerRunBootstrapHandler = (bootstrap: TwoPlayerRunBootstrap) => void;
 export type TwoPlayerTitleStartHandler = (titleStart: TwoPlayerTitleStart) => void;
 export type TwoPlayerSettingsSnapshotHandler = (settingsSnapshot: TwoPlayerSettingsSnapshot) => boolean;
@@ -1292,7 +1299,7 @@ export class TwoPlayerInputTransport {
       buttonName: Button[message.button] as keyof typeof Button,
       pressed: message.pressed,
     });
-    const accepted = this.onRemoteInput(message.playerIndex, message.button, message.pressed);
+    const accepted = this.onRemoteInput(message.playerIndex, message.button, message.pressed, message.checkpoint);
     this.logDebug?.({
       action: accepted ? "accepted" : "rejected",
       source: "remote",
@@ -1357,7 +1364,7 @@ export class TwoPlayerInputTransport {
       pressed: message.pressed,
     });
 
-    const accepted = this.onRemoteInput(message.playerIndex, message.button, message.pressed);
+    const accepted = this.onRemoteInput(message.playerIndex, message.button, message.pressed, message.checkpoint);
     this.logDebug?.({
       action: accepted ? "accepted" : "rejected",
       source: "remote",
@@ -1381,7 +1388,13 @@ export class TwoPlayerInputTransport {
         message.playerIndex,
         message.button,
         message.pressed,
-        acceptedCheckpoint,
+        acceptedCheckpoint && {
+          ...acceptedCheckpoint,
+          // Preserve the controlling player's chosen move when the host echoes an accepted request.
+          ...(message.checkpoint?.contestMoveSelection
+            ? { contestMoveSelection: message.checkpoint.contestMoveSelection }
+            : {}),
+        },
       );
       const sent = this.sendMessage(acceptedMessage);
       this.logMessageSend(sent, acceptedMessage, sent ? undefined : "transport-not-open");

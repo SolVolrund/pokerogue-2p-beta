@@ -5,14 +5,16 @@ import { EvoLevelThresholdKind } from "#enums/evo-level-threshold-kind";
 import { GameModes } from "#enums/game-modes";
 import { PartyMemberStrength } from "#enums/party-member-strength";
 import { SpeciesId } from "#enums/species-id";
+import { TrainerPoolTier } from "#enums/trainer-pool-tier";
 import { TrainerSlot } from "#enums/trainer-slot";
 import { TrainerType } from "#enums/trainer-type";
 import { TrainerVariant } from "#enums/trainer-variant";
 import { Pokemon } from "#field/pokemon";
 import { Trainer } from "#field/trainer";
 import { GameManager } from "#test/framework/game-manager";
-import { getRandomPartyMemberFunc, TrainerConfig } from "#trainers/trainer-config";
+import { getRandomPartyMemberFunc, TrainerConfig, trainerConfigs } from "#trainers/trainer-config";
 import { TrainerPartyCompoundTemplate, TrainerPartyTemplate } from "#trainers/trainer-party-template";
+import { getTwoPlayerTrainerPartners } from "#trainers/two-player-trainer-partners";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import Phaser from "phaser";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -79,6 +81,116 @@ describe("Trainer generation correctness", () => {
       ),
     );
   }
+
+  describe("Themed multiplayer backup trainers", () => {
+    const girls = [
+      TrainerType.FURISODE_GIRL_BLOSSOM,
+      TrainerType.FURISODE_GIRL_KATHERINE,
+      TrainerType.FURISODE_GIRL_KALI,
+      TrainerType.FURISODE_GIRL_LINNEA,
+    ];
+    const matchups = [
+      [TrainerType.FAIRY_TALE_GIRL, girls, TrainerType.VALERIE],
+      [TrainerType.AROMA_LADY, [TrainerType.GARDENER], TrainerType.ERIKA],
+      [TrainerType.BUG_CATCHER, [TrainerType.GARDENER], TrainerType.BUGSY],
+      [TrainerType.FIREBREATHER, [TrainerType.KINDLER], TrainerType.BLAINE],
+      [TrainerType.DRAGON_TAMER, [TrainerType.DRACONID], TrainerType.CLAIR],
+      [TrainerType.VETERAN, [TrainerType.EXPERT], TrainerType.KIERAN],
+    ] as const;
+
+    it.each([2, 3] as const)("fills all trainer slots in %ip encounters", count => {
+      game.scene.configureTwoPlayerMode(true, 6, false, count);
+      for (const [lead, allowed, themedLead] of matchups) {
+        expect(getTwoPlayerTrainerPartners(lead)).toEqual(allowed);
+        expect(getTwoPlayerTrainerPartners(themedLead)).toEqual(expect.arrayContaining([...allowed]));
+        const trainer = new Trainer(lead, TrainerVariant.DEFAULT, 0);
+        expect(allowed).toContain(trainer.partnerTrainerType);
+        if (count === 3) {
+          expect(allowed).toContain(trainer.partnerTrainerType2);
+          if (lead === TrainerType.FAIRY_TALE_GIRL) {
+            expect(trainer.partnerTrainerType2).not.toBe(trainer.partnerTrainerType);
+          }
+        } else {
+          expect(trainer.partnerTrainerType2).toBeUndefined();
+        }
+        const party = generateParty(trainer);
+        expect(new Set(party.map(p => p.trainerSlot)).size).toBe(count);
+      }
+    });
+
+    it("leaves solo encounters unchanged", () => {
+      for (const [lead] of matchups) {
+        const trainer = new Trainer(lead, TrainerVariant.DEFAULT);
+        expect(trainer.partnerTrainerType).toBeUndefined();
+        expect(trainer.isDouble()).toBe(false);
+      }
+    });
+
+    it("uses Fairy and Grass/Bug evolutionary lines, distinct from Fire and Dragon specialists", () => {
+      const eligibleRoots = (type: TrainerType) => {
+        const pick = vi.spyOn(Phaser.Math.RND, "pick");
+        game.scene.randomSpecies(5, 5, false, trainerConfigs[type].speciesFilter);
+        const roots = pick.mock.lastCall![0];
+        pick.mockRestore();
+        return roots;
+      };
+      for (const girl of girls) {
+        const roots = eligibleRoots(girl);
+        expect(roots).toContain(getPokemonSpecies(SpeciesId.EEVEE)); // Sylveon qualifies the line.
+        expect(roots).not.toContain(getPokemonSpecies(SpeciesId.CATERPIE));
+      }
+      const roots = eligibleRoots(TrainerType.GARDENER);
+      for (const id of [SpeciesId.EEVEE, SpeciesId.ODDISH, SpeciesId.CATERPIE]) {
+        expect(roots).toContain(getPokemonSpecies(id));
+      }
+      expect(roots).not.toContain(getPokemonSpecies(SpeciesId.CHARMANDER));
+      for (const [type, match, other] of [
+        [TrainerType.KINDLER, SpeciesId.CHARMANDER, SpeciesId.DRATINI],
+        [TrainerType.DRACONID, SpeciesId.DRATINI, SpeciesId.CHARMANDER],
+      ] as const) {
+        expect(trainerConfigs[type].hasSpecialtyType()).toBe(true);
+        expect(trainerConfigs[type].speciesFilter(getPokemonSpecies(match))).toBe(true);
+        expect(trainerConfigs[type].speciesFilter(getPokemonSpecies(other))).toBe(false);
+      }
+      const expert = trainerConfigs[TrainerType.EXPERT];
+      const veteran = trainerConfigs[TrainerType.VETERAN];
+      expect(expert.partyTemplates).toEqual(veteran.partyTemplates);
+      expect(eligibleRoots(TrainerType.EXPERT)).toEqual(eligibleRoots(TrainerType.VETERAN));
+    });
+  });
+
+  describe("Tiered species pools", () => {
+    it.each([
+      [TrainerType.AROMA_LADY, TrainerPoolTier.COMMON, 156, SpeciesId.ODDISH, SpeciesId.BELLSPROUT],
+      [TrainerType.AROMA_LADY, TrainerPoolTier.COMMON, 156, SpeciesId.SPRITZEE, SpeciesId.SWIRLIX],
+      [TrainerType.AROMA_LADY, TrainerPoolTier.RARE, 6, SpeciesId.SINISTEA, SpeciesId.POLTCHAGEIST],
+      [TrainerType.AROMA_LADY, TrainerPoolTier.COMMON, 156, SpeciesId.SHROOMISH],
+      [TrainerType.BIRD_KEEPER, TrainerPoolTier.COMMON, 156, SpeciesId.PIDGEY, SpeciesId.SPEAROW],
+    ] as const)("resolves trainer %i's tier %i (roll %i) entry containing %i", (type, tier, tierRoll, ...members) => {
+      const trainer = makeTrainer(trainerConfigs[type]);
+      game.scene.currentBattle = new Battle(game.scene.gameMode, {
+        waveIndex: 1,
+        battleType: BattleType.TRAINER,
+        trainer,
+        double: false,
+      });
+      const pool = trainer.config.speciesPools[tier];
+      const slot = pool.findIndex(entry => (Array.isArray(entry) ? entry.includes(members[0]) : entry === members[0]));
+      expect(slot).toBeGreaterThanOrEqual(0);
+
+      const roll = vi.spyOn(Phaser.Math.RND, "integerInRange");
+      const pick = vi.spyOn(Phaser.Math.RND, "pick");
+      for (const [index, species] of members.entries()) {
+        pick.mockClear();
+        roll.mockReturnValueOnce(tierRoll).mockReturnValueOnce(slot);
+        if (members.length > 1) {
+          roll.mockReturnValueOnce(index);
+        }
+        expect(trainer.genNewPartyMemberSpecies(1, PartyMemberStrength.WEAK).speciesId).toBe(species);
+        expect(pick.mock.calls).toEqual(members.length > 1 ? [[pool], [members]] : [[pool]]);
+      }
+    });
+  });
 
   describe("Evolution-line duplicate prevention", () => {
     function withExisting(species: SpeciesId, trainerType = TrainerType.YOUNGSTER) {

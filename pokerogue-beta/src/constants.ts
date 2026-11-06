@@ -116,6 +116,9 @@ export const MAX_TERAS_PER_ARENA = 1;
 /** How many waves must pass before the same player's Z-Ring can be used again. */
 export const Z_RING_RECHARGE_WAVES = 15;
 
+export const COOLDOWN_HELD_ITEM_RECHARGE_WAVES = 5;
+export const WHITE_HERB_RECHARGE_WAVES = COOLDOWN_HELD_ITEM_RECHARGE_WAVES;
+
 /** Moves that can only be learned with a memory-mushroom */
 export const RELEARN_MOVE = -1;
 

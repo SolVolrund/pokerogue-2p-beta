@@ -54,6 +54,7 @@ function isRecyclable(item: Modifiers.PokemonHeldItemModifier): boolean {
     item instanceof Modifiers.BerryModifier
     || item instanceof Modifiers.TypeGemModifier
     || item instanceof Modifiers.ResetNegativeStatStageModifier
+    || (item instanceof Modifiers.CooldownHeldItemModifier && item.cooldownItemId !== "AIR_BALLOON")
     || item instanceof Modifiers.MirrorHerbModifier
   );
 }

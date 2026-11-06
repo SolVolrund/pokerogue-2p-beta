@@ -1,4 +1,5 @@
 import type { ArenaTag } from "#data/arena-tag";
+import { copyHeldItemReadyWaves, type HeldItemReadyWaves } from "#data/cooldown-held-items";
 import { loadArenaTag, SerializableArenaTag } from "#data/arena-tag";
 import type { SerializedPositionalTag } from "#data/positional-tags/load-positional-tag";
 import { Terrain } from "#data/terrain";
@@ -19,6 +20,8 @@ export interface SerializedArenaData {
   playerZMovesUsed?: number;
   playerZMovesUsedByPlayer?: number[];
   playerZMoveReadyWaveByPlayer?: number[];
+  playerWhiteHerbReadyWaveByPlayer?: number[];
+  playerHeldItemReadyWaves?: HeldItemReadyWaves;
 }
 
 export class ArenaData {
@@ -32,6 +35,8 @@ export class ArenaData {
   public playerZMovesUsed: number;
   public playerZMovesUsedByPlayer: number[];
   public playerZMoveReadyWaveByPlayer: number[];
+  public playerWhiteHerbReadyWaveByPlayer: number[];
+  public playerHeldItemReadyWaves: HeldItemReadyWaves;
 
   constructor(source: Arena | SerializedArenaData) {
     // Exclude any unserializable tags from the serialized data (such as ones only lasting 1 turn).
@@ -53,6 +58,10 @@ export class ArenaData {
     this.playerZMoveReadyWaveByPlayer = source.playerZMoveReadyWaveByPlayer?.length
       ? [0, 1, 2].map(playerIndex => source.playerZMoveReadyWaveByPlayer?.[playerIndex] ?? 0)
       : [0, 0, 0];
+    this.playerWhiteHerbReadyWaveByPlayer = source.playerWhiteHerbReadyWaveByPlayer?.length
+      ? [0, 1, 2].map(playerIndex => source.playerWhiteHerbReadyWaveByPlayer?.[playerIndex] ?? 0)
+      : [0, 0, 0];
+    this.playerHeldItemReadyWaves = copyHeldItemReadyWaves(source.playerHeldItemReadyWaves);
 
     if (source instanceof Arena) {
       this.biome = source.biomeId;

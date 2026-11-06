@@ -11,6 +11,7 @@ import type { PokemonMove } from "#moves/pokemon-move";
 import { PokemonPhase } from "#phases/pokemon-phase";
 import type { ChargingMove } from "#types/move-types";
 import { BooleanHolder } from "#utils/common";
+import { activateCooldownHeldItem, isPowerHerbMove } from "#utils/cooldown-held-items";
 
 /**
  * Phase for the "charging turn" of two-turn moves (e.g. Dig).
@@ -71,6 +72,9 @@ export class MoveChargePhase extends PokemonPhase {
 
     const instantCharge = new BooleanHolder(false);
     applyMoveChargeAttrs("InstantChargeAttr", user, null, move, instantCharge);
+    if (!instantCharge.value && isPowerHerbMove(move) && activateCooldownHeldItem(user, "POWER_HERB")) {
+      instantCharge.value = true;
+    }
 
     // If instantly charging, remove the pending MoveEndPhase and queue a new MovePhase for the "attack" portion of the move.
     // Otherwise, add the attack portion to the user's move queue to execute next turn.

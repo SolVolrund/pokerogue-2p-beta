@@ -2,7 +2,8 @@ import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { activeOverrides } from "#app/overrides";
-import { Z_RING_RECHARGE_WAVES } from "#app/constants";
+import { COOLDOWN_HELD_ITEM_RECHARGE_WAVES, WHITE_HERB_RECHARGE_WAVES, Z_RING_RECHARGE_WAVES } from "#app/constants";
+import { copyHeldItemReadyWaves, type CooldownHeldItemId, type HeldItemReadyWaves } from "#data/cooldown-held-items";
 import { NIGHT_TIME } from "#constants/game-constants";
 import type { ArenaTag, ArenaTagTypeMap } from "#data/arena-tag";
 import { getArenaTag } from "#data/arena-tag";
@@ -102,6 +103,8 @@ export class Arena {
   public playerZMovesUsed = 0;
   public playerZMovesUsedByPlayer = [0, 0, 0];
   public playerZMoveReadyWaveByPlayer = [0, 0, 0];
+  public playerWhiteHerbReadyWaveByPlayer = [0, 0, 0];
+  public playerHeldItemReadyWaves: HeldItemReadyWaves = {};
   /**
    * Saves the number of times a party pokemon faints during a arena encounter. \
    * {@linkcode globalScene.currentBattle.enemyFaints} is the corresponding faint counter for the enemy (this resets every wave).
@@ -225,6 +228,71 @@ export class Arena {
       ? [0, 1, 2].map(playerIndex => playerZMoveReadyWaveByPlayer[playerIndex] ?? 0)
       : [0, 0, 0];
   }
+  
+  //white herb start
+
+
+  public getPlayerWhiteHerbReadyWave(playerIndex = 0): number {
+    return this.playerWhiteHerbReadyWaveByPlayer[playerIndex] ?? 0;
+  }
+
+  public getPlayerHeldItemReadyWave(itemId: CooldownHeldItemId, playerIndex = 0): number {
+    return itemId === "WHITE_HERB"
+      ? this.getPlayerWhiteHerbReadyWave(playerIndex)
+      : this.playerHeldItemReadyWaves[itemId]?.[playerIndex] ?? 0;
+  }
+
+  public isPlayerHeldItemReady(
+    itemId: CooldownHeldItemId,
+    playerIndex = 0,
+    waveIndex = globalScene.currentBattle?.waveIndex ?? 0,
+  ): boolean {
+    return waveIndex >= this.getPlayerHeldItemReadyWave(itemId, playerIndex);
+  }
+
+  public startPlayerHeldItemRecharge(
+    itemId: CooldownHeldItemId,
+    playerIndex = 0,
+    waveIndex = globalScene.currentBattle?.waveIndex ?? 0,
+  ): void {
+    if (itemId === "WHITE_HERB") {
+      this.startPlayerWhiteHerbRecharge(playerIndex, waveIndex);
+      return;
+    }
+    const waves = (this.playerHeldItemReadyWaves[itemId] ??= [0, 0, 0]);
+    waves[playerIndex] = waveIndex + COOLDOWN_HELD_ITEM_RECHARGE_WAVES;
+  }
+
+  public restorePlayerHeldItemReadyWaves(waves?: HeldItemReadyWaves): void {
+    this.playerHeldItemReadyWaves = copyHeldItemReadyWaves(waves);
+  }
+
+  public isPlayerWhiteHerbReady(playerIndex = 0, waveIndex = globalScene.currentBattle?.waveIndex ?? 0): boolean {
+    return waveIndex >= this.getPlayerWhiteHerbReadyWave(playerIndex);
+  }
+
+  public getPlayerWhiteHerbRechargeWavesRemaining(
+    playerIndex = 0,
+    waveIndex = globalScene.currentBattle?.waveIndex ?? 0,
+  ): number {
+    return Math.max(0, this.getPlayerWhiteHerbReadyWave(playerIndex) - waveIndex);
+  }
+
+  public startPlayerWhiteHerbRecharge(playerIndex = 0, waveIndex = globalScene.currentBattle?.waveIndex ?? 0): void {
+    this.playerWhiteHerbReadyWaveByPlayer[playerIndex] = waveIndex + WHITE_HERB_RECHARGE_WAVES;
+  }
+
+  public restorePlayerWhiteHerbReadyWaves(playerWhiteHerbReadyWaveByPlayer?: number[]): void {
+    this.playerWhiteHerbReadyWaveByPlayer = playerWhiteHerbReadyWaveByPlayer?.length
+      ? [0, 1, 2].map(playerIndex => playerWhiteHerbReadyWaveByPlayer[playerIndex] ?? 0)
+      : [0, 0, 0];
+  }
+  
+  
+  
+  
+  
+  
 
   /** A float representing the loop point of the current biome's bgm in seconds */
   public get bgmLoopPoint(): number {

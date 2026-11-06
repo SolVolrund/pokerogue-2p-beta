@@ -46,6 +46,7 @@ import { recordConsumedHeldItem } from "#utils/battle-held-items";
 import { tryEatBerries } from "#utils/berry-use-utils";
 import { BooleanHolder, NumberHolder } from "#utils/common";
 import { finishYes } from "#utils/yes-move";
+import { activateCooldownHeldItem, activatePolicy } from "#utils/cooldown-held-items";
 import i18next from "i18next";
 
 export type HitCheckEntry = [HitCheckResult, TypeDamageMultiplier];
@@ -71,6 +72,7 @@ export class MoveEffectPhase extends PokemonPhase {
 
   /** The result of the hit check against each target */
   private hitChecks: HitCheckEntry[];
+  private missedAccuracyCheck = false;
 
   /**
    * Log to be entered into the user's move history once the move result is resolved.
@@ -299,6 +301,9 @@ export class MoveEffectPhase extends PokemonPhase {
       return;
     }
     this.consumeTypeGemIfNeeded(user, damageBeforeTypeGem);
+    if (this.missedAccuracyCheck && !this.move.hasAttr("OneHitKOAttr")) {
+      activatePolicy(user, "BLUNDER_POLICY");
+    }
 
     const moveType = user.getMoveType(this.move, true);
     if (this.move.category !== MoveCategory.STATUS && !user.stellarTypesBoosted.includes(moveType)) {
@@ -502,6 +507,7 @@ export class MoveEffectPhase extends PokemonPhase {
       return [HitCheckResult.HIT, effectiveness];
     }
 
+    this.missedAccuracyCheck = true;
     return [HitCheckResult.MISS, 0];
   }
 
@@ -784,6 +790,13 @@ export class MoveEffectPhase extends PokemonPhase {
 
     if (usedDamageReductionBerry && !target.isFainted()) {
       applyAbAttrs("HealFromBerryUseAbAttr", { pokemon: target });
+    }
+
+    if (isBlockedBySubstitute || finalDmg > 0) {
+      activateCooldownHeldItem(target, "AIR_BALLOON");
+    }
+    if (finalDmg > 0 && effectiveness > 1 && !this.move.hasAttr("FixedDamageAttr") && !this.move.hasAttr("OneHitKOAttr")) {
+      activatePolicy(target, "WEAKNESS_POLICY");
     }
 
     if (isCritical) {

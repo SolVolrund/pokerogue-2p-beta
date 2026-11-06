@@ -1,4 +1,5 @@
 import type { PreAttackModifyDamageAbAttrParams } from "#abilities/ab-attrs";
+import { findReadyCooldownHeldItem } from "#utils/cooldown-held-items";
 import type { Ability } from "#abilities/ability";
 import { applyAbAttrs, applyOnGainAbAttrs, applyOnLoseAbAttrs } from "#abilities/apply-ab-attrs";
 import { generateMoveset } from "#app/ai/ai-moveset-gen";
@@ -3349,6 +3350,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       || hasIronBall
       || (!this.isOfType(PokemonType.FLYING, { returnOriginalTypesIfStellar: true })
         && !isLevitating.value
+        && !(findReadyCooldownHeldItem(this, "AIR_BALLOON") && !globalScene.arena.hasTag(ArenaTagType.GRAVITY))
         && !this.getTag(BattlerTagType.FLOATING)
         && !this.getTag(SemiInvulnerableTag))
     );
@@ -3602,6 +3604,16 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
     const types = this.getTypes({ returnOriginalTypesIfStellar: true, useIllusion });
     const { arena } = globalScene;
+
+    if (
+      moveType === PokemonType.GROUND
+      && move?.id !== MoveId.THOUSAND_ARROWS
+      && findReadyCooldownHeldItem(this, "AIR_BALLOON")
+      && !this.isGrounded()
+      && !arena.hasTag(ArenaTagType.GRAVITY)
+    ) {
+      return 0;
+    }
 
     // Handle flying v ground type immunity without removing flying type so effective types are still effective
     // Related to https://github.com/pagefaultgames/pokerogue/issues/524

@@ -55,10 +55,10 @@ import type { IntClosedRange, TupleOf } from "type-fest";
 
 const overrides: Partial<InstanceType<OverridesType>> = {
   // Temporary Fashion Case testing: first encounter and first reward only.
-  FIRST_WILD_ENCOUNTER_SPECIES_OVERRIDE: SpeciesId.FURFROU,
-  WAVE_ITEM_REWARD_OVERRIDE: {
-    1: [{ name: "FORM_CHANGE_ITEM", type: FormChangeItem.FASHION_CASE }],
-  },
+  // FIRST_WILD_ENCOUNTER_SPECIES_OVERRIDE: SpeciesId.FURFROU,
+  // WAVE_ITEM_REWARD_OVERRIDE: {
+  //   1: [{ name: "FORM_CHANGE_ITEM", type: FormChangeItem.FASHION_CASE }],
+  // },
   // Temporary Safari participation/lane testing.
   // STARTING_WAVE_OVERRIDE: 22,
   // STARTING_BIOME_OVERRIDE: BiomeId.FOREST,

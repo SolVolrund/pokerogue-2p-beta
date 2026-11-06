@@ -1,6 +1,10 @@
 import { globalScene } from "#app/global-scene";
 
 const STANDALONE_ITEM_ICONS = new Set([
+  "air_balloon",
+  "power_herb",
+  "blunder_policy",
+  "weakness_policy",
   "buddy_ball",
   "fashion_case",
   "big_meteor",

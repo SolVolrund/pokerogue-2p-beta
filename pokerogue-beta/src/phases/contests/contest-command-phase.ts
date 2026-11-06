@@ -54,8 +54,13 @@ export class ContestCommandPhase extends ContestPhase {
     getContestUi().setCommandSelection(this.selectionIndex, this.contestState);
     setContestInputMode({
       inputDelayMs: CONTEST_COMMAND_INPUT_DELAY_MS,
+      getMoveSelection: () => ({
+        round: this.contestState.round,
+        contestantId: this.contestantId,
+        moveId: this.playerMoves[wrapMoveSelection(this.selectionIndex, this.playerMoves.length)] ?? MoveId.TACKLE,
+      }),
       onMoveSelection: delta => this.moveSelection(delta),
-      onConfirm: () => this.confirmSelection(),
+      onConfirm: moveId => this.confirmSelection(moveId),
     });
   }
 
@@ -77,16 +82,20 @@ export class ContestCommandPhase extends ContestPhase {
     return true;
   }
 
-  private confirmSelection(): boolean {
+  private confirmSelection(moveId?: MoveId): boolean {
     if (!this.contestant || this.complete) {
       return false;
     }
 
+    const selectedMove = moveId
+      ?? this.playerMoves[wrapMoveSelection(this.selectionIndex, this.playerMoves.length)]
+      ?? MoveId.TACKLE;
+    if (this.playerMoves.length ? !this.playerMoves.includes(selectedMove) : selectedMove !== MoveId.TACKLE) {
+      return false;
+    }
+
     this.complete = true;
-    this.contestState.queueMove(
-      this.contestant.id,
-      this.playerMoves[wrapMoveSelection(this.selectionIndex, this.playerMoves.length)] ?? MoveId.TACKLE,
-    );
+    this.contestState.queueMove(this.contestant.id, selectedMove);
     this.queueAppealPhase();
     this.end();
     return true;

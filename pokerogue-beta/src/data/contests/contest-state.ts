@@ -8,6 +8,12 @@ import type { ContestType } from "./contest-type";
 
 export type ContestParticipantId = string;
 
+export interface ContestMoveSelection {
+  round: number;
+  contestantId: ContestParticipantId;
+  moveId: MoveId;
+}
+
 export interface ContestParticipant {
   id: ContestParticipantId;
   name: string;

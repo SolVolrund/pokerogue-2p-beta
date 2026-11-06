@@ -1,4 +1,7 @@
-import { TwoPlayerInputTransport } from "#app/two-player-input-transport";
+import { TwoPlayerInputTransport, type RemoteInputHandler, type TwoPlayerStateCheckpoint } from "#app/two-player-input-transport";
+import { Button } from "#enums/buttons";
+import { MoveId } from "#enums/move-id";
+import { UiMode } from "#enums/ui-mode";
 import { ONLINE_BUILD_ID, ONLINE_PROTOCOL } from "#utils/online-lobby-client";
 import { onlineSaveSession } from "#utils/online-save-session";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -56,16 +59,19 @@ describe("Online transport handshake", () => {
     sessionStorage.removeItem("pokerogue-online-membership-v1");
     document.getElementById("online-connection-status")?.remove();
   });
-  const create = () =>
+  const create = (
+    onRemoteInput: RemoteInputHandler = () => true,
+    getCheckpoint: () => TwoPlayerStateCheckpoint = () => checkpoint,
+  ) =>
     TwoPlayerInputTransport.create(
       0,
-      () => true,
+      onRemoteInput,
       undefined,
       undefined,
       undefined,
       undefined,
       undefined,
-      () => checkpoint,
+      getCheckpoint,
       undefined,
       () => profile,
     )!;
@@ -159,5 +165,59 @@ describe("Online transport handshake", () => {
     expect(TestSocket.latest.sent.some(m => m.type === "authenticate")).toBe(false);
     expect(TestSocket.latest.sent.some(m => m.kind === "profile-snapshot")).toBe(true);
     expect(transport.getInputReadinessBlockReason()).toBeUndefined();
+  });
+
+  const contestCheckpoint = (moveId: MoveId): TwoPlayerStateCheckpoint => ({
+    fingerprint: String(moveId),
+    summary: { phase: "ContestCommandPhase", uiMode: UiMode.CONTEST_INPUT },
+    inputContext: { id: "round-1-player-2", promptId: "round-1-player-2", strict: true, key: {} },
+    contestMoveSelection: { round: 1, contestantId: "player_2", moveId },
+  });
+  const remoteInput = (kind: string, checkpoint: TwoPlayerStateCheckpoint, senderRole = "guest") => ({
+    protocol: "pokerogue-2p-local-input",
+    version: 1,
+    kind,
+    sessionId: "test",
+    senderId: "remote-test-player",
+    senderRole,
+    sequence: 1,
+    playerIndex: 1,
+    button: Button.ACTION,
+    pressed: true,
+    checkpoint,
+  });
+
+  it("echoes the guest's confirmed contest move, not the host's local cursor", () => {
+    const receive = vi.fn(() => true);
+    const hostCheckpoint = contestCheckpoint(MoveId.HARDEN);
+    const guestCheckpoint = contestCheckpoint(MoveId.TACKLE);
+    const transport = create(receive, () => hostCheckpoint);
+    const socket = TestSocket.latest;
+    socket.open();
+    socket.receive({ protocol: ONLINE_PROTOCOL, type: "authenticated" });
+    socket.receive({ protocol: ONLINE_PROTOCOL, type: "status", ready: true });
+    transport.sendCheckpoint();
+    socket.receive(remoteInput("state-checkpoint", guestCheckpoint));
+    vi.advanceTimersByTime(150);
+    socket.receive({ ...remoteInput("input-request", guestCheckpoint), sequence: 2 });
+    expect(receive).toHaveBeenCalledWith(1, Button.ACTION, true, guestCheckpoint);
+    const accepted = socket.sent.find(m => m.kind === "input-accepted");
+    expect(accepted?.checkpoint.contestMoveSelection).toEqual(guestCheckpoint.contestMoveSelection);
+    expect(accepted?.checkpoint.inputContext).toEqual(hostCheckpoint.inputContext);
+  });
+
+  it.each(["guest", "peer"] as const)("delivers explicit contest moves to %s clients", role => {
+    window.history.replaceState(
+      {}, "", `?twoPlayerInputTransport=websocket&twoPlayerNetworkRole=${role}&twoPlayerSession=test`,
+    );
+    const receive = vi.fn(() => true);
+    const local = contestCheckpoint(MoveId.HARDEN);
+    const chosen = contestCheckpoint(MoveId.TACKLE);
+    const transport = create(receive, () => local);
+    TestSocket.latest.open();
+    transport.sendCheckpoint();
+    vi.advanceTimersByTime(150);
+    TestSocket.latest.receive(remoteInput(role === "guest" ? "input-accepted" : "input", chosen, "host"));
+    expect(receive).toHaveBeenCalledWith(1, Button.ACTION, true, chosen);
   });
 });

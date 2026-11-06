@@ -282,6 +282,10 @@ export class UI extends Phaser.GameObjects.Container {
     return this.handlers[UiMode.MESSAGE] as BattleMessageUiHandler;
   }
 
+  isOverlayActive(): boolean {
+    return !!this.overlayActive;
+  }
+
   processInfoButton(pressed: boolean) {
     if (this.overlayActive) {
       return false;

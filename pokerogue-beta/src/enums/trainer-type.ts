@@ -165,6 +165,16 @@ export enum TrainerType {
 
   // #endregion ME trainers
 
+  // Multiplayer backup classes. Keep existing trainer IDs stable.
+  FURISODE_GIRL_BLOSSOM,
+  FURISODE_GIRL_KATHERINE,
+  FURISODE_GIRL_KALI,
+  FURISODE_GIRL_LINNEA,
+  GARDENER,
+  KINDLER,
+  DRACONID,
+  EXPERT,
+
   // #region Gym Leaders
 
   BROCK = 200,
