@@ -391,6 +391,8 @@ export class PokemonTurnData {
   public zMoveSourceMove?: MoveId | undefined;
   public typeGemMoveId?: MoveId | undefined;
   public typeGemMoveType?: PokemonType | undefined;
+  public typeGemActivated = false;
+  public typeGemBoostMultiplier?: number | undefined;
   public failedRunAway = false;
   public joinedRound = false;
 

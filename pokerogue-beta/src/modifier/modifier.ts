@@ -69,7 +69,8 @@ import type { Move } from "#moves/move";
 import type { VoucherType } from "#system/voucher";
 import type { ModifierInstanceMap, ModifierString } from "#types/modifier-types";
 import type { StatChange } from "#types/stat-change";
-import type { CooldownHeldItemId } from "#data/cooldown-held-items";
+import { getTypeGemCooldownId, type CooldownHeldItemId } from "#data/cooldown-held-items";
+import { activateCooldownHeldItem, findReadyCooldownHeldItem } from "#utils/cooldown-held-items";
 import { addModifierIconSprite } from "#ui/modifier-icon";
 import { addTextObject } from "#ui/text";
 import { hslToHex } from "#utils/color-utils";
@@ -78,7 +79,7 @@ import { areHeldItemEffectsSuppressed } from "#utils/held-item-suppression-state
 import { canReceiveThread, type ThreadColor } from "#utils/soul-bond";
 import { getEnumValues } from "#utils/enums";
 import { getModifierType } from "#utils/modifier-utils";
-import type { ValueHolder } from "#utils/value-holder";
+import { ValueHolder } from "#utils/value-holder";
 import i18next from "i18next";
 
 export type ModifierPredicate = (modifier: Modifier) => boolean;
@@ -1960,11 +1961,15 @@ export class TypeGemModifier extends PokemonHeldItemModifier {
     moveId: MoveId,
     simulated = false,
   ): boolean {
-    if (moveType === this.moveType && movePower.value >= 1) {
+    if (
+      moveType === this.moveType && movePower.value >= 1
+      && findReadyCooldownHeldItem(pokemon, getTypeGemCooldownId(moveType)) === this
+    ) {
       movePower.value = Math.floor(movePower.value * (1 + this.boostMultiplier));
       if (!simulated) {
         pokemon.turnData.typeGemMoveId = moveId;
         pokemon.turnData.typeGemMoveType = moveType;
+        pokemon.turnData.typeGemBoostMultiplier = this.boostMultiplier;
       }
       return true;
     }
@@ -1977,7 +1982,7 @@ export class TypeGemModifier extends PokemonHeldItemModifier {
   }
 
   getMaxHeldItemCount(_pokemon: Pokemon): number {
-    return 3;
+    return 1;
   }
 }
 
@@ -2858,8 +2863,14 @@ export class MirrorHerbModifier extends PokemonHeldItemModifier {
    */
   override apply(pokemon: Pokemon, changes: readonly StatChange[]): boolean {
     const positiveChanges = changes.filter(c => c.stages > 0);
-
-    if (positiveChanges.length === 0) {
+    const multiplier = new ValueHolder(1);
+    applyAbAttrs("StatStageChangeMultiplierAbAttr", { pokemon, numStages: multiplier, simulated: true });
+    const canChange = positiveChanges.some(c =>
+      multiplier.value > 0
+        ? pokemon.getStatStage(c.stat) < 6
+        : multiplier.value < 0 && pokemon.getStatStage(c.stat) > -6,
+    );
+    if (pokemon.isFainted() || !canChange || !activateCooldownHeldItem(pokemon, "MIRROR_HERB")) {
       return false;
     }
 
@@ -2875,7 +2886,7 @@ export class MirrorHerbModifier extends PokemonHeldItemModifier {
   }
 
   getMaxHeldItemCount(_pokemon: Pokemon): number {
-    return 2;
+    return 1;
   }
 }
 
@@ -3021,6 +3032,9 @@ export class TerastallizeModifier extends ConsumablePokemonModifier {
 }
 
 export class PokemonHpRestoreModifier extends ConsumablePokemonModifier {
+  static getRecovery(hp: number, maxHp: number, points: number, percent: number): number {
+    return Math.min(maxHp - hp, Math.max(1, Math.ceil(points), Math.floor((percent * 0.01) * maxHp)));
+  }
   private restorePoints: number;
   private restorePercent: number;
   private healStatus: boolean;
@@ -3067,14 +3081,7 @@ export class PokemonHpRestoreModifier extends ConsumablePokemonModifier {
       if (this.fainted || this.healStatus) {
         pokemon.resetStatus(true, true, false, false);
       }
-      pokemon.hp = Math.min(
-        pokemon.hp
-          + Math.max(
-            Math.ceil(Math.max(Math.floor(this.restorePercent * 0.01 * pokemon.getMaxHp()), restorePoints)),
-            1,
-          ),
-        pokemon.getMaxHp(),
-      );
+      pokemon.hp += PokemonHpRestoreModifier.getRecovery(pokemon.hp, pokemon.getMaxHp(), restorePoints, this.restorePercent);
       return true;
     }
     return false;

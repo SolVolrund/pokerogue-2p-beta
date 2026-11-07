@@ -1,5 +1,5 @@
 import type { PlayerIndex } from "#app/battle-scene";
-import { COOLDOWN_HELD_ITEM_IDS, getCooldownHeldItemId, isCooldownHeldItem, type CooldownHeldItemId } from "#data/cooldown-held-items";
+import { ALL_COOLDOWN_HELD_ITEM_IDS, getCooldownHeldItemId, getSavedCooldownHeldItemId, isCooldownHeldItem, type CooldownHeldItemId } from "#data/cooldown-held-items";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
@@ -73,15 +73,19 @@ import {
   type ComputerPartnerRecoveryChoice,
   type ComputerPartnerRewardChoice,
   chooseComputerPartnerRecoveryOption,
+  chooseComputerPartnerStockPurchase,
   chooseComputerPartnerRewardOption,
+  equipComputerPartnerBagItems,
   getComputerPartnerShopReserve,
 } from "#utils/computer-partner-reward-ai";
 import { isDestinyKnot } from "#utils/soul-bond";
+import { canBagRewardType, storeRewardInBag } from "#utils/item-bag";
 import i18next from "i18next";
 
 export type ModifierSelectCallback = (rowCursor: number, cursor: number) => boolean;
 
 const COMPUTER_PARTNER_LOWER_TIER_TOKEN_PURCHASE_LIMIT = 4;
+const COMPUTER_PARTNER_SHOP_TREATMENT_LIMIT = 6;
 
 export interface AlphTileRewardOption {
   character: AlphFiniteTileCharacter;
@@ -299,6 +303,9 @@ export class SelectModifierPhase extends BattlePhase {
   }
 
   private getComputerPartnerShopOptions(): ModifierTypeOption[] {
+    if (!globalScene.gameMode.getShopStatus()) {
+      return [];
+    }
     return getPlayerShopModifierTypeOptionsForWave(
       globalScene.currentBattle.waveIndex,
       globalScene.getWaveMoneyAmount(1),
@@ -315,32 +322,30 @@ export class SelectModifierPhase extends BattlePhase {
     }
 
     const messages: string[] = [];
-    const maxPurchases = 6;
-    let purchases = 0;
-    while (purchases < maxPurchases) {
-      const party = globalScene.getPlayerParty(this.playerIndex);
-      const shopOptions = this.getComputerPartnerShopOptions();
-      const choice = chooseComputerPartnerRecoveryOption(
-        shopOptions,
-        party,
-        activeOverrides.WAIVE_ROLL_FEE_OVERRIDE
-          ? Number.MAX_SAFE_INTEGER
-          : globalScene.getPlayerMoney(this.playerIndex),
-      );
-
-      if (!choice) {
+    const party = globalScene.getPlayerParty(this.playerIndex);
+    const bag = globalScene.getPlayerBagMedicines(this.playerIndex);
+    const shopOptions = this.getComputerPartnerShopOptions();
+    const budget = () => activeOverrides.WAIVE_ROLL_FEE_OVERRIDE ? Number.MAX_SAFE_INTEGER : globalScene.getPlayerMoney(this.playerIndex);
+    for (let i = 0; i < COMPUTER_PARTNER_SHOP_TREATMENT_LIMIT; i++) {
+      const treatment = chooseComputerPartnerRecoveryOption(shopOptions, party, budget());
+      if (!treatment) {
         break;
       }
-
-      const message = this.applyComputerPartnerRecoveryChoice(choice);
+      const message = this.applyComputerPartnerRecoveryChoice(treatment);
       if (!message) {
         break;
       }
       messages.push(message);
-      purchases++;
     }
 
-    const tokenChoice = this.chooseComputerPartnerVsTokenOption(this.getComputerPartnerShopOptions());
+    const stock = chooseComputerPartnerStockPurchase(shopOptions, bag, party, budget(), this.typeOptions);
+    if (stock?.type instanceof PokemonModifierType && storeRewardInBag(this.playerIndex, stock.type)) {
+      this.payForComputerPartnerMedicine(stock.cost);
+      const partnerName = getComputerPartnerProfile(globalScene.getComputerPartnerKey(this.playerIndex)).name;
+      messages.push(`${partnerName}: Bought ${stock.type.name} for their Bag.`);
+    }
+
+    const tokenChoice = this.chooseComputerPartnerVsTokenOption(shopOptions);
     if (tokenChoice) {
       void this.applyComputerPartnerVsTokenChoice(tokenChoice).then(message => {
         if (message) {
@@ -356,17 +361,39 @@ export class SelectModifierPhase extends BattlePhase {
   }
 
   private finishAutoComputerPartnerReward(messages: string[]): void {
+    const profile = getComputerPartnerProfileWithRolePreferences(
+      globalScene.getComputerPartnerKey(this.playerIndex),
+      globalScene.getComputerPartnerRolePreferences(this.playerIndex),
+    );
+    const equipped = equipComputerPartnerBagItems(this.playerIndex, profile);
+    if (equipped.length === 1) {
+      const { pokemon, itemName, quantity } = equipped[0];
+      messages.push(`${profile.name}: Gave ${quantity > 1 ? `${quantity}x ` : ""}${itemName} from the Bag to ${pokemon.getNameToRender()}.`);
+    } else if (equipped.length > 1) {
+      messages.push(`${profile.name}: Equipped ${equipped.reduce((n, entry) => n + entry.quantity, 0)} items from the Bag.`);
+    }
     const rewardChoice = chooseComputerPartnerRewardOption(
       this.typeOptions,
       globalScene.getPlayerParty(this.playerIndex),
       {
         pokeballCounts: globalScene.getPlayerPokeballCounts(this.playerIndex),
-        computerPartnerProfile: getComputerPartnerProfileWithRolePreferences(
-          globalScene.getComputerPartnerKey(this.playerIndex),
-          globalScene.getComputerPartnerRolePreferences(this.playerIndex),
-        ),
+        bagMedicines: globalScene.getPlayerBagMedicines(this.playerIndex),
+        computerPartnerProfile: profile,
       },
     );
+    if (rewardChoice?.storeInBag && rewardChoice.option.type instanceof PokemonModifierType) {
+      const type = rewardChoice.option.type;
+      if (storeRewardInBag(this.playerIndex, type)) {
+        const name = getComputerPartnerProfile(globalScene.getComputerPartnerKey(this.playerIndex)).name;
+        messages.push(`${name}: Put ${type.name} in their Bag.`);
+        this.queueComputerPartnerChoiceMessages(messages);
+        this.finishModifierSelection(true, -1);
+      } else {
+        this.queueComputerPartnerChoiceMessages(messages);
+        this.skipComputerPartnerReward();
+      }
+      return;
+    }
     const rewardModifier = rewardChoice ? this.createComputerPartnerChoiceModifier(rewardChoice) : null;
     if (rewardChoice && rewardModifier) {
       messages.push(this.getComputerPartnerChoiceMessage(rewardChoice, rewardModifier, false));
@@ -488,14 +515,18 @@ export class SelectModifierPhase extends BattlePhase {
       return;
     }
 
+    this.payForComputerPartnerMedicine(choice.cost);
+    return this.getComputerPartnerChoiceMessage(choice, modifier, true);
+  }
+
+  private payForComputerPartnerMedicine(cost: number): void {
     if (!activeOverrides.WAIVE_ROLL_FEE_OVERRIDE) {
-      globalScene.setPlayerMoney(globalScene.getPlayerMoney(this.playerIndex) - choice.cost, this.playerIndex);
+      globalScene.setPlayerMoney(globalScene.getPlayerMoney(this.playerIndex) - cost, this.playerIndex);
       globalScene.updateMoneyText();
       globalScene.animateMoneyChanged(false);
     }
     audioManager.playSound("se/buy");
     globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("shop-purchased");
-    return this.getComputerPartnerChoiceMessage(choice, modifier, true);
   }
 
   private applyComputerPartnerRewardModifier(modifier: Modifier): void {
@@ -1219,7 +1250,10 @@ export class SelectModifierPhase extends BattlePhase {
     incomingPokemon: PlayerPokemon,
     incomingHeldItems: PokemonHeldItemModifier[],
   ): number {
-    const heldItemCount = [...globalScene.getPlayerModifiers(playerIndex), ...incomingHeldItems].reduce(
+    const receivesItem = incomingHeldItems.some(item => isCooldownHeldItem(item) && getCooldownHeldItemId(item) === itemId && item.stackCount > 0)
+      || incomingPokemon.battleData.removedHeldItems.some(item => getSavedCooldownHeldItemId(item) === itemId && item.stackCount > 0);
+    if (!receivesItem) return 0;
+    const heldItemCount = [...globalScene.getPlayerModifiers(playerIndex), ...globalScene.getPlayerBag(playerIndex), ...incomingHeldItems].reduce(
       (count, item) =>
         isCooldownHeldItem(item) && getCooldownHeldItemId(item) === itemId && item.pokemonId !== outgoingPokemon.id
           ? count + item.getStackCount()
@@ -1235,7 +1269,7 @@ export class SelectModifierPhase extends BattlePhase {
         count
         + pokemon.battleData.removedHeldItems.reduce(
           (removedCount, item) =>
-            item.typeId === itemId && item.stackCount > 0 ? removedCount + item.stackCount : removedCount,
+            getSavedCooldownHeldItemId(item) === itemId && item.stackCount > 0 ? removedCount + item.stackCount : removedCount,
           0,
         ),
       heldItemCount,
@@ -1262,7 +1296,7 @@ export class SelectModifierPhase extends BattlePhase {
 
     // Check the complete exchange before changing either party or its held items.
     if (
-      COOLDOWN_HELD_ITEM_IDS.some(itemId =>
+      ALL_COOLDOWN_HELD_ITEM_IDS.some(itemId =>
         this.getCooldownHeldItemCountAfterTrade(itemId, firstPlayerIndex, firstPokemon, secondPokemon, secondPokemonHeldItems) > 1
         || this.getCooldownHeldItemCountAfterTrade(itemId, secondPlayerIndex, secondPokemon, firstPokemon, firstPokemonHeldItems) > 1
       )
@@ -1331,7 +1365,23 @@ export class SelectModifierPhase extends BattlePhase {
       globalScene.phaseManager.unshiftPhase(this.copy());
     }
 
-    if (cost !== -1 && !(modifier.type instanceof RememberMoveModifierType)) {
+    this.finishModifierSelection(result, cost, modifier.type instanceof RememberMoveModifierType);
+    return result;
+  }
+
+  private storeModifierInBag(type: PokemonModifierType, cost: number): boolean {
+    if ((cost >= 0 && !activeOverrides.WAIVE_ROLL_FEE_OVERRIDE && globalScene.getPlayerMoney(this.playerIndex) < cost)
+      || !storeRewardInBag(this.playerIndex, type)) {
+      globalScene.ui.playError();
+      return false;
+    }
+    audioManager.playSound(type.soundName);
+    this.finishModifierSelection(true, cost);
+    return true;
+  }
+
+  private finishModifierSelection(result: boolean, cost: number, isRememberMove = false): void {
+    if (cost !== -1 && !isRememberMove) {
       if (result) {
         if (!activeOverrides.WAIVE_ROLL_FEE_OVERRIDE) {
           globalScene.setPlayerMoney(globalScene.getPlayerMoney(this.playerIndex) - cost, this.playerIndex);
@@ -1350,7 +1400,6 @@ export class SelectModifierPhase extends BattlePhase {
       globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("reward-picked");
       super.end();
     }
-    return result;
   }
 
   private applyPartnerModifier(modifier: Modifier, cost: number, targetPlayerIndex: PlayerIndex): void {
@@ -1470,6 +1519,15 @@ export class SelectModifierPhase extends BattlePhase {
           : undefined,
         tmMoveId,
         isPpRestoreModifier,
+        canBagRewardType(modifierType, this.playerIndex)
+          ? () => {
+              globalScene.ui.setMode(UiMode.MODIFIER_SELECT, this.isPlayer()).then(() => {
+                if (!this.storeModifierInBag(modifierType, cost)) {
+                  this.resetModifierSelect(modifierSelectCallback);
+                }
+              });
+            }
+          : undefined,
       )
       .then(() => {
         if (globalScene.twoPlayerMode) {

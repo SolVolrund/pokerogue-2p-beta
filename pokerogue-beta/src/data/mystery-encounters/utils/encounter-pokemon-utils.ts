@@ -469,7 +469,7 @@ export function trainerThrowPokeball(
   }
 
   const fpOffset = pokemon.getFieldPositionOffset();
-  const pokeballAtlasKey = getPokeballAtlasKey(pokeballType);
+  const pokeballAtlasKey = getPokeballAtlasKey(pokeballType, globalScene.getPlayerState(playerIndex).ballDesign);
   const trainerSprite = globalScene.getPlayerTrainerBackSprite(playerIndex);
   const fieldOwners = globalScene.getPlayerFieldOwners();
   const trainerFieldIndex = Math.max(0, fieldOwners.indexOf(playerIndex)) as PlayerIndex;
@@ -548,7 +548,7 @@ export function trainerThrowPokeball(
                         audioManager.playSound("se/pb_move");
                       } else {
                         shakeCounter.stop();
-                        failCatch(pokemon, originalY, pokeball, pokeballType).then(() => resolve(false));
+                        failCatch(pokemon, originalY, pokeball, pokeballType, pokeballAtlasKey).then(() => resolve(false));
                       }
                     } else {
                       audioManager.playSound("se/pb_lock");
@@ -604,6 +604,7 @@ function failCatch(
   originalY: number,
   pokeball: Phaser.GameObjects.Sprite,
   pokeballType: PokeballType,
+  pokeballAtlasKey: string,
 ) {
   return new Promise<void>(resolve => {
     audioManager.playSound("se/pb_rel");
@@ -615,7 +616,6 @@ function failCatch(
     pokemon.setVisible(true);
     pokemon.untint(250, "Sine.easeOut");
 
-    const pokeballAtlasKey = getPokeballAtlasKey(pokeballType);
     pokeball.setTexture("pb", `${pokeballAtlasKey}_opening`);
     globalScene.time.delayedCall(17, () => pokeball.setTexture("pb", `${pokeballAtlasKey}_open`));
 
@@ -782,7 +782,7 @@ export async function catchPokemon(
               `${profile.name} added ${pokemon.getNameToRender()} to their team and released ${replacedPokemon.getNameToRender()}.`,
               null,
               () => {
-                globalScene.removePartyMemberModifiers(replacementIndex, playerIndex).then(() => {
+                globalScene.removePartyMemberModifiers(replacementIndex, playerIndex, true).then(() => {
                   const party = globalScene.getPlayerParty(playerIndex);
                   const releasedPokemon = party.splice(replacementIndex, 1)[0];
                   releasedPokemon?.destroy();

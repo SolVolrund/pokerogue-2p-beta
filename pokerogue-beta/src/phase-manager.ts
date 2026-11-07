@@ -129,6 +129,8 @@ import { VoltorbFlipPhase } from "#phases/voltorb-flip-phase";
 import { WeatherEffectPhase } from "#phases/weather-effect-phase";
 import { YesMoveSetupPhase } from "#phases/yes-move-setup-phase";
 import { ZMovePhase } from "#phases/z-move-phase";
+import { UseBagMedicinePhase } from "#phases/use-bag-medicine-phase";
+import { EnemyMedicinePhase } from "#phases/enemy-medicine-phase";
 import type { PhaseConditionFunc, PhaseMap, PhaseString } from "#types/phase-types";
 import type { NonEmptyTuple } from "type-fest";
 import { ContestAppealPhase } from "./phases/contests/contest-appeal-phase";
@@ -152,6 +154,8 @@ import { ContestStartPhase } from "./phases/contests/contest-start-phase";
  * This allows for easy creation of new phases without needing to import each phase individually.
  */
 const PHASES = Object.freeze({
+  UseBagMedicinePhase,
+  EnemyMedicinePhase,
   AddEnemyBuffModifierPhase,
   AttemptCapturePhase,
   AttemptClonePhase,

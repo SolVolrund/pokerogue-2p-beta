@@ -1,4 +1,6 @@
 import { globalScene } from "#app/global-scene";
+import type { PlayerIndex } from "#app/battle-scene";
+import { designBagFrame } from "#data/ball-design";
 
 const STANDALONE_ITEM_ICONS = new Set([
   "air_balloon",
@@ -43,7 +45,12 @@ const STANDALONE_ITEM_ICONS = new Set([
   "roseli_berry",
 ]);
 
-export function getModifierIconTexture(iconImage: string): [string, string?] {
+export function getModifierIconTexture(iconImage: string, owner?: PlayerIndex): [string, string?] {
+  if (iconImage === "pb") {
+    const design = globalScene.getPlayerState(owner).ballDesign;
+    if (design) return ["kurt_ball_icons", designBagFrame(design)];
+  }
+  if (iconImage?.startsWith("kurt_")) return ["kurt_ball_icons", iconImage];
   return STANDALONE_ITEM_ICONS.has(iconImage) && globalScene.textures.exists(iconImage)
     ? [iconImage]
     : ["items", iconImage];
@@ -58,5 +65,5 @@ export function addModifierIconSprite(x: number, y: number, iconImage: string): 
     return sprite;
   }
 
-  return globalScene.add.sprite(x, y, "items", iconImage);
+  return globalScene.add.sprite(x, y, ...getModifierIconTexture(iconImage));
 }

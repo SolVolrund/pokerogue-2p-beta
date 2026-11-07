@@ -5,6 +5,7 @@ import { SettingKeys, isSettingEnabled } from "#system/settings";
 const NEW_BOSS_ITEM_IDS = new Set([
   "EVIOLITE",
   "GAMMA_RAY_BURST",
+  "BERSERK_GENE",
   "OLD_SEA_MAP",
   "UNOWN_BOX",
   "GRAND_LAUREL",

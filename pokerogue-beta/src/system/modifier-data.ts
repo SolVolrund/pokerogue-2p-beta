@@ -1,4 +1,5 @@
 import { globalScene } from "#app/global-scene";
+import { isLegacyCooldownHeldItem } from "#data/cooldown-held-items";
 import { PersistentModifier, PokemonHeldItemModifier } from "#modifiers/modifier";
 import type { GeneratedPersistentModifierType, ModifierType } from "#modifiers/modifier-type";
 import { getModifierTypeFuncById, ModifierTypeGenerator } from "#modifiers/modifier-type";
@@ -27,6 +28,10 @@ export class ModifierData {
     this.args = sourceModifier ? sourceModifier.getArgs() : source.args || [];
     this.stackCount = source.stackCount;
     this.className = sourceModifier ? sourceModifier.constructor.name : source.className;
+    // The old berry generator overwrote Mirror Herb's type ID when it rolled one.
+    if (this.className === "MirrorHerbModifier" && this.typeId === "BERRY") {
+      this.typeId = "MIRROR_HERB";
+    }
     this.recoverableBattleTransfer = source.recoverableBattleTransfer
       ? { ...source.recoverableBattleTransfer }
       : undefined;
@@ -68,7 +73,7 @@ export class ModifierData {
           : undefined;
       }
 
-      if (clampStack && ret.stackCount > ret.getMaxStackCount()) {
+      if (clampStack && !isLegacyCooldownHeldItem(ret) && ret.stackCount > ret.getMaxStackCount()) {
         ret.stackCount = ret.getMaxStackCount();
       }
 

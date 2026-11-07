@@ -17,6 +17,7 @@ import type { MoveTargetSet } from "#types/move-target-set";
 import type { TurnMove } from "#types/turn-move";
 import { PartyOption, PartyUiMode } from "#ui/party-ui-handler";
 import { getAiEmergencyRepositionTarget } from "#utils/ai-targeting";
+import { chooseTrainerMedicine } from "#utils/battle-medicine-ai";
 import { getRepositionPositions } from "#utils/horde-battle";
 import { getPlannerRepositionTarget, getPlannerSwitchIndex } from "#utils/battle-planner-ai";
 import { isMysteryEncounterSwitchProtectedPokemon } from "#utils/mystery-encounter-switch-protection";
@@ -180,6 +181,14 @@ export class EnemyCommandPhase extends FieldPhase {
 
     /** Select a move to use (and a target to use it against, if applicable) */
     let nextMove = enemyPokemon.getNextMove();
+
+    if (trainer && battle.battleType === BattleType.TRAINER && !moveLocked && !this.skipTurn && !globalScene.isVsLaneBattle()) {
+      const medicine = chooseTrainerMedicine(enemyPokemon, nextMove);
+      if (medicine) {
+        battle.turnCommands[this.getBattlerIndex()] = { command: Command.MEDICINE, medicine };
+        return this.end();
+      }
+    }
 
     if (this.shouldTera(enemyPokemon)) {
       globalScene.currentBattle.preTurnCommands[globalScene.getEnemyBattlerIndex(this.fieldIndex)] = {

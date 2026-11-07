@@ -541,7 +541,7 @@ export class GameCornerRewardPhase extends Phase {
 
     if (globalScene.isComputerPartnerPlayer(this.playerIndex)) {
       if (cpuReplacementIndex !== undefined) {
-        await globalScene.removePartyMemberModifiers(cpuReplacementIndex, this.playerIndex);
+        await globalScene.removePartyMemberModifiers(cpuReplacementIndex, this.playerIndex, true);
         const released = globalScene.getPlayerParty(this.playerIndex)[cpuReplacementIndex];
         globalScene.removePokemonFromPlayerParty(released);
         return addToParty(cpuReplacementIndex);

@@ -84,6 +84,8 @@ export const PartyUiMode = {
   EVO_ITEM_MODIFIER: 15,
   /** Select a compatible Pokemon for a form-change item. */
   FORM_CHANGE_ITEM_MODIFIER: 16,
+  /** Select the Pokemon whose held items will be managed through the bag. */
+  BAG: 17,
 } as const;
 
 export type PartyUiMode = ObjectValues<typeof PartyUiMode>;

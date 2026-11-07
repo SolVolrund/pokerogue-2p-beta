@@ -432,7 +432,7 @@ async function giveGreedentToPlayer(playerIndex: PlayerIndex): Promise<void> {
     await showAbsoluteAvariceMessage(
       `${profile.name} added ${greedent.getNameToRender()} to their team and released ${replacedPokemon.getNameToRender()}.`,
     );
-    await globalScene.removePartyMemberModifiers(replacedPokemonIndex, playerIndex);
+    await globalScene.removePartyMemberModifiers(replacedPokemonIndex, playerIndex, true);
     const releasedPokemon = party.splice(replacedPokemonIndex, 1)[0];
     releasedPokemon?.destroy();
     await addGreedentToParty(replacedPokemonIndex);

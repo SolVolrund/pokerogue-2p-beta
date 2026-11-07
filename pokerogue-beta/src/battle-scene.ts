@@ -2,7 +2,8 @@ import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { Animation } from "#app/animations";
 import { Battle } from "#app/battle";
 import { createHordeBattleState, getHordeChanceDenominator, HORDE_ENEMY_SPRITE_OFFSETS, HORDE_MIN_WAVE } from "#data/horde-battle";
-import { getCooldownHeldItemId, isCooldownHeldItem, type CooldownHeldItemId } from "#data/cooldown-held-items";
+import { getCooldownHeldItemId, getSavedCooldownHeldItemId, isCooldownHeldItem, isLegacyCooldownHeldItem, type CooldownHeldItemId } from "#data/cooldown-held-items";
+import { rescueReleasedHeldItems } from "#utils/item-bag";
 import {
   ANTI_VARIANCE_WEIGHT_MODIFIER,
   BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT,
@@ -188,7 +189,7 @@ import type {
   NewBattleResolvedProps,
   NewBattleSavedProps,
 } from "#types/new-battle-props";
-import type { SessionSaveData } from "#types/save-data";
+import type { BagMedicineData, BagTmData, SessionSaveData } from "#types/save-data";
 import type { ModifierTypeFunc } from "#types/modifier-types";
 import { AbilityBar } from "#ui/ability-bar";
 import { ArenaFlyout } from "#ui/arena-flyout";
@@ -325,10 +326,14 @@ const EON_FLUTE_BERRY_LOADOUT = [
 // Modifier factories are registered after module loading, so resolve these keys when summoning.
 const EON_FLUTE_ROGUE_LOADOUT = ["LEFTOVERS", "SHELL_BELL", "LEFTOVERS"] as const;
 export interface PlayerRunState {
+  ballDesign?: import("#data/ball-design").BallDesign | undefined;
   party: PlayerPokemon[];
   money: number;
   pokeballCounts: PokeballCounts;
   modifiers: PersistentModifier[];
+  bagItems: PokemonHeldItemModifier[];
+  bagMedicines: BagMedicineData[];
+  bagTms: BagTmData[];
   alphTiles: AlphTileCounts;
   alphLegendaryHelpersUsed: AlphLegendaryHelperId[];
   lastCrystalRecruitmentWave?: number;
@@ -354,6 +359,7 @@ const STRICT_TWO_PLAYER_INPUT_CONTEXT_UI_MODES = new Set<UiMode>([
   UiMode.MODIFIER_SELECT,
   UiMode.SAVE_SLOT,
   UiMode.PARTY,
+  UiMode.BAG,
   UiMode.STARTER_SELECT,
   UiMode.CONFIRM,
   UiMode.OPTION_SELECT,
@@ -401,6 +407,9 @@ function createPlayerRunState(): PlayerRunState {
     money: 0,
     pokeballCounts: createInitialPokeballCounts(),
     modifiers: [],
+    bagItems: [],
+    bagMedicines: [],
+    bagTms: [],
     alphTiles: createInitialAlphTileCounts(),
     alphLegendaryHelpersUsed: [],
   };
@@ -2095,6 +2104,7 @@ export class BattleScene extends SceneBase {
       seasonalEncounters: { ...this.seasonalEncounters },
       playerDecisionTieBreakPriorities: { ...this.playerDecisionTieBreakPriorities },
       hauntedTrainer: this.currentBattle?.trainer?.haunted ?? false,
+      trainerMedicineBags: this.currentBattle?.trainer?.medicineBags,
       greatHaunt: this.currentBattle?.greatHauntState,
       horde: this.currentBattle?.horde,
       magicRoomTurns: this.arena?.getTag(ArenaTagType.MAGIC_ROOM)?.turnCount ?? null,
@@ -2122,6 +2132,7 @@ export class BattleScene extends SceneBase {
       players: this.getActivePlayerIndexes().map(playerIndex => ({
         playerIndex,
         computerPartner: this.isComputerPartnerPlayer(playerIndex),
+        ballDesign: this.getPlayerState(playerIndex).ballDesign,
         lastCrystalRecruitmentWave: this.getPlayerState(playerIndex).lastCrystalRecruitmentWave ?? 0,
         lastCloneBallAllowanceWave: this.getPlayerState(playerIndex).lastCloneBallAllowanceWave ?? 0,
         money: this.getPlayerMoney(playerIndex),
@@ -2130,6 +2141,9 @@ export class BattleScene extends SceneBase {
         ),
         party: this.getPlayerParty(playerIndex).map(pokemon => this.getTwoPlayerDebugPokemonState(pokemon)),
         modifiers: this.getPlayerModifiers(playerIndex).map(modifier => this.getTwoPlayerDebugModifierState(modifier)),
+        bagItems: this.getPlayerBag(playerIndex).map(modifier => this.getTwoPlayerDebugModifierState(modifier)),
+        bagMedicines: this.getPlayerBagMedicines(playerIndex).map(item => ({ ...item })),
+        bagTms: this.getPlayerBagTms(playerIndex).map(item => ({ ...item })),
       })),
       enemies: this.getEnemyParty().map(pokemon => this.getTwoPlayerDebugPokemonState(pokemon)),
       enemyModifiers: this.enemyModifiers.map(modifier => this.getTwoPlayerDebugModifierState(modifier)),
@@ -2596,6 +2610,18 @@ export class BattleScene extends SceneBase {
 
   public getPlayerModifiers(playerIndex: PlayerIndex = this.activePlayerIndex): PersistentModifier[] {
     return this.getPlayerState(playerIndex).modifiers;
+  }
+
+  public getPlayerBag(playerIndex: PlayerIndex = this.activePlayerIndex): PokemonHeldItemModifier[] {
+    return this.getPlayerState(playerIndex).bagItems;
+  }
+
+  public getPlayerBagMedicines(playerIndex: PlayerIndex = this.activePlayerIndex): BagMedicineData[] {
+    return this.getPlayerState(playerIndex).bagMedicines;
+  }
+
+  public getPlayerBagTms(playerIndex: PlayerIndex = this.activePlayerIndex): BagTmData[] {
+    return this.getPlayerState(playerIndex).bagTms;
   }
 
   public getEonFluteGuest(playerIndex: PlayerIndex = this.activePlayerIndex): PlayerPokemon | undefined {
@@ -5465,7 +5491,12 @@ export class BattleScene extends SceneBase {
     playerIndex: PlayerIndex,
     transferring?: PokemonHeldItemModifier,
   ): boolean {
-    const alreadyOwned = this.getPlayerModifiers(playerIndex).some(
+    const inventory = [...this.getPlayerModifiers(playerIndex), ...this.getPlayerBag(playerIndex)];
+    // Existing copies can move within their owner's inventory, including legacy duplicates.
+    if (transferring && isLegacyCooldownHeldItem(transferring) && inventory.includes(transferring)) {
+      return true;
+    }
+    const alreadyOwned = inventory.some(
       item =>
         item !== transferring
         && isCooldownHeldItem(item)
@@ -5474,7 +5505,7 @@ export class BattleScene extends SceneBase {
     );
 
     const awaitingReturn = this.getPlayerParty(playerIndex).some(
-      pokemon => pokemon.battleData.removedHeldItems.some(item => item.typeId === itemId && item.stackCount > 0),
+      pokemon => pokemon.battleData.removedHeldItems.some(item => getSavedCooldownHeldItemId(item) === itemId && item.stackCount > 0),
     );
 
     return !alreadyOwned && !awaitingReturn;
@@ -5722,7 +5753,7 @@ export class BattleScene extends SceneBase {
 
       if (
         owner === undefined
-        || itemModifier.getStackCount() !== 1
+        || (!isLegacyCooldownHeldItem(itemModifier) && itemModifier.getStackCount() !== 1)
         || !this.canReceiveCooldownHeldItem(getCooldownHeldItemId(itemModifier), owner, itemModifier)
       ) {
         return false;
@@ -5794,7 +5825,12 @@ export class BattleScene extends SceneBase {
       const addModifier = () => {
         if (!matchingModifier || this.removeModifier(matchingModifier, target.isEnemy(), targetPlayerIndex)) {
           if (target.isPlayer()) {
-            this.addModifier(newItemModifier, ignoreUpdate, playSound, false, instant, undefined, targetPlayerIndex);
+            if (isLegacyCooldownHeldItem(newItemModifier) && sourcePlayerIndex === targetPlayerIndex) {
+              this.addRecoveredHeldItem(newItemModifier, target);
+              if (!ignoreUpdate) this.updateModifiers(true, instant, targetPlayerIndex);
+            } else {
+              this.addModifier(newItemModifier, ignoreUpdate, playSound, false, instant, undefined, targetPlayerIndex);
+            }
             if (source && itemLost) {
               applyAbAttrs("PostItemLostAbAttr", { pokemon: source });
             }
@@ -5942,6 +5978,11 @@ export class BattleScene extends SceneBase {
   addRecoveredHeldItem(item: PokemonHeldItemModifier, pokemon: Pokemon): boolean {
     const playerIndex = pokemon.isPlayer() ? this.getPlayerIndexForPokemon(pokemon) : undefined;
     const existing = pokemon.getHeldItems().find(held => held.matchType(item));
+    if (isLegacyCooldownHeldItem(item) && Number.isSafeInteger(item.stackCount) && item.stackCount > 0) {
+      if (existing) existing.stackCount += item.stackCount;
+      else this.getModifierList(pokemon.isPlayer(), playerIndex).push(item);
+      return true;
+    }
     if (item.stackCount + (existing?.getStackCount() ?? 0) > item.getMaxStackCount()) {
       return false;
     }
@@ -5983,7 +6024,7 @@ export class BattleScene extends SceneBase {
 
       if (
         owner === undefined
-        || itemModifier.getStackCount() !== 1
+        || (!isLegacyCooldownHeldItem(itemModifier) && itemModifier.getStackCount() !== 1)
         || !this.canReceiveCooldownHeldItem(getCooldownHeldItemId(itemModifier), owner, itemModifier)
       ) {
         return false;
@@ -6049,10 +6090,14 @@ export class BattleScene extends SceneBase {
   removePartyMemberModifiers(
     partyMemberIndex: number,
     playerIndex: PlayerIndex = this.activePlayerIndex,
+    rescueToBag = false,
   ): Promise<void> {
     return new Promise(resolve => {
       const modifiers = this.getPlayerModifiers(playerIndex);
       const pokemonId = this.getPlayerParty(playerIndex)[partyMemberIndex].id;
+      if (rescueToBag) {
+        rescueReleasedHeldItems(playerIndex, pokemonId);
+      }
       const modifiersToRemove = modifiers.filter(
         m => m instanceof PokemonHeldItemModifier && (m as PokemonHeldItemModifier).pokemonId === pokemonId,
       );
@@ -7757,15 +7802,20 @@ export class BattleScene extends SceneBase {
     // If absolutely no encounters are available, spawn 0th encounter
     if (availableEncounters.length === 0) {
       const multiplayerAllowlist = this.getMultiplayerMysteryEncounterAllowlist();
+      // Never use the one-time haunting invitation as an unrestricted out-of-pool fallback.
+      const enabledFallback = (type: MysteryEncounterType) =>
+        isMysteryEncounterEnabledBySettings(type) && (type !== MysteryEncounterType.SPOOKY_INVITATION
+          || (biomeMysteryEncounters.includes(type) && allMysteryEncounters[type].meetsRequirements()
+            && !this.mysteryEncounterSaveData.encounteredEvents.some(e => e.type === type)));
       const fallbackEncounterType = this.twoPlayerMode
-        ? (multiplayerAllowlist.find(type => isMysteryEncounterEnabledBySettings(type))
+        ? (multiplayerAllowlist.find(enabledFallback)
           ?? multiplayerAllowlist[0]
           ?? MysteryEncounterType.MYSTERIOUS_CHALLENGERS)
         : isMysteryEncounterEnabledBySettings(MysteryEncounterType.MYSTERIOUS_CHALLENGERS)
           ? MysteryEncounterType.MYSTERIOUS_CHALLENGERS
           : (Object.values(MysteryEncounterType).find(
               (type): type is MysteryEncounterType =>
-                typeof type === "number" && isMysteryEncounterEnabledBySettings(type),
+                typeof type === "number" && enabledFallback(type),
             ) ?? MysteryEncounterType.MYSTERIOUS_CHALLENGERS);
       console.log(`No Mystery Encounters found, falling back to ${MysteryEncounterType[fallbackEncounterType]}.`);
       encounter = new MysteryEncounter(allMysteryEncounters[fallbackEncounterType]);

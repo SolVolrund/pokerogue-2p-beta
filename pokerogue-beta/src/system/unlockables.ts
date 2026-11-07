@@ -21,5 +21,7 @@ export function getUnlockableName(unlockable: Unlockables) {
       return i18next.t("modifierType:ModifierType.UNOWN_BOX.name");
     case Unlockables.GRAND_LAUREL:
       return i18next.t("modifierType:ModifierType.GRAND_LAUREL.name");
+    case Unlockables.BERSERK_GENE:
+      return i18next.t("modifierType:ModifierType.BERSERK_GENE.name");
   }
 }

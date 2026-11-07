@@ -85,7 +85,7 @@ describe("Classic completion persistence", () => {
     [SpeciesId.NECROZMA, Unlockables.GAMMA_RAY_BURST],
     [SpeciesId.MEW, Unlockables.OLD_SEA_MAP],
     [SpeciesId.UNOWN, Unlockables.UNOWN_BOX],
-    [SpeciesId.MEWTWO, undefined],
+    [SpeciesId.MEWTWO, Unlockables.BERSERK_GENE],
   ] as const)("records completion for boss %i without waiting for its ending", async (boss, reward) => {
     game.scene.currentBattle.classicFinalBossSpeciesId = boss;
     const saved = vi.spyOn(game.scene.gameData, "saveSystemLocal").mockImplementation(() => {});
@@ -96,6 +96,7 @@ describe("Classic completion persistence", () => {
     if (reward !== undefined) {
       expect(game.scene.gameData.unlocks[reward]).toBe(true);
     }
+    expect(game.scene.gameData.isUnlocked(Unlockables.BERSERK_GENE)).toBe(boss === SpeciesId.MEWTWO);
   });
 
   it("keeps Spliced locked unless the winning party contains a fusion", async () => {
@@ -112,12 +113,14 @@ describe("Classic completion persistence", () => {
   });
 
   it("does not credit a loss", async () => {
+    game.scene.currentBattle.classicFinalBossSpeciesId = SpeciesId.MEWTWO;
     const phase = new GameOverPhase(false);
     phase["saveDejaVuGhosts"] = () => {};
     const save = vi.spyOn(game.scene.gameData, "saveSystemLocal");
     await completeBeforeEnding(phase);
     expect(game.scene.gameData.gameStats.sessionsWon).toBe(0);
     expect(game.scene.gameData.unlocks[Unlockables.ENDLESS_MODE]).toBe(false);
+    expect(game.scene.gameData.isUnlocked(Unlockables.BERSERK_GENE)).toBe(false);
     expect(save).not.toHaveBeenCalled();
   });
 

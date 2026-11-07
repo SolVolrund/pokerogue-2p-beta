@@ -171,6 +171,10 @@ export class LoadingScene extends SceneBase {
       .loadAtlas("party_cancel", "ui")
       .loadAtlas("party_discard", "ui")
       .loadAtlas("party_transfer", "ui")
+      .loadImage("party_bag", "ui", "party_bag.png", { legacy: false })
+      .loadImage("party_to_bag", "ui", "party_to_bag.png", { legacy: false })
+      .loadImage("bag_pockets", "ui", "bag_pockets.png", { legacy: false })
+      .loadImage("bag_menu_bg", "ui", "bag_menu_bg.png", { legacy: false })
       .loadImage("summary_bg", "ui")
       .loadImage("summary_profile", "ui")
       .loadImage("summary_profile_prompt_z", "ui") // The pixel Z button prompt
@@ -241,6 +245,7 @@ export class LoadingScene extends SceneBase {
       .loadAtlas("pb_particles", "effects")
       .loadImage("evo_sparkle", "effects")
       .loadAtlas("tera_sparkle", "effects")
+      .loadAtlas("kurt_ball_icons", "items/kurt")
       .loadAtlas("items", "");
 
     // Keep the supplied Safari Ball frames intact as additional pages of the ball atlas.

@@ -6,6 +6,7 @@ import { getGameMode } from "#app/game-mode";
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
+import { isLegacyCooldownHeldItem } from "#data/cooldown-held-items";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { activeOverrides } from "#app/overrides";
 import { isIos } from "#app/touch-controls";
@@ -61,8 +62,10 @@ import { ChallengeData } from "#system/challenge-data";
 import { EggData } from "#system/egg-data";
 import { GameStats } from "#system/game-stats";
 import { ModifierData as PersistentModifierData } from "#system/modifier-data";
+import { restoreBagItems, restoreBagMedicines, restoreBagTms } from "#utils/item-bag";
 import { PokemonData } from "#system/pokemon-data";
 import type { PokeballType } from "#enums/pokeball";
+import { readBallDesign } from "#data/ball-design";
 import { RibbonData } from "#system/ribbons/ribbon-data";
 import { resetSettings, SettingKeys, setSetting } from "#system/settings";
 import { SettingGamepad, setSettingGamepad, settingGamepadDefaults } from "#system/settings-gamepad";
@@ -252,6 +255,7 @@ export class GameData {
       [Unlockables.OLD_SEA_MAP]: false,
       [Unlockables.UNOWN_BOX]: false,
       [Unlockables.GRAND_LAUREL]: false,
+      [Unlockables.BERSERK_GENE]: false,
     };
     this.achvUnlocks = {};
     this.voucherUnlocks = {};
@@ -1496,6 +1500,10 @@ export class GameData {
           return {
             party: player.party.map(p => new PokemonData(p)),
             modifiers: player.modifiers.filter(m => !m.eonFluteGuestItem).map(m => new PersistentModifierData(m, true)),
+            bagItems: player.bagItems.map(m => new PersistentModifierData(m, true)),
+            bagMedicines: player.bagMedicines.map(item => ({ ...item })),
+            bagTms: player.bagTms.map(item => ({ ...item })),
+            ballDesign: player.ballDesign,
             pokeballCounts: player.pokeballCounts,
             money: Math.floor(player.money),
             alphTiles: player.alphTiles,
@@ -1508,6 +1516,9 @@ export class GameData {
 
     return {
       seed: globalScene.seed,
+      bagItems: globalScene.getPlayerBag(0).map(m => new PersistentModifierData(m, true)),
+      bagMedicines: globalScene.getPlayerBagMedicines(0).map(item => ({ ...item })),
+      bagTms: globalScene.getPlayerBagTms(0).map(item => ({ ...item })),
       playerAppearances: globalScene.getRunPlayerAppearances(),
       playTime: globalScene.sessionPlayTime,
       gameMode: globalScene.gameMode.modeId,
@@ -1537,6 +1548,7 @@ export class GameData {
           )
         : undefined,
       arena: new ArenaData(globalScene.arena),
+      ballDesign: globalScene.getPlayerState(0).ballDesign,
       pokeballCounts: globalScene.pokeballCounts,
       money: Math.floor(globalScene.money),
       alphTiles: globalScene.getPlayerAlphTiles(0),
@@ -1805,6 +1817,7 @@ export class GameData {
       globalScene.getActivePlayerIndexes().forEach(playerIndex => {
         const player = globalScene.getPlayerState(playerIndex);
         const playerSave = fromSession.players?.[playerIndex];
+        player.ballDesign = readBallDesign(playerSave?.ballDesign);
         const pokeballCounts = activeOverrides.POKEBALL_OVERRIDE.active
           ? activeOverrides.POKEBALL_OVERRIDE.pokeballs
           : (playerSave?.pokeballCounts ?? fromSession.pokeballCounts);
@@ -1835,6 +1848,7 @@ export class GameData {
         globalScene.pokeballCounts = activeOverrides.POKEBALL_OVERRIDE.pokeballs;
       }
 
+      globalScene.getPlayerState(0).ballDesign = readBallDesign(fromSession.ballDesign);
       globalScene.money = Math.floor(fromSession.money || 0);
       globalScene.getPlayerState(0).alphTiles = { ...createInitialAlphTileCounts(), ...(fromSession.alphTiles ?? {}) };
       globalScene.getPlayerState(0).alphLegendaryHelpersUsed = [...(fromSession.alphLegendaryHelpersUsed ?? [])];
@@ -1927,6 +1941,13 @@ export class GameData {
 
     // #endregion Arena stuff
 
+    // Clear the previous run's stored equipment before acquisition guards restore held items.
+    for (const playerIndex of globalScene.getActivePlayerIndexes()) {
+      globalScene.getPlayerBag(playerIndex).splice(0);
+      globalScene.getPlayerBagMedicines(playerIndex).splice(0);
+      globalScene.getPlayerBagTms(playerIndex).splice(0);
+    }
+
     if (globalScene.twoPlayerMode) {
       for (const playerIndex of globalScene.getActivePlayerIndexes()) {
         globalScene.setActivePlayerIndex(playerIndex);
@@ -1941,7 +1962,12 @@ export class GameData {
         for (const modifierData of playerModifiers) {
           const modifier = modifierData.toModifier(Modifier[modifierData.className]);
           if (modifier) {
-            globalScene.addModifier(modifier, true);
+            const holder = isLegacyCooldownHeldItem(modifier) ? globalScene.getPokemonById(modifier.pokemonId) : undefined;
+            if (holder && globalScene.getPlayerIndexForPokemon(holder) === playerIndex) {
+              globalScene.addRecoveredHeldItem(modifier as Modifier.PokemonHeldItemModifier, holder);
+            } else {
+              globalScene.addModifier(modifier, true);
+            }
           }
         }
       }
@@ -1954,9 +1980,26 @@ export class GameData {
       for (const modifierData of fromSession.modifiers) {
         const modifier = modifierData.toModifier(Modifier[modifierData.className]);
         if (modifier) {
-          globalScene.addModifier(modifier, true);
+          const holder = isLegacyCooldownHeldItem(modifier) ? globalScene.getPokemonById(modifier.pokemonId) : undefined;
+          if (holder && globalScene.getPlayerIndexForPokemon(holder) === 0) {
+            globalScene.addRecoveredHeldItem(modifier as Modifier.PokemonHeldItemModifier, holder);
+          } else {
+            globalScene.addModifier(modifier, true);
+          }
         }
       }
+    }
+
+    for (const playerIndex of globalScene.getActivePlayerIndexes()) {
+      globalScene.getPlayerState(playerIndex).bagItems = restoreBagItems(
+        fromSession.players?.[playerIndex]?.bagItems ?? (playerIndex === 0 ? fromSession.bagItems : undefined),
+      );
+      globalScene.getPlayerState(playerIndex).bagMedicines = restoreBagMedicines(
+        fromSession.players?.[playerIndex]?.bagMedicines ?? (playerIndex === 0 ? fromSession.bagMedicines : undefined),
+      );
+      globalScene.getPlayerState(playerIndex).bagTms = restoreBagTms(
+        fromSession.players?.[playerIndex]?.bagTms ?? (playerIndex === 0 ? fromSession.bagTms : undefined),
+      );
     }
 
     if (globalScene.findModifiers(() => true, false).length > 0) {

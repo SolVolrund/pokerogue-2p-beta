@@ -9,14 +9,12 @@ import { ArenaTagType } from "#enums/arena-tag-type";
 import { type BattleStat, getStatKey, getStatStageChangeDescriptionKey, Stat } from "#enums/stat";
 import { StatChangeSource } from "#enums/stat-change-source";
 import type { Pokemon } from "#field/pokemon";
-import { MirrorHerbModifier, PreserveBerryModifier } from "#modifiers/modifier";
 import { activateCooldownHeldItem, findReadyCooldownHeldItem } from "#utils/cooldown-held-items";
 import { PokemonPhase } from "#phases/pokemon-phase";
 import type { ConditionalUserFieldProtectStatAbAttrParams, PreStatStageChangeAbAttrParams } from "#types/ability-types";
 import type { StatChange, StatStageChangePhaseOptions } from "#types/stat-change";
 import type { Mutable } from "#types/type-helpers";
 import { playTween } from "#utils/anim-utils";
-import { recordConsumedHeldItem } from "#utils/battle-held-items";
 import { BooleanHolder } from "#utils/common";
 import { deepCopy } from "#utils/data";
 import { ValueHolder } from "#utils/value-holder";
@@ -303,7 +301,7 @@ export class StatStageChangePhase extends PokemonPhase {
       return;
     }
     const whiteHerb = findReadyCooldownHeldItem(pokemon, "WHITE_HERB");
-    if (whiteHerb?.apply(pokemon)) {
+    if (whiteHerb?.is("ResetNegativeStatStageModifier") && whiteHerb.apply(pokemon)) {
       activateCooldownHeldItem(pokemon, "WHITE_HERB");
     }
   }
@@ -314,22 +312,8 @@ export class StatStageChangePhase extends PokemonPhase {
     }
 
     for (const opponent of pokemon.getOpponentsGenerator()) {
-      const mirrorHerb = globalScene.applyModifierForPokemon(
-        MirrorHerbModifier,
-        opponent,
-        opponent,
-        changes,
-      ) as MirrorHerbModifier | null;
-
-      if (mirrorHerb) {
-        const preserve = new BooleanHolder(false);
-        globalScene.applyModifiersForPokemon(PreserveBerryModifier, opponent, opponent, preserve);
-        if (!preserve.value && opponent.loseHeldItem(mirrorHerb)) {
-          recordConsumedHeldItem(opponent, mirrorHerb);
-        }
-        const playerIndex = opponent.isPlayer() ? globalScene.getPlayerIndexForPokemon(opponent) : undefined;
-        globalScene.updateModifiers(opponent.isPlayer(), undefined, playerIndex);
-      }
+      const mirrorHerb = findReadyCooldownHeldItem(opponent, "MIRROR_HERB");
+      if (mirrorHerb?.is("MirrorHerbModifier")) mirrorHerb.apply(opponent, changes);
     }
   }
 

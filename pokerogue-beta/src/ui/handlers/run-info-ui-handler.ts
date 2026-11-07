@@ -325,7 +325,7 @@ export class RunInfoUiHandler extends UiHandler {
       const row_limit = 3;
       this.runInfo.enemyParty.forEach((p, i) => {
         const pokeball = globalScene.add.sprite(0, 0, "pb");
-        pokeball.setFrame(getPokeballAtlasKey(p.pokeball));
+        pokeball.setFrame(getPokeballAtlasKey(p.pokeball, p.ballDesign));
         pokeball.setScale(0.5);
         pokeball.setPosition(58 + (i % row_limit) * 8, i <= 2 ? 18 : 25);
         enemyContainer.add(pokeball);

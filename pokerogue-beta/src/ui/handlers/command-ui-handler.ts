@@ -58,7 +58,7 @@ export class CommandUiHandler extends UiHandler {
     const ui = this.getUi();
     const commands = [
       i18next.t("commandUiHandler:fight"),
-      i18next.t("commandUiHandler:ball"),
+      i18next.t("commandUiHandler:bag"),
       i18next.t("commandUiHandler:pokemon"),
       i18next.t("commandUiHandler:run"),
     ];
@@ -211,7 +211,7 @@ export class CommandUiHandler extends UiHandler {
             }
             success = true;
             break;
-          // Ball
+          // Bag
           case Command.BALL:
             ui.setModeWithoutClear(UiMode.BALL);
             success = true;

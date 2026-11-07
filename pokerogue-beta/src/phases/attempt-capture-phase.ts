@@ -18,10 +18,11 @@ import {
 import { getStatusEffectCatchRateMultiplier } from "#data/status-effect";
 import { BattleType } from "#enums/battle-type";
 import { ChallengeType } from "#enums/challenge-type";
+import type { FieldPosition } from "#enums/field-position";
 import { PokeballType } from "#enums/pokeball";
 import { StatusEffect } from "#enums/status-effect";
 import { UiMode } from "#enums/ui-mode";
-import type { EnemyPokemon } from "#field/pokemon";
+import type { EnemyPokemon, PlayerPokemon } from "#field/pokemon";
 import { PokemonHeldItemModifier } from "#modifiers/modifier";
 import { PokemonPhase } from "#phases/pokemon-phase";
 import { achvs } from "#system/achv";
@@ -116,7 +117,7 @@ export class AttemptCapturePhase extends PokemonPhase {
     const isCritical = pokemon.randBattleSeedInt(256) < criticalCaptureChance;
     const fpOffset = pokemon.getFieldPositionOffset();
 
-    const pokeballAtlasKey = getPokeballAtlasKey(this.pokeballType);
+    const pokeballAtlasKey = getPokeballAtlasKey(this.pokeballType, globalScene.getPlayerState(this.playerIndex).ballDesign);
     this.pokeball = globalScene.addFieldSprite(16, 80, "pb", pokeballAtlasKey);
     this.pokeball.setOrigin(0.5, 0.625);
     globalScene.field.add(this.pokeball);
@@ -269,7 +270,7 @@ export class AttemptCapturePhase extends PokemonPhase {
       substitute.sprite.setVisible(true);
     }
 
-    const pokeballAtlasKey = getPokeballAtlasKey(this.pokeballType);
+    const pokeballAtlasKey = getPokeballAtlasKey(this.pokeballType, globalScene.getPlayerState(this.playerIndex).ballDesign);
     this.pokeball.setTexture("pb", `${pokeballAtlasKey}_opening`);
     globalScene.time.delayedCall(17, () => this.pokeball.setTexture("pb", `${pokeballAtlasKey}_open`));
 
@@ -345,8 +346,12 @@ export class AttemptCapturePhase extends PokemonPhase {
       }),
       null,
       () => {
+        let releasedLane: { index: number; position: FieldPosition } | undefined;
         const end = () => {
           globalScene.phaseManager.unshiftNew("VictoryPhase", this.battlerIndex);
+          if (releasedLane) {
+            this.fillReleasedLane(releasedLane.index, releasedLane.position);
+          }
           globalScene.pokemonInfoContainer.hide();
           this.removePb();
           this.end();
@@ -383,7 +388,17 @@ export class AttemptCapturePhase extends PokemonPhase {
             }
           });
         };
-        const resolveComputerPartnerWildCapture = () => {
+        const replacePartnerPokemon = async (released: PlayerPokemon, replacementIndex: number) => {
+          if (released.isOnField()) {
+            releasedLane = { index: released.getFieldIndex(), position: released.fieldPosition };
+            released.leaveField(true, false);
+          }
+          await globalScene.removePartyMemberModifiers(replacementIndex, this.playerIndex, true);
+          globalScene.getPlayerParty(this.playerIndex).splice(replacementIndex, 1);
+          released.destroy();
+          addToParty(replacementIndex);
+        };
+        const resolveComputerPartnerCapture = () => {
           const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(this.playerIndex));
           const replacementScore = getBestComputerPartnerReplacementSlot(
             profile,
@@ -396,7 +411,8 @@ export class AttemptCapturePhase extends PokemonPhase {
             ? undefined
             : globalScene.getPlayerParty(this.playerIndex)[replacedPokemonIndex];
 
-          if (!replacementScore || replacedPokemon?.computerPartnerAce) {
+          if (!replacementScore || replacedPokemon?.computerPartnerAce
+            || (!replacedPokemon && globalScene.isPlayerPartyFull(this.playerIndex))) {
             globalScene.ui.showText(
               `${profile.name} decided not to keep ${pokemon.getNameToRender()}.`,
               null,
@@ -410,23 +426,15 @@ export class AttemptCapturePhase extends PokemonPhase {
             return;
           }
 
-          if (replacedPokemonIndex === undefined) {
+          if (replacedPokemonIndex === undefined || !replacedPokemon) {
             addToParty();
             return;
           }
 
-          const replacementIndex = replacedPokemonIndex;
           globalScene.ui.showText(
-            `${profile.name} added ${pokemon.getNameToRender()} to their team and released ${replacedPokemon?.getNameToRender()}.`,
+            `${profile.name} added ${pokemon.getNameToRender()} to their team and released ${replacedPokemon.getNameToRender()}.`,
             null,
-            () => {
-              globalScene.removePartyMemberModifiers(replacementIndex, this.playerIndex).then(() => {
-                const party = globalScene.getPlayerParty(this.playerIndex);
-                const releasedPokemon = party.splice(replacementIndex, 1)[0];
-                releasedPokemon?.destroy();
-                addToParty(replacementIndex);
-              });
-            },
+            () => { void replacePartnerPokemon(replacedPokemon, replacedPokemonIndex); },
             0,
             true,
           );
@@ -445,58 +453,13 @@ export class AttemptCapturePhase extends PokemonPhase {
             return;
           }
           if (
-            globalScene.currentBattle.battleType === BattleType.WILD
-            && globalScene.isComputerPartnerPlayer(this.playerIndex)
+            isComputerPartnerCapture
+            && (globalScene.currentBattle.battleType === BattleType.WILD || globalScene.isPlayerPartyFull(this.playerIndex))
           ) {
-            resolveComputerPartnerWildCapture();
+            resolveComputerPartnerCapture();
             return;
           }
           if (globalScene.isPlayerPartyFull(this.playerIndex)) {
-            if (globalScene.isComputerPartnerPlayer(this.playerIndex)) {
-              const profile = getComputerPartnerProfile(globalScene.getComputerPartnerKey(this.playerIndex));
-              const replacementScore = getBestComputerPartnerReplacementSlot(
-                profile,
-                globalScene.getPlayerParty(this.playerIndex),
-                pokemon,
-                globalScene.getPlayerPartyLimit(this.playerIndex),
-              );
-              const replacedPokemonIndex = replacementScore?.replacedPokemonIndex;
-              const replacedPokemon = replacedPokemonIndex === undefined
-                ? undefined
-                : globalScene.getPlayerParty(this.playerIndex)[replacedPokemonIndex];
-
-              if (replacedPokemonIndex === undefined || !replacedPokemon || replacedPokemon.computerPartnerAce) {
-                globalScene.ui.showText(
-                  `${profile.name} decided not to keep ${pokemon.getNameToRender()}.`,
-                  null,
-                  () => {
-                    removePokemon();
-                    end();
-                  },
-                  0,
-                  true,
-                );
-                return;
-              }
-
-              const replacementIndex = replacedPokemonIndex;
-              globalScene.ui.showText(
-                `${profile.name} added ${pokemon.getNameToRender()} to their team and released ${replacedPokemon.getNameToRender()}.`,
-                null,
-                () => {
-                  globalScene.removePartyMemberModifiers(replacementIndex, this.playerIndex).then(() => {
-                    const party = globalScene.getPlayerParty(this.playerIndex);
-                    const releasedPokemon = party.splice(replacementIndex, 1)[0];
-                    releasedPokemon?.destroy();
-                    addToParty(replacementIndex);
-                  });
-                },
-                0,
-                true,
-              );
-              return;
-            }
-
             const promptRelease = () => {
               if (globalScene.twoPlayerMode) {
                 globalScene.waitForPlayerInput(this.playerIndex);
@@ -593,6 +556,27 @@ export class AttemptCapturePhase extends PokemonPhase {
       0,
       true,
     );
+  }
+
+  private fillReleasedLane(fieldIndex: number, position: FieldPosition): void {
+    if (fieldIndex < 0 || !globalScene.getEnemyField(true).some(enemy => enemy.isOnField())) {
+      return;
+    }
+    const party = globalScene.getPlayerParty(this.playerIndex);
+    const slot = globalScene.getPlayerPartyIndexForFieldSlot(fieldIndex);
+    if (globalScene.getPlayerPokemonForFieldSlot(fieldIndex)?.isOnField()) {
+      return;
+    }
+    if (!party[slot]?.isAllowedInBattle()) {
+      const reserve = party.findIndex((p, i) => i >= globalScene.getPlayerActiveSlotCount(this.playerIndex)
+        && p.isAllowedInBattle() && !p.isOnField() && !globalScene.isPlayerSwitchReserved(this.playerIndex, i, fieldIndex));
+      if (reserve < 0) {
+        return;
+      }
+      [party[slot], party[reserve]] = [party[reserve], party[slot]];
+    }
+    globalScene.phaseManager.unshiftNew("SummonMissingPhase", fieldIndex, position);
+    globalScene.phaseManager.unshiftNew("PostSummonPhase", globalScene.getPlayerBattlerIndex(fieldIndex));
   }
 
   removePb() {

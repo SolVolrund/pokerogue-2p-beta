@@ -46,9 +46,16 @@ import { getEnumValues } from "#utils/enums";
 import { randSeedUniqueItem } from "#utils/random";
 import i18next from "i18next";
 
+export interface MedicineCommand {
+  typeId: string;
+  targetId: number;
+  moveIndex?: number;
+}
+
 export interface TurnCommand {
   /** Clone the selected individual, not a replacement switched into its field slot. */
   cloneTargetId?: number;
+  medicine?: MedicineCommand;
   command: Command;
   cursor?: number | undefined;
   move?: TurnMove;

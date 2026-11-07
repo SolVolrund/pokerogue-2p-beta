@@ -154,7 +154,7 @@ export async function recruitCrystalPokemon(playerIndex: PlayerIndex): Promise<s
       } else {
         const replaced = party[replacedIndex];
         const replacedName = replaced.getNameToRender();
-        await globalScene.removePartyMemberModifiers(replacedIndex, playerIndex);
+        await globalScene.removePartyMemberModifiers(replacedIndex, playerIndex, true);
         globalScene.removePokemonFromPlayerParty(replaced);
         party.splice(replacedIndex, 0, pokemon);
         messages.push(`${name} recruited ${pokemon.getNameToRender()}, replacing ${replacedName}.`);

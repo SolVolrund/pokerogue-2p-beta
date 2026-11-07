@@ -78,10 +78,12 @@ import { AlphWallUiHandler } from "./handlers/alph-wall-ui-handler";
 import { MiningInputUiHandler } from "./handlers/mining-input-ui-handler";
 import { RenameRunFormUiHandler } from "./handlers/rename-run-ui-handler";
 import { VoltorbFlipInputUiHandler } from "./handlers/voltorb-flip-input-ui-handler";
+import { BagUiHandler } from "#ui/bag-ui-handler";
 
 const transitionModes = [
   UiMode.SAVE_SLOT,
   UiMode.PARTY,
+  UiMode.BAG,
   UiMode.SUMMARY,
   UiMode.FUSION_SUMMARY,
   UiMode.STARTER_SELECT,
@@ -224,6 +226,7 @@ export class UI extends Phaser.GameObjects.Container {
       new PlayerNameFormUiHandler(UiMode.PLAYER_NAME_FORM),
       new OnlineLobbyUiHandler(),
       new PlayerCharacterUiHandler(),
+      new BagUiHandler(),
     ];
   }
 

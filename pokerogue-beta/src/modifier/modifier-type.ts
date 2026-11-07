@@ -17,7 +17,7 @@ import type { FusionOptions } from "#data/fusion-options";
 import { SpeciesFormChangeItemTrigger } from "#data/form-change-triggers";
 import { canReceiveFormSelectionItem, FORM_SELECTION_ITEMS, getReplacementFormItem, isFormSelectionItem } from "#data/form-selection-items";
 import { getNatureName, getNatureStatMultiplier } from "#data/nature";
-import { getPokeballCatchMultiplier, getPokeballName } from "#data/pokeball";
+import { getPokeballDescription, getPokeballDisplayName } from "#data/pokeball";
 import { SpeciesFormChangeCondition } from "#data/pokemon-forms";
 import { AbilityId } from "#enums/ability-id";
 import { getStatusEffectDescriptor } from "#data/status-effect";
@@ -39,7 +39,7 @@ import { getStatKey, Stat, TEMP_BATTLE_STATS } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
 import { ZCrystal } from "#enums/z-crystal";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
-import { getCooldownHeldItemId, isCooldownHeldItem } from "#data/cooldown-held-items";
+import { getCooldownHeldItemId, getTypeGemCooldownId, isCooldownHeldItem } from "#data/cooldown-held-items";
 import {
   AddPokeballModifier,
   AddVoucherModifier,
@@ -410,27 +410,17 @@ export class AddPokeballModifierType extends ModifierType {
   get name(): string {
     return i18next.t("modifierType:ModifierType.AddPokeballModifierType.name", {
       modifierCount: this.count,
-      pokeballName: getPokeballName(this.pokeballType),
+      pokeballName: getPokeballDisplayName(this.pokeballType, globalScene.getPlayerState().ballDesign),
     });
   }
 
   getDescription(): string {
-    if (this.pokeballType === PokeballType.CLONE_BALL) {
-      return i18next.t("modifierType:ModifierType.AddPokeballModifierType.cloneDescription", {
-        modifierCount: this.count,
-        pokeballName: getPokeballName(this.pokeballType),
-        pokeballAmount: `${globalScene.pokeballCounts[this.pokeballType] ?? 0}`,
-      });
-    }
-    return i18next.t("modifierType:ModifierType.AddPokeballModifierType.description", {
+    const inventory = i18next.t("modifierType:ModifierType.AddPokeballModifierType.inventory", {
       modifierCount: this.count,
-      pokeballName: getPokeballName(this.pokeballType),
-      catchRate:
-        getPokeballCatchMultiplier(this.pokeballType) > -1
-          ? `${getPokeballCatchMultiplier(this.pokeballType)}x`
-          : "100%",
-      pokeballAmount: `${globalScene.pokeballCounts[this.pokeballType] ?? 0}`,
+      pokeballName: getPokeballDisplayName(this.pokeballType, globalScene.getPlayerState().ballDesign),
+      pokeballAmount: globalScene.getPlayerPokeballCounts()[this.pokeballType] ?? 0,
     });
+    return `${inventory}\n${getPokeballDescription(this.pokeballType, globalScene.getPlayerState().ballDesign)}`;
   }
 }
 
@@ -650,6 +640,11 @@ export class PokemonHpRestoreModifierType extends PokemonModifierType {
     this.restorePoints = restorePoints;
     this.restorePercent = restorePercent;
     this.healStatus = healStatus;
+  }
+
+  /** Base recovery without player-side healing boosters, capped at the missing HP. */
+  getBaseRecovery(maxHp: number, hp: number): number {
+    return PokemonHpRestoreModifier.getRecovery(hp, maxHp, this.restorePoints, this.restorePercent);
   }
 
   getDescription(): string {
@@ -1029,7 +1024,7 @@ function getMirrorHerbModifierType(): PokemonHeldItemModifierType {
     "modifierType:ModifierType.MIRROR_HERB",
     "mirror_herb",
     (type, args) => new MirrorHerbModifier(type, (args[0] as Pokemon).id),
-    "berry",
+    "mirror_herb",
   );
   ret.id = "MIRROR_HERB";
   return ret;
@@ -1082,11 +1077,7 @@ function getRandomDamageReductionBerryType(pokemon?: Pokemon): BerryModifierType
 }
 
 function getRandomReactiveHeldItemType(): PokemonHeldItemModifierType {
-  const roll = randSeedInt(REACTIVE_BERRY_TYPES.length + 1);
-  if (roll === 0) {
-    return getMirrorHerbModifierType();
-  }
-  return new BerryModifierType(REACTIVE_BERRY_TYPES[roll - 1]);
+  return new BerryModifierType(randSeedItem(REACTIVE_BERRY_TYPES));
 }
 
 interface BerryGroup {
@@ -1172,6 +1163,22 @@ function getAttackMoveItemTypes(pokemon: Pokemon, pokemonMove: PokemonMove): Pok
 
   const variableTypeAttr = move.getAttrs("VariableMoveTypeAttr")[0];
   return (variableTypeAttr?.getTypesForItemSpawn(pokemon, move) ?? [move.type]).filter(isRegularItemType);
+}
+
+export function getAvailableTypeGemTypes(pokemon: Pokemon): PokemonType[] {
+  if (!pokemon.isAllowedInChallenge()) {
+    return [];
+  }
+  return pokemon.getMoveset()
+    .flatMap(move => getAttackMoveItemTypes(pokemon, move))
+    .filter(type => {
+      const itemId = getTypeGemCooldownId(type);
+      if (pokemon.isPlayer()) {
+        const owner = globalScene.getPlayerIndexForPokemon(pokemon);
+        return owner !== undefined && globalScene.canReceiveCooldownHeldItem(itemId, owner);
+      }
+      return !pokemon.getHeldItems().some(item => isCooldownHeldItem(item) && getCooldownHeldItemId(item) === itemId);
+    });
 }
 
 export class AttackTypeBoosterModifierType
@@ -1889,17 +1896,11 @@ class TypeGemModifierTypeGenerator extends ModifierTypeGenerator {
       let totalWeight = 0;
 
       for (const pokemon of party) {
-        if (!pokemon.isAllowedInChallenge()) {
-          continue;
-        }
-
-        for (const pokemonMove of pokemon.getMoveset()) {
-          for (const type of getAttackMoveItemTypes(pokemon, pokemonMove)) {
-            const currentWeight = attackMoveTypeWeights.get(type) ?? 0;
-            if (currentWeight < 3) {
-              attackMoveTypeWeights.set(type, currentWeight + 1);
-              totalWeight++;
-            }
+        for (const type of getAvailableTypeGemTypes(pokemon)) {
+          const currentWeight = attackMoveTypeWeights.get(type) ?? 0;
+          if (currentWeight < 3) {
+            attackMoveTypeWeights.set(type, currentWeight + 1);
+            totalWeight++;
           }
         }
       }
@@ -3642,35 +3643,35 @@ export function getPlayerShopModifierTypeOptionsForWave(waveIndex: number, baseC
 
   const options = [
     [
-      new ModifierTypeOption(modifierTypeInitObj.POTION(), 0, baseCost * 0.2),
-      new ModifierTypeOption(modifierTypeInitObj.ETHER(), 0, baseCost * 0.4),
-      new ModifierTypeOption(modifierTypeInitObj.REVIVE(), 0, baseCost * 2),
+      new ModifierTypeOption(getModifierType(modifierTypeInitObj.POTION), 0, baseCost * 0.2),
+      new ModifierTypeOption(getModifierType(modifierTypeInitObj.ETHER), 0, baseCost * 0.4),
+      new ModifierTypeOption(getModifierType(modifierTypeInitObj.REVIVE), 0, baseCost * 2),
       ...(globalScene.twoPlayerMode
-        ? [new ModifierTypeOption(modifierTypeInitObj.PARTNER_REVIVE(), 0, baseCost * 3)]
+        ? [new ModifierTypeOption(getModifierType(modifierTypeInitObj.PARTNER_REVIVE), 0, baseCost * 3)]
         : []),
     ],
     [
-      new ModifierTypeOption(modifierTypeInitObj.SUPER_POTION(), 0, baseCost * 0.45),
-      new ModifierTypeOption(modifierTypeInitObj.FULL_HEAL(), 0, baseCost),
+      new ModifierTypeOption(getModifierType(modifierTypeInitObj.SUPER_POTION), 0, baseCost * 0.45),
+      new ModifierTypeOption(getModifierType(modifierTypeInitObj.FULL_HEAL), 0, baseCost),
     ],
     [
-      new ModifierTypeOption(modifierTypeInitObj.ELIXIR(), 0, baseCost),
-      new ModifierTypeOption(modifierTypeInitObj.MAX_ETHER(), 0, baseCost),
+      new ModifierTypeOption(getModifierType(modifierTypeInitObj.ELIXIR), 0, baseCost),
+      new ModifierTypeOption(getModifierType(modifierTypeInitObj.MAX_ETHER), 0, baseCost),
     ],
     [
-      new ModifierTypeOption(modifierTypeInitObj.HYPER_POTION(), 0, baseCost * 0.8),
-      new ModifierTypeOption(modifierTypeInitObj.MAX_REVIVE(), 0, baseCost * 2.75),
+      new ModifierTypeOption(getModifierType(modifierTypeInitObj.HYPER_POTION), 0, baseCost * 0.8),
+      new ModifierTypeOption(getModifierType(modifierTypeInitObj.MAX_REVIVE), 0, baseCost * 2.75),
       ...(globalScene.twoPlayerMode
-        ? [new ModifierTypeOption(modifierTypeInitObj.PARTNER_MAX_REVIVE(), 0, baseCost * 4.125)]
+        ? [new ModifierTypeOption(getModifierType(modifierTypeInitObj.PARTNER_MAX_REVIVE), 0, baseCost * 4.125)]
         : []),
-      new ModifierTypeOption(modifierTypeInitObj.MEMORY_MUSHROOM(), 0, baseCost * 4),
+      new ModifierTypeOption(getModifierType(modifierTypeInitObj.MEMORY_MUSHROOM), 0, baseCost * 4),
     ],
     [
-      new ModifierTypeOption(modifierTypeInitObj.MAX_POTION(), 0, baseCost * 1.5),
-      new ModifierTypeOption(modifierTypeInitObj.MAX_ELIXIR(), 0, baseCost * 2.5),
+      new ModifierTypeOption(getModifierType(modifierTypeInitObj.MAX_POTION), 0, baseCost * 1.5),
+      new ModifierTypeOption(getModifierType(modifierTypeInitObj.MAX_ELIXIR), 0, baseCost * 2.5),
     ],
-    [new ModifierTypeOption(modifierTypeInitObj.FULL_RESTORE(), 0, baseCost * 2.25)],
-    [new ModifierTypeOption(modifierTypeInitObj.SACRED_ASH(), 0, baseCost * 10)],
+    [new ModifierTypeOption(getModifierType(modifierTypeInitObj.FULL_RESTORE), 0, baseCost * 2.25)],
+    [new ModifierTypeOption(getModifierType(modifierTypeInitObj.SACRED_ASH), 0, baseCost * 10)],
   ];
 
   return options

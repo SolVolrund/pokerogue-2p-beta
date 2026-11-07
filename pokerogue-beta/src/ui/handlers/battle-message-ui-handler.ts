@@ -16,6 +16,7 @@ export class BattleMessageUiHandler extends MessageUiHandler {
   private levelUpStatsIncrContent: Phaser.GameObjects.Text;
   private levelUpStatsValuesContent: BBCodeText;
   private messageContainer: Phaser.GameObjects.Container;
+  private rewardDetail: Phaser.GameObjects.Text;
   private nameBox: Phaser.GameObjects.NineSlice;
   private nameIcon: Phaser.GameObjects.Sprite;
   private nameExtraIcon: Phaser.GameObjects.Sprite;
@@ -78,6 +79,11 @@ export class BattleMessageUiHandler extends MessageUiHandler {
     messageContainer.add(message);
 
     this.message = message;
+    this.rewardDetail = addTextObject(0, 0, "", TextStyle.MESSAGE, {
+      fontSize: 72,
+      wordWrap: { width: this.wordWrapWidth },
+    }).setVisible(false);
+    messageContainer.add(this.rewardDetail);
 
     this.nameBoxContainer = globalScene.add.container(0, -16);
     this.nameBoxContainer.setVisible(false);
@@ -227,7 +233,28 @@ export class BattleMessageUiHandler extends MessageUiHandler {
     promptDelay?: number | null,
   ) {
     this.hideNameText();
+    const mode = this.getUi().getMode();
+    if (
+      (mode === UiMode.MODIFIER_SELECT || mode === UiMode.GAME_CORNER_REWARD)
+      && !prompt
+      && !callback
+      && text
+      && this.message.runWordWrap(text).split("\n").length > 2
+    ) {
+      // Reward descriptions stay on screen until the cursor moves; dialogue uses the two-line typewriter.
+      super.showText("", 0);
+      this.rewardDetail.setText(text).setScale(1 / 6).setVisible(true);
+      if (this.rewardDetail.displayHeight > 36) {
+        this.rewardDetail.setScale(36 / this.rewardDetail.height);
+      }
+      return;
+    }
     super.showText(text, delay, callback, callbackDelay, prompt, promptDelay);
+  }
+
+  override clearText(): void {
+    super.clearText();
+    this.rewardDetail?.setVisible(false);
   }
 
   showDialogue(
@@ -362,7 +389,7 @@ export class BattleMessageUiHandler extends MessageUiHandler {
   ): void {
     this.nameBoxContainer.setVisible(true);
 
-    this.nameIcon.setTexture("items", leftIconFrame);
+    this.nameIcon.setTexture(...getModifierIconTexture(leftIconFrame));
     this.nameIcon.setVisible(true);
     this.nameIcon.setScale(0.5);
 
@@ -370,7 +397,7 @@ export class BattleMessageUiHandler extends MessageUiHandler {
     this.nameText.setVisible(true);
     this.nameText.x = this.nameIcon.x + this.nameIcon.displayWidth + 4;
 
-    this.nameExtraIcon.setTexture("items", rightIconFrame);
+    this.nameExtraIcon.setTexture(...getModifierIconTexture(rightIconFrame));
     this.nameExtraIcon.setVisible(true);
     this.nameExtraIcon.setScale(0.5);
     this.nameExtraIcon.x = this.nameText.x + this.nameText.displayWidth + 4;
@@ -384,5 +411,6 @@ export class BattleMessageUiHandler extends MessageUiHandler {
 
   hideNameText(): void {
     this.nameBoxContainer.setVisible(false);
+    this.rewardDetail.setVisible(false);
   }
 }

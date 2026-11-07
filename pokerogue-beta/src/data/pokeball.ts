@@ -2,12 +2,14 @@ import { audioManager } from "#app/global-audio-manager";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { PokeballType } from "#enums/pokeball";
+import { type BallDesign, designBattleFrame } from "#data/ball-design";
 import { NumberHolder } from "#utils/common";
 import i18next from "i18next";
 
 export const MAX_PER_TYPE_POKEBALLS: number = 99;
 
-export function getPokeballAtlasKey(type: PokeballType): string {
+export function getPokeballAtlasKey(type: PokeballType, design?: BallDesign): string {
+  if (type === PokeballType.POKEBALL && design) return designBattleFrame(design);
   switch (type) {
     case PokeballType.POKEBALL:
       return "pb";
@@ -30,38 +32,33 @@ export function getPokeballAtlasKey(type: PokeballType): string {
   }
 }
 
+const ballLocaleKeys = {
+  [PokeballType.POKEBALL]: "pokeBall",
+  [PokeballType.GREAT_BALL]: "greatBall",
+  [PokeballType.ULTRA_BALL]: "ultraBall",
+  [PokeballType.ROGUE_BALL]: "rogueBall",
+  [PokeballType.MASTER_BALL]: "masterBall",
+  [PokeballType.LUXURY_BALL]: "luxuryBall",
+  [PokeballType.GLASS_BALL]: "glassBall",
+  [PokeballType.CLONE_BALL]: "cloneBall",
+  [PokeballType.SAFARI_BALL]: "safariBall",
+} as const satisfies Record<PokeballType, string>;
+
 export function getPokeballName(type: PokeballType): string {
-  let ret: string;
-  switch (type) {
-    case PokeballType.POKEBALL:
-      ret = i18next.t("pokeball:pokeBall");
-      break;
-    case PokeballType.GREAT_BALL:
-      ret = i18next.t("pokeball:greatBall");
-      break;
-    case PokeballType.ULTRA_BALL:
-      ret = i18next.t("pokeball:ultraBall");
-      break;
-    case PokeballType.ROGUE_BALL:
-      ret = i18next.t("pokeball:rogueBall");
-      break;
-    case PokeballType.MASTER_BALL:
-      ret = i18next.t("pokeball:masterBall");
-      break;
-    case PokeballType.LUXURY_BALL:
-      ret = i18next.t("pokeball:luxuryBall");
-      break;
-    case PokeballType.GLASS_BALL:
-      ret = i18next.t("pokeball:glassBall", { defaultValue: "Glass Ball" });
-      break;
-    case PokeballType.CLONE_BALL:
-      ret = i18next.t("pokeball:cloneBall", { defaultValue: "Clone Ball" });
-      break;
-    case PokeballType.SAFARI_BALL:
-      ret = i18next.t("pokeball:safariBall", { defaultValue: "Safari Ball" });
-      break;
+  return getPokeballDisplayName(type);
+}
+
+export function getPokeballDisplayName(type: PokeballType, design?: BallDesign): string {
+  const key = type === PokeballType.POKEBALL && design ? `${design}Ball` : ballLocaleKeys[type];
+  return i18next.t(`pokeball:${key}`);
+}
+
+export function getPokeballDescription(type: PokeballType, design?: BallDesign): string {
+  if (type === PokeballType.GLASS_BALL) {
+    return i18next.t("partyUiHandler:bagReadOnly");
   }
-  return ret;
+  const key = type === PokeballType.POKEBALL && design ? `${design}Ball` : ballLocaleKeys[type];
+  return i18next.t(`pokeball:descriptions.${key}`);
 }
 
 export function getPokeballCatchMultiplier(type: PokeballType): number {

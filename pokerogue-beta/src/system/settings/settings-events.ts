@@ -36,6 +36,8 @@ const EVENT_TITLE_KEYS: Record<MysteryEncounterType, string> = {
   [MysteryEncounterType.SLUMBERING_SNORLAX]: "mysteryEncounters/slumberingSnorlax:title",
   [MysteryEncounterType.TRAINING_SESSION]: "mysteryEncounters/trainingSession:title",
   [MysteryEncounterType.DEPARTMENT_STORE_SALE]: "mysteryEncounters/departmentStoreSale:title",
+  [MysteryEncounterType.CAPTURE_CUSTOMIZER]: "mysteryEncounters/captureCustomizer:title",
+  [MysteryEncounterType.SPOOKY_INVITATION]: "mysteryEncounters/spookyInvitation:title",
   [MysteryEncounterType.SHADY_VITAMIN_DEALER]: "mysteryEncounters/shadyVitaminDealer:title",
   [MysteryEncounterType.FIELD_TRIP]: "mysteryEncounters/fieldTrip:title",
   [MysteryEncounterType.SAFARI_ZONE]: "mysteryEncounters/safariZone:title",

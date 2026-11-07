@@ -4,6 +4,7 @@ import {
   type CooldownHeldItemId,
   type CooldownItem,
   getCooldownHeldItemId,
+  getTypeGemCooldownId,
   isCooldownHeldItem,
 } from "#data/cooldown-held-items";
 import { MoveCategory } from "#enums/move-category";
@@ -13,6 +14,7 @@ import { Stat } from "#enums/stat";
 import type { Pokemon } from "#field/pokemon";
 import type { Move } from "#moves/move";
 import { recordConsumedHeldItem } from "#utils/battle-held-items";
+import type { NumberHolder } from "#utils/common";
 import i18next from "i18next";
 
 export function findReadyCooldownHeldItem(pokemon: Pokemon, itemId: CooldownHeldItemId): CooldownItem | undefined {
@@ -70,6 +72,23 @@ export function activatePolicy(pokemon: Pokemon, itemId: "BLUNDER_POLICY" | "WEA
     sourcePokemon: pokemon,
   });
   return true;
+}
+
+/** A Gem activates once, but its boost lasts through every hit and target of that attack. */
+export function applyTypeGemBoost(
+  pokemon: Pokemon,
+  type: PokemonType,
+  power: NumberHolder,
+  moveId: MoveId,
+  simulated: boolean,
+): void {
+  const turn = pokemon.turnData;
+  if (!simulated && turn.typeGemActivated && turn.typeGemMoveId === moveId && turn.typeGemMoveType === type) {
+    power.value = Math.floor(power.value * (1 + (turn.typeGemBoostMultiplier ?? 0)));
+    return;
+  }
+  const gem = findReadyCooldownHeldItem(pokemon, getTypeGemCooldownId(type));
+  if (gem?.is("TypeGemModifier")) gem.apply(pokemon, type, power, moveId, simulated);
 }
 
 export function isPowerHerbMove(move: Move): boolean {

@@ -78,7 +78,8 @@ export class MysteryEncounterPhase extends Phase {
     if (globalScene.twoPlayerMode && this.optionSelectSettings?.playerIndex != null) {
       globalScene.waitForPlayerSideProgressionInput(this.optionSelectSettings.playerIndex);
     } else if (globalScene.twoPlayerMode && !this.optionSelectSettings) {
-      globalScene.waitForPlayerSideProgressionInput();
+      globalScene.waitForPlayerSideProgressionInput(encounter.twoPlayerSharedDecision === "unanimousHumanYes"
+        ? getMysteryEncounterPlayerIndexes().find(p => !globalScene.isComputerPartnerPlayer(p)) : undefined);
     }
 
     // Initiates encounter dialogue window and option select
@@ -122,17 +123,18 @@ export class MysteryEncounterPhase extends Phase {
       globalScene.twoPlayerMode && encounter.twoPlayerSharedDecision && !this.optionSelectSettings;
 
     if (shouldCollectSharedDecision) {
-      const playerIndexes = getMysteryEncounterPlayerIndexes();
+      const unanimous = encounter.twoPlayerSharedDecision === "unanimousHumanYes";
+      const playerIndexes = getMysteryEncounterPlayerIndexes().filter(p => !unanimous || !globalScene.isComputerPartnerPlayer(p));
       const currentPlayerIndex = globalScene.activePlayerIndex;
       this.twoPlayerDecisionIndexes[currentPlayerIndex] = index;
 
       const nextPlayerIndex = getNextMysteryEncounterPlayerIndex(currentPlayerIndex, playerIndexes);
-      if (nextPlayerIndex != null) {
+      if (nextPlayerIndex != null && !(unanimous && index !== 0)) {
         globalScene.waitForPlayerSideProgressionInput(nextPlayerIndex);
         globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, {
           slideInDescription: false,
           overrideTitle: getMysteryEncounterPlayerTitle(nextPlayerIndex),
-          overrideQuery: "What will you do?",
+          overrideQuery: unanimous ? encounter.dialogue.encounterOptionsDialogue?.query ?? "What will you do?" : "What will you do?",
           startingCursorIndex: index,
         });
         return true;
@@ -141,7 +143,10 @@ export class MysteryEncounterPhase extends Phase {
       const selectedIndexes = playerIndexes.map(playerIndex => this.twoPlayerDecisionIndexes[playerIndex] ?? index);
       const firstIndex = selectedIndexes[0] ?? index;
       const hasDisagreement = selectedIndexes.some(selectedIndex => selectedIndex !== firstIndex);
-      if (hasDisagreement) {
+      if (unanimous) {
+        index = playerIndexes.length > 0 && playerIndexes.every(p => this.twoPlayerDecisionIndexes[p] === 0) ? 0 : 1;
+        option = encounter.options[index];
+      } else if (hasDisagreement) {
         const winningPlayerIndex = globalScene.resolvePlayerTieBreak(playerIndexes);
         index = this.twoPlayerDecisionIndexes[winningPlayerIndex] ?? index;
         option = encounter.options[index];

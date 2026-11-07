@@ -214,7 +214,7 @@ export class SummonPhase extends PartyMemberPokemonPhase {
       this.player && !enemySidePlayer ? 36 + twoTrainerThrowOffset : 248,
       this.player && !enemySidePlayer ? 80 : 44,
       "pb",
-      getPokeballAtlasKey(pokemon.getPokeball(true)),
+      getPokeballAtlasKey(pokemon.getPokeball(true), pokemon.summonData.illusion ? pokemon.summonData.illusion.ballDesign : pokemon.ballDesign),
     );
     pokeball.setVisible(false);
     pokeball.setOrigin(0.5, 0.625);

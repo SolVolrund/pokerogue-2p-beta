@@ -515,7 +515,7 @@ export class SummaryUiHandler extends UiHandler {
       this.fusionShinyIcon.setTint(getVariantTint(this.pokemon.fusionVariant));
     }
 
-    this.pokeball.setFrame(getPokeballAtlasKey(this.pokemon.pokeball));
+    this.pokeball.setFrame(getPokeballAtlasKey(this.pokemon.pokeball, this.pokemon.ballDesign));
     this.levelText.setText(`${i18next.t("pokemonSummary:lv")}${this.pokemon.level.toString()}`);
     this.genderText.setText(getGenderSymbol(this.pokemon.getGender(true)));
     this.genderText.setColor(getGenderColor(this.pokemon.getGender(true)));

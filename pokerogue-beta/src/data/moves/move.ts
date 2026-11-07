@@ -10,6 +10,7 @@ import type {
   PreAttackModifyPowerAbAttrParams,
 } from "#abilities/ab-attrs";
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
+import { applyTypeGemBoost } from "#utils/cooldown-held-items";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
 import type { EntryHazardTag, PendingHealTag } from "#data/arena-tag";
@@ -80,7 +81,6 @@ import {
   PokemonMultiHitModifier,
   PreserveBerryModifier,
   ScreenEffectModifier,
-  TypeGemModifier,
 } from "#modifiers/modifier";
 import { applyMoveAttrs } from "#moves/apply-attrs";
 import {
@@ -1194,15 +1194,7 @@ export abstract class Move implements Localizable {
     if (!this.hasAttr("TypelessAttr")) {
       globalScene.arena.applyTags(WeakenMoveTypeTag, typeChangeHolder.value, power);
       globalScene.applyModifiersForPokemon(AttackTypeBoosterModifier, source, source, typeChangeHolder.value, power);
-      globalScene.applyModifiersForPokemon(
-        TypeGemModifier,
-        source,
-        source,
-        typeChangeHolder.value,
-        power,
-        this.id,
-        simulated,
-      );
+      applyTypeGemBoost(source, typeChangeHolder.value, power, this.id, simulated);
     }
 
     if (source.getTag(HelpingHandTag)) {

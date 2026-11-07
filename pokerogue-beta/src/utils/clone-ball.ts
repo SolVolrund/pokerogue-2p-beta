@@ -186,7 +186,7 @@ export async function keepCloneBallCopy(
   await pokemon.loadAssets();
   const party = globalScene.getPlayerParty(playerIndex);
   if (replacementIndex !== undefined) {
-    await globalScene.removePartyMemberModifiers(replacementIndex, playerIndex);
+    await globalScene.removePartyMemberModifiers(replacementIndex, playerIndex, true);
     globalScene.removePokemonFromPlayerParty(party[replacementIndex]);
   }
   party.splice(insertionIndex ?? replacementIndex ?? party.length, 0, pokemon);

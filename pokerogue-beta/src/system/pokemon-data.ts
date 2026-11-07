@@ -12,6 +12,7 @@ import type { BiomeId } from "#enums/biome-id";
 import type { MoveId } from "#enums/move-id";
 import { Nature } from "#enums/nature";
 import { PokeballType } from "#enums/pokeball";
+import { readBallDesign } from "#data/ball-design";
 import type { PokemonType } from "#enums/pokemon-type";
 import type { SpeciesId } from "#enums/species-id";
 import { getTrainerSlotForFieldIndex, TrainerSlot } from "#enums/trainer-slot";
@@ -32,6 +33,7 @@ export class PokemonData {
   public shiny: boolean;
   public variant: Variant;
   public pokeball: PokeballType;
+  public ballDesign?: import("#data/ball-design").BallDesign | undefined;
   public level: number;
   public exp: number;
   public levelExp: number;
@@ -108,6 +110,7 @@ export class PokemonData {
     this.shiny = source.shiny;
     this.variant = source.variant;
     this.pokeball = source.pokeball ?? PokeballType.POKEBALL;
+    this.ballDesign = readBallDesign(source.ballDesign);
     this.level = source.level;
     this.exp = source.exp;
     this.levelExp = source.levelExp;

@@ -5,4 +5,6 @@ export enum LearnMoveType {
   MEMORY,
   /** For learning a move via TM */
   TM,
+  /** A stored TM: learning must not consume the current reward selection. */
+  BAG_TM,
 }

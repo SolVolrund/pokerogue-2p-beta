@@ -6,4 +6,5 @@ export enum Command {
   TERA,
   Z_MOVE,
   REPOSITION,
+  MEDICINE,
 }

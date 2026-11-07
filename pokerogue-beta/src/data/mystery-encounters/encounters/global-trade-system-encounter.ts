@@ -1006,7 +1006,7 @@ function doPokemonTradeSequence(tradedPokemon: PlayerPokemon, receivedPokemon: P
     });
 
     // Traded pokemon pokeball
-    const tradedPbAtlasKey = getPokeballAtlasKey(tradedPokemon.pokeball);
+    const tradedPbAtlasKey = getPokeballAtlasKey(tradedPokemon.pokeball, tradedPokemon.ballDesign);
     const tradedPokeball: Phaser.GameObjects.Sprite = globalScene.add.sprite(
       tradeBaseBg.displayWidth / 2,
       tradeBaseBg.displayHeight / 2,
@@ -1017,7 +1017,7 @@ function doPokemonTradeSequence(tradedPokemon: PlayerPokemon, receivedPokemon: P
     tradeContainer.add(tradedPokeball);
 
     // Received pokemon pokeball
-    const receivedPbAtlasKey = getPokeballAtlasKey(receivedPokemon.pokeball);
+    const receivedPbAtlasKey = getPokeballAtlasKey(receivedPokemon.pokeball, receivedPokemon.ballDesign);
     const receivedPokeball: Phaser.GameObjects.Sprite = globalScene.add.sprite(
       tradeBaseBg.displayWidth / 2,
       tradeBaseBg.displayHeight / 2,

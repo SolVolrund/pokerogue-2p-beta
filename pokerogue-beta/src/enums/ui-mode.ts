@@ -61,4 +61,5 @@ export enum UiMode {
   PLAYER_NAME_FORM,
   ONLINE_LOBBY,
   PLAYER_CHARACTER,
+  BAG,
 }

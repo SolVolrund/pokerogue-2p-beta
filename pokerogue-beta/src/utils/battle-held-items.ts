@@ -1,5 +1,6 @@
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
+import { getCooldownHeldItemId, isCooldownHeldItem } from "#data/cooldown-held-items";
 import type { BattleHeldItem } from "#data/pokemon/pokemon-data";
 import type { BerryType } from "#enums/berry-type";
 import type { Pokemon } from "#field/pokemon";
@@ -77,6 +78,10 @@ export function canRestoreConsumedHeldItem(pokemon: Pokemon, data: BattleHeldIte
   const item = createBattleHeldItem(pokemon, data);
   if (!item || !isRecyclable(item)) {
     return false;
+  }
+  if (pokemon.isPlayer() && isCooldownHeldItem(item)) {
+    const owner = globalScene.getPlayerIndexForPokemon(pokemon);
+    if (owner === undefined || !globalScene.canReceiveCooldownHeldItem(getCooldownHeldItemId(item), owner)) return false;
   }
   const existing = pokemon.getHeldItems().find(held => held.matchType(item));
   return (existing?.getStackCount() ?? 0) < item.getMaxStackCount();

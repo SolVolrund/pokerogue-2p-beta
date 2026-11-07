@@ -9,6 +9,7 @@ import { PLAYER_PARTY_MAX_SIZE, RARE_CANDY_FRIENDSHIP_CAP } from "#app/constants
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
+import { getSavedCooldownHeldItemId, type CooldownHeldItemId } from "#data/cooldown-held-items";
 import { HORDE_ENEMY_SPRITE_OFFSETS } from "#data/horde-battle";
 import { getHauntingStatMultiplier, isHauntedByMaleficSkull } from "#utils/haunting-utils";
 import {
@@ -319,6 +320,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   public shiny: boolean;
   public variant: Variant;
   public pokeball: PokeballType;
+  public ballDesign?: import("#data/ball-design").BallDesign | undefined;
   protected battleInfo: BattleInfo;
   public level: number;
   public exp: number;
@@ -475,6 +477,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     this.constructorHasTrainer = constructorHasTrainer;
     this.species = species;
     this.pokeball = dataSource?.pokeball || PokeballType.POKEBALL;
+    this.ballDesign = dataSource?.ballDesign;
     this.level = level;
 
     this.abilityIndex = abilityIndex ?? this.generateAbilityIndex();
@@ -877,6 +880,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
         formIndex: pokemon.formIndex,
         gender: pokemon.gender,
         pokeball: pokemon.pokeball,
+        ballDesign: pokemon.ballDesign,
         hp: pokemon.hp,
         maxHp: pokemon.getMaxHp(),
         moveset: pokemon.getMoveset().map(move => move.moveId),
@@ -924,6 +928,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
         formIndex: pokemon.formIndex,
         gender,
         pokeball: this.pokeball,
+        ballDesign: this.ballDesign,
         hp: this.hp,
         maxHp: this.getMaxHp(),
       };
@@ -8610,6 +8615,7 @@ export class EnemyPokemon extends Pokemon {
 
     if (party.length < partyLimit) {
       this.pokeball = pokeballType;
+      this.ballDesign = pokeballType === PokeballType.POKEBALL ? globalScene.getPlayerState(playerIndex).ballDesign : undefined;
       this.metLevel = this.level;
       this.metBiome = globalScene.arena.biomeId;
       this.metWave = globalScene.currentBattle.waveIndex;
@@ -8626,6 +8632,16 @@ export class EnemyPokemon extends Pokemon {
         this.nature,
         this,
       );
+
+      // Capturing a removed item is still a new acquisition, not an old owner's recovery.
+      const acquiredCooldowns = new Set<CooldownHeldItemId>();
+      newPokemon.battleData.removedHeldItems = newPokemon.battleData.removedHeldItems.flatMap(item => {
+        const id = getSavedCooldownHeldItemId(item);
+        if (!id) return [item];
+        if (acquiredCooldowns.has(id) || !globalScene.canReceiveCooldownHeldItem(id, playerIndex)) return [];
+        acquiredCooldowns.add(id);
+        return [{ ...item, stackCount: 1 }];
+      });
 
       if (isBetween(slotIndex, 0, partyLimit - 1)) {
         party.splice(slotIndex, 0, newPokemon);

@@ -16,6 +16,7 @@ import { CommandPhase } from "#phases/command-phase";
 import { SelectModifierPhase } from "#phases/select-modifier-phase";
 import { GameManager } from "#test/framework/game-manager";
 import type { BallUiHandler } from "#ui/ball-ui-handler";
+import type { CommandUiHandler } from "#ui/command-ui-handler";
 import type { MenuUiHandler } from "#ui/menu-ui-handler";
 import { PartyOption, type PartyUiHandler } from "#ui/party-ui-handler";
 import { type SummaryUiHandler, SummaryUiMode } from "#ui/summary-ui-handler";
@@ -86,7 +87,8 @@ describe("UI - Upstream interface polish", () => {
     openBalls();
     expect(balls["pokeballTypes"]).toEqual(ballTypes);
     expect(balls["pokeballImages"]).toHaveLength(6);
-    expect(balls["optionsText"].text.split("\n")).toEqual(ballTypes.map(getPokeballName));
+    expect(balls["optionsText"].text.split("\n")).toEqual(ballTypes.slice(0, 4).map(getPokeballName));
+    expect(balls["pokeballImages"].filter(image => image.visible)).toHaveLength(4);
     for (const type of ballTypes) {
       expect(image).toHaveBeenCalledWith(0, 0, "pb", getPokeballAtlasKey(type));
     }
@@ -98,7 +100,95 @@ describe("UI - Upstream interface polish", () => {
     game.scene.getPlayerPokeballCounts(0)[PokeballType.CLONE_BALL] = 1;
     game.scene.getPlayerPokeballCounts(2)[PokeballType.CLONE_BALL] = 7;
     openBalls(2);
-    expect(balls["countsText"].text.split("\n")[5]).toBe("\u00d77");
+    balls.setCursor(5);
+    expect(balls["countsText"].text.split("\n")[3]).toBe("\u00d77");
+  });
+
+  it("labels the battle command Bag while keeping the Ball pocket", () => {
+    const commands = game.scene.ui.handlers[UiMode.COMMAND] as CommandUiHandler;
+    expect(commands["commandTexts"].get(Command.BALL)?.text).toBe(i18next.t("commandUiHandler:bag"));
+    openBalls();
+    expect(balls["pocketText"].text).toBe(i18next.t("commandUiHandler:ball"));
+  });
+
+  it("scrolls the ball list with a fixed Cancel row", () => {
+    openBalls();
+    balls.setCursor(0);
+    const cancelY = balls["cancelText"].y;
+    for (let i = 0; i < 5; i++) {
+      balls.processInput(Button.DOWN);
+    }
+    expect(balls["scrollOffset"]).toBe(2);
+    expect(balls["optionsText"].text.split("\n")).toEqual(ballTypes.slice(2).map(getPokeballName));
+    expect(balls["pokeballImages"].map(image => image.visible)).toEqual([false, false, true, true, true, true]);
+    expect(balls["scrollBar"].visible).toBe(true);
+    balls.processInput(Button.DOWN);
+    expect(balls["cancelText"].y).toBe(cancelY);
+    expect(balls["pokeballWiggleTween"]).toBeNull();
+    balls.processInput(Button.DOWN);
+    expect(balls["scrollOffset"]).toBe(0);
+  });
+
+  it("switches to an empty Medicine pocket and remembers the selected ball", () => {
+    openBalls();
+    balls.setCursor(5);
+    const emptyVisible = vi.spyOn(balls["emptyText"], "setVisible");
+    const optionsVisible = vi.spyOn(balls["optionsText"], "setVisible");
+    const countsVisible = vi.spyOn(balls["countsText"], "setVisible");
+    const context = balls.getTwoPlayerInputContextState();
+    expect(balls.processInput(Button.RIGHT)).toBe(true);
+    expect(balls["pocketText"].text).toBe(i18next.t("commandUiHandler:medicine"));
+    expect(emptyVisible).toHaveBeenLastCalledWith(true);
+    expect(optionsVisible).toHaveBeenLastCalledWith(false);
+    expect(countsVisible).toHaveBeenLastCalledWith(false);
+    expect(balls["scrollBar"].visible).toBe(false);
+    expect(balls["pokeballImages"].some(image => image.visible)).toBe(false);
+    expect(balls["pokeballWiggleTween"]).toBeNull();
+    expect(balls.getTwoPlayerInputContextState()).not.toEqual(context);
+    balls.processInput(Button.UP);
+    balls.processInput(Button.DOWN);
+    expect(balls.getCursor()).toBe(0);
+    expect(balls.processInput(Button.LEFT)).toBe(true);
+    expect(balls.getCursor()).toBe(5);
+    expect(balls.getTwoPlayerInputContextState()).toEqual(context);
+  });
+
+  it.each([Button.ACTION, Button.CANCEL])("leaves Medicine without queuing a ball command (%s)", button => {
+    const command = openBalls();
+    const handle = vi.spyOn(command, "handleCommand");
+    const setMode = vi.spyOn(game.scene.ui, "setMode");
+    const inventory = { ...game.scene.pokeballCounts };
+    balls.processInput(Button.RIGHT);
+    balls.processInput(button);
+    expect(handle).not.toHaveBeenCalled();
+    expect(setMode).toHaveBeenCalledWith(UiMode.COMMAND, 0);
+    expect(game.scene.pokeballCounts).toEqual(inventory);
+  });
+
+  it("reopens on Ball after leaving Medicine", () => {
+    openBalls();
+    balls.setCursor(5);
+    balls.processInput(Button.LEFT);
+    balls.clear();
+    openBalls();
+    expect(balls["pocket"]).toBe("ball");
+    expect(balls.getCursor()).toBe(5);
+    expect(balls["scrollOffset"]).toBe(2);
+  });
+
+  it("keeps optional Glass Balls selectable and clamps a removed last row", () => {
+    game.scene.pokeballCounts[PokeballType.GLASS_BALL] = 3;
+    const command = openBalls();
+    const handle = vi.spyOn(command, "handleCommand").mockReturnValue(false);
+    balls.setCursor(5);
+    balls.processInput(Button.ACTION);
+    expect(handle).toHaveBeenCalledWith(Command.BALL, PokeballType.GLASS_BALL);
+    balls.setCursor(7);
+    balls.clear();
+    delete game.scene.pokeballCounts[PokeballType.GLASS_BALL];
+    openBalls();
+    expect(balls.getCursor()).toBe(6);
+    expect(balls["scrollOffset"]).toBeLessThanOrEqual(2);
   });
 
   it("confirms the non-contiguous Clone Ball enum instead of the row number", () => {
@@ -160,7 +250,14 @@ describe("UI - Upstream interface polish", () => {
     game.scene.inputOwner = 0;
     const chain = vi.spyOn(game.scene.tweens, "chain");
     openBalls();
+    const optionsVisible = vi.spyOn(balls["optionsText"], "setVisible");
+    const visible = balls["optionsText"].text;
     balls.setCursor(5);
+    expect(balls["optionsText"].text).toBe(visible);
+    balls.processInput(Button.RIGHT);
+    expect(balls["pocketText"].text).toBe(i18next.t("commandUiHandler:ball"));
+    expect(optionsVisible).toHaveBeenLastCalledWith(true);
+    expect(balls["cursorObj"]?.visible).toBe(false);
     expect(chain).not.toHaveBeenCalled();
   });
 
@@ -225,6 +322,7 @@ describe("UI - Upstream interface polish", () => {
       undefined,
       undefined,
       false,
+      undefined,
     );
     expect(mode).not.toBe(PartyUiMode.ENEMY_SWITCH);
     expect(PartyUiMode.ENEMY_SWITCH).toBe(14);

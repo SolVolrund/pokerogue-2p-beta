@@ -34,7 +34,7 @@ import {
   wildModifierPool,
 } from "#modifiers/modifier-pools";
 import type { initModifierTypes } from "#modifiers/modifier-type";
-import { WeightedModifierType } from "#modifiers/modifier-type";
+import { getAvailableTypeGemTypes, WeightedModifierType } from "#modifiers/modifier-type";
 import type { WeightedModifierTypeWeightFunc } from "#types/modifier-types";
 import { isLoadedDiceBoostedMove } from "#utils/loaded-dice-utils";
 import { getAvailableThreadColors } from "#utils/soul-bond";
@@ -162,7 +162,6 @@ function initCommonModifierPool() {
     new WeightedModifierType(modifierTypes.LURE, lureWeightFunc(10, 2)),
     new WeightedModifierType(modifierTypes.TEMP_STAT_STAGE_BOOSTER, 4),
     new WeightedModifierType(modifierTypes.BERRY, 3),
-    new WeightedModifierType(modifierTypes.MIRROR_HERB, 0),
     new WeightedModifierType(modifierTypes.TM_COMMON, 2),
   ].map(m => {
     m.setTier(ModifierTier.COMMON);
@@ -419,7 +418,7 @@ function initGreatModifierPool() {
  * Initialize the Ultra modifier pool
  */
 function hasTypeGemTarget(pokemon: Pokemon): boolean {
-  return pokemon.isAllowedInChallenge() && pokemon.getMoveset(true).some(move => move && move.getMove().is("AttackMove"));
+  return getAvailableTypeGemTypes(pokemon).length > 0;
 }
 
 function hasLoadedDiceTarget(pokemon: Pokemon): boolean {
@@ -891,6 +890,11 @@ function initMasterModifierPool() {
         isRewardPlayerUnlockAvailable(Unlockables.GAMMA_RAY_BURST, party)
           ? 1
           : 0,
+      1,
+    ),
+    new WeightedModifierType(
+      modifierTypes.BERSERK_GENE,
+      (party: Pokemon[]) => isRewardPlayerUnlockAvailable(Unlockables.BERSERK_GENE, party) ? 1 : 0,
       1,
     ),
     new WeightedModifierType(

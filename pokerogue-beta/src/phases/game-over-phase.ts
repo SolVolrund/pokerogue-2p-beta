@@ -441,6 +441,9 @@ export class GameOverPhase extends BattlePhase {
       if (classicFinalBossSpeciesId === SpeciesId.MEW) {
         collectUnlock(Unlockables.OLD_SEA_MAP);
       }
+      if (classicFinalBossSpeciesId === SpeciesId.MEWTWO) {
+        collectUnlock(Unlockables.BERSERK_GENE);
+      }
       if (classicFinalBossSpeciesId === SpeciesId.UNOWN) {
         collectUnlock(Unlockables.UNOWN_BOX);
       }

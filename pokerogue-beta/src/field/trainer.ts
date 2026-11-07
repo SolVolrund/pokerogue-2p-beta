@@ -20,7 +20,7 @@ import { TrainerAceEvCategory, trainerConfigs, type TrainerConfig } from "#train
 import { TrainerPartyCompoundTemplate, TrainerPartyTemplate } from "#trainers/trainer-party-template";
 import { getRandomTwoPlayerTrainerPartners } from "#trainers/two-player-trainer-partners";
 import { randSeedInt, randSeedItem } from "#utils/common";
-import { getCachedUrl } from "#utils/fetch-utils";
+import { HAUNTING_SPIRIT_FOOT_OFFSET, HAUNTING_SPIRIT_KEY, loadHauntingSpirit, registerHauntingSpiritAnimation } from "#field/haunting-spirit";
 import { filterAiRelevantOpponentsForPosition } from "#utils/ai-targeting";
 import { getRandomLocaleEntry } from "#utils/i18n";
 import { isMysteryEncounterSwitchProtectedPokemon } from "#utils/mystery-encounter-switch-protection";
@@ -107,9 +107,6 @@ const TRAINER_ANIMATION_FRAME_SEQUENCES: Partial<Record<string, number[]>> = {
   ambers_joy: [1],
   molly_hale: [1, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13],
 };
-
-const HAUNTING_SPIRIT_KEY = "haunting_spirit";
-const HAUNTING_SPIRIT_FRAMES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
 
 function getTrainerAnimationFrameNames(trainerKey: string) {
   const frameSequence = TRAINER_ANIMATION_FRAME_SEQUENCES[trainerKey];
@@ -227,6 +224,8 @@ export class Trainer extends Phaser.GameObjects.Container {
   private partnerConfig2: TrainerConfig | undefined;
   public originalIndexes: { [key: number]: number } = {};
   public haunted = false;
+  /** Remaining single-use items, keyed by trainer owner (not by active battler). */
+  public medicineBags: Partial<Record<TrainerSlot, string[]>> = {};
   private readonly trainerSprites: Phaser.GameObjects.Sprite[] = [];
   private readonly trainerTintSprites: Phaser.GameObjects.Sprite[] = [];
   private readonly hauntedSprites: Phaser.GameObjects.Sprite[] = [];
@@ -519,7 +518,7 @@ export class Trainer extends Phaser.GameObjects.Container {
     return this.config.getSpriteKey(this.trainerVariant === TrainerVariant.FEMALE || forceFemale, this.isDouble());
   }
 
-  private getConfigForTrainerSlot(trainerSlot: TrainerSlot): TrainerConfig {
+  getConfigForTrainerSlot(trainerSlot: TrainerSlot): TrainerConfig {
     switch (trainerSlot) {
       case TrainerSlot.TRAINER_PARTNER:
         return this.partnerConfig ?? this.config;
@@ -708,6 +707,10 @@ export class Trainer extends Phaser.GameObjects.Container {
       default:
         return TrainerSlot.TRAINER;
     }
+  }
+
+  getMedicineOwner(pokemon: EnemyPokemon): TrainerSlot {
+    return this.isDouble() ? pokemon.trainerSlot || TrainerSlot.TRAINER : TrainerSlot.TRAINER;
   }
 
   private getSpriteKeyForIndex(spriteIndex: number): string {
@@ -1625,12 +1628,8 @@ export class Trainer extends Phaser.GameObjects.Container {
       for (const trainerKey of trainerKeys) {
         globalScene.loadAtlas(trainerKey, "trainer");
       }
-      if (this.haunted && !globalScene.textures.exists(HAUNTING_SPIRIT_KEY)) {
-        globalScene.load.spritesheet(HAUNTING_SPIRIT_KEY, getCachedUrl("images/trainer/haunting_spirit.png"), {
-          frameWidth: 59,
-          frameHeight: 127,
-          endFrame: 11,
-        });
+      if (this.haunted) {
+        loadHauntingSpirit();
       }
       globalScene.load.once(Phaser.Loader.Events.COMPLETE, () => {
         const originalWarn = console.warn;
@@ -1675,14 +1674,7 @@ export class Trainer extends Phaser.GameObjects.Container {
     if (!globalScene.textures.exists(HAUNTING_SPIRIT_KEY)) {
       return;
     }
-    if (!globalScene.anims.exists(HAUNTING_SPIRIT_KEY)) {
-      globalScene.anims.create({
-        key: HAUNTING_SPIRIT_KEY,
-        frames: HAUNTING_SPIRIT_FRAMES.map(frame => ({ key: HAUNTING_SPIRIT_KEY, frame })),
-        frameRate: 12,
-        repeat: -1,
-      });
-    }
+    registerHauntingSpiritAnimation();
     this.trainerSprites.forEach((trainerSprite, index) => {
       let spirit = this.hauntedSprites[index];
       if (!spirit) {
@@ -1693,8 +1685,7 @@ export class Trainer extends Phaser.GameObjects.Container {
         this.hauntedSprites.push(spirit);
         spirit.play(HAUNTING_SPIRIT_KEY);
       }
-      // The final four rows extend the ground shadow below the original foot line.
-      spirit.setPosition(trainerSprite.x, trainerSprite.y + 4);
+      spirit.setPosition(trainerSprite.x, trainerSprite.y + HAUNTING_SPIRIT_FOOT_OFFSET);
       spirit.setScale(trainerSprite.scaleX, trainerSprite.scaleY);
       spirit.setRotation(trainerSprite.rotation);
       spirit.setFlip(trainerSprite.flipX, trainerSprite.flipY);

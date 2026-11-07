@@ -1,5 +1,6 @@
 import { PostTurnRestoreBerryAbAttr } from "#abilities/ab-attrs";
 import { allMoves } from "#data/data-lists";
+import { getTypeGemCooldownId } from "#data/cooldown-held-items";
 import { PokemonBattleData } from "#data/pokemon/pokemon-data";
 import { AbilityId } from "#enums/ability-id";
 import { BattlerIndex } from "#enums/battler-index";
@@ -169,14 +170,15 @@ describe("Moves - Recycle and battle-only item removal", () => {
     expect(getConsumedHeldItems(player)).toHaveLength(1);
   });
 
-  it("reserves stack capacity and restores repeated removals exactly once", async () => {
-    game.override.startingHeldItems([{ name: "TYPE_GEM", type: PokemonType.FIRE, count: 3 }]);
+  it("reserves legacy Gem stack capacity and restores repeated removals exactly once", async () => {
+    game.override.startingHeldItems([{ name: "TYPE_GEM", type: PokemonType.FIRE }]);
     await game.classicMode.startBattle(SpeciesId.CHARMANDER, SpeciesId.FEEBAS);
     const [player, donor] = game.scene.getPlayerParty();
     const gem = player.getHeldItems()[0];
+    gem.stackCount = 3;
     const donorGem = gem.clone() as PokemonHeldItemModifier;
     donorGem.pokemonId = donor.id;
-    game.scene.addModifier(donorGem, true);
+    game.scene.addRecoveredHeldItem(donorGem, donor);
     for (let i = 0; i < 3; i++) {
       expect(removeHeldItemForBattle(player, gem)).toBe(true);
     }
@@ -191,8 +193,8 @@ describe("Moves - Recycle and battle-only item removal", () => {
 
   it("counts saved reservations by item variant without changing state or RNG", async () => {
     game.override.startingHeldItems([
-      { name: "TYPE_GEM", type: PokemonType.FIRE, count: 3 },
-      { name: "TYPE_GEM", type: PokemonType.WATER, count: 3 },
+      { name: "TYPE_GEM", type: PokemonType.FIRE },
+      { name: "TYPE_GEM", type: PokemonType.WATER },
     ]);
     await game.classicMode.startBattle(SpeciesId.CHARMANDER);
     const player = game.field.getPlayerPokemon();
@@ -211,8 +213,8 @@ describe("Moves - Recycle and battle-only item removal", () => {
     for (let i = 0; i < 2; i++) {
       expect(player.getReservedHeldItemCount(fireGem)).toBe(1);
       expect(player.getReservedHeldItemCount(waterGem)).toBe(0);
-      expect(fireGem.getMaxStackCount()).toBe(2);
-      expect(waterGem.getMaxStackCount()).toBe(3);
+      expect(fireGem.getMaxStackCount()).toBe(0);
+      expect(waterGem.getMaxStackCount()).toBe(1);
     }
     expect(JSON.stringify(player.battleData)).toBe(before);
     expect(Phaser.Math.RND.state()).toBe(seed);
@@ -277,7 +279,7 @@ describe("Moves - Recycle and battle-only item removal", () => {
   });
 
   it("session snapshots retain both missing equipment and consumed-item history", async () => {
-    game.override.startingHeldItems([{ name: "TYPE_GEM", type: PokemonType.FIRE, count: 2 }]);
+    game.override.startingHeldItems([{ name: "BERRY", type: BerryType.SITRUS, count: 2 }]);
     await game.classicMode.startBattle(SpeciesId.CHARMANDER);
     const player = game.field.getPlayerPokemon();
     const gem = player.getHeldItems()[0];
@@ -287,27 +289,29 @@ describe("Moves - Recycle and battle-only item removal", () => {
     const snapshot = JSON.stringify(game.scene.gameData.getSessionSaveData());
     await game.scene.gameData.loadSessionSnapshot(snapshot);
     const restoredPlayer = game.scene.getPlayerParty()[0];
-    expect(count(restoredPlayer, "TYPE_GEM")).toBe(0);
+    expect(count(restoredPlayer, "BERRY")).toBe(0);
     expect(restoredPlayer.battleData.removedHeldItems).toHaveLength(1);
     expect(getRecycleItemIndex(restoredPlayer)).toBe(0);
     restoreBattleRemovedHeldItems(restoredPlayer);
     restoreConsumedHeldItem(restoredPlayer, getRecycleItemIndex(restoredPlayer));
-    expect(count(restoredPlayer, "TYPE_GEM")).toBe(2);
+    expect(count(restoredPlayer, "BERRY")).toBe(2);
   });
 
-  it("Recycle restores a used gem without consuming other held items", async () => {
+  it("Recycle cannot recharge a Gem or consume other held items", async () => {
     game.override.startingHeldItems([{ name: "TYPE_GEM", type: PokemonType.FIRE }, { name: "LEFTOVERS" }]);
     await game.classicMode.startBattle(SpeciesId.CHARMANDER);
     const player = game.field.getPlayerPokemon();
     game.move.select(MoveId.EMBER);
     await game.toNextTurn();
-    expect(count(player, "TYPE_GEM")).toBe(0);
-    expect(getConsumedHeldItems(player)).toHaveLength(1);
+    expect(count(player, "TYPE_GEM")).toBe(1);
+    expect(getConsumedHeldItems(player)).toHaveLength(0);
+    expect(game.scene.arena.getPlayerHeldItemReadyWave(getTypeGemCooldownId(PokemonType.FIRE))).toBe(6);
     game.move.select(MoveId.RECYCLE);
     await game.toNextTurn();
     expect(count(player, "TYPE_GEM")).toBe(1);
     expect(count(player, "LEFTOVERS")).toBe(1);
     expect(getRecycleItemIndex(player)).toBe(-1);
+    expect(game.scene.arena.getPlayerHeldItemReadyWave(getTypeGemCooldownId(PokemonType.FIRE))).toBe(6);
   });
 
   it("Recycle fails without consumed items and ignores Reviver Seeds", async () => {
@@ -324,7 +328,7 @@ describe("Moves - Recycle and battle-only item removal", () => {
   it("Recycle selects the newest eligible consumption and respects reservations", async () => {
     game.override.startingHeldItems([
       { name: "BERRY", type: BerryType.SITRUS, count: 2 },
-      { name: "TYPE_GEM", type: PokemonType.FIRE, count: 3 },
+      { name: "TYPE_GEM", type: PokemonType.FIRE },
     ]);
     await game.classicMode.startBattle(SpeciesId.CHARMANDER);
     const player = game.field.getPlayerPokemon();
@@ -335,11 +339,11 @@ describe("Moves - Recycle and battle-only item removal", () => {
     recordConsumedHeldItem(player, gem);
     const restored = restoreConsumedHeldItem(player, getRecycleItemIndex(player));
     expect(restored?.type.id).toBe("TYPE_GEM");
-    removeHeldItemForBattle(player, gem);
+    removeHeldItemForBattle(player, player.getHeldItems().find(item => item.type.id === "TYPE_GEM")!);
     expect(restoreConsumedHeldItem(player, getRecycleItemIndex(player))?.type.id).toBe("BERRY");
     expect(getRecycleItemIndex(player)).toBe(-1);
     restoreBattleRemovedHeldItems(player);
-    expect(count(player, "TYPE_GEM")).toBe(3);
+    expect(count(player, "TYPE_GEM")).toBe(1);
   });
 
   it("Harvest and Recycle cannot restore the same consumed berry twice", async () => {
@@ -389,14 +393,15 @@ describe("Moves - Recycle and battle-only item removal", () => {
     expect(game.scene.arena.getPlayerWhiteHerbReadyWave(0)).toBe(readyWave);
   });
 
-  it("Mirror Herb consumption is recoverable", async () => {
+  it("Mirror Herb recharges without creating a Recycle claim", async () => {
     game.override.enemyMoveset(MoveId.HOWL).startingHeldItems([{ name: "MIRROR_HERB" }]);
     await game.classicMode.startBattle(SpeciesId.CHARMANDER);
     const player = game.field.getPlayerPokemon();
     game.move.select(MoveId.SPLASH);
     await game.toNextTurn();
-    expect(count(player, "MIRROR_HERB")).toBe(0);
-    expect(restoreConsumedHeldItem(player, getRecycleItemIndex(player))?.type.id).toBe("MIRROR_HERB");
+    expect(count(player, "MIRROR_HERB")).toBe(1);
+    expect(getRecycleItemIndex(player)).toBe(-1);
+    expect(game.scene.arena.getPlayerHeldItemReadyWave("MIRROR_HERB")).toBe(6);
   });
 
   it("embargoed items can be recovered but their effects remain suppressed", async () => {
@@ -413,7 +418,7 @@ describe("Moves - Recycle and battle-only item removal", () => {
   });
 
   it("serializes independent histories and includes both in multiplayer fingerprints", async () => {
-    game.override.startingHeldItems([{ name: "TYPE_GEM", type: PokemonType.FIRE, count: 2 }]);
+    game.override.startingHeldItems([{ name: "BERRY", type: BerryType.SITRUS, count: 2 }]);
     await game.classicMode.startBattle(SpeciesId.CHARMANDER);
     const player = game.field.getPlayerPokemon();
     const gem = player.getHeldItems()[0];
@@ -436,7 +441,7 @@ describe("Moves - Recycle and battle-only item removal", () => {
     loaded.consumedHeldItems![0].waveIndex--;
     restoreBattleRemovedHeldItems(player);
     restoreConsumedHeldItem(player, getRecycleItemIndex(player));
-    expect(count(player, "TYPE_GEM")).toBe(2);
+    expect(count(player, "BERRY")).toBe(2);
   });
 
   it("Recycle only uses consumption from this wave and evaluation does not mutate RNG or history", async () => {

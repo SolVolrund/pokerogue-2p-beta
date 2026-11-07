@@ -1,4 +1,7 @@
 import { speciesDataRegistry } from "#app/global-species-data-registry";
+import type { PlayerIndex } from "#app/battle-scene";
+import { globalScene } from "#app/global-scene";
+import { isCooldownHeldItem } from "#data/cooldown-held-items";
 import { EvoCondKey } from "#balance/pokemon-evolutions";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { AbilityId } from "#enums/ability-id";
@@ -35,6 +38,9 @@ import {
   type ModifierTypeOption,
 } from "#modifiers/modifier-type";
 import type { PokemonMove } from "#moves/pokemon-move";
+import type { BagMedicineData } from "#types/save-data";
+import { BAG_MEDICINE_STACK_LIMIT, getBagWithdrawCapacity, isBagMedicineType, withdrawBagItem } from "#utils/item-bag";
+import { isDestinyKnot } from "#utils/soul-bond";
 import { randSeedItem } from "#utils/common";
 import { getDawnStrategyMoveCapabilities } from "#utils/computer-partner-hazard-support";
 import { chooseComputerPartnerMoveLearningDecision } from "#utils/computer-partner-move-ai";
@@ -103,9 +109,11 @@ export interface ComputerPartnerRewardChoice {
   targetMoveIndex?: number;
   reason: string;
   recoveryChoice?: ComputerPartnerRecoveryChoice;
+  storeInBag?: true;
 }
 
 export interface ComputerPartnerRewardContext {
+  bagMedicines?: readonly BagMedicineData[];
   pokeballCounts?: Partial<Record<PokeballType, number>>;
   computerPartnerProfile?: ComputerPartnerProfile;
 }
@@ -1265,6 +1273,37 @@ function getRewardTarget(
   return targetPokemonIndex !== undefined ? { targetPokemonIndex } : undefined;
 }
 
+/** Reuse reward holder preferences, without treating already-owned equipment as another acquisition. */
+export function equipComputerPartnerBagItems(owner: PlayerIndex, profile: ComputerPartnerProfile) {
+  const equipped: { pokemon: PlayerPokemon; itemName: string; quantity: number }[] = [];
+  if (!globalScene.isComputerPartnerPlayer(owner)) {
+    return equipped;
+  }
+  const party = globalScene.getPlayerParty(owner);
+  for (const item of [...globalScene.getPlayerBag(owner)]) {
+    const candidates = party.filter(pokemon => getBagWithdrawCapacity(owner, pokemon, item) > 0);
+    // Reward filters count herbs/gems/threads already in the Bag toward their ownership limit.
+    // Withdrawal capacity above (and again at transfer) instead excludes this particular copy.
+    const type: ModifierType = isCooldownHeldItem(item) || isDestinyKnot(item)
+      ? Object.create(item.type, { selectFilter: { value: undefined } })
+      : item.type;
+    while (candidates.length && item.stackCount > 0) {
+      const index = type instanceof PokemonModifierType
+        ? getRewardTarget(type, getRewardItemId(type) ?? "", candidates, { computerPartnerProfile: profile })?.targetPokemonIndex
+        : 0;
+      if (index === undefined) {
+        break;
+      }
+      const [pokemon] = candidates.splice(index, 1);
+      const quantity = getBagWithdrawCapacity(owner, pokemon, item);
+      if (quantity && withdrawBagItem(owner, pokemon, item, quantity)) {
+        equipped.push({ pokemon, itemName: type.name, quantity });
+      }
+    }
+  }
+  return equipped;
+}
+
 function shouldIgnoreReward(itemId: string, context: ComputerPartnerRewardContext): boolean {
   if (
     context.computerPartnerProfile?.recruitment
@@ -1667,6 +1706,12 @@ export function chooseComputerPartnerRewardOption(
       }
 
       const recoveryChoice = scoreComputerPartnerRecoveryOption(option, optionIndex, party);
+      const isMedicine = isBagMedicineType(option.type);
+      const quantity = context.bagMedicines?.find(stack => stack.typeId === itemId)?.quantity ?? 0;
+      const storeInBag = isMedicine && !!context.bagMedicines && !recoveryChoice && quantity < BAG_MEDICINE_STACK_LIMIT;
+      if (isMedicine && context.bagMedicines && !recoveryChoice && !storeInBag) {
+        return undefined;
+      }
       const listedPriority = REWARD_PRIORITY[itemId] ?? 999;
       const isEmergencyRecovery = !!recoveryChoice?.isEmergency;
       const effectiveTier = isEmergencyRecovery
@@ -1678,7 +1723,7 @@ export function chooseComputerPartnerRewardOption(
         return undefined;
       }
 
-      const rewardTarget = recoveryChoice ? undefined : getRewardTarget(option.type, itemId, party, context);
+      const rewardTarget: RewardTarget | undefined = storeInBag ? {} : recoveryChoice ? undefined : getRewardTarget(option.type, itemId, party, context);
       const target = recoveryChoice ?? rewardTarget;
       if (!target) {
         return undefined;
@@ -1687,7 +1732,10 @@ export function chooseComputerPartnerRewardOption(
       const tierScore = getTierRank(effectiveTier) * 10000;
       const priorityScore = (1000 - priority) * 10;
       const recoveryScore = recoveryChoice ? Math.min(recoveryChoice.score, 500) : 0;
-      const targetScore = rewardTarget?.targetScore ?? 0;
+      // Prefer the first strong reserve over ordinary balls/berries, but not over a higher reward tier.
+      const firstStrongReserve = storeInBag && ["HYPER_POTION", "MAX_POTION", "FULL_RESTORE", "REVIVE", "MAX_REVIVE"].includes(itemId)
+        && (context.pokeballCounts?.[PokeballType.POKEBALL] ?? 1) > 0;
+      const targetScore = storeInBag ? (quantity ? -30 : firstStrongReserve ? 125 : 0) : rewardTarget?.targetScore ?? 0;
 
       return {
         option,
@@ -1696,7 +1744,8 @@ export function chooseComputerPartnerRewardOption(
         score: tierScore + priorityScore + recoveryScore + targetScore,
         effectiveTier,
         priority,
-        reason: recoveryChoice
+        ...(storeInBag ? { storeInBag: true as const } : {}),
+        reason: storeInBag ? "save medicine for later" : recoveryChoice
           ? `recovery reward: ${recoveryChoice.reason}`
           : `priority ${priority} ${ModifierTier[effectiveTier]} reward`,
         ...(target.targetPokemonIndex !== undefined ? { targetPokemonIndex: target.targetPokemonIndex } : {}),
@@ -1706,4 +1755,39 @@ export function chooseComputerPartnerRewardOption(
     })
     .filter((choice): choice is ComputerPartnerRewardChoice => !!choice)
     .sort((a, b) => b.score - a.score)[0];
+}
+
+/** Stock a small field kit, not two of every shop tier. Free reward offers don't need to be bought. */
+export function chooseComputerPartnerStockPurchase(
+  shop: ModifierTypeOption[], bag: readonly BagMedicineData[], party: PlayerPokemon[], money: number,
+  rewards: readonly ModifierTypeOption[],
+): ModifierTypeOption | undefined {
+  const spare = money - getComputerPartnerShopReserve(shop);
+  if (spare <= 0 || !party.length) {
+    return;
+  }
+  const hp = Math.max(...party.map(p => p.getMaxHp()));
+  const quantityOfKind = (kind: ComputerPartnerRecoveryKind) => bag.reduce((sum, stack) =>
+    sum + (RECOVERY_ITEM_PROFILES[stack.typeId as ComputerPartnerRecoveryItemId]?.kind === kind ? stack.quantity : 0), 0);
+  const heals = quantityOfKind("heal");
+  const revives = quantityOfKind("revive");
+  const offeredKinds = new Set(rewards.filter(o => isBagMedicineType(o.type)
+    && (bag.find(stack => stack.typeId === o.type.id)?.quantity ?? 0) < BAG_MEDICINE_STACK_LIMIT)
+    .map(o => getRecoveryItemProfile(o.type)?.kind));
+  return shop.flatMap(option => {
+    const profile = getRecoveryItemProfile(option.type);
+    if (!profile || !isBagMedicineType(option.type) || option.cost > spare / 2
+      || offeredKinds.has(profile.kind)
+      || (bag.find(stack => stack.typeId === option.type.id)?.quantity ?? 0) >= BAG_MEDICINE_STACK_LIMIT) {
+      return [];
+    }
+    if (profile.kind === "heal" && heals < 2) {
+      const recovery = Math.min(hp, Math.max(profile.healPoints ?? 0, hp * (profile.healPercent ?? 0) / 100));
+      return [{ option, score: (heals ? 0 : 2) + recovery / hp }];
+    }
+    if (profile.kind === "revive" && !revives && party.length > 1) {
+      return [{ option, score: 1 + (profile.revivePercent ?? 0) / 100 }];
+    }
+    return [];
+  }).sort((a, b) => b.score - a.score || a.option.cost - b.option.cost)[0]?.option;
 }

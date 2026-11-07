@@ -97,7 +97,21 @@ export interface DejaVuGhostData {
   party: DejaVuGhostPokemonData[];
 }
 
+export interface BagMedicineData {
+  typeId: string;
+  quantity: number;
+}
+
+export interface BagTmData {
+  moveId: MoveId;
+  quantity: number;
+}
+
 export interface PlayerSessionSaveData {
+  ballDesign?: import("#data/ball-design").BallDesign | undefined;
+  bagTms?: BagTmData[];
+  bagMedicines?: BagMedicineData[];
+  bagItems?: ModifierData[];
   lastCrystalRecruitmentWave?: number;
   lastCloneBallAllowanceWave?: number;
   party: PokemonData[];
@@ -109,6 +123,10 @@ export interface PlayerSessionSaveData {
 }
 
 export interface SessionSaveData {
+  ballDesign?: import("#data/ball-design").BallDesign | undefined;
+  bagTms?: BagTmData[];
+  bagMedicines?: BagMedicineData[];
+  bagItems?: ModifierData[];
   seasonalEncounters?: import("#data/seasonal-encounters").SeasonalEncounterState;
   playerAppearances?: RunPlayerAppearances;
   seed: string;

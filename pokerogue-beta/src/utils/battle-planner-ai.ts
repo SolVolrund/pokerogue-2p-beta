@@ -859,6 +859,69 @@ function withEnemyPartySlotSimulation<T>(activePokemon: Pokemon, candidate: Poke
   );
 }
 
+/** Forecast a future turn in this lane. A benched revive does not take a switch-in hit this turn. */
+export function forecastMedicineTurn(actor: Pokemon, target: Pokemon, hp: number, planned?: TurnMove) {
+  const bench = target !== actor && !globalScene.getField(true).includes(target);
+  // The reserve has no field sprite. Check ranges against the occupied lane before projecting the reserve into it.
+  const reachable = bench ? new Map(getAiRelevantOpponents(actor).map(foe => [foe, new Set(
+    getPlannerVisibleMoves(target, foe).filter(m => m.category !== MoveCategory.STATUS && canMoveReachTarget(foe, actor, m.id))
+      .map(m => m.id),
+  )])) : undefined;
+  const evaluate = () => {
+    const oldHp = target.hp;
+    const oldStatus = target.status;
+    const oldPosition = target.fieldPosition;
+    try {
+      target.hp = hp;
+      if (oldHp === 0) {
+        target.status = null;
+      }
+      if (bench) {
+        target.fieldPosition = actor.fieldPosition;
+      }
+      const { threats, incomingDamage } = estimateIncomingDamageDetailed(target, reachable);
+      let action = 0;
+      const moves = planned ? [allMoves[planned.move]] : target.getMoveset()
+        .filter(slot => slot.isUsable(target, false, true)[0]).map(slot => slot.getMove());
+      for (const move of moves) {
+        if (!move) {
+          continue;
+        }
+        const damageBeforeAction = threats.reduce((sum, threat) =>
+          sum + (doesMoveActBeforeThreat(target, threat.attacker, move, threat.move) ? 0 : threat.damage), 0);
+        if (damageBeforeAction >= hp) {
+          continue;
+        }
+        const actualTargets = planned?.targets.map(index => globalScene.getField()[index]).filter(Boolean);
+        if (move.category === MoveCategory.STATUS) {
+          const subject = actualTargets?.[0] ?? getAiMoveTargetData(target, move.id).selectableTargets[0] ?? target;
+          action = Math.max(action, Math.min(1, Math.max(0, getBenefitScore(target, subject, move, target.isOpponent(subject))) / 60));
+          continue;
+        }
+        for (const foe of actualTargets ?? getAiRelevantOpponents(target)) {
+          if (!target.isOpponent(foe)) {
+            continue;
+          }
+          if (canMoveReachTarget(target, foe, move.id)) {
+            const ratio = estimateDamage(target, foe, move).damage / Math.max(1, getPlannerHp(foe, target));
+            action = Math.max(action, Math.min(1, ratio) * (ratio >= 1 ? 1.5 : 1) * getAccuracyFactor(target, foe, move));
+          }
+        }
+      }
+      return { action, incoming: incomingDamage + estimateEndOfTurnResidualDamage(target) };
+    } finally {
+      target.hp = oldHp;
+      target.status = oldStatus;
+      target.fieldPosition = oldPosition;
+    }
+  };
+  if (!bench) {
+    return evaluate();
+  }
+  const party = getPlannerSwitchParty(actor);
+  return party && withPlannerPartySlotSimulation(actor, target, party, evaluate);
+}
+
 function withPlannerPartySlotSimulation<T>(
   activePokemon: Pokemon,
   candidate: Pokemon,
@@ -3206,13 +3269,13 @@ function estimateIncomingDamage(user: Pokemon): number {
     .reduce((highestDamage, opponent) => Math.max(highestDamage, estimateBestDamage(opponent, user).damage), 0);
 }
 
-function estimateIncomingDamageDetailed(user: Pokemon): PlannerIncomingDamageEstimate {
+function estimateIncomingDamageDetailed(user: Pokemon, reachable?: Map<Pokemon, Set<MoveId>>): PlannerIncomingDamageEstimate {
   const threats = getAiRelevantOpponents(user)
     .map(
       opponent =>
         getPlannerVisibleMoves(user, opponent)
           .filter(move => !!move && move.category !== MoveCategory.STATUS)
-          .filter(move => !!move && canMoveReachTarget(opponent, user, move.id))
+          .filter(move => !!move && (reachable ? reachable.get(opponent)?.has(move.id) : canMoveReachTarget(opponent, user, move.id)))
           .map(move => ({
             attacker: opponent,
             move,

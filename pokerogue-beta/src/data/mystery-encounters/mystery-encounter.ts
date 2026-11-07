@@ -67,7 +67,7 @@ export interface IMysteryEncounter {
   skipToFightInput: boolean;
   preventGameStatsUpdates: boolean;
   countsForEncounterPacing: boolean;
-  twoPlayerSharedDecision: boolean;
+  twoPlayerSharedDecision: boolean | "unanimousHumanYes";
 
   onInit?: (() => boolean) | undefined;
   onVisualsStart?: (() => boolean) | undefined;
@@ -277,7 +277,7 @@ export class MysteryEncounter implements IMysteryEncounter {
    * Defaults to 1
    */
   expMultiplier: number;
-  twoPlayerSharedDecision: boolean;
+  twoPlayerSharedDecision: IMysteryEncounter["twoPlayerSharedDecision"];
   /**
    * Can add any asset load promises here during onInit() to make sure the scene awaits the loads properly
    */
@@ -599,7 +599,7 @@ export class MysteryEncounterBuilder implements Partial<IMysteryEncounter> {
   skipToFightInput = false;
   preventGameStatsUpdates = false;
   countsForEncounterPacing = true;
-  twoPlayerSharedDecision = false;
+  twoPlayerSharedDecision: IMysteryEncounter["twoPlayerSharedDecision"] = false;
   maxAllowedEncounters = 3;
   expMultiplier = 1;
 
@@ -844,9 +844,10 @@ export class MysteryEncounterBuilder implements Partial<IMysteryEncounter> {
   /**
    * If true in 2P mode, both players choose from the same option list.
    * Matching choices run normally; disagreements are resolved by the scene's rotating decision priority.
+   * For a Yes/No run-wide opt-in, unanimousHumanYes requires option 0 from every human; option 1 vetoes.
    */
   withTwoPlayerSharedDecision(
-    twoPlayerSharedDecision = true,
+    twoPlayerSharedDecision: IMysteryEncounter["twoPlayerSharedDecision"] = true,
   ): this & Required<Pick<IMysteryEncounter, "twoPlayerSharedDecision">> {
     return Object.assign(this, { twoPlayerSharedDecision });
   }

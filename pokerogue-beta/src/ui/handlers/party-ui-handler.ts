@@ -39,6 +39,7 @@ import { applyChallenges } from "#utils/challenge-utils";
 import { BooleanHolder, getLocalizedSpriteKey } from "#utils/common";
 import { isMysteryEncounterSwitchProtectedPokemon } from "#utils/mystery-encounter-switch-protection";
 import { isDestinyKnot } from "#utils/soul-bond";
+import { addBagTextureFrames } from "#ui/bag-textures";
 import { toCamelCase, toTitleCase } from "#utils/strings";
 import i18next from "i18next";
 import type BBCodeText from "phaser3-rex-plugins/plugins/bbcodetext";
@@ -49,6 +50,7 @@ const DISCARD_BUTTON_X = 60;
 const DISCARD_BUTTON_X_DOUBLES = 64;
 const DISCARD_BUTTON_Y = -73;
 const DISCARD_BUTTON_Y_DOUBLES = -58;
+const STORE_BAG_CURSOR = 8;
 
 const defaultMessage = i18next.t("partyUiHandler:choosePokemon");
 
@@ -117,6 +119,9 @@ export class PartyUiHandler extends MessageUiHandler {
   private partySlotsContainer: Phaser.GameObjects.Container;
   private partySlots: PartySlot[];
   private partyCancelButton: PartyCancelButton;
+  private partyStoreBagButton: Phaser.GameObjects.Container;
+  private partyStoreBagIcon: Phaser.GameObjects.Sprite;
+  private storeBagCallback: (() => void) | undefined;
   private partyDiscardModeButton: PartyDiscardModeButton;
   private partyMessageBox: Phaser.GameObjects.NineSlice;
   private moveInfoOverlay: MoveInfoOverlay;
@@ -383,6 +388,15 @@ export class PartyUiHandler extends MessageUiHandler {
 
     this.partyCancelButton = partyCancelButton;
 
+    addBagTextureFrames();
+    this.partyStoreBagButton = globalScene.add.container(236, -16).setVisible(false);
+    this.partyStoreBagIcon = globalScene.add.sprite(0, 0, "party_to_bag", "normal");
+    this.partyStoreBagButton.add([
+      this.partyStoreBagIcon,
+      addTextObject(-9, -7, i18next.t("partyUiHandler:bag"), TextStyle.PARTY_CANCEL_BUTTON),
+    ]);
+    partyContainer.add(this.partyStoreBagButton);
+
     this.optionsContainer = globalScene.add.container(globalScene.scaledCanvas.width - 1, -1);
     partyContainer.add(this.optionsContainer);
 
@@ -437,6 +451,8 @@ export class PartyUiHandler extends MessageUiHandler {
         : PartyUiHandler.FilterAllMoves;
     this.tmMoveId = args.length > 5 && args[5] ? args[5] : MoveId.NONE;
     this.showMovePp = args.length > 6 && args[6];
+    this.storeBagCallback = typeof args[7] === "function" ? args[7] : undefined;
+    this.blockInput = false;
 
     this.partyContainer.setVisible(true);
     this.getUi().bringToTop(this.partyContainer);
@@ -454,7 +470,7 @@ export class PartyUiHandler extends MessageUiHandler {
     // If we are currently transferring items, set the icon to its proper state and reveal the button.
     if (this.isItemManageMode()) {
       this.partyDiscardModeButton.toggleIcon(
-        this.partyUiMode as typeof PartyUiMode.MODIFIER_TRANSFER | typeof PartyUiMode.DISCARD,
+        this.partyUiMode as typeof PartyUiMode.MODIFIER_TRANSFER | typeof PartyUiMode.DISCARD | typeof PartyUiMode.BAG,
       );
     }
     this.showPartyText();
@@ -1237,12 +1253,36 @@ export class PartyUiHandler extends MessageUiHandler {
    * @returns Whether the current handler is responsible for managing items.
    */
   private isItemManageMode(): boolean {
-    return this.partyUiMode === PartyUiMode.MODIFIER_TRANSFER || this.partyUiMode === PartyUiMode.DISCARD;
+    return this.partyUiMode === PartyUiMode.MODIFIER_TRANSFER || this.partyUiMode === PartyUiMode.DISCARD || this.partyUiMode === PartyUiMode.BAG;
   }
 
   private processPartyActionInput(): boolean {
     const ui = this.getUi();
+    if (this.cursor === STORE_BAG_CURSOR) {
+      if (!this.storeBagCallback) {
+        return false;
+      }
+      const callback = this.storeBagCallback;
+      this.storeBagCallback = undefined;
+      this.blockInput = true;
+      ui.playSelect();
+      callback();
+      return true;
+    }
     if (this.cursor < 6) {
+      if (this.partyUiMode === PartyUiMode.BAG) {
+        const pokemon = this.getParty()[this.cursor];
+        if (!pokemon?.isPlayer()) {
+          return false;
+        }
+        ui.playSelect();
+        void ui.setOverlayMode(UiMode.BAG, this.getPlayerIndex(), pokemon, () => {
+          this.clearPartySlots();
+          this.populatePartySlots();
+          this.showPartyText();
+        });
+        return true;
+      }
       if (
         (this.partyUiMode === PartyUiMode.MODIFIER_TRANSFER && !this.transferMode)
         || this.partyUiMode === PartyUiMode.DISCARD
@@ -1262,11 +1302,14 @@ export class PartyUiHandler extends MessageUiHandler {
       ui.playSelect();
     }
 
-    // Toggle item transfer mode to discard items or vice versa
+    // Cycle item management modes only when no transfer is in progress.
     // Prevent changing mode, when currently transfering an item
     if (this.cursor === 7 && !this.transferMode) {
       switch (this.partyUiMode) {
         case PartyUiMode.DISCARD:
+          this.partyUiMode = PartyUiMode.BAG;
+          break;
+        case PartyUiMode.BAG:
           this.partyUiMode = PartyUiMode.MODIFIER_TRANSFER;
           break;
         case PartyUiMode.MODIFIER_TRANSFER:
@@ -1277,6 +1320,7 @@ export class PartyUiHandler extends MessageUiHandler {
           return false;
       }
       this.partyDiscardModeButton.toggleIcon(this.partyUiMode);
+      this.showPartyText();
       ui.playSelect();
       return true;
     }
@@ -1328,6 +1372,25 @@ export class PartyUiHandler extends MessageUiHandler {
     }
 
     let success = false;
+    if (this.storeBagCallback) {
+      let target: number | undefined;
+      if (this.cursor === STORE_BAG_CURSOR) {
+        target = button === Button.RIGHT ? 6
+          : button === Button.LEFT ? this.lastLeftPokemonCursor
+            : button === Button.UP ? slotCount - 1 : 0;
+      } else if (this.cursor === 6 && button === Button.LEFT) {
+        target = STORE_BAG_CURSOR;
+      } else if (this.cursor === slotCount - 1 && button === Button.DOWN) {
+        target = STORE_BAG_CURSOR;
+      }
+      if (target !== undefined) {
+        success = this.setCursor(target);
+        if (success) {
+          ui.playSelect();
+        }
+        return success;
+      }
+    }
     if (battlerCount === 3 && this.isItemManageMode() && (button === Button.UP || button === Button.DOWN)) {
       const slots = Array.from({ length: slotCount }, (_, i) => i);
       const order = [...slots, 7, 6];
@@ -1464,6 +1527,8 @@ export class PartyUiHandler extends MessageUiHandler {
         this.partyCancelButton.deselect();
       } else if (this.lastCursor === 7) {
         this.partyDiscardModeButton.deselect();
+      } else if (this.lastCursor === STORE_BAG_CURSOR) {
+        this.partyStoreBagIcon.setFrame("normal");
       }
       if (cursor < 6) {
         this.partySlots[cursor].select();
@@ -1471,6 +1536,8 @@ export class PartyUiHandler extends MessageUiHandler {
         this.partyCancelButton.select();
       } else if (cursor === 7) {
         this.partyDiscardModeButton.select();
+      } else if (cursor === STORE_BAG_CURSOR) {
+        this.partyStoreBagIcon.setFrame("selected");
       }
     }
     return changed;
@@ -1529,11 +1596,15 @@ export class PartyUiHandler extends MessageUiHandler {
       text = defaultMessage;
     }
 
-    if (text?.indexOf("\n") === -1) {
-      this.partyMessageBox.setSize(262, 30);
+    const showBag = !!this.storeBagCallback && !this.optionsMode;
+    this.partyStoreBagButton.setVisible(showBag);
+    const messageWidth = showBag ? 206 : 262;
+    this.message.setWordWrapWidth((messageWidth - 20) * 6);
+    if (this.message.runWordWrap(text).split("\n").length === 1) {
+      this.partyMessageBox.setSize(messageWidth, 30);
       this.message.setY(10);
     } else {
-      this.partyMessageBox.setSize(262, 42);
+      this.partyMessageBox.setSize(messageWidth, 42);
       this.message.setY(-5);
     }
 
@@ -1581,6 +1652,9 @@ export class PartyUiHandler extends MessageUiHandler {
         break;
       case PartyUiMode.DISCARD:
         this.showText(i18next.t("partyUiHandler:partyDiscard"));
+        break;
+      case PartyUiMode.BAG:
+        this.showText(i18next.t("partyUiHandler:partyBag"));
         break;
       default:
         this.showText("", 0);
@@ -2099,7 +2173,7 @@ export class PartyUiHandler extends MessageUiHandler {
       null,
       () => {
         this.clearPartySlots();
-        globalScene.removePartyMemberModifiers(slotIndex, this.getPlayerIndex());
+        globalScene.removePartyMemberModifiers(slotIndex, this.getPlayerIndex(), true);
         const releasedPokemon = this.getParty().splice(slotIndex, 1)[0];
         releasedPokemon.destroy();
         this.populatePartySlots();
@@ -2243,6 +2317,10 @@ export class PartyUiHandler extends MessageUiHandler {
 
   clear() {
     super.clear();
+    this.storeBagCallback = undefined;
+    this.blockInput = false;
+    this.partyStoreBagButton.setVisible(false);
+    this.partyStoreBagIcon.setFrame("normal");
     // hide the overlay
     this.moveInfoOverlay.clear();
     this.partyContainer.setVisible(false);
@@ -2654,6 +2732,7 @@ class PartyDiscardModeButton extends Phaser.GameObjects.Container {
   private selected: boolean;
   private transferIcon: Phaser.GameObjects.Sprite;
   private discardIcon: Phaser.GameObjects.Sprite;
+  private bagIcon: Phaser.GameObjects.Sprite;
   private textBox: Phaser.GameObjects.Text;
   private party: PartyUiHandler;
 
@@ -2666,11 +2745,14 @@ class PartyDiscardModeButton extends Phaser.GameObjects.Container {
   setup(party: PartyUiHandler) {
     this.transferIcon = globalScene.add.sprite(0, 0, "party_transfer");
     this.discardIcon = globalScene.add.sprite(0, 0, "party_discard");
+    addBagTextureFrames();
+    this.bagIcon = globalScene.add.sprite(0, 0, "party_bag", "normal");
     this.textBox = addTextObject(-8, -7, i18next.t("partyUiHandler:transfer"), TextStyle.PARTY);
     this.party = party;
 
     this.add(this.transferIcon);
     this.add(this.discardIcon);
+    this.add(this.bagIcon);
     this.add(this.textBox);
 
     this.clear();
@@ -2687,6 +2769,7 @@ class PartyDiscardModeButton extends Phaser.GameObjects.Container {
 
     this.transferIcon.setFrame("selected");
     this.discardIcon.setFrame("selected");
+    this.bagIcon.setFrame("selected");
   }
 
   deselect() {
@@ -2699,6 +2782,7 @@ class PartyDiscardModeButton extends Phaser.GameObjects.Container {
 
     this.transferIcon.setFrame("normal");
     this.discardIcon.setFrame("normal");
+    this.bagIcon.setFrame("normal");
   }
 
   /**
@@ -2707,8 +2791,9 @@ class PartyDiscardModeButton extends Phaser.GameObjects.Container {
    * @remarks
    * This will also reveal the button if it is currently hidden.
    */
-  public toggleIcon(partyMode: typeof PartyUiMode.MODIFIER_TRANSFER | typeof PartyUiMode.DISCARD): void {
+  public toggleIcon(partyMode: typeof PartyUiMode.MODIFIER_TRANSFER | typeof PartyUiMode.DISCARD | typeof PartyUiMode.BAG): void {
     this.setActive(true).setVisible(true);
+    this.bagIcon.setVisible(false);
     switch (partyMode) {
       case PartyUiMode.MODIFIER_TRANSFER:
         this.transferIcon.setVisible(true);
@@ -2723,6 +2808,12 @@ class PartyDiscardModeButton extends Phaser.GameObjects.Container {
         this.textBox.setVisible(true);
         this.textBox.setText(i18next.t("partyUiHandler:discard"));
         this.discardIcon.displayWidth = this.textBox.text.length * 9 + 3;
+        break;
+      case PartyUiMode.BAG:
+        this.transferIcon.setVisible(false);
+        this.discardIcon.setVisible(false);
+        this.bagIcon.setVisible(true);
+        this.textBox.setVisible(true).setText(i18next.t("partyUiHandler:bag"));
         break;
     }
     // The third active panel fills the old toggle location. Use the spare
@@ -2741,6 +2832,7 @@ class PartyDiscardModeButton extends Phaser.GameObjects.Container {
     this.setActive(false).setVisible(false);
     this.transferIcon.setVisible(false);
     this.discardIcon.setVisible(false);
+    this.bagIcon.setVisible(false);
     this.textBox.setVisible(false);
   }
 }

@@ -838,7 +838,7 @@ function summonPlayerPokemonAnimation(
   fieldPosition: FieldPosition = FieldPosition.CENTER,
 ): Promise<void> {
   return new Promise<void>(resolve => {
-    const pokeball = globalScene.addFieldSprite(36, 80, "pb", getPokeballAtlasKey(pokemon.pokeball));
+    const pokeball = globalScene.addFieldSprite(36, 80, "pb", getPokeballAtlasKey(pokemon.pokeball, pokemon.ballDesign));
     pokeball.setVisible(false);
     pokeball.setOrigin(0.5, 0.625);
     globalScene.field.add(pokeball);

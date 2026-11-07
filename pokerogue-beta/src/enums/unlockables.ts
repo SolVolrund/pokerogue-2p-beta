@@ -7,4 +7,5 @@ export enum Unlockables {
   OLD_SEA_MAP,
   UNOWN_BOX,
   GRAND_LAUREL,
+  BERSERK_GENE,
 }

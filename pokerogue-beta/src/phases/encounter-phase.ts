@@ -1,4 +1,5 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
+import { initializeTrainerMedicine } from "#utils/enemy-trainer-medicine";
 import type { PlayerIndex } from "#app/battle-scene";
 import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
@@ -600,6 +601,7 @@ export class EncounterPhase extends BattlePhase {
 
     if (battle.battleType === BattleType.TRAINER) {
       loadEnemyAssets.push(battle.trainer?.loadAssets().then(() => battle.trainer?.initSprite())!); // TODO: is this bang correct?
+      initializeTrainerMedicine();
     } else if (battle.isBattleMysteryEncounter()) {
       if (battle.mysteryEncounter?.introVisuals) {
         loadEnemyAssets.push(

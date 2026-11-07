@@ -8,6 +8,7 @@ export class TextDisplay {
 
 export class OptionTextDisplay {
   buttonLabel: string;
+  buttonIcon?: () => { texture: string; frame: string };
   buttonTooltip?: string;
   disabledButtonLabel?: string;
   disabledButtonTooltip?: string;

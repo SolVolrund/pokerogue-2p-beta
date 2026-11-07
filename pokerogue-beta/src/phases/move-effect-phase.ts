@@ -32,7 +32,6 @@ import {
   PokemonMultiHitModifier,
   ShinyBadgeModifier,
   StickyBarbModifier,
-  TypeGemModifier,
 } from "#modifiers/modifier";
 import { applyFilteredMoveAttrs, applyMoveAttrs } from "#moves/apply-attrs";
 import type { Move, MoveAttr } from "#moves/move";
@@ -42,7 +41,7 @@ import { DamageAchv } from "#system/achv";
 import type { nil } from "#types/common";
 import type { DamageResult } from "#types/damage-result";
 import type { TurnMove } from "#types/turn-move";
-import { recordConsumedHeldItem } from "#utils/battle-held-items";
+import { getTypeGemCooldownId } from "#data/cooldown-held-items";
 import { tryEatBerries } from "#utils/berry-use-utils";
 import { BooleanHolder, NumberHolder } from "#utils/common";
 import { finishYes } from "#utils/yes-move";
@@ -172,6 +171,7 @@ export class MoveEffectPhase extends PokemonPhase {
      * effects of the move itself, Parental Bond, and Multi-Lens to do so.
      */
     if (user.turnData.hitsLeft === -1) {
+      this.clearTypeGemBoost(user);
       const hitCount = new NumberHolder(1);
       // Assume single target for multi hit
       applyMoveAttrs("MultiHitAttr", user, this.getFirstTarget() ?? null, move, hitCount);
@@ -289,7 +289,6 @@ export class MoveEffectPhase extends PokemonPhase {
       applyAbAttrs("ExecutedMoveAbAttr", { pokemon: user });
     }
 
-    const damageBeforeTypeGem = user.turnData.totalDamageDealt;
     try {
       this.applyToTargets(user, targets);
     } catch (e) {
@@ -300,7 +299,6 @@ export class MoveEffectPhase extends PokemonPhase {
       this.end();
       return;
     }
-    this.consumeTypeGemIfNeeded(user, damageBeforeTypeGem);
     if (this.missedAccuracyCheck && !this.move.hasAttr("OneHitKOAttr")) {
       activatePolicy(user, "BLUNDER_POLICY");
     }
@@ -322,38 +320,26 @@ export class MoveEffectPhase extends PokemonPhase {
   }
 
   /**
-   * Type Gems boost only real move execution, then consume if that move actually dealt damage.
-   * The marker is set in damage calculation so AI simulations can use the boost without eating the item.
+   * Commit the shared cooldown only after damage. Preserve the boost until all strikes finish.
    */
-  private consumeTypeGemIfNeeded(user: Pokemon, damageBefore: number): void {
+  private activateTypeGemIfNeeded(user: Pokemon, damageBefore: number): void {
     const boostedMoveId = user.turnData.typeGemMoveId;
     const boostedMoveType = user.turnData.typeGemMoveType;
     if (boostedMoveId === undefined || boostedMoveType === undefined || boostedMoveId !== this.move.id) {
       return;
     }
 
-    if (user.turnData.totalDamageDealt <= damageBefore) {
-      if (this.lastHit) {
-        user.turnData.typeGemMoveId = undefined;
-        user.turnData.typeGemMoveType = undefined;
-      }
+    if (user.turnData.typeGemActivated || user.turnData.totalDamageDealt <= damageBefore) {
       return;
     }
+    user.turnData.typeGemActivated = activateCooldownHeldItem(user, getTypeGemCooldownId(boostedMoveType));
+  }
 
-    const typeGem = globalScene.findModifierForPokemon(
-      modifier =>
-        modifier instanceof TypeGemModifier && modifier.pokemonId === user.id && modifier.moveType === boostedMoveType,
-      user,
-    ) as TypeGemModifier | undefined;
-
-    if (typeGem && user.loseHeldItem(typeGem)) {
-      recordConsumedHeldItem(user, typeGem);
-      const playerIndex = user.isPlayer() ? globalScene.getPlayerIndexForPokemon(user) : undefined;
-      globalScene.updateModifiers(user.isPlayer(), undefined, playerIndex);
-    }
-
+  private clearTypeGemBoost(user: Pokemon): void {
     user.turnData.typeGemMoveId = undefined;
     user.turnData.typeGemMoveType = undefined;
+    user.turnData.typeGemActivated = false;
+    user.turnData.typeGemBoostMultiplier = undefined;
   }
 
   /**
@@ -701,7 +687,9 @@ export class MoveEffectPhase extends PokemonPhase {
       return [HitResult.STATUS, 0, false];
     }
 
+    const damageBeforeTypeGem = user.turnData.totalDamageDealt;
     const result = this.applyMoveDamage(user, target, effectiveness);
+    this.activateTypeGemIfNeeded(user, damageBeforeTypeGem);
 
     if (user.turnData.hitsLeft === 1 || target.isFainted()) {
       this.queueHitResultMessage(result[0]);
@@ -1006,6 +994,7 @@ export class MoveEffectPhase extends PokemonPhase {
      * All hits of the move have resolved by now.
      * Queue message for multi-strike moves before applying Shell Bell heals.
      */
+    this.clearTypeGemBoost(user);
     const hitsTotal = user.turnData.hitCount - Math.max(user.turnData.hitsLeft, 0);
     if (hitsTotal > 1 || user.turnData.hitsLeft > 0) {
       // Queue message if multiple hits occurred or were slated to occur (such as a Triple Axel miss)

@@ -13,6 +13,8 @@ import { DarkDealEncounter } from "#mystery-encounters/dark-deal-encounter";
 import { DejaVuEncounter } from "#mystery-encounters/deja-vu-encounter";
 import { DelibirdyEncounter } from "#mystery-encounters/delibirdy-encounter";
 import { DepartmentStoreSaleEncounter } from "#mystery-encounters/department-store-sale-encounter";
+import { CaptureCustomizerEncounter } from "#mystery-encounters/capture-customizer-encounter";
+import { SpookyInvitationEncounter } from "#mystery-encounters/spooky-invitation-encounter";
 import { FarawayIslandTreasureEncounter } from "#mystery-encounters/faraway-island-treasure-encounter";
 import { FieldTripEncounter } from "#mystery-encounters/field-trip-encounter";
 import { FieryFalloutEncounter } from "#mystery-encounters/fiery-fallout-encounter";
@@ -162,6 +164,7 @@ const nonExtremeBiomeEncounters: MysteryEncounterType[] = [
 ];
 
 const humanTransitableBiomeEncounters: MysteryEncounterType[] = [
+  MysteryEncounterType.CAPTURE_CUSTOMIZER,
   MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
   MysteryEncounterType.SHADY_VITAMIN_DEALER,
   MysteryEncounterType.THE_POKEMON_SALESMAN,
@@ -233,12 +236,12 @@ export const mysteryEncountersByBiome = new Map<BiomeId, MysteryEncounterType[]>
   [BiomeId.MEADOW, []],
   [BiomeId.POWER_PLANT, []],
   [BiomeId.VOLCANO, [MysteryEncounterType.FIERY_FALLOUT, MysteryEncounterType.DANCING_LESSONS]],
-  [BiomeId.GRAVEYARD, []],
+  [BiomeId.GRAVEYARD, [MysteryEncounterType.SPOOKY_INVITATION]],
   [BiomeId.DOJO, []],
   [BiomeId.FACTORY, []],
   [BiomeId.RUINS, [MysteryEncounterType.MINING]],
   [BiomeId.WASTELAND, [MysteryEncounterType.DANCING_LESSONS]],
-  [BiomeId.ABYSS, [MysteryEncounterType.DANCING_LESSONS]],
+  [BiomeId.ABYSS, [MysteryEncounterType.DANCING_LESSONS, MysteryEncounterType.SPOOKY_INVITATION]],
   [BiomeId.SPACE, [MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER]],
   [BiomeId.CONSTRUCTION_SITE, []],
   [BiomeId.JUNGLE, [MysteryEncounterType.SAFARI_ZONE]],
@@ -263,6 +266,8 @@ export function initMysteryEncounters() {
   allMysteryEncounters[MysteryEncounterType.TRAINING_SESSION] = TrainingSessionEncounter;
   allMysteryEncounters[MysteryEncounterType.SLUMBERING_SNORLAX] = SlumberingSnorlaxEncounter;
   allMysteryEncounters[MysteryEncounterType.DEPARTMENT_STORE_SALE] = DepartmentStoreSaleEncounter;
+  allMysteryEncounters[MysteryEncounterType.CAPTURE_CUSTOMIZER] = CaptureCustomizerEncounter;
+  allMysteryEncounters[MysteryEncounterType.SPOOKY_INVITATION] = SpookyInvitationEncounter;
   allMysteryEncounters[MysteryEncounterType.SHADY_VITAMIN_DEALER] = ShadyVitaminDealerEncounter;
   allMysteryEncounters[MysteryEncounterType.FIELD_TRIP] = FieldTripEncounter;
   allMysteryEncounters[MysteryEncounterType.SAFARI_ZONE] = SafariZoneEncounter;

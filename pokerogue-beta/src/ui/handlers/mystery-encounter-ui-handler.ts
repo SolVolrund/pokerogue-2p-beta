@@ -593,8 +593,12 @@ export class MysteryEncounterUiHandler extends UiHandler {
         optionText.setAlpha(0.5);
       }
 
-      // Sets up the mask that hides the option text to give an illusion of scrolling
-      const nonScrollWidth = 90;
+      const icon = privateChoiceRedacted ? undefined : optionDialogue.buttonIcon?.();
+      const iconSpace = icon ? 16 : 0;
+      const rowX = optionText.x;
+      optionText.x += iconSpace;
+      // Leave the icon stationary while a long label scrolls within the remaining space.
+      const nonScrollWidth = 90 - iconSpace;
       const optionTextMaskRect = globalScene.make.graphics({});
       optionTextMaskRect.setScale(6);
       optionTextMaskRect.fillStyle(0xffffff);
@@ -624,7 +628,14 @@ export class MysteryEncounterUiHandler extends UiHandler {
         });
       }
 
-      this.optionsContainer.add(optionText);
+      if (icon) {
+        const row = globalScene.add.container(0, 0).setAlpha(optionText.alpha);
+        const sprite = globalScene.add.image(rowX + 6, optionText.y + 7, icon.texture, icon.frame);
+        row.add([sprite, optionText.setAlpha(1)]);
+        this.optionsContainer.add(row);
+      } else {
+        this.optionsContainer.add(optionText);
+      }
     }
 
     // View Party Button
@@ -665,18 +676,29 @@ export class MysteryEncounterUiHandler extends UiHandler {
       wordWrap: { width: 830 },
     });
 
+    const queryTextObject = addBBCodeTextObject(0, 0, queryText ?? "", TextStyle.TOOLTIP_CONTENT, {
+      wordWrap: { width: 830 },
+      align: "center",
+    });
+    if (queryTextObject.displayHeight > 35) {
+      queryTextObject.setScale(queryTextObject.scaleX * 35 / queryTextObject.displayHeight);
+    }
+    const queryY = this.descriptionWindow.height - 4 - queryTextObject.displayHeight;
+    queryTextObject.setPosition(75 - queryTextObject.displayWidth / 2, queryY);
+    const descriptionHeight = queryY - 4 - descriptionTextObject.y;
+
     // Sets up the mask that hides the description text to give an illusion of scrolling
     const descriptionTextMaskRect = globalScene.make.graphics({});
     descriptionTextMaskRect.setScale(6);
     descriptionTextMaskRect.fillStyle(0xffffff);
     descriptionTextMaskRect.beginPath();
-    descriptionTextMaskRect.fillRect(6, 53, 206, 57);
+    descriptionTextMaskRect.fillRect(6, 53, 138, descriptionHeight);
 
     const abilityDescriptionTextMask = descriptionTextMaskRect.createGeometryMask();
 
     descriptionTextObject.setMask(abilityDescriptionTextMask);
 
-    const descriptionLineCount = Math.floor(descriptionTextObject.displayHeight / 9.2);
+    const overflow = descriptionTextObject.displayHeight - descriptionHeight;
 
     if (this.descriptionScrollTween) {
       this.descriptionScrollTween.remove();
@@ -684,24 +706,20 @@ export class MysteryEncounterUiHandler extends UiHandler {
     }
 
     // Animates the description text moving upwards
-    if (descriptionLineCount > 6) {
+    if (overflow > 0) {
       this.descriptionScrollTween = globalScene.tweens.add({
         targets: descriptionTextObject,
         delay: fixedInt(2000),
         loop: -1,
         hold: fixedInt(2000),
-        duration: fixedInt((descriptionLineCount - 6) * 2000),
-        y: `-=${10 * (descriptionLineCount - 6)}`,
+        duration: fixedInt(Math.max(1, overflow / 10) * 2000),
+        y: `-=${overflow}`,
       });
     }
 
     this.descriptionContainer.add(descriptionTextObject);
 
-    const queryTextObject = addBBCodeTextObject(0, 0, queryText ?? "", TextStyle.TOOLTIP_CONTENT, {
-      wordWrap: { width: 830 },
-    });
     this.descriptionContainer.add(queryTextObject);
-    queryTextObject.setPosition(75 - queryTextObject.displayWidth / 2, 90);
 
     // Slide in description container
     if (slideInDescription) {

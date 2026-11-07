@@ -157,6 +157,13 @@ export class TurnStartPhase extends FieldPhase {
       case Command.FIGHT:
         this.handleFightCommand(turnCommand, pokemon, initialPositions, finalPositions);
         break;
+      case Command.MEDICINE:
+        if (turnCommand.medicine && turnCommand.playerIndex !== undefined) {
+          globalScene.phaseManager.unshiftNew("UseBagMedicinePhase", turnCommand.playerIndex, turnCommand.medicine);
+        } else if (turnCommand.medicine && pokemon.isEnemy()) {
+          globalScene.phaseManager.unshiftNew("EnemyMedicinePhase", pokemon.id, turnCommand.medicine);
+        }
+        break;
       case Command.BALL:
         if (turnCommand.cursor === PokeballType.CLONE_BALL) {
           const targetId = turnCommand.cloneTargetId ?? globalScene.getField()[turnCommand.targets![0]]?.id;

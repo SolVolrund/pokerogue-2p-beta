@@ -1,4 +1,8 @@
 import type { TurnCommand } from "#app/battle";
+import { PokemonPpRestoreModifierType } from "#modifiers/modifier-type";
+import { getAvailableBattleMedicineCount } from "#utils/battle-medicine";
+import { choosePartnerMedicine } from "#utils/battle-medicine-ai";
+import { canUseBagMedicine, getBagMedicineType } from "#utils/item-bag";
 import type { PlayerIndex } from "#app/battle-scene";
 import { MAX_TERAS_PER_ARENA } from "#app/constants";
 import { globalScene } from "#app/global-scene";
@@ -948,11 +952,13 @@ export class CommandPhase extends FieldPhase {
     playerPokemon.aiType = globalScene.plannerAiEnabled ? AiType.PLANNER : AiType.SMART;
     globalScene.aiCommandInProgress = true;
     try {
-      const nextMove = this.upgradeComputerPartnerZMove(
-        playerIndex,
-        playerPokemon,
-        this.protectReservedCaptureTargets(playerIndex, playerPokemon, playerPokemon.getNextMove()),
-      );
+      const planned = this.protectReservedCaptureTargets(playerIndex, playerPokemon, playerPokemon.getNextMove());
+      const medicine = !globalScene.currentBattle.mysteryEncounter?.skipToFightInput
+        && choosePartnerMedicine(playerPokemon, planned, playerIndex);
+      if (medicine && this.handleMedicineCommand(medicine.typeId, medicine.targetId)) {
+        return true;
+      }
+      const nextMove = this.upgradeComputerPartnerZMove(playerIndex, playerPokemon, planned);
       this.queueComputerPartnerFightCommand(
         nextMove,
         this.shouldComputerPartnerTera(playerIndex, playerPokemon, nextMove),
@@ -1804,6 +1810,26 @@ export class CommandPhase extends FieldPhase {
     return success;
   }
 
+  public handleMedicineCommand(typeId: string, targetId: number, moveIndex?: number): boolean {
+    const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
+    const item = globalScene.getPlayerBagMedicines(playerIndex).find(entry => entry.typeId === typeId);
+    const target = globalScene.getPlayerParty(playerIndex).find(pokemon => pokemon.id === targetId);
+    if (!item || !target || !canUseBagMedicine(playerIndex, target, item, moveIndex)
+      || (getBagMedicineType(item) instanceof PokemonPpRestoreModifierType && moveIndex === undefined)
+      || getAvailableBattleMedicineCount(playerIndex, typeId, this.getBattlerIndex()) < 1) {
+      globalScene.ui.playError();
+      return false;
+    }
+    this.setPreTurnCommand(null);
+    this.setTurnCommand({
+      command: Command.MEDICINE,
+      playerIndex,
+      medicine: { typeId, targetId, ...(moveIndex === undefined ? {} : { moveIndex }) },
+    });
+    this.end();
+    return true;
+  }
+
   public passTurn(): boolean {
     this.setTurnCommand({
       command: Command.FIGHT,
@@ -1817,6 +1843,10 @@ export class CommandPhase extends FieldPhase {
   cancel() {
     if (this.fieldIndex) {
       for (let fieldIndex = 0; fieldIndex <= this.fieldIndex; fieldIndex++) {
+        const battlerIndex = globalScene.getPlayerBattlerIndex(fieldIndex);
+        if (globalScene.currentBattle.turnCommands[battlerIndex]?.command === Command.MEDICINE) {
+          globalScene.currentBattle.turnCommands[battlerIndex] = null;
+        }
         globalScene.phaseManager.unshiftNew("CommandPhase", fieldIndex);
       }
       this.end();

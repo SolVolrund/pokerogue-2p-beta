@@ -1,4 +1,5 @@
 import { globalScene } from "#app/global-scene";
+import { HAUNTING_SPIRIT_KEY, loadHauntingSpirit, registerHauntingSpiritAnimation } from "#field/haunting-spirit";
 import type { SpeciesId } from "#enums/species-id";
 import { getSpriteKeysFromSpecies } from "#mystery-encounters/encounter-pokemon-utils";
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
@@ -231,7 +232,9 @@ export class MysteryEncounterIntroVisuals extends Phaser.GameObjects.Container {
 
       const shinyPromises: Promise<void>[] = [];
       this.spriteConfigs.forEach(config => {
-        if (config.isPokemon) {
+        if (config.spriteKey === HAUNTING_SPIRIT_KEY) {
+          loadHauntingSpirit();
+        } else if (config.isPokemon) {
           globalScene.loadPokemonAtlas(config.spriteKey, config.fileRoot);
           if (config.isShiny && config.variant != null) {
             shinyPromises.push(loadPokemonVariantAssets(config.spriteKey, config.fileRoot, config.variant));
@@ -245,6 +248,10 @@ export class MysteryEncounterIntroVisuals extends Phaser.GameObjects.Container {
 
       globalScene.load.once(Phaser.Loader.Events.COMPLETE, () => {
         this.spriteConfigs.every(config => {
+          if (config.spriteKey === HAUNTING_SPIRIT_KEY) {
+            registerHauntingSpiritAnimation();
+            return true;
+          }
           if (config.isItem) {
             return true;
           }

@@ -78,6 +78,8 @@ export const SPECIAL_BATTLE_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] 
 ];
 
 export const NON_BATTLE_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.SPOOKY_INVITATION,
+  MysteryEncounterType.CAPTURE_CUSTOMIZER,
   MysteryEncounterType.DEPARTMENT_STORE_SALE,
   MysteryEncounterType.SHADY_VITAMIN_DEALER,
   MysteryEncounterType.FIELD_TRIP,
@@ -123,6 +125,7 @@ export const VS_DISABLED_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
 ];
 
 export const VS_OWNER_SCOPED_NON_BATTLE_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.CAPTURE_CUSTOMIZER,
   MysteryEncounterType.DEPARTMENT_STORE_SALE,
   MysteryEncounterType.SHADY_VITAMIN_DEALER,
   MysteryEncounterType.LOST_AT_SEA,
@@ -160,6 +163,7 @@ export const VS_SPLIT_PVE_BATTLE_MYSTERY_ENCOUNTERS: readonly MysteryEncounterTy
 ];
 
 export const VS_COMPETITIVE_SHARED_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.SPOOKY_INVITATION,
   MysteryEncounterType.MYSTERIOUS_CHEST,
   MysteryEncounterType.ABSOLUTE_AVARICE,
   MysteryEncounterType.FUN_AND_GAMES,
@@ -209,6 +213,8 @@ export function isMysteryEncounterAllowedInVsMode(encounterType: MysteryEncounte
 }
 
 export const TWO_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.CAPTURE_CUSTOMIZER,
+  MysteryEncounterType.SPOOKY_INVITATION,
   MysteryEncounterType.MYSTERIOUS_CHEST,
   MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
   MysteryEncounterType.DARK_DEAL,
@@ -254,6 +260,8 @@ export const TWO_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryE
 ];
 
 export const THREE_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.CAPTURE_CUSTOMIZER,
+  MysteryEncounterType.SPOOKY_INVITATION,
   MysteryEncounterType.UNCOMMON_BREED,
   MysteryEncounterType.MYSTERIOUS_CHEST,
   MysteryEncounterType.MYSTERIOUS_CHALLENGERS,

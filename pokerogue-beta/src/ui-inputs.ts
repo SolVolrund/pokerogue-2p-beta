@@ -292,6 +292,10 @@ export class UiInputs {
     return handler instanceof ContestInputUiHandler && handler.getMoveSelection() ? handler : undefined;
   }
 
+  public submitUiButton(button: Button): boolean {
+    return globalScene.canAcceptLocalInput() && this.processLocalButtonInput(button, true);
+  }
+
   private processLocalButtonInput(button: Button, pressed: boolean): boolean {
     const contestInput = pressed ? this.getContestMoveInput(button) : undefined;
     if (contestInput && (globalScene.ui.isOverlayActive() || !contestInput.isInputReady())) {
@@ -942,6 +946,12 @@ export class UiInputs {
   }
 
   buttonStats(pressed = true): void {
+    if (globalScene.ui?.getMode() === UiMode.BAG) {
+      if (pressed) {
+        globalScene.ui.processInput(Button.STATS);
+      }
+      return;
+    }
     if (pressed && globalScene.ui?.getMode() === UiMode.OPTION_SELECT
       && globalScene.ui.processInput(Button.STATS)) {
       return;

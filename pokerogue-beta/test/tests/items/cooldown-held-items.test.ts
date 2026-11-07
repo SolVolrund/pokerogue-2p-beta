@@ -1,5 +1,5 @@
 import type { PlayerIndex } from "#app/battle-scene";
-import { COOLDOWN_HELD_ITEM_IDS, type CooldownHeldItemId } from "#data/cooldown-held-items";
+import { COOLDOWN_HELD_ITEM_IDS, type DirectCooldownHeldItemId } from "#data/cooldown-held-items";
 import { allMoves, modifierTypes } from "#data/data-lists";
 import { AbilityId } from "#enums/ability-id";
 import { ArenaTagType } from "#enums/arena-tag-type";
@@ -29,7 +29,7 @@ import { getPokemonSpecies } from "#utils/pokemon-utils";
 import Phaser from "phaser";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-function makeItem(id: CooldownHeldItemId, pokemon: Pokemon): PokemonHeldItemModifier {
+function makeItem(id: DirectCooldownHeldItemId, pokemon: Pokemon): PokemonHeldItemModifier {
   const factory = modifierTypes[id];
   return factory().withIdFromFunc(factory).newModifier(pokemon) as PokemonHeldItemModifier;
 }
@@ -58,7 +58,7 @@ describe("Cooldown held items - shared ownership and persistence", () => {
     game.scene.configureTwoPlayerMode(false);
   });
   const holder = (owner: PlayerIndex, slot = 0) => game.scene.getPlayerParty(owner)[slot];
-  function add(id: CooldownHeldItemId, owner: PlayerIndex, slot = 0) {
+  function add(id: DirectCooldownHeldItemId, owner: PlayerIndex, slot = 0) {
     const item = makeItem(id, holder(owner, slot));
     expect(game.scene.addModifier(item, true, false, false, true, undefined, owner)).toBe(true);
     return item;
@@ -132,7 +132,7 @@ describe("Cooldown held items - shared ownership and persistence", () => {
     const save = JSON.stringify(game.scene.gameData.getSessionSaveData());
     await game.scene.gameData.loadSessionSnapshot(save);
     for (const owner of [0, 1, 2] as const) {
-      expect(holder(owner).getHeldItems()).toHaveLength(5);
+      expect(holder(owner).getHeldItems()).toHaveLength(COOLDOWN_HELD_ITEM_IDS.length);
       for (const [index, id] of COOLDOWN_HELD_ITEM_IDS.entries()) {
         expect(game.scene.arena.getPlayerHeldItemReadyWave(id, owner)).toBe(43 + index + owner);
         expect(game.scene.canReceiveCooldownHeldItem(id, owner)).toBe(false);

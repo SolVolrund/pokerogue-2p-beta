@@ -24,6 +24,8 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
   private messageMode: UiMode;
   private learnMoveType: LearnMoveType;
   private cost: number;
+  private learned = false;
+  private completed = false;
 
   constructor(
     partyMemberIndex: number,
@@ -31,6 +33,7 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
     learnMoveType: LearnMoveType = LearnMoveType.LEARN_MOVE,
     cost = -1,
     playerIndex: PlayerIndex = globalScene.activePlayerIndex,
+    private readonly onComplete?: (learned: boolean) => void,
   ) {
     super(partyMemberIndex, playerIndex);
     this.moveId = moveId;
@@ -259,12 +262,14 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
    */
   async learnMove(index: number, move: Move, pokemon: Pokemon, textMessage?: string) {
     this.setLearnMoveInputOwner();
-    if (this.learnMoveType === LearnMoveType.TM) {
+    if (this.learnMoveType === LearnMoveType.TM || this.learnMoveType === LearnMoveType.BAG_TM) {
       if (!pokemon.usedTMs) {
         pokemon.usedTMs = [];
       }
       pokemon.usedTMs.push(this.moveId);
-      globalScene.phaseManager.tryRemovePhase("SelectModifierPhase");
+      if (this.learnMoveType === LearnMoveType.TM) {
+        globalScene.phaseManager.tryRemovePhase("SelectModifierPhase");
+      }
     } else if (this.learnMoveType === LearnMoveType.MEMORY) {
       if (this.cost === -1) {
         globalScene.phaseManager.tryRemovePhase("SelectModifierPhase");
@@ -278,6 +283,7 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
       }
     }
     pokemon.setMove(index, this.moveId);
+    this.learned = true;
     initMoveAnim(this.moveId).then(() => {
       loadMoveAnimAssets([this.moveId], true);
     });
@@ -300,6 +306,15 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
       this.messageMode === UiMode.EVOLUTION_SCENE ? 1000 : undefined,
       true,
     );
+  }
+
+  end(): void {
+    if (this.completed) {
+      return;
+    }
+    this.completed = true;
+    super.end();
+    this.onComplete?.(this.learned);
   }
 
   private setLearnMoveInputOwner(): void {

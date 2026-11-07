@@ -191,10 +191,10 @@ input:-internal-autofill-selected {
   display: none;
 }
 
-/* Show #apadStats only in battle and shop */
+/* Show #apadStats in battle, shop and the bag's column selector */
 #touchControls:not([data-ui-mode="COMMAND"]):not([data-ui-mode="FIGHT"]):not(
     [data-ui-mode="BALL"]
-  ):not([data-ui-mode="TARGET_SELECT"]):not([data-ui-mode="MODIFIER_SELECT"])
+  ):not([data-ui-mode="TARGET_SELECT"]):not([data-ui-mode="MODIFIER_SELECT"]):not([data-ui-mode="BAG"])
   #apadStats {
   display: none;
 }

@@ -111,10 +111,22 @@ export function canReceiveThread(
   if (getOwnedThreads(pokemon).some(thread => !transferring || thread.item !== transferring)) {
     return false;
   }
+  return canStoreThread(owner, color, transferring);
+}
+
+/** Bag acquisition reserves a pair slot without requiring an available holder. */
+export function canStoreThread(owner: PlayerIndex, color: ThreadColor, transferring?: PokemonHeldItemModifier): boolean {
+  if (!isThreadColor(color)) {
+    return false;
+  }
   const count = getThreadParty(owner)
     .flatMap(getOwnedThreads)
     .filter(thread => thread.color === color && (!transferring || thread.item !== transferring)).length;
-  return count < 2;
+  const owners = globalScene.twoPlayerMode && !globalScene.twoPlayerVsMode ? globalScene.getActivePlayerIndexes() : [owner];
+  const storedCount = owners.flatMap(index => globalScene.getPlayerBag(index)).filter(isDestinyKnot)
+    .filter(item => item.color === color)
+    .reduce((total, item) => total + item.stackCount - (item === transferring ? 1 : 0), 0);
+  return count + storedCount < 2;
 }
 
 export function getAvailableThreadColors(party: readonly Pokemon[]): ThreadColor[] {

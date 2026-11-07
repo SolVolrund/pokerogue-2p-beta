@@ -3,6 +3,7 @@ import { TrainerVariant } from "#enums/trainer-variant";
 import { Trainer } from "#field/trainer";
 
 export class TrainerData {
+  public medicineBags: Trainer["medicineBags"];
   public haunted: boolean;
   public trainerType: TrainerType;
   public variant: TrainerVariant;
@@ -17,6 +18,7 @@ export class TrainerData {
 
   constructor(source: Trainer | any) {
     this.haunted = !!source.haunted;
+    this.medicineBags = structuredClone(source.medicineBags ?? {});
     const sourceTrainer = source instanceof Trainer ? (source as Trainer) : null;
     this.trainerType = sourceTrainer ? sourceTrainer.config.trainerType : source.trainerType;
     this.variant = Object.hasOwn(source, "variant")
@@ -53,6 +55,7 @@ export class TrainerData {
       this.partnerNameKey2,
     );
     trainer.haunted = this.haunted;
+    trainer.medicineBags = structuredClone(this.medicineBags);
     return trainer;
   }
 }
