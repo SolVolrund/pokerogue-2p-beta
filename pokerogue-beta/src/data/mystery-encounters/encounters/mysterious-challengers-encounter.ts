@@ -309,6 +309,7 @@ export const MysteriousChallengersEncounter: MysteryEncounter = MysteryEncounter
   MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
 )
   .withEncounterTier(MysteryEncounterTier.GREAT)
+  .withPrivateOptionVotes(getMysteriousChallengerData)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withIntroSpriteConfigs([]) // These are set in onInit()
   .withIntroDialogue([

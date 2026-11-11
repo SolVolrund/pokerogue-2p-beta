@@ -323,6 +323,7 @@ export const ShinyBadgeEncounter: MysteryEncounter = MysteryEncounterBuilder.wit
   MysteryEncounterType.SHINY_BADGE,
 )
   .withEncounterTier(MysteryEncounterTier.ULTRA)
+  .withPrivateOptionVotes(getShinyBadgeData)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withSceneRequirement(new ShinyBadgeSpawnRequirement())
   .withMaxAllowedEncounters(1)

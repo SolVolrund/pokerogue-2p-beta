@@ -119,6 +119,8 @@ import { TrainerVictoryPhase } from "#phases/trainer-victory-phase";
 import { TurnEndPhase } from "#phases/turn-end-phase";
 import { SoulBondPhase } from "#phases/soul-bond-phase";
 import { TurnInitPhase } from "#phases/turn-init-phase";
+import { PrivateFightPhase, PrivatePauseMenuPhase } from "#phases/private-fight-phase";
+import { PrivateRegistrationPhase } from "#phases/private-registration-phase";
 import { TurnStartPhase } from "#phases/turn-start-phase";
 import { UnavailablePhase } from "#phases/unavailable-phase";
 import { UnlockPhase } from "#phases/unlock-phase";
@@ -270,6 +272,9 @@ const PHASES = Object.freeze({
   TurnEndPhase,
   SoulBondPhase,
   TurnInitPhase,
+  PrivateFightPhase,
+  PrivatePauseMenuPhase,
+  PrivateRegistrationPhase,
   TurnStartPhase,
   UnavailablePhase,
   UnlockPhase,

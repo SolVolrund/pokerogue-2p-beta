@@ -440,6 +440,7 @@ export const TheStrongStuffEncounter: MysteryEncounter = MysteryEncounterBuilder
   MysteryEncounterType.THE_STRONG_STUFF,
 )
   .withEncounterTier(MysteryEncounterTier.COMMON)
+  .withPrivateOptionVotes(getStrongStuffData)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withSceneRequirement(new StrongStuffSpawnRequirement()) // Both 2P players must have at least 3 Pokemon
   .withMaxAllowedEncounters(1)

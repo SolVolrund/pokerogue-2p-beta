@@ -122,6 +122,7 @@ export const ChefsOnVacationEncounter: MysteryEncounter = MysteryEncounterBuilde
   MysteryEncounterType.CHEFS_ON_VACATION,
 )
   .withEncounterTier(MysteryEncounterTier.GREAT)
+  .withPrivateOptionVotes(getChefsOnVacationData)
   .withSceneRequirement(new MultiplayerOnlySceneRequirement())
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withMaxAllowedEncounters(1)

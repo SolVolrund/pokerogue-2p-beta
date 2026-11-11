@@ -115,3 +115,9 @@ export const CaptureCustomizerEncounter = MysteryEncounterBuilder.withEncounterT
   .withOption(option(2))
   .withOption(option(3))
   .build();
+
+CaptureCustomizerEncounter.acceptPrivateChoices = choices => {
+  for (const player of getMysteryEncounterPlayerIndexes()) {
+    visit().choices[player] = globalScene.canPlayerReceivePokeballRewards(player) ? choices[player] : 3;
+  }
+};

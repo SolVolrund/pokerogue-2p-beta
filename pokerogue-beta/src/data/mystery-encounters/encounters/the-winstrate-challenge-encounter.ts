@@ -463,6 +463,7 @@ export const TheWinstrateChallengeEncounter: MysteryEncounter = MysteryEncounter
   MysteryEncounterType.THE_WINSTRATE_CHALLENGE,
 )
   .withEncounterTier(MysteryEncounterTier.ROGUE)
+  .withPrivateOptionVotes(getWinstrateData)
   .withSceneWaveRangeRequirement(100, CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES[1])
   .withSceneRequirement(new WinstrateSpawnRequirement())
   .withMaxAllowedEncounters(1)

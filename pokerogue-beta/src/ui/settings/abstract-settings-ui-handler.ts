@@ -260,6 +260,8 @@ export class AbstractSettingsUiHandler extends MessageUiHandler {
    * @returns `true` if the action associated with the button was successfully processed, `false` otherwise.
    */
   private processLeftRightInput(cursor: number, dir: -1 | 1): boolean {
+    if (globalScene.phaseManager.getCurrentPhase()?.phaseName === "PrivatePauseMenuPhase"
+      && this.settings[cursor]?.requireReload) return false;
     let boundaryAction = Phaser.Math.Wrap;
     let upperBound = this.optionValueLabels[cursor].length;
     if (this.settings[cursor]?.clamp) {

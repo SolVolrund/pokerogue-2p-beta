@@ -734,6 +734,7 @@ export const ClowningAroundEncounter: MysteryEncounter = MysteryEncounterBuilder
   MysteryEncounterType.CLOWNING_AROUND,
 )
   .withEncounterTier(MysteryEncounterTier.ULTRA)
+  .withPrivateOptionVotes(getClowningAroundData)
   .withDisallowedChallenges(Challenges.SINGLE_TYPE)
   .withSceneWaveRangeRequirement(80, CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES[1])
   .withAnimations(EncounterAnim.SMOKESCREEN)

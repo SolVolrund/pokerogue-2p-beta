@@ -10,6 +10,7 @@ import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon } from "#field/pokemon";
 import { PokemonPpRestoreModifierType } from "#modifiers/modifier-type";
 import type { CommandPhase } from "#phases/command-phase";
+import type { PrivateFightPhase } from "#phases/private-fight-phase";
 import type { BagMedicineData } from "#types/save-data";
 import { getModifierIconTexture } from "#ui/modifier-icon";
 import { PartyOption, PartyUiHandler } from "#ui/party-ui-handler";
@@ -48,6 +49,7 @@ export class BallUiHandler extends UiHandler {
   private medicines: BagMedicineData[] = [];
   private readonly medicineImages: Phaser.GameObjects.Image[] = [];
   private scrollOffset = 0;
+  private restoreSharedCursor: (() => void) | undefined;
 
   private cursorObj: Phaser.GameObjects.Image | null;
   private pokeballWiggleTween: Phaser.Tweens.TweenChain | null = null;
@@ -58,8 +60,8 @@ export class BallUiHandler extends UiHandler {
     super(UiMode.BALL);
   }
 
-  private getCommandPhase(): CommandPhase {
-    return globalScene.phaseManager.getCurrentPhase() as CommandPhase;
+  private getCommandPhase(): CommandPhase | PrivateFightPhase {
+    return globalScene.phaseManager.getCurrentPhase() as CommandPhase | PrivateFightPhase;
   }
 
   private getPokeballCounts() {
@@ -112,6 +114,18 @@ export class BallUiHandler extends UiHandler {
   show(args: any[]): boolean {
     super.show(args);
 
+    const phase = this.getCommandPhase();
+    if (phase.is("PrivateFightPhase") && !this.restoreSharedCursor) {
+      const { ballCursor, medicineCursor, scrollOffset, pocket } = this;
+      this.restoreSharedCursor = () => {
+        phase.bagCursors.ball = this.ballCursor;
+        phase.bagCursors.medicine = this.medicineCursor;
+        Object.assign(this, { ballCursor, medicineCursor, scrollOffset, pocket });
+      };
+      this.ballCursor = phase.bagCursors.ball;
+      this.medicineCursor = phase.bagCursors.medicine;
+      this.scrollOffset = 0;
+    }
     this.pocket = args[0] === true ? "medicine" : "ball";
     this.cursor = this.pocket === "ball" ? this.ballCursor : this.medicineCursor;
     this.updateCounts();
@@ -153,6 +167,7 @@ export class BallUiHandler extends UiHandler {
         }
         const pokeballType = pokeballTypes[this.cursor];
         if (pokeballCounts[pokeballType]) {
+          if (commandPhase.is("PrivateFightPhase")) return commandPhase.chooseBall(pokeballType);
           if (commandPhase.handleCommand(Command.BALL, pokeballType)) {
             globalScene.ui.setMode(UiMode.COMMAND, commandPhase.getFieldIndex());
             globalScene.ui.setMode(UiMode.MESSAGE);
@@ -399,6 +414,8 @@ export class BallUiHandler extends UiHandler {
 
   clear() {
     super.clear();
+    this.restoreSharedCursor?.();
+    this.restoreSharedCursor = undefined;
     this.stopPokeballWiggle();
     this.pokeballSelectContainer.setVisible(false);
     this.eraseCursor();

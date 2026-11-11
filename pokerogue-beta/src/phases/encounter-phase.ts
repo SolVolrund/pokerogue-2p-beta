@@ -3,6 +3,7 @@ import { initializeTrainerMedicine } from "#utils/enemy-trainer-medicine";
 import type { PlayerIndex } from "#app/battle-scene";
 import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
+import { queueMultiplayerOpeningSwitches } from "#phases/check-switch-phase";
 import { globalScene } from "#app/global-scene";
 import { applyTowerPokemonIdentity, resolveTowerSpecies, rollTowerWildEntry } from "#utils/pokemon-tower-utils";
 import { WeatherType } from "#enums/weather-type";
@@ -1362,11 +1363,7 @@ export class EncounterPhase extends BattlePhase {
           globalScene.currentBattle.battleType !== BattleType.TRAINER
           && (globalScene.currentBattle.waveIndex > 1 || !globalScene.gameMode.isDaily)
         ) {
-          availablePartyMembersByField.forEach((availablePartyMembers, fieldIndex) => {
-            if (availablePartyMembers.length > 1) {
-              globalScene.phaseManager.pushNew("CheckSwitchPhase", fieldIndex, true);
-            }
-          });
+          queueMultiplayerOpeningSwitches();
         }
       } else {
         const availablePartyMembers = globalScene.getPokemonAllowedInBattle();

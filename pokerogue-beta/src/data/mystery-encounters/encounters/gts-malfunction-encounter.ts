@@ -560,6 +560,7 @@ export const GtsMalfunctionEncounter: MysteryEncounter = MysteryEncounterBuilder
   MysteryEncounterType.GTS_MALFUNCTION,
 )
   .withEncounterTier(MysteryEncounterTier.ROGUE)
+  .withPrivateOptionVotes(getGtsMalfunctionData)
   .withSceneWaveRangeRequirement(10, 180)
   .withSceneRequirement(new GtsMalfunctionSpawnRequirement())
   .withMaxAllowedEncounters(1)

@@ -182,7 +182,8 @@ export class Egg {
 
       this._sourceType = eggOptions?.sourceType ?? undefined;
       this._hatchWaves = eggOptions?.hatchWaves ?? this.getEggTierDefaultHatchWaves();
-      this._timestamp = eggOptions?.timestamp ?? Date.now();
+      const phase = globalScene.phaseManager?.getCurrentPhase();
+      this._timestamp = eggOptions?.timestamp ?? (phase?.is?.("PrivatePauseMenuPhase") ? phase.openedAt : Date.now());
 
       // First roll shiny and variant so we can filter if species with an variant exist
       // Restoring an older egg must not advance the owner's purchase pity.

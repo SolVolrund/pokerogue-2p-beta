@@ -14,7 +14,7 @@ import {
 import { ShopCursorTarget } from "#enums/shop-cursor-target";
 import { UiMode } from "#enums/ui-mode";
 import { CandyUpgradeNotificationChangedEvent } from "#events/battle-scene";
-import { updateWindowType } from "#ui/ui-theme";
+import { applyWindowAppearance } from "#ui/ui-theme";
 import i18next from "i18next";
 import { languageOptions } from "./settings-language";
 import { LEGACY_PLAYER_APPEARANCE_SETTINGS } from "#utils/player-card";
@@ -217,6 +217,7 @@ export const SettingKeys = {
   Battle_Style: "BATTLE_STYLE",
   Ace_Mechanics: "ACE_MECHANICS",
   Planner_AI_Enable: "PLANNER_AI_ENABLE",
+  Turn_Mode: "TURN_MODE",
   Two_Player_Input_Lockout: "TWO_PLAYER_INPUT_LOCKOUT",
   Enable_Retries: "ENABLE_RETRIES",
   Hide_IVs: "HIDE_IVS",
@@ -441,6 +442,16 @@ export const Setting: Setting[] = [
     key: SettingKeys.Planner_AI_Enable,
     label: i18next.t("settings:plannerAiEnable"),
     options: OFF_ON,
+    default: 0,
+    type: SettingType.GENERAL,
+  },
+  {
+    key: SettingKeys.Turn_Mode,
+    label: i18next.t("settings:turnMode"),
+    options: [
+      { value: "Sequential", label: i18next.t("settings:turnModeSequential") },
+      { value: "Private", label: i18next.t("settings:turnModePrivate") },
+    ],
     default: 0,
     type: SettingType.GENERAL,
   },
@@ -1041,7 +1052,10 @@ export function setSetting(setting: string, value: number): boolean {
       globalScene.uiTheme = value;
       break;
     case SettingKeys.Window_Type:
-      updateWindowType(Number.parseInt(Setting[index].options[value].value));
+      // During a multiplayer prompt the border identifies the seat, not the saved theme.
+      if (!globalScene.twoPlayerMode || globalScene.inputOwner === "none") {
+        applyWindowAppearance(Number.parseInt(Setting[index].options[value].value));
+      }
       break;
     case SettingKeys.Tutorials:
       globalScene.enableTutorials = Setting[index].options[value].value === "On";
@@ -1091,6 +1105,9 @@ export function setSetting(setting: string, value: number): boolean {
       break;
     case SettingKeys.Planner_AI_Enable:
       globalScene.plannerAiEnabled = Setting[index].options[value].value === "On";
+      break;
+    case SettingKeys.Turn_Mode:
+      globalScene.privateTurnSelection = Setting[index].options[value].value === "Private";
       break;
     case SettingKeys.Two_Player_Input_Lockout:
       globalScene.twoPlayerInputLockoutMs = Number.parseInt(Setting[index].options[value].value);

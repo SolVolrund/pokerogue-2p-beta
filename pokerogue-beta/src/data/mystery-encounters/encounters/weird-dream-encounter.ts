@@ -604,6 +604,7 @@ export const WeirdDreamEncounter: MysteryEncounter = MysteryEncounterBuilder.wit
   MysteryEncounterType.WEIRD_DREAM,
 )
   .withEncounterTier(MysteryEncounterTier.ROGUE)
+  .withPrivateOptionVotes(getWeirdDreamData)
   .withDisallowedChallenges(Challenges.SINGLE_TYPE, Challenges.SINGLE_GENERATION)
   .withSceneWaveRangeRequirement(30, 140)
   .withSceneRequirement(new WeirdDreamSpawnRequirement())

@@ -73,18 +73,24 @@ export class NavigationManager {
    * @param direction LEFT or RIGHT
    */
   public navigate(direction) {
-    const pos = this.modes.indexOf(this.selectedMode);
-    const maxPos = this.modes.length - 1;
+    const modes = this.modes.filter(mode => this.isTabAvailable(mode));
+    const pos = modes.indexOf(this.selectedMode);
+    const maxPos = modes.length - 1;
     const increment = direction === LEFT ? -1 : 1;
     if (pos === 0 && direction === LEFT) {
-      this.selectedMode = this.modes[maxPos];
+      this.selectedMode = modes[maxPos];
     } else if (pos === maxPos && direction === RIGHT) {
-      this.selectedMode = this.modes[0];
+      this.selectedMode = modes[0];
     } else {
-      this.selectedMode = this.modes[pos + increment];
+      this.selectedMode = modes[pos + increment];
     }
     globalScene.ui.setMode(this.selectedMode);
     this.updateNavigationMenus();
+  }
+
+  isTabAvailable(mode: UiMode): boolean {
+    return globalScene.phaseManager?.getCurrentPhase()?.phaseName !== "PrivatePauseMenuPhase"
+      || ![UiMode.SETTINGS_AUDIO, UiMode.SETTINGS_KEYBOARD, UiMode.SETTINGS_GAMEPAD].includes(mode);
   }
 
   /**
@@ -176,7 +182,7 @@ export class NavigationMenu extends Phaser.GameObjects.Container {
     let x = LABEL_WINDOW_LEFT;
 
     for (const [index, title] of this.headerTitles.entries()) {
-      const visible = index >= windowStart && index <= windowEnd;
+      const visible = index >= windowStart && index <= windowEnd && navigationManager.isTabAvailable(navigationManager.modes[index]);
       title.setVisible(visible);
       if (visible) {
         title.setPosition(x, 4);

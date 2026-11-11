@@ -33,6 +33,7 @@ import {
 import type { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import { MysteryEncounterBuilder } from "#mystery-encounters/mystery-encounter";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
+import type { RegistrationStep } from "#phases/private-registration-phase";
 import { MysteryEncounterOptionBuilder } from "#mystery-encounters/mystery-encounter-option";
 import { EncounterSceneRequirement } from "#mystery-encounters/mystery-encounter-requirements";
 import { updateWindowType } from "#ui/ui-theme";
@@ -227,27 +228,34 @@ async function storeContestParticipationVote(
   return runContestParticipationVotes();
 }
 
-async function runContestParticipationVotes(): Promise<boolean> {
+async function runContestParticipationVotes(privateRegistration = false): Promise<boolean> {
   const data = getContestHallData();
   const votes = data.participationVotes.toSorted((a, b) => a.playerIndex - b.playerIndex);
 
   await globalScene.ui.setMode(UiMode.MESSAGE);
 
-  for (const vote of votes) {
-    setContestParticipationVoteTokens(vote);
-    await showEncounterText(
-      `${namespace}:participationVote.${vote.wantsToEnter ? "enterSelected" : "leaveSelected"}`,
-    );
+  if (!privateRegistration) {
+    for (const vote of votes) {
+      setContestParticipationVoteTokens(vote);
+      await showEncounterText(
+        `${namespace}:participationVote.${vote.wantsToEnter ? "enterSelected" : "leaveSelected"}`,
+      );
+    }
   }
 
   const shouldEnter = await getWinningContestParticipation(votes);
   data.participationResolvedWantsToEnter = shouldEnter;
   if (shouldEnter) {
     await showEncounterText(`${namespace}:option.1.selected`);
+    if (privateRegistration) {
+      queueContestBallot("category");
+      return true;
+    }
     return promptContestTypeVote(getMysteryEncounterPlayerIndexes()[0] ?? 0);
   }
 
   await showEncounterText(`${namespace}:option.2.selected`);
+  if (privateRegistration) return skipContest();
   return true;
 }
 
@@ -352,21 +360,27 @@ async function storeContestTypeVote(
   return true;
 }
 
-async function runContestTypeVotes(): Promise<boolean> {
+async function runContestTypeVotes(privateRegistration = false): Promise<boolean> {
   const data = getContestHallData();
   const votes = data.contestTypeVotes.toSorted((a, b) => a.playerIndex - b.playerIndex);
 
   await globalScene.ui.setMode(UiMode.MESSAGE);
 
-  for (const vote of votes) {
-    setContestVoteTokens(vote);
-    await showEncounterText(`${namespace}:contestTypeVote.selected`);
+  if (!privateRegistration) {
+    for (const vote of votes) {
+      setContestVoteTokens(vote);
+      await showEncounterText(`${namespace}:contestTypeVote.selected`);
+    }
   }
 
   const contestType = await getWinningContestType(votes);
   globalScene.currentBattle.mysteryEncounter!.setDialogueToken("contestType", contestTypeData[contestType].name);
   await showEncounterText(`${namespace}:contestTypeVote.winner`);
 
+  if (privateRegistration) {
+    queueContestEntrants(contestType);
+    return true;
+  }
   await collectContestPokemonSelections();
   await startContest(contestType);
   return true;
@@ -531,6 +545,66 @@ async function skipContest(): Promise<boolean> {
   return true;
 }
 
+function queueRegistration(step: RegistrationStep): void {
+  if (globalScene.privateTurnSelection) globalScene.phaseManager.pushNew("PrivateRegistrationPhase", step);
+  else step.queueSequential();
+}
+
+function queueContestBallot(name: "entry" | "category"): void {
+  const entry = name === "entry";
+  const menu = (seat: PlayerIndex) => ({
+    playerIndex: seat,
+    overrideTitle: getContestPlayerName(seat),
+    overrideQuery: i18next.t(entry ? `${namespace}:participationVote.query` : `${namespace}:contestTypeVote.query`),
+    overrideOptions: entry ? buildContestParticipationVoteOptions(seat) : buildContestTypeVoteOptions(seat),
+    optionRowSpacing: entry ? 16 : 12,
+    slideInDescription: false,
+  });
+  queueRegistration({
+    name, menu, legal: () => entry ? [0, 1] : CONTEST_TYPE_OPTIONS.map((_, i) => i),
+    queueSequential: () => globalScene.phaseManager.pushNew("MysteryEncounterPhase", menu(0)),
+    commit: async picks => {
+      const data = getContestHallData();
+      const players = getMysteryEncounterPlayerIndexes();
+      if (entry) {
+        data.participationVotes = players.map(p => ({ playerIndex: p, wantsToEnter: picks[p] === 0 }));
+        return runContestParticipationVotes(true);
+      }
+      data.contestTypeVotes = players.map(p => ({ playerIndex: p, contestType: CONTEST_TYPE_OPTIONS[picks[p]] }));
+      return runContestTypeVotes(true);
+    },
+  });
+}
+
+function queueContestEntrants(contestType: ContestType): void {
+  queueRegistration({
+    name: "entrant",
+    partyFilter: getContestPokemonSelectableFilter(),
+    legal: seat => {
+      const ids = globalScene.getPlayerParty(seat).filter(p => p.isAllowedInBattle()).map(p => p.id);
+      return ids.length ? ids : [-1];
+    },
+    queueSequential: () => globalScene.phaseManager.pushNew("MysteryEncounterOptionSelectedPhase", async () => {
+      await collectContestPokemonSelections();
+      await startContest(contestType);
+    }),
+    commit: async picks => {
+      const data = getContestHallData();
+      data.playerContestants = [];
+      for (const seat of getMysteryEncounterPlayerIndexes()) {
+        const pokemon = globalScene.getPlayerParty(seat).find(p => p.id === picks[seat]);
+        if (pokemon) {
+          storeContestPlayerPokemon(seat, pokemon);
+        } else {
+          setContestPokemonTokens(seat);
+          await showEncounterText(`${namespace}:pokemonSelect.none`);
+        }
+      }
+      await startContest(contestType);
+    },
+  });
+}
+
 export const ContestHallEncounter: MysteryEncounter = MysteryEncounterBuilder.withEncounterType(
   MysteryEncounterType.CONTEST_HALL,
 )
@@ -568,3 +642,5 @@ export const ContestHallEncounter: MysteryEncounter = MysteryEncounterBuilder.wi
   .withOption(buildContestParticipationVoteOption(0, true, 0))
   .withOption(buildContestParticipationVoteOption(0, false, 1))
   .build();
+
+ContestHallEncounter.queuePrivateRegistration = () => queueContestBallot("entry");

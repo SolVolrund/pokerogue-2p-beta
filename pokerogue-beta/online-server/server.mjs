@@ -9,6 +9,26 @@ const CONTROL_PROTOCOL = "pokerogue-online-v1";
 const MAX_PAYLOAD = 8 * 1024 * 1024;
 const SEATS = ["p1", "p2", "p3", "ep"];
 const seatIndex = seat => (seat === "ep" ? "ep" : SEATS.indexOf(seat));
+function parsePrivatePick(pick) {
+  if (!pick || !Number.isSafeInteger(pick.actor)) return;
+  const { actor, kind, targetId, typeId, moveIndex, ball, reserve, baton, slot, move, target } = pick;
+  switch (kind) {
+    case "medicine":
+      if (Number.isSafeInteger(targetId) && typeof typeId === "string" && /^[A-Z0-9_]{1,64}$/.test(typeId)
+        && (moveIndex === undefined || Number.isInteger(moveIndex) && moveIndex >= 0 && moveIndex < 4))
+        return { actor, kind, targetId, typeId, ...(moveIndex !== undefined ? { moveIndex } : {}) };
+      break;
+    case "ball":
+      if (Number.isSafeInteger(targetId) && Number.isSafeInteger(ball) && ball >= 0) return { actor, kind, targetId, ball };
+      break;
+    case "switch":
+      if (Number.isSafeInteger(reserve) && reserve !== actor && typeof baton === "boolean") return { actor, kind, reserve, baton };
+      break;
+    case undefined:
+      if (Number.isInteger(slot) && slot >= 0 && slot < 4 && Number.isSafeInteger(move) && move > 0
+        && (target === null || Number.isSafeInteger(target))) return { actor, slot, move, target };
+  }
+}
 const fail = (status, message) => {
   throw Object.assign(new Error(message), { status });
 };
@@ -41,6 +61,14 @@ export function createOnlineServer({
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD, perMessageDeflate: false });
   const requiredSeats = room =>
     SEATS.filter((seat, index) => (seat === "ep" ? room.setup.enemyPlayer : index < room.setup.playerCount));
+  const privateFightsEnabled = room => room.setup.playerCount === 2 && !room.setup.enemyPlayer
+    && requiredSeats(room).every(seat => room.members.get(seat)?.privateTurnV7 === true);
+  const privateTripleFightsEnabled = room => room.setup.playerCount === 3 && !room.setup.enemyPlayer
+    && requiredSeats(room).every(seat => room.members.get(seat)?.privateTripleFightV1 === true);
+  const privateContestSeats = room => !room.setup.enemyPlayer && requiredSeats(room).every(seat => room.members.get(seat)?.privateContestV1)
+    ? room.setup.playerCount : 0;
+  const privateEventVotesEnabled = room => privateContestSeats(room) > 0
+    && requiredSeats(room).every(seat => room.members.get(seat)?.privateEventVotesV1);
   const summary = room => ({
     id: room.id,
     hostDisplayName: room.members.get("p1").displayName,
@@ -70,6 +98,14 @@ export function createOnlineServer({
       send(member.ws, {
         protocol: CONTROL_PROTOCOL,
         type: "status",
+        privateTurnV7: privateFightsEnabled(room),
+        privateTripleFightV1: privateTripleFightsEnabled(room),
+        privateTrainerFightV1: (privateFightsEnabled(room) || privateTripleFightsEnabled(room))
+          && requiredSeats(room).every(seat => room.members.get(seat)?.privateTrainerFightV1 === true),
+        privateContestSeats: privateContestSeats(room),
+        privateOpeningSwitchV1: privateContestSeats(room) > 0 && requiredSeats(room).every(seat => room.members.get(seat)?.privateOpeningSwitchV1),
+        privateEventVotesV1: privateEventVotesEnabled(room),
+        privateEventVotesV2: privateEventVotesEnabled(room) && requiredSeats(room).every(seat => room.members.get(seat)?.privateEventVotesV2),
         ready: room.ready,
         lobby: summary(room),
         message: room.load
@@ -263,6 +299,13 @@ export function createOnlineServer({
           return;
         }
         member = candidate;
+        member.privateTurnV7 = msg.privateTurnV7 === true;
+        member.privateTripleFightV1 = msg.privateTripleFightV1 === true;
+        member.privateTrainerFightV1 = msg.privateTrainerFightV1 === true;
+        member.privateContestV1 = msg.privateContestV1 === true;
+        member.privateOpeningSwitchV1 = msg.privateOpeningSwitchV1 === true;
+        member.privateEventVotesV1 = msg.privateEventVotesV1 === true;
+        member.privateEventVotesV2 = msg.privateEventVotesV2 === true;
         member.ws = ws;
         clearTimeout(authTimeout);
         send(ws, { protocol: CONTROL_PROTOCOL, type: "authenticated" });
@@ -276,6 +319,63 @@ export function createOnlineServer({
       if (!rooms.has(room.id)) return;
       const host = member.seat === "p1";
       if (msg.protocol === CONTROL_PROTOCOL) {
+        if (["private-draft", "private-pause", "private-fight"].includes(msg.type)) {
+          const contest = typeof msg.key === "string" && msg.key.startsWith("contest:");
+          const enabled = contest ? privateContestSeats(room) : privateFightsEnabled(room) || privateTripleFightsEnabled(room);
+          if (!(room.started || room.resumed) || !room.ready || !enabled) {
+            return ws.close(1008, "Private turn unavailable");
+          }
+          const { key, pick } = msg;
+          if (typeof key !== "string" || !key.length || key.length > 256) return ws.close(1008, "Invalid turn key");
+          const drafts = room.privateDrafts ??= new Map();
+          if (msg.type === "private-draft") {
+            drafts.set(member.seat, key);
+          } else if (drafts.get(member.seat) !== (msg.type === "private-fight" ? key.replace(/:review$/, "") : key)) {
+            return; // Late input from a committed or interrupted draft.
+          }
+          // Like Esc, a veto waits for all menus to open, not for all players to choose.
+          const veto = msg.type === "private-fight" && key.startsWith("contest:unanimous:")
+            && !key.endsWith(":review") && pick === 1 && privateEventVotesEnabled(room);
+          if (msg.type !== "private-fight" || veto) {
+            if (veto && !room.privateTurn?.picks.has(member.seat)) room.pauseRequest ??= { key, veto: true };
+            if (msg.type === "private-pause") room.pauseRequest ??= { key, owner: seatIndex(member.seat) };
+            const request = room.pauseRequest;
+            if (request && requiredSeats(room).every(seat => drafts.get(seat) === request.key)) {
+              drafts.clear();
+              room.privateTurn = room.pauseRequest = undefined;
+              const openedAt = Date.now();
+              for (const peer of room.members.values()) send(peer.ws, request.veto ? {
+                protocol: CONTROL_PROTOCOL, type: "private-vetoed", key: request.key,
+              } : {
+                protocol: CONTROL_PROTOCOL, type: "private-paused", openedAt, ...request,
+              });
+            }
+            return;
+          }
+          const action = contest ? (Number.isSafeInteger(pick) ? pick : undefined) : parsePrivatePick(pick);
+          const valid = pick === null || action !== undefined;
+          if (typeof key !== "string" || !key.length || key.length > 256 || !valid) {
+            return ws.close(1008, "Invalid private turn");
+          }
+          if (key === room.lastPrivateTurn) return;
+          const turn = room.privateTurn ??= { key, picks: new Map() };
+          if (turn.key !== key) return closeRoom(room, "Players submitted different battle turns.");
+          if (turn.picks.has(member.seat)) return;
+          turn.picks.set(member.seat, action ?? null);
+          if (turn.picks.size === requiredSeats(room).length) {
+            const picks = requiredSeats(room).map(seat => turn.picks.get(seat));
+            if (key.endsWith(":review") || picks.includes(null)) {
+              drafts.clear();
+              room.pauseRequest = undefined;
+            }
+            room.lastPrivateTurn = key;
+            room.privateTurn = undefined;
+            for (const peer of room.members.values()) send(peer.ws, {
+              protocol: CONTROL_PROTOCOL, type: "private-fight-result", key, picks: picks.includes(null) ? null : picks,
+            });
+          }
+          return;
+        }
         if (msg.type === "start-wait") {
           const start = room.start;
           if (!start || start.committed || msg.seed !== start.seed || room.load || room.resumed) return;
@@ -330,6 +430,10 @@ export function createOnlineServer({
           && !room.load
           && [...room.members.values()].every(peer => peer.phase === "TitlePhase")
         ) {
+          room.privateTurn = undefined;
+          room.lastPrivateTurn = undefined;
+          room.privateDrafts?.clear();
+          room.pauseRequest = undefined;
           for (const peer of room.members.values()) send(peer.ws, { protocol: CONTROL_PROTOCOL, type: "title-reset" });
           return;
         }

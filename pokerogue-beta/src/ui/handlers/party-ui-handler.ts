@@ -152,6 +152,7 @@ export class PartyUiHandler extends MessageUiHandler {
   private lastCursor = 0;
   private lastLeftPokemonCursor = 0;
   private lastRightPokemonCursor = 0;
+  private restoreRegistrationCursor: (() => void) | undefined;
   private selectCallback: PartySelectCallback | PartyModifierTransferSelectCallback | null;
   private selectFilter: PokemonSelectFilter | PokemonModifierTransferSelectFilter;
   private moveSelectFilter: PokemonMoveSelectFilter;
@@ -197,6 +198,8 @@ export class PartyUiHandler extends MessageUiHandler {
   private static FilterAllMoves = (_pokemonMove: PokemonMove) => null;
 
   private getPlayerIndex(): PlayerIndex {
+    const phase = globalScene.phaseManager.getCurrentPhase();
+    if (phase?.is("PrivateRegistrationPhase")) return phase.seat;
     if (globalScene.twoPlayerMode && this.fieldIndex >= 0) {
       return globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
     }
@@ -432,12 +435,18 @@ export class PartyUiHandler extends MessageUiHandler {
     this.moveInfoOverlay.clear();
 
     this.partyUiMode = args[0] as PartyUiMode;
+    if (globalScene.phaseManager.getCurrentPhase()?.is("PrivateRegistrationPhase")) {
+      const { cursor, lastCursor, lastLeftPokemonCursor, lastRightPokemonCursor } = this;
+      this.restoreRegistrationCursor = () => Object.assign(this, { cursor, lastCursor, lastLeftPokemonCursor, lastRightPokemonCursor });
+      this.cursor = this.lastCursor = this.lastLeftPokemonCursor = this.lastRightPokemonCursor = 0;
+    }
 
     this.fieldIndex = args.length > 1 ? (args[1] as number) : -1;
     this.refreshEnemySwitchPartyIndexes();
     if (this.isEnemySwitchMode()) {
       globalScene.waitForEnemyPlayerInput();
-    } else if (globalScene.twoPlayerMode) {
+    } else if (globalScene.twoPlayerMode && !globalScene.phaseManager.getCurrentPhase()?.is("PrivateFightPhase")
+      && !globalScene.phaseManager.getCurrentPhase()?.is("PrivateRegistrationPhase")) {
       const playerIndex = this.getPlayerIndex();
       globalScene.waitForPlayerInput(playerIndex);
     }
@@ -1137,6 +1146,14 @@ export class PartyUiHandler extends MessageUiHandler {
       && this.partyUiMode === PartyUiMode.SWITCH
     ) {
       this.clearOptions();
+      const phase = globalScene.phaseManager.getCurrentPhase();
+      if (phase.is("PrivateFightPhase")) {
+        if (!phase.chooseSwitch(playerPokemon.id, option === PartyOption.PASS_BATON)) {
+          this.showText(i18next.t("partyUiHandler:cantBeUsed", { pokemonName: playerPokemon.getNameToRender() }),
+            undefined, () => this.showText("", 0), undefined, true);
+        }
+        return true;
+      }
       (globalScene.phaseManager.getCurrentPhase() as CommandPhase).handleCommand(
         Command.POKEMON,
         this.cursor,
@@ -1247,6 +1264,7 @@ export class PartyUiHandler extends MessageUiHandler {
   }
 
   private allowCancel(): boolean {
+    if (this.partyUiMode === PartyUiMode.SELECT && globalScene.phaseManager.getCurrentPhase()?.is("PrivateRegistrationPhase")) return false;
     return !(this.partyUiMode === PartyUiMode.FAINT_SWITCH || this.partyUiMode === PartyUiMode.REVIVAL_BLESSING);
   }
 
@@ -1774,7 +1792,24 @@ export class PartyUiHandler extends MessageUiHandler {
       this.eraseOptionsCursor();
     }
 
+    const privateTurn = globalScene.phaseManager.getCurrentPhase()?.is("PrivateFightPhase");
+    // Local registration menus may inspect a party or choose an entrant, never edit it.
+    if (globalScene.phaseManager.getCurrentPhase()?.is("PrivateRegistrationPhase")) {
+      if (this.partyUiMode === PartyUiMode.SELECT) this.options.push(PartyOption.SELECT);
+      if (this.partyUiMode === PartyUiMode.POST_BATTLE_SWITCH && this.cursor >= this.getActivePartySlotCount()
+        && pokemon.isAllowedInBattle() && !pokemon.isOnField()) this.options.push(PartyOption.SEND_OUT);
+      this.addCancelAndScrollOptions();
+      this.updateOptionsWindow();
+      this.updatePartyMessageBox();
+      return;
+    }
     if (pokemon.isFainted() && globalScene.gameMode.hasChallenge(Challenges.HARDCORE)) {
+      if (privateTurn) {
+        this.addCancelAndScrollOptions();
+        this.updateOptionsWindow();
+        this.updatePartyMessageBox();
+        return;
+      }
       this.updateOptionsHardcore();
       return;
     }
@@ -1838,7 +1873,8 @@ export class PartyUiHandler extends MessageUiHandler {
             this.options.push(PartyOption.PASS_BATON);
           }
         }
-        this.addCommonOptions(pokemon);
+        // Only submit a switch during a private turn; party edits would change one client.
+        if (!privateTurn) this.addCommonOptions(pokemon);
         break;
       case PartyUiMode.REVIVAL_BLESSING:
         this.options.push(PartyOption.REVIVE);
@@ -1848,7 +1884,7 @@ export class PartyUiHandler extends MessageUiHandler {
       case PartyUiMode.EVO_ITEM_MODIFIER:
       case PartyUiMode.FORM_CHANGE_ITEM_MODIFIER:
         this.options.push(PartyOption.APPLY);
-        this.addCommonOptions(pokemon);
+        if (!privateTurn) this.addCommonOptions(pokemon);
         break;
       case PartyUiMode.TM_MODIFIER:
         this.options.push(PartyOption.TEACH);
@@ -2324,6 +2360,12 @@ export class PartyUiHandler extends MessageUiHandler {
 
   clear() {
     super.clear();
+    if (this.restoreRegistrationCursor) {
+      if (this.optionsMode) this.clearOptions();
+      this.restoreRegistrationCursor();
+      this.restoreRegistrationCursor = undefined;
+      this.selectCallback = null;
+    }
     this.storeBagCallback = undefined;
     this.blockInput = false;
     this.partyStoreBagButton.setVisible(false);

@@ -129,3 +129,38 @@ Configuration:
 | `VITE_ONLINE_BUILD_ID` | `local-dev-v4` | Game release ID, compiled by Vite |
 
 Restart the relevant process after changing environment variables. Use no server passwords or SSH credentials in game configuration.
+
+## Testing simultaneous fight choices
+
+Start the updated relay with `npm run start:online`. In a separate PowerShell window in the game directory, start the development client with:
+
+```powershell
+$env:VITE_TEST_WILD_DOUBLE="1"
+npm run start:dev
+```
+
+On the host, select **Settings > General > Turn Mode > Private** (default: Sequential). Connect two human seats through the Online lobby and start a fresh co-op run. The optional wild-double override starts on wave 2 with two opponents; it is not required for Private mode. Each player should see their own seat color and cursor. Try two attacks aimed at different opponents, a throw and an attack, then two throws at the same opponent. A successful first catch should leave the second player's ball unspent. Check cancelling the target selector on each seat, too.
+
+To return to sequential input, switch Turn Mode to Sequential in the shared Esc menu. Closing the menu discards any unfinished private picks and resumes that turn in the normal menus. Switching to Private during sequential input takes effect on the next eligible turn.
+
+While P1 is choosing a target (or has already locked in), press Esc on P2. Both clients should show the ordinary menu in P2's seat color. P1's input should do nothing. Change a gameplay setting, return to the main menu, then close with Esc or Cancel. Both seats should return to fresh private commands on the same turn with inventories unchanged. Repeat with the seats reversed. Try opening the Pokédex and Egg List, pulling an egg with the opening player's vouchers, and backing out to Esc. Manage Data exports and Community links should run only on the opening device. Imports, account actions, and device settings remain unavailable.
+
+For the Shiny Badge duel instead, uncomment the Shiny Badge test block in `src/overrides.ts`, unset `VITE_TEST_WILD_DOUBLE` and set `VITE_TEST_SHINY_BADGE=1` before starting Vite. Bring a reserve on each team and have both players claim the badge.
+
+For a three-player test, create a 3P online co-op room with three human clients, set **General → Turn Mode → Private**, and enter an ordinary wild battle with all three allies active. Try having P3 pick first, choose an adjacent target, and open Esc while another player has locked in. Turn off the Contest Hall test override if you want to go straight to wild battles.
+
+All clients must approve the complete set of commands before it is applied. Three-seat fights require an updated relay and three clients advertising support; an older relay or mixed room stays sequential for unsupported fights. A rejected draft or a request for normal menus falls back to sequential choice for that turn.
+
+Ordinary AI trainer battles, including rivals and gym leaders, also accept private turns in 2P and 3P when the relay and all clients support `privateTrainerFightV1`. Trainer switches, medicine and ball restrictions still use the normal battle rules. Scripted mystery encounters (except the two-player badge duel), wild bosses, the Tower, hordes, CPU allies, Vs and Enemy Player mode keep their existing battle controls.
+
+At the start of a wild battle, **Switch** battle style also lets human co-op players choose their opening switches privately. Each player can keep their lead or pick one legal reserve from their own party. The original switch-in order and effects still apply. **Set** battle style never asks. This prompt requires a relay and clients advertising `privateOpeningSwitchV1`.
+
+## Contest Hall registration
+
+Turn Mode also controls Contest Hall registration in online rooms with two or three human players and no Enemy Player. The relay and every client must support private registration; otherwise the normal menus are used. Entry and category are group votes. After the category is announced, each player picks from their own eligible party. A player with no eligible entrant is skipped. Appeals and scoring are unchanged.
+
+For a three-seat smoke test, split the entry vote 2–1, then vote for three different categories to exercise the existing tie-break. On the party screen, lock in P1 and press Esc on P3. Switch to Sequential and close the menu: only entrant selection should restart, with the winning category preserved.
+
+The same setting enables private opening choices for Spooky Invitation, Pallet Exhibition, Faraway Island Treasure, Life Is Wonderful and Capture Customizer when the relay and every client advertise `privateEventVotesV1`. For the two invitations, one No ends the vote without waiting for other answers. Treasure and Life Is Wonderful retain the normal player-priority tie-break on disagreement. Kurt waits for all players, then resolves each gift independently. Follow-up menus and battles use their usual rules.
+
+Rooms that also advertise `privateEventVotesV2` collect the opening votes for Poke Poachers and Legendary Conflict simultaneously, then apply each event's normal tally and tie-break. The same capability covers individual opening choices in Mining, Shiny Badge, A Trainer's Test, Mysterious Challengers, Berries Abound, Trash to Treasure, Clowning Around, The Strong Stuff, The Winstrate Challenge, GTS Malfunction, Weird Dream, Chefs on Vacation, and Deja Vu. Passing on an individual choice does not veto another seat. These openings stay sequential with an older relay or client; no new vote message type is needed.

@@ -18,9 +18,11 @@ import { AiType } from "#enums/ai-type";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import { ArenaTagType } from "#enums/arena-tag-type";
 import { BattleType } from "#enums/battle-type";
+import type { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BiomeId } from "#enums/biome-id";
 import { Command } from "#enums/command";
+import { Challenges } from "#enums/challenges";
 import { FieldPosition } from "#enums/field-position";
 import { MoveCategory } from "#enums/move-category";
 import { MoveId } from "#enums/move-id";
@@ -32,6 +34,7 @@ import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
 import { BerserkGeneModifier } from "#modifiers/modifier";
 import { getMoveTargets } from "#moves/move-utils";
 import { FieldPhase } from "#phases/field-phase";
+import type { PlannedFight } from "#phases/private-fight-phase";
 import type { MoveTargetSet } from "#types/move-target-set";
 import type { TurnMove } from "#types/turn-move";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
@@ -78,7 +81,7 @@ export class CommandPhase extends FieldPhase {
    */
   private isSwitch = false;
 
-  constructor(fieldIndex: number) {
+  constructor(fieldIndex: number, private readonly privatePlans?: Map<number, PlannedFight>) {
     super();
 
     this.fieldIndex = fieldIndex;
@@ -804,12 +807,9 @@ export class CommandPhase extends FieldPhase {
     });
   }
 
-  private hasBerserkGene(playerPokemon = this.getPokemon()): boolean {
-    return playerPokemon.getActiveHeldItems().some(item => item instanceof BerserkGeneModifier);
-  }
-
-  private shouldAutoSelectFightMove(playerPokemon = this.getPokemon()): boolean {
-    return playerPokemon.isShadowPokemon() || this.hasBerserkGene(playerPokemon);
+  static shouldAutoSelectFightMove(playerPokemon: PlayerPokemon): boolean {
+    return playerPokemon.isShadowPokemon()
+      || playerPokemon.getActiveHeldItems().some(item => item instanceof BerserkGeneModifier);
   }
 
   private getAutoSelectedFightMove(playerPokemon: PlayerPokemon): TurnMove {
@@ -828,7 +828,7 @@ export class CommandPhase extends FieldPhase {
 
   public handleAutoSelectedFightCommand(): boolean {
     const playerPokemon = this.getPokemon();
-    if (!this.shouldAutoSelectFightMove(playerPokemon)) {
+    if (!CommandPhase.shouldAutoSelectFightMove(playerPokemon)) {
       return false;
     }
 
@@ -1177,6 +1177,21 @@ export class CommandPhase extends FieldPhase {
       return;
     }
 
+    const planned = this.privatePlans?.get(this.getPokemon().id);
+    if (planned) {
+      if ("kind" in planned && planned.kind === "medicine") {
+        if (this.handleMedicineCommand(planned.typeId, planned.targetId, planned.moveIndex)) return;
+      } else if ("baton" in planned) {
+        if (this.handleCommand(Command.POKEMON, planned.cursor, planned.baton)) return;
+      } else if ("kind" in planned ? this.handleBallCommand(planned.ball, planned.target)
+        : this.handleFightCommand(Command.FIGHT, planned.cursor, MoveUseMode.NORMAL, undefined, planned.targets)) {
+        this.end();
+        return;
+      }
+      // Reopen the native menus if an earlier command invalidated a reservation.
+      this.privatePlans?.clear();
+    }
+
     if (this.isEonFluteGuestCommand() && this.handleEonFluteGuestCommand(this.getPokemon())) {
       return;
     }
@@ -1245,6 +1260,7 @@ export class CommandPhase extends FieldPhase {
     cursor: number,
     useMode: MoveUseMode = MoveUseMode.NORMAL,
     move?: TurnMove,
+    plannedTargets?: BattlerIndex[],
   ): boolean {
     const playerPokemon = this.getPokemon();
     const ignorePP = isIgnorePP(useMode);
@@ -1340,6 +1356,16 @@ export class CommandPhase extends FieldPhase {
       getPokemonNameWithAffix(playerPokemon),
     );
 
+    if (plannedTargets && turnCommand.move) {
+      // Never replay targets for a move that became Struggle, or for a slot no longer in range.
+      if (useStruggle || !plannedTargets.length || !plannedTargets.every(t => moveTargets.targets.includes(t))
+        || plannedTargets.length !== (moveTargets.multiple ? moveTargets.targets.length : 1)) return false;
+      turnCommand.move.targets = plannedTargets;
+      this.setPreTurnCommand(preTurnCommand);
+      this.setTurnCommand(turnCommand);
+      return true;
+    }
+
     if (moveTargets.targets.length > 1 && moveTargets.multiple) {
       globalScene.phaseManager.unshiftNew("SelectTargetPhase", this.fieldIndex);
     }
@@ -1384,8 +1410,7 @@ export class CommandPhase extends FieldPhase {
   }
 
   /**
-   * Helper method for {@linkcode handleBallCommand} that checks if a pokeball can be thrown
-   * and displays the appropriate error message.
+   * Checks whether the battle allows an ordinary ball without opening a message or queuing a command.
    *
    * @remarks
    * The pokeball may not be thrown if any of the following are true:
@@ -1394,9 +1419,9 @@ export class CommandPhase extends FieldPhase {
    *   - it is not classic mode; or
    *   - the player has not caught the target before and the player is still missing more than one starter
    * - The player is in a mystery encounter that disallows catching the pokemon
-   * @returns Whether a pokeball can be thrown
+   * @returns The denial message key, or undefined when throwing is allowed.
    */
-  private checkCanUseBall(): boolean {
+  private static getBallBattleBlockMessage(): string | undefined {
     const { arena, currentBattle, gameData, gameMode } = globalScene;
     const { battleType } = currentBattle;
     const { biomeId } = arena;
@@ -1416,7 +1441,7 @@ export class CommandPhase extends FieldPhase {
       battleType === BattleType.WILD && isUnownCrystalGauntletWave(currentBattle.waveIndex, gameMode.modeId);
 
     if (isUnownCrystalGauntlet) {
-      this.queueShowText("battle:noPokeballForce");
+      return "battle:noPokeballForce";
     } else if (biomeId === BiomeId.END && battleType === BattleType.WILD) {
       if (
         (isClassic && !isClassicFinalBoss && someUncaughtSpeciesOnField)
@@ -1424,7 +1449,7 @@ export class CommandPhase extends FieldPhase {
         || (isEndless && !isEndlessMinorBoss)
       ) {
         // Uncatchable paradox mons in classic and endless
-        this.queueShowText("battle:noPokeballForce");
+        return "battle:noPokeballForce";
       } else if (
         (isClassic && isClassicFinalBoss && missingMultipleStarters)
         || (isFullFreshStart && isClassicFinalBoss)
@@ -1432,29 +1457,13 @@ export class CommandPhase extends FieldPhase {
         || (isDaily && !isCatchableDailyBoss)
       ) {
         // Uncatchable final boss in classic, endless and daily
-        this.queueShowText("battle:noPokeballForceFinalBoss");
-      } else {
-        return true;
+        return "battle:noPokeballForceFinalBoss";
       }
     } else if (battleType === BattleType.TRAINER) {
-      this.queueShowText("battle:noPokeballTrainer");
+      return "battle:noPokeballTrainer";
     } else if (currentBattle.isBattleMysteryEncounter() && !currentBattle.mysteryEncounter!.catchAllowed) {
-      this.queueShowText("battle:noPokeballMysteryEncounter");
-    } else {
-      return true;
+      return "battle:noPokeballMysteryEncounter";
     }
-
-    return false;
-  }
-
-  private checkCanUseCloneBall(): boolean {
-    const blockMessage = getCloneBallBattleBlockMessage();
-    if (blockMessage) {
-      this.queueShowText(blockMessage);
-      return false;
-    }
-
-    return true;
   }
 
   /**
@@ -1463,7 +1472,7 @@ export class CommandPhase extends FieldPhase {
    * @param pokeballType - The selected ball type
    * @returns The locale key for the denial message, or `undefined` when the target is valid
    */
-  private getBallTargetBlockMessage(targetPokemon: EnemyPokemon, pokeballType: PokeballType): string | undefined {
+  private static getBallTargetBlockMessage(targetPokemon: EnemyPokemon, pokeballType: PokeballType): string | undefined {
     const hauntBlock = getGreatHauntCaptureBlock(targetPokemon, pokeballType);
     if (hauntBlock) {
       return hauntBlock;
@@ -1501,32 +1510,25 @@ export class CommandPhase extends FieldPhase {
     return;
   }
 
-  /**
-   * Helper method for {@linkcode handleCommand} that handles the logic when the selected command is to use a pokeball.
-   *
-   * @param cursor - The index of the pokeball to use
-   * @returns Whether the command was successfully initiated
-   */
-  private handleBallCommand(cursor: number): boolean {
+  /** Both menu paths preview the same legal targets without spending or reserving inventory. */
+  static getBallOptions(fieldIndex: number, cursor: number): { targets: BattlerIndex[]; reason?: string } {
     const isCloneBall = cursor === PokeballType.CLONE_BALL;
-    const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
+    const playerIndex = globalScene.getPlayerIndexForFieldSlot(fieldIndex);
     if (!globalScene.canPlayerUsePokeballs(playerIndex, cursor)) {
-      return false;
+      return { targets: [] };
     }
     const targets = isCloneBall
       ? getCloneBallTargets(playerIndex).map(p => p.getBattlerIndex())
       : globalScene.getEnemyField()
           .filter(p => p.isActive(true))
-          .filter(p => !globalScene.isVsLaneBattle() || p.getFieldIndex() === this.fieldIndex)
+          .filter(p => !globalScene.isVsLaneBattle() || p.getFieldIndex() === fieldIndex)
           .map(p => p.getBattlerIndex());
 
-    if (isCloneBall ? !this.checkCanUseCloneBall() : !this.checkCanUseBall()) {
-      return false;
-    }
+    const reason = isCloneBall ? getCloneBallBattleBlockMessage() : this.getBallBattleBlockMessage();
+    if (reason) return { targets: [], reason };
 
     if (!isCloneBall && targets.length > 1 && !globalScene.twoPlayerMode) {
-      this.queueShowText("battle:noPokeballMulti");
-      return false;
+      return { targets: [], reason: "battle:noPokeballMulti" };
     }
 
     if (globalScene.getPlayerPokeballCounts(playerIndex)[cursor] > 0) {
@@ -1539,19 +1541,27 @@ export class CommandPhase extends FieldPhase {
         const firstTarget = targets
           .map(target => globalScene.getField()[target] as EnemyPokemon | undefined)
           .find(targetPokemon => !!targetPokemon);
-        this.queueShowText(
-          firstTarget
+        return {
+          targets: [],
+          reason: firstTarget
             ? (this.getBallTargetBlockMessage(firstTarget, cursor) ?? "battle:noPokeballStrong")
             : "battle:noPokeballStrong",
-        );
-        return false;
+        };
       }
+      return { targets: validTargets };
+    }
+    return { targets: [] };
+  }
 
+  private handleBallCommand(cursor: number, plannedTarget?: BattlerIndex): boolean {
+    const { targets, reason } = CommandPhase.getBallOptions(this.fieldIndex, cursor);
+    if (targets.length && (plannedTarget === undefined || targets.includes(plannedTarget))) {
+      const validTargets = plannedTarget === undefined ? targets : [plannedTarget];
       this.setTurnCommand({
         command: Command.BALL,
         cursor,
-        playerIndex,
-        ...(isCloneBall ? { cloneTargetId: globalScene.getField()[validTargets[0]].id } : {}),
+        playerIndex: globalScene.getPlayerIndexForFieldSlot(this.fieldIndex),
+        ...(cursor === PokeballType.CLONE_BALL ? { cloneTargetId: globalScene.getField()[validTargets[0]].id } : {}),
       });
       this.getTurnCommand()!.targets = validTargets;
       if (validTargets.length > 1) {
@@ -1562,7 +1572,7 @@ export class CommandPhase extends FieldPhase {
       }
       return true;
     }
-
+    if (reason) this.queueShowText(reason);
     return false;
   }
 
@@ -1810,13 +1820,19 @@ export class CommandPhase extends FieldPhase {
     return success;
   }
 
-  public handleMedicineCommand(typeId: string, targetId: number, moveIndex?: number): boolean {
-    const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
+  static canQueueMedicine(fieldIndex: number, typeId: string, targetId: number, moveIndex?: number): boolean {
+    const playerIndex = globalScene.getPlayerIndexForFieldSlot(fieldIndex);
     const item = globalScene.getPlayerBagMedicines(playerIndex).find(entry => entry.typeId === typeId);
     const target = globalScene.getPlayerParty(playerIndex).find(pokemon => pokemon.id === targetId);
-    if (!item || !target || !canUseBagMedicine(playerIndex, target, item, moveIndex)
-      || (getBagMedicineType(item) instanceof PokemonPpRestoreModifierType && moveIndex === undefined)
-      || getAvailableBattleMedicineCount(playerIndex, typeId, this.getBattlerIndex()) < 1) {
+    return !!item && !!target && canUseBagMedicine(playerIndex, target, item, moveIndex)
+      && !(target.isFainted() && globalScene.gameMode.hasChallenge(Challenges.HARDCORE))
+      && (getBagMedicineType(item) instanceof PokemonPpRestoreModifierType) === (moveIndex !== undefined)
+      && getAvailableBattleMedicineCount(playerIndex, typeId, globalScene.getPlayerBattlerIndex(fieldIndex)) > 0;
+  }
+
+  public handleMedicineCommand(typeId: string, targetId: number, moveIndex?: number): boolean {
+    const playerIndex = globalScene.getPlayerIndexForFieldSlot(this.fieldIndex);
+    if (!CommandPhase.canQueueMedicine(this.fieldIndex, typeId, targetId, moveIndex)) {
       globalScene.ui.playError();
       return false;
     }

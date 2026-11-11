@@ -144,6 +144,18 @@ const noTransitionModes = [
 export class UI extends Phaser.GameObjects.Container {
   private mode: UiMode;
   private modeChain: UiMode[];
+  private readonly privateTransitions = new Set<Promise<void>>();
+
+  async dismissPrivateDraft(): Promise<void> {
+    // A seat can be mid-fade into Party while the other seat opens the menu.
+    while (this.privateTransitions.size) await Promise.all([...this.privateTransitions]);
+    await this.setMode(UiMode.MESSAGE);
+    for (const mode of [UiMode.COMMAND, UiMode.FIGHT, UiMode.BALL, UiMode.TARGET_SELECT, UiMode.PARTY, UiMode.CONFIRM]) {
+      if (this.handlers[mode].active) this.handlers[mode].clear();
+    }
+    this.resetModeChain();
+    this.clearText();
+  }
   public handlers: UiHandler[];
   private overlay: Phaser.GameObjects.Rectangle;
   public achvBar: AchvBar;
@@ -637,7 +649,14 @@ export class UI extends Phaser.GameObjects.Container {
   }
 
   setMode(mode: UiMode, ...args: any[]): Promise<void> {
-    return this.setModeInternal(mode, true, false, false, args);
+    const transition = this.setModeInternal(mode, true, false, false, args);
+    const phase = globalScene.phaseManager?.getCurrentPhase();
+    if (phase?.phaseName === "PrivateFightPhase" || phase?.phaseName === "PrivateRegistrationPhase") {
+      this.privateTransitions.add(transition);
+      const finished = () => this.privateTransitions.delete(transition);
+      transition.then(finished, finished);
+    }
+    return transition;
   }
 
   setModeForceTransition(mode: UiMode, ...args: any[]): Promise<void> {

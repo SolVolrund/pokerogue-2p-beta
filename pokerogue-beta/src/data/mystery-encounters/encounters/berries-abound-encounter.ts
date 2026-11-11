@@ -576,6 +576,14 @@ export const BerriesAboundEncounter: MysteryEncounter = MysteryEncounterBuilder.
   MysteryEncounterType.BERRIES_ABOUND,
 )
   .withEncounterTier(MysteryEncounterTier.COMMON)
+  .withPrivateOptionVotes(getBerriesAboundData, seat => {
+    const options = buildBerriesAboundPlayerOptions(seat);
+    const fastest = getBerriesAboundData().fastestPokemonByPlayer[seat] ?? getFastestPokemonForPlayer(seat);
+    options[1].dialogue!.buttonTooltip = i18next.t(`${namespace}:option.2.tooltip`, {
+      fastestPokemon: fastest.getNameToRender(),
+    });
+    return { overrideOptions: options };
+  })
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withCatchAllowed(true)
   .withHideWildIntroMessage(true)

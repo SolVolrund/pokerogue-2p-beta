@@ -106,6 +106,12 @@ export function addWindow(
 }
 
 export function updateWindowType(windowTypeIndex: number): void {
+  applyWindowAppearance(windowTypeIndex);
+  syncTwoPlayerInputOwner(windowTypeIndex);
+}
+
+/** Change the local window skin without handing shared input to another seat. */
+export function applyWindowAppearance(windowTypeIndex: number): void {
   const windowObjects: [Phaser.GameObjects.NineSlice, WindowVariant][] = [];
   const themedObjects: (Phaser.GameObjects.Image | Phaser.GameObjects.NineSlice)[] = [];
   const traverse = (object: any) => {
@@ -139,7 +145,6 @@ export function updateWindowType(windowTypeIndex: number): void {
   traverse(globalScene);
 
   globalScene.windowType = windowTypeIndex;
-  syncTwoPlayerInputOwner(windowTypeIndex);
 
   const rootStyle = document.documentElement.style;
   ["base", "light", "dark"].map((k, i) =>

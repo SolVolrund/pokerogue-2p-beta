@@ -183,7 +183,13 @@ export class MysteryEncounterUiHandler extends UiHandler {
     const selected = this.encounterOptions[cursor];
     if (cursor === this.viewPartyIndex) {
       const overrideSettings = this.getReturnSettings();
+      const privatePhase = globalScene.phaseManager.getCurrentPhase();
       globalScene.ui.setMode(UiMode.PARTY, PartyUiMode.CHECK, -1, () => {
+        if (privatePhase?.is("PrivateRegistrationPhase")) {
+          if (privatePhase.pausing || globalScene.phaseManager.getCurrentPhase() !== privatePhase) return;
+          globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, overrideSettings);
+          return;
+        }
         globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, overrideSettings);
         setTimeout(() => {
           this.setCursor(this.viewPartyIndex);
@@ -843,6 +849,7 @@ export class MysteryEncounterUiHandler extends UiHandler {
       this.computerPartnerAutoSelectTimeout = undefined;
     }
     this.overrideSettings = undefined;
+    if (globalScene.phaseManager.getCurrentPhase()?.is("PrivateRegistrationPhase")) this.cursor = 0;
     this.optionsContainer.setVisible(false);
     this.optionsContainer.removeAll(true);
     this.dexProgressContainer.setVisible(false);

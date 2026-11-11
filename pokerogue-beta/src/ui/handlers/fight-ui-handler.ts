@@ -12,8 +12,7 @@ import { TypeHints } from "#enums/type-hints";
 import { UiMode } from "#enums/ui-mode";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
 import { PokemonMove } from "#moves/pokemon-move";
-import type { CommandPhase } from "#phases/command-phase";
-import type { EnemyCommandPhase } from "#phases/enemy-command-phase";
+import { getBattleMenuPhase } from "#ui/battle-menu-phase";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
 import { shouldRedactCombatInputOwner } from "#ui/private-input-display";
 import { addTextObject, getTextColor } from "#ui/text";
@@ -47,17 +46,7 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
     super(UiMode.FIGHT);
   }
 
-  private getCommandPhase(): CommandPhase | EnemyCommandPhase {
-    const currentPhase = globalScene.phaseManager.getCurrentPhase();
-    if (currentPhase.is("CommandPhase")) {
-      return currentPhase;
-    }
-    if (currentPhase.is("EnemyCommandPhase")) {
-      return currentPhase as EnemyCommandPhase;
-    }
-
-    return globalScene.phaseManager.getStandbyPhase() as CommandPhase | EnemyCommandPhase;
-  }
+  private getCommandPhase = getBattleMenuPhase;
 
   /**
    * Set the visibility of the objects in the move info container.
@@ -175,24 +164,20 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
     const cursor = this.getCursor();
 
     switch (button) {
-      case Button.ACTION:
-        if (
-          this.getCommandPhase().handleCommand(
-            this.fromCommand,
-            cursor,
-            MoveUseMode.NORMAL,
-          )
-        ) {
+      case Button.ACTION: {
+        const phase = this.getCommandPhase();
+        if (phase.is("PrivateFightPhase") ? phase.chooseMove(cursor) : phase.handleCommand(this.fromCommand, cursor, MoveUseMode.NORMAL)) {
           success = true;
         } else {
           ui.playError();
         }
         break;
+      }
       case Button.CANCEL: {
         // Cannot back out of fight menu if skipToFightInput is enabled
         const { battleType, mysteryEncounter } = globalScene.currentBattle;
         if (battleType !== BattleType.MYSTERY_ENCOUNTER || !mysteryEncounter?.skipToFightInput) {
-          ui.setMode(UiMode.COMMAND, this.fieldIndex);
+          ui.setMode(UiMode.COMMAND, this.getCommandPhase().getFieldIndex());
           success = true;
         }
         break;
@@ -261,6 +246,8 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
   }
 
   getCursor(): number {
+    const phase = globalScene.phaseManager.getCurrentPhase();
+    if (phase?.is("PrivateFightPhase")) return phase.cursors.move;
     return this.fieldIndex === 2 ? this.cursor3 : this.fieldIndex ? this.cursor2 : this.cursor;
   }
 
@@ -359,7 +346,10 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
     this.moveInfoOverlay.clear();
     const changed = this.getCursor() !== cursor;
     if (changed) {
-      if (this.fieldIndex === 2) {
+      const phase = globalScene.phaseManager.getCurrentPhase();
+      if (phase?.is("PrivateFightPhase")) {
+        phase.cursors.move = cursor;
+      } else if (this.fieldIndex === 2) {
         this.cursor3 = cursor;
       } else if (this.fieldIndex) {
         this.cursor2 = cursor;

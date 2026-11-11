@@ -1274,7 +1274,12 @@ export class GameData {
     settings["gameVersion"] = globalScene.game.config.gameVersion;
 
     localStorage.setItem("settings", JSON.stringify(settings));
-    globalScene.uiInputs?.broadcastTwoPlayerSettingsSnapshot();
+    if (globalScene.phaseManager.getCurrentPhase()?.phaseName === "PrivatePauseMenuPhase") {
+      // Deliver the host's absolute values after the accepted menu button, including guest-owned input.
+      queueMicrotask(() => globalScene.uiInputs?.broadcastTwoPlayerSettingsSnapshot());
+    } else {
+      globalScene.uiInputs?.broadcastTwoPlayerSettingsSnapshot();
+    }
 
     return true;
   }

@@ -81,7 +81,7 @@ describe("Online transport handshake", () => {
     const socket = TestSocket.latest;
     socket.open();
     expect(socket.sent).toEqual([
-      { protocol: ONLINE_PROTOCOL, type: "authenticate", token: "local-test-token", buildId: ONLINE_BUILD_ID },
+      { protocol: ONLINE_PROTOCOL, type: "authenticate", token: "local-test-token", buildId: ONLINE_BUILD_ID, privateTurnV7: true, privateTripleFightV1: true, privateTrainerFightV1: true, privateContestV1: true, privateOpeningSwitchV1: true, privateEventVotesV1: true, privateEventVotesV2: true },
     ]);
     expect(transport.getInputReadinessBlockReason()).toBe("online-lobby-waiting-for-players");
     socket.receive({ protocol: ONLINE_PROTOCOL, type: "authenticated" });
@@ -121,6 +121,101 @@ describe("Online transport handshake", () => {
     expect(receive).toHaveBeenCalledWith(prepare);
     socket.close();
     expect(transport.getInputReadinessBlockReason()).toBeDefined();
+  });
+
+  it.each([2, 3])("delivers all %i private seats only to the matching turn and never as a remote button", async seats => {
+    const input = vi.fn(() => true);
+    const transport = create(input);
+    const socket = TestSocket.latest;
+    socket.open();
+    socket.receive({ protocol: ONLINE_PROTOCOL, type: "authenticated" });
+    socket.receive({ protocol: ONLINE_PROTOCOL, type: "status", ready: true, privateTurnV7: seats === 2, privateTripleFightV1: seats === 3 });
+    const pick = { actor: 11, slot: 1, move: 33, target: 1 };
+    const picks = [pick, { actor: 12, slot: 0, move: 21, target: 0 }];
+    if (seats === 3) picks.push({ actor: 13, slot: 2, move: 33, target: 5 });
+    const review = vi.fn(() => true);
+    const result = transport.submitPrivateFight("wave2-turn2", pick, review);
+    expect(socket.sent.at(-1)).toEqual({ protocol: ONLINE_PROTOCOL, type: "private-fight", key: "wave2-turn2", pick });
+    socket.receive({ protocol: ONLINE_PROTOCOL, type: "private-fight-result", key: "wave2-turn1", picks: null });
+    socket.receive({ protocol: ONLINE_PROTOCOL, type: "private-fight-result", key: "wave2-turn2", picks });
+    await Promise.resolve();
+    expect(review).toHaveBeenCalledWith(picks);
+    expect(socket.sent.at(-1)).toMatchObject({ key: "wave2-turn2:review", pick });
+    socket.receive({ protocol: ONLINE_PROTOCOL, type: "private-fight-result", key: "wave2-turn2:review", picks });
+    await expect(result).resolves.toEqual(picks);
+    for (const waitingForReview of [false, true]) {
+      const key = "pause-" + waitingForReview;
+      const pause = vi.fn();
+      transport.beginPrivateDraft(key, pause);
+      const pending = transport.submitPrivateFight(key, pick, review);
+      if (waitingForReview) {
+        socket.receive({ protocol: ONLINE_PROTOCOL, type: "private-fight-result", key, picks });
+        await Promise.resolve();
+      }
+      expect(transport.requestPrivatePause()).toBe(true);
+      expect(socket.sent.at(-1)).toMatchObject({ type: "private-pause", key });
+      socket.receive({ protocol: ONLINE_PROTOCOL, type: "private-paused", key: "stale", owner: 0 });
+      expect(pause).not.toHaveBeenCalled();
+      socket.receive({ protocol: ONLINE_PROTOCOL, type: "private-paused", key, owner: seats - 1, openedAt: 1800000000000 });
+      await expect(pending).resolves.toBeNull();
+      expect(pause).toHaveBeenCalledExactlyOnceWith(seats - 1, 1800000000000);
+      expect(transport.requestPrivatePause()).toBe(false);
+    }
+    for (const localAccepts of [true, false]) {
+      const key = "rejection-" + localAccepts;
+      const result = transport.submitPrivateFight(key, pick, () => localAccepts);
+      socket.receive({ protocol: ONLINE_PROTOCOL, type: "private-fight-result", key, picks });
+      await Promise.resolve();
+      expect(socket.sent.at(-1)).toMatchObject({ key: key + ":review", pick: localAccepts ? pick : null });
+      socket.receive({ protocol: ONLINE_PROTOCOL, type: "private-fight-result", key: key + ":review", picks: null });
+      await expect(result).resolves.toBeNull();
+    }
+    expect(input).not.toHaveBeenCalled();
+  });
+
+  it("cancels a pending invitation on a matching veto, but ignores late and duplicate vetoes", async () => {
+    const transport = create();
+    const socket = TestSocket.latest;
+    socket.open();
+    socket.receive({ protocol: ONLINE_PROTOCOL, type: "status", privateContestSeats: 3 });
+    expect(transport.privateEventVotesEnabled).toBe(false);
+    socket.receive({ protocol: ONLINE_PROTOCOL, type: "status", privateContestSeats: 3, privateEventVotesV1: true });
+    expect(transport.privateEventVotesEnabled).toBe(true);
+    expect(transport.privateEventVotesV2Enabled).toBe(false);
+    socket.receive({ protocol: ONLINE_PROTOCOL, type: "status", privateContestSeats: 3, privateEventVotesV1: true, privateEventVotesV2: true });
+    expect(transport.privateEventVotesV2Enabled).toBe(true);
+    const key = "contest:unanimous:current";
+    const veto = vi.fn();
+    const review = vi.fn(() => true);
+    transport.beginPrivateDraft(key, vi.fn(), veto);
+    const pending = transport.submitPrivateContest(key, 0, review);
+    const decline = (key: string) => socket.receive({ protocol: ONLINE_PROTOCOL, type: "private-vetoed", key });
+    decline("contest:unanimous:old");
+    expect(veto).not.toHaveBeenCalled();
+    decline(key);
+    decline(key);
+    expect(veto).toHaveBeenCalledOnce();
+    await expect(pending).resolves.toBeNull();
+    expect(review).not.toHaveBeenCalled();
+  });
+
+  it("validates all three contest choices and abandons a pending review on a P3 pause", async () => {
+    const transport = create();
+    const socket = TestSocket.latest;
+    socket.open();
+    socket.receive({ protocol: ONLINE_PROTOCOL, type: "status", ready: true, privateContestSeats: 3 });
+    const key = "contest:entrant";
+    const pause = vi.fn();
+    const review = vi.fn(() => false);
+    transport.beginPrivateDraft(key, pause);
+    const pending = transport.submitPrivateContest(key, 0, review);
+    socket.receive({ protocol: ONLINE_PROTOCOL, type: "private-fight-result", key, picks: [0, 10, -1] });
+    await Promise.resolve();
+    expect(review).toHaveBeenCalledWith([0, 10, -1]);
+    expect(socket.sent.at(-1)).toMatchObject({ key: key + ":review", pick: null });
+    socket.receive({ protocol: ONLINE_PROTOCOL, type: "private-paused", key, owner: 2, openedAt: 1000 });
+    await expect(pending).resolves.toBeNull();
+    expect(pause).toHaveBeenCalledExactlyOnceWith(2, 1000);
   });
 
   it("routes saved-run controls through the authenticated socket and preserves load failure details", () => {

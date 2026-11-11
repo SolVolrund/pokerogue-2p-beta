@@ -354,6 +354,7 @@ export class EggGachaUiHandler extends MessageUiHandler {
     this.getUi().showText(this.defaultText, 0);
 
     this.setGachaCursor(1);
+    if (globalScene.phaseManager.getCurrentPhase()?.phaseName === "PrivatePauseMenuPhase") this.setCursor(0);
 
     this.updateLegendaryGacha();
 
@@ -363,7 +364,7 @@ export class EggGachaUiHandler extends MessageUiHandler {
 
     this.eggGachaContainer.setActive(true).setVisible(true);
 
-    handleTutorial(Tutorial.EGG_GACHA);
+    if (globalScene.phaseManager.getCurrentPhase()?.phaseName !== "PrivatePauseMenuPhase") handleTutorial(Tutorial.EGG_GACHA);
 
     this.legendaryExpiration.setText(this.getLegendaryGachaTimeLeft());
     this.legendaryGachaTimer();
@@ -508,6 +509,10 @@ export class EggGachaUiHandler extends MessageUiHandler {
       eggs.push(egg);
     }
     // Shuffle the eggs in case the guaranteed one got added as last egg
+    if (globalScene.phaseManager.getCurrentPhase()?.phaseName === "PrivatePauseMenuPhase") {
+      globalScene.executeWithSeedOffset(() => randSeedShuffle(eggs), 0, `${globalScene.seed}:gacha-order:${eggs.map(e => e.id).join(",")}`);
+      return eggs;
+    }
     return randSeedShuffle(eggs);
   }
 
@@ -528,6 +533,7 @@ export class EggGachaUiHandler extends MessageUiHandler {
 
     const playerIndex = this.getPlayerIndex();
     const saveSuccess = await (globalScene.currentBattle && playerIndex === 0
+      && globalScene.phaseManager.getCurrentPhase()?.phaseName !== "PrivatePauseMenuPhase"
       ? globalScene.gameData.saveAll(true, true, true)
       : globalScene.savePlayerSystemSave(playerIndex)
     ).then(success => {
@@ -663,7 +669,8 @@ export class EggGachaUiHandler extends MessageUiHandler {
    */
   private updateLegendaryGacha(): void {
     const infoContainer = this.gachaInfoContainers[GachaType.LEGENDARY];
-    const species = getPokemonSpecies(getLegendaryGachaSpeciesForTimestamp(Date.now()));
+    const phase = globalScene.phaseManager.getCurrentPhase();
+    const species = getPokemonSpecies(getLegendaryGachaSpeciesForTimestamp(phase?.is?.("PrivatePauseMenuPhase") ? phase.openedAt : Date.now()));
     const pokemonIcon = infoContainer.getAt(1) as Phaser.GameObjects.Sprite;
     pokemonIcon.setTexture(species.getIconAtlasKey(), species.getIconId(false));
   }
@@ -720,6 +727,15 @@ export class EggGachaUiHandler extends MessageUiHandler {
     }
     this.transitioning = transitioning;
     this.transitionCancelled = false;
+    if (globalScene.phaseManager.getCurrentPhase()?.phaseName === "PrivatePauseMenuPhase") {
+      queueMicrotask(() => globalScene.uiInputs?.broadcastTwoPlayerCheckpoint("shared-gacha-transition"));
+    }
+  }
+
+  getTwoPlayerInputContextState(): Record<string, unknown> {
+    const profile = globalScene.getPlayerGameData(this.getPlayerIndex());
+    return { machine: this.gachaCursor, transitioning: this.transitioning, summary: this.summaryFinished,
+      eggs: profile.eggs.length, generation: profile.eggGenerationCount, vouchers: { ...profile.voucherCounts } };
   }
 
   /**

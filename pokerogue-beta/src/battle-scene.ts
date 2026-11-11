@@ -663,6 +663,7 @@ export class BattleScene extends SceneBase {
   public battleStyle: BattleStyle = BattleStyle.SWITCH;
   public plannerAiEnabled = false;
   public twoPlayerInputLockoutMs = 100;
+  public privateTurnSelection = false;
   /** Defines whether and how to show type effectiveness hints. */
   public typeHints: TypeHints = TypeHints.OFF;
 
@@ -2088,9 +2089,11 @@ export class BattleScene extends SceneBase {
       return;
     }
 
-    const uiMode = this.ui?.getMode() ?? null;
     const currentPhase = this.phaseManager.getCurrentPhase();
-    const inputContext = this.getTwoPlayerInputContext(uiMode, currentPhase);
+    // Private cursors and waiting screens aren't part of the shared simulation.
+    const privateMenu = currentPhase?.phaseName === "PrivateFightPhase" || currentPhase?.phaseName === "PrivateRegistrationPhase";
+    const uiMode = privateMenu ? UiMode.MESSAGE : this.ui?.getMode() ?? null;
+    const inputContext = privateMenu ? undefined : this.getTwoPlayerInputContext(uiMode, currentPhase);
     const contestMoveSelection = uiMode === UiMode.CONTEST_INPUT
       ? this.ui.getHandler<ContestInputUiHandler>().getMoveSelection()
       : undefined;
@@ -2161,7 +2164,8 @@ export class BattleScene extends SceneBase {
     uiMode: UiMode | null,
     currentPhase: Phase | undefined,
   ): TwoPlayerInputContext | undefined {
-    if (uiMode === null || !STRICT_TWO_PLAYER_INPUT_CONTEXT_UI_MODES.has(uiMode)) {
+    const sharedGacha = uiMode === UiMode.EGG_GACHA && currentPhase?.phaseName === "PrivatePauseMenuPhase";
+    if (uiMode === null || (!sharedGacha && !STRICT_TWO_PLAYER_INPUT_CONTEXT_UI_MODES.has(uiMode))) {
       return;
     }
 

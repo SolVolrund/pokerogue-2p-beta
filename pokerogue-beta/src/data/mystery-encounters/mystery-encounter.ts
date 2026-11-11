@@ -1,3 +1,4 @@
+import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import type { BattlerIndex } from "#enums/battler-index";
 import type { Challenges } from "#enums/challenges";
@@ -13,7 +14,7 @@ import type { MysteryEncounterSpriteConfig } from "#field/mystery-encounter-intr
 import { MysteryEncounterIntroVisuals } from "#field/mystery-encounter-intro";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
 import type { PokemonMove } from "#moves/pokemon-move";
-import type { EnemyPartyConfig } from "#mystery-encounters/encounter-phase-utils";
+import type { EnemyPartyConfig, OptionSelectSettings } from "#mystery-encounters/encounter-phase-utils";
 import { getMysteryEncounterRequirementParty } from "#mystery-encounters/encounter-player-utils";
 import type { MysteryEncounterDialogue, OptionTextDisplay } from "#mystery-encounters/mystery-encounter-dialogue";
 import type { MysteryEncounterOption, OptionPhaseCallback } from "#mystery-encounters/mystery-encounter-option";
@@ -278,6 +279,14 @@ export class MysteryEncounter implements IMysteryEncounter {
    */
   expMultiplier: number;
   twoPlayerSharedDecision: IMysteryEncounter["twoPlayerSharedDecision"];
+  /** Optional replacement for the initial shared menu in supported online rooms. */
+  queuePrivateRegistration?: () => void;
+  /** Store independent seat choices before running the original shared outcome. */
+  acceptPrivateChoices?: (choices: number[]) => void;
+  privateOpeningBallot?: {
+    accept: (choices: number[], seats: PlayerIndex[]) => void;
+    menu?: (seat: PlayerIndex) => OptionSelectSettings;
+  };
   /**
    * Can add any asset load promises here during onInit() to make sure the scene awaits the loads properly
    */
@@ -850,6 +859,25 @@ export class MysteryEncounterBuilder implements Partial<IMysteryEncounter> {
     twoPlayerSharedDecision: IMysteryEncounter["twoPlayerSharedDecision"] = true,
   ): this & Required<Pick<IMysteryEncounter, "twoPlayerSharedDecision">> {
     return Object.assign(this, { twoPlayerSharedDecision });
+  }
+
+  withPrivateOpeningBallot(ballot: NonNullable<MysteryEncounter["privateOpeningBallot"]>): this {
+    return Object.assign(this, { privateOpeningBallot: ballot });
+  }
+
+  /** Supply the same one-based, seat-ordered records as the sequential opening prompts. */
+  withPrivateOptionVotes(
+    getData: () => { choices?: { playerIndex: PlayerIndex; optionIndex: number }[]; skipSelectedDialogueOnce?: boolean },
+    menu?: (seat: PlayerIndex) => OptionSelectSettings,
+  ): this {
+    return this.withPrivateOpeningBallot({
+      ...(menu && { menu }),
+      accept: (picks, seats) => {
+        const data = getData();
+        data.choices = seats.map((playerIndex, i) => ({ playerIndex, optionIndex: picks[i] + 1 }));
+        data.skipSelectedDialogueOnce = true;
+      },
+    });
   }
 
   /**

@@ -143,6 +143,15 @@ function focusMiningPlayer(playerIndex: PlayerIndex): void {
 
 export const MiningEncounter: MysteryEncounter = MysteryEncounterBuilder.withEncounterType(MysteryEncounterType.MINING)
   .withEncounterTier(MysteryEncounterTier.COMMON)
+  .withPrivateOpeningBallot({
+    menu: () => ({ overrideQuery: i18next.t(`${namespace}:participationVote.query`) }),
+    accept: (picks, seats) => {
+      const data = getMiningEncounterData();
+      data.participationVotes = seats.map((playerIndex, i) => ({ playerIndex, wantsToMine: picks[i] === 0 }));
+      data.participationPlayerIndexes = seats.filter((_, i) => picks[i] === 0);
+      data.skipSelectedDialogueOnce = true;
+    },
+  })
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withIntroSpriteConfigs([
     {

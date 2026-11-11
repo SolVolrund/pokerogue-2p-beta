@@ -58,6 +58,20 @@ const overrides: Partial<InstanceType<OverridesType>> = {
     STARTING_WAVE_OVERRIDE: 2,
     MYSTERY_ENCOUNTER_OVERRIDE: MysteryEncounterType.PALLET_EXHIBITION,
   } : {}),
+  // ...(import.meta.env.DEV && import.meta.env.VITE_TEST_SHINY_BADGE === "1" ? {
+  //   STARTING_WAVE_OVERRIDE: 2,
+  //   MYSTERY_ENCOUNTER_OVERRIDE: MysteryEncounterType.SHINY_BADGE,
+  // } : {}),
+  ...(import.meta.env.DEV && import.meta.env.VITE_TEST_CONTEST_HALL === "1" ? {
+    STARTING_WAVE_OVERRIDE: 2,
+    MYSTERY_ENCOUNTER_OVERRIDE: MysteryEncounterType.CONTEST_HALL,
+    BATTLE_TYPE_OVERRIDE: BattleType.WILD,
+  } : import.meta.env.DEV && import.meta.env.VITE_TEST_WILD_DOUBLE === "1" ? {
+    STARTING_WAVE_OVERRIDE: 2,
+    MYSTERY_ENCOUNTER_OVERRIDE: null,
+    BATTLE_TYPE_OVERRIDE: BattleType.WILD,
+    BATTLE_STYLE_OVERRIDE: "double" as const,
+  } : {}),
   // Temporary Fashion Case testing: first encounter and first reward only.
   // FIRST_WILD_ENCOUNTER_SPECIES_OVERRIDE: SpeciesId.FURFROU,
   // WAVE_ITEM_REWARD_OVERRIDE: {

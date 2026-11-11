@@ -680,7 +680,8 @@ export class PokedexUiHandler extends MessageUiHandler {
   }
 
   show(args: any[]): boolean {
-    this.pokerusSpecies = getPokerusStarters();
+    const phase = globalScene.phaseManager.getCurrentPhase();
+    this.pokerusSpecies = getPokerusStarters(phase?.is?.("PrivatePauseMenuPhase") ? phase.openedAt : undefined);
 
     // When calling with "refresh", we do not reset the cursor and filters
     if (args.length > 0) {
@@ -1207,6 +1208,10 @@ export class PokedexUiHandler extends MessageUiHandler {
           }
           break;
         case Button.ACTION:
+          if (globalScene.phaseManager.getCurrentPhase()?.phaseName === "PrivatePauseMenuPhase") {
+            error = true; // Device text entry is not part of synchronized button input.
+            break;
+          }
           this.filterText.startSearch(this.filterTextCursor, this.getUi());
           success = true;
           break;

@@ -505,6 +505,7 @@ export const ATrainersTestEncounter: MysteryEncounter = MysteryEncounterBuilder.
   MysteryEncounterType.A_TRAINERS_TEST,
 )
   .withEncounterTier(MysteryEncounterTier.ROGUE)
+  .withPrivateOptionVotes(getATrainersTestData)
   .withSceneWaveRangeRequirement(100, CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES[1])
   .withIntroSpriteConfigs([]) // These are set in onInit()
   .withIntroDialogue([

@@ -97,6 +97,42 @@ export class MenuUiHandler extends MessageUiHandler {
     return option === MenuOptions.EGG_GACHA && globalScene.phaseManager.getCurrentPhase().is("SelectModifierPhase");
   }
 
+  private get sharedPause(): boolean {
+    return globalScene.phaseManager.getCurrentPhase()?.phaseName === "PrivatePauseMenuPhase";
+  }
+
+  private onOpeningDevice(action: () => void): boolean {
+    if (!this.sharedPause || globalScene.twoPlayerLocalInputSeat === globalScene.inputOwner) action();
+    return true;
+  }
+
+  private openCollection(mode: UiMode) {
+    const ui = this.getUi();
+    if (!this.sharedPause) ui.revertMode();
+    ui.setOverlayMode(mode);
+  }
+
+  private openSharedExports(): void {
+    const ui = this.getUi();
+    const exportFile = (type: GameDataType, slot = 0) =>
+      this.onOpeningDevice(() => void globalScene.gameData.tryExportData(type, slot));
+    const cancel = { label: i18next.t("menuUiHandler:cancel"), handler: () => { ui.revertMode(); return true; }, keepOpen: true };
+    // Slot availability is local. Never read or publish the spectator's save slots.
+    const slots = Array.from({ length: 5 }, (_, i) => ({
+      label: i18next.t("menuUiHandler:slot", { slotNumber: i + 1 }), keepOpen: true,
+      handler: () => exportFile(GameDataType.SESSION, i),
+    }));
+    ui.setOverlayMode(UiMode.MENU_OPTION_SELECT, { xOffset: 98, options: [
+      { label: i18next.t("menuUiHandler:exportSession"), keepOpen: true, handler: () => {
+        ui.setOverlayMode(UiMode.OPTION_SELECT, { options: [...slots, cancel] });
+        return true;
+      } },
+      { label: i18next.t("menuUiHandler:exportRunHistory"), keepOpen: true, handler: () => exportFile(GameDataType.RUN_HISTORY) },
+      { label: i18next.t("menuUiHandler:exportData"), keepOpen: true, handler: () => exportFile(GameDataType.SYSTEM) },
+      cancel,
+    ] });
+  }
+
   setup(): void {
     const ui = this.getUi();
     // wiki url directs based on languges available on wiki
@@ -139,6 +175,7 @@ export class MenuUiHandler extends MessageUiHandler {
     const ui = this.getUi();
     this.excludedMenus = () => [
       { condition: bypassLogin, options: [MenuOptions.LOG_OUT] },
+      { condition: this.sharedPause, options: [MenuOptions.LOG_OUT] },
       { condition: !globalScene.currentBattle, options: [MenuOptions.SAVE_AND_QUIT] },
       {
         condition: this.isEnemyPlayerMenu(),
@@ -433,45 +470,40 @@ export class MenuUiHandler extends MessageUiHandler {
       {
         label: "Wiki",
         handler: () => {
-          window.open(wikiUrl, "_blank")?.focus();
-          return true;
+          return this.onOpeningDevice(() => window.open(wikiUrl, "_blank")?.focus());
         },
         keepOpen: true,
       },
       {
         label: "Discord",
         handler: () => {
-          window.open(discordUrl, "_blank")?.focus();
-          return true;
+          return this.onOpeningDevice(() => window.open(discordUrl, "_blank")?.focus());
         },
         keepOpen: true,
       },
       {
         label: "GitHub",
         handler: () => {
-          window.open(githubUrl, "_blank")?.focus();
-          return true;
+          return this.onOpeningDevice(() => window.open(githubUrl, "_blank")?.focus());
         },
         keepOpen: true,
       },
       {
         label: "Reddit",
         handler: () => {
-          window.open(redditUrl, "_blank")?.focus();
-          return true;
+          return this.onOpeningDevice(() => window.open(redditUrl, "_blank")?.focus());
         },
         keepOpen: true,
       },
       {
         label: i18next.t("menuUiHandler:donate"),
         handler: () => {
-          window.open(donateUrl, "_blank")?.focus();
-          return true;
+          return this.onOpeningDevice(() => window.open(donateUrl, "_blank")?.focus());
         },
         keepOpen: true,
       },
     ];
-    if (bypassLogin || loggedInUser?.hasAdminRole) {
+    if (!this.sharedPause && (bypassLogin || loggedInUser?.hasAdminRole)) {
       communityOptions.push({
         label: "Admin",
         handler: () => {
@@ -556,7 +588,7 @@ export class MenuUiHandler extends MessageUiHandler {
     // Make sure the tutorial overlay sits above everything, but below the message box
     this.menuContainer.bringToTop(this.tutorialOverlay);
     this.menuContainer.bringToTop(this.menuMessageBoxContainer);
-    handleTutorial(Tutorial.MENU);
+    if (globalScene.phaseManager.getCurrentPhase()?.phaseName !== "PrivatePauseMenuPhase") handleTutorial(Tutorial.MENU);
 
     this.bgmBar.toggleBgmBar(true);
 
@@ -590,8 +622,7 @@ export class MenuUiHandler extends MessageUiHandler {
             break;
           case MenuOptions.EGG_LIST:
             if (globalScene.gameData.eggs.length > 0) {
-              ui.revertMode();
-              ui.setOverlayMode(UiMode.EGG_LIST);
+              this.openCollection(UiMode.EGG_LIST);
               success = true;
             } else {
               ui.showText(i18next.t("menuUiHandler:noEggs"), null, () => ui.showText(""), fixedInt(1500));
@@ -599,16 +630,19 @@ export class MenuUiHandler extends MessageUiHandler {
             }
             break;
           case MenuOptions.EGG_GACHA:
-            ui.revertMode();
-            ui.setOverlayMode(UiMode.EGG_GACHA);
+            this.openCollection(UiMode.EGG_GACHA);
             success = true;
             break;
           case MenuOptions.POKEDEX:
-            ui.revertMode();
-            ui.setOverlayMode(UiMode.POKEDEX);
+            this.openCollection(UiMode.POKEDEX);
             success = true;
             break;
           case MenuOptions.MANAGE_DATA:
+            if (this.sharedPause) {
+              this.openSharedExports();
+              success = true;
+              break;
+            }
             if (
               !bypassLogin
               && !this.manageDataConfig.options.some(

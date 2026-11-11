@@ -44,6 +44,7 @@ export class MysteryEncounterPhase extends Phase {
   optionSelectSettings?: OptionSelectSettings | undefined;
   private twoPlayerDecisionIndexes: Partial<Record<PlayerIndex, number>> = {};
   private twoPlayerDecisionMessage: string | undefined;
+  private resumeMenu?: () => void;
 
   /**
    * Mostly useful for having repeated queries during a single encounter, where the queries and options may differ each time
@@ -59,6 +60,15 @@ export class MysteryEncounterPhase extends Phase {
    */
   start() {
     super.start();
+
+    // Return from a private ballot without counting another encounter or advancing its seed.
+    if (this.resumeMenu) {
+      const resume = this.resumeMenu;
+      delete this.resumeMenu;
+      globalScene.waitForPlayerSideProgressionInput(0);
+      void globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER).then(resume);
+      return;
+    }
 
     // Clears out queued phases that are part of standard battle
     globalScene.phaseManager.clearPhaseQueue();
@@ -83,6 +93,47 @@ export class MysteryEncounterPhase extends Phase {
     }
 
     // Initiates encounter dialogue window and option select
+    if (!this.optionSelectSettings && globalScene.privateTurnSelection
+      && globalScene.twoPlayerMode && !globalScene.twoPlayerEnemyPlayerMode
+      && globalScene.uiInputs?.privateContestSeats === globalScene.multiplayerPlayerCount
+      && !globalScene.getComputerPartnerPlayerIndexes().length) {
+      if (encounter.queuePrivateRegistration) {
+        encounter.queuePrivateRegistration();
+        this.end();
+        return;
+      }
+      const ballot = globalScene.uiInputs.privateEventVotesV2Enabled ? encounter.privateOpeningBallot : undefined;
+      const acceptChoices = ballot
+        ? (choices: number[]) => ballot.accept(choices, getMysteryEncounterPlayerIndexes())
+        : encounter.acceptPrivateChoices;
+      if (globalScene.uiInputs.privateEventVotesEnabled && (encounter.twoPlayerSharedDecision || acceptChoices)
+        && encounter.options.every(option => !option.hasRequirements())) {
+        const resume = (action: () => void) => {
+          this.resumeMenu = action;
+          globalScene.phaseManager.unshiftPhase(this);
+        };
+        globalScene.phaseManager.pushNew("PrivateRegistrationPhase", {
+          name: `event:${encounter.encounterType}`,
+          menu: seat => ({ overrideTitle: getMysteryEncounterPlayerTitle(seat), slideInDescription: false, ...ballot?.menu?.(seat) }),
+          legal: () => encounter.options.map((_, i) => i),
+          queueSequential: () => resume(() => {}),
+          ...(encounter.twoPlayerSharedDecision === "unanimousHumanYes" && {
+            veto: () => resume(() => this.applySelectedOption(encounter.options[1], 1)),
+          }),
+          queueCommit: choices => resume(() => {
+            if (acceptChoices) {
+              acceptChoices(choices);
+              this.applySelectedOption(encounter.options[choices[0]], choices[0], true);
+            } else {
+              const index = this.resolveSharedChoices(getMysteryEncounterPlayerIndexes(), choices);
+              this.applySelectedOption(encounter.options[index], index);
+            }
+          }),
+        });
+        this.end();
+        return;
+      }
+    }
     globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, this.optionSelectSettings);
   }
 
@@ -141,24 +192,26 @@ export class MysteryEncounterPhase extends Phase {
       }
 
       const selectedIndexes = playerIndexes.map(playerIndex => this.twoPlayerDecisionIndexes[playerIndex] ?? index);
-      const firstIndex = selectedIndexes[0] ?? index;
-      const hasDisagreement = selectedIndexes.some(selectedIndex => selectedIndex !== firstIndex);
-      if (unanimous) {
-        index = playerIndexes.length > 0 && playerIndexes.every(p => this.twoPlayerDecisionIndexes[p] === 0) ? 0 : 1;
-        option = encounter.options[index];
-      } else if (hasDisagreement) {
-        const winningPlayerIndex = globalScene.resolvePlayerTieBreak(playerIndexes);
-        index = this.twoPlayerDecisionIndexes[winningPlayerIndex] ?? index;
-        option = encounter.options[index];
-        this.twoPlayerDecisionMessage = `${globalScene.getPlayerDisplayName(winningPlayerIndex)}'s choice wins this time.`;
-      } else {
-        index = firstIndex;
-        option = encounter.options[index];
-      }
-
+      index = this.resolveSharedChoices(playerIndexes, selectedIndexes);
+      option = encounter.options[index];
       this.twoPlayerDecisionIndexes = {};
     }
 
+    return this.applySelectedOption(option, index);
+  }
+
+  private resolveSharedChoices(players: PlayerIndex[], choices: number[]): number {
+    if (globalScene.currentBattle.mysteryEncounter!.twoPlayerSharedDecision === "unanimousHumanYes") {
+      return choices.length && choices.every(choice => choice === 0) ? 0 : 1;
+    }
+    if (choices.every(choice => choice === choices[0])) return choices[0];
+    const winner = globalScene.resolvePlayerTieBreak(players);
+    this.twoPlayerDecisionMessage = `${globalScene.getPlayerDisplayName(winner)}'s choice wins this time.`;
+    return choices[players.indexOf(winner)];
+  }
+
+  private applySelectedOption(option: MysteryEncounterOption, index: number, skipPreOption = false): boolean {
+    const encounter = globalScene.currentBattle.mysteryEncounter!;
     if (globalScene.twoPlayerMode) {
       globalScene.waitForPlayerSideProgressionInput(this.optionSelectSettings?.playerIndex ?? 0);
     } else {
@@ -184,7 +237,7 @@ export class MysteryEncounterPhase extends Phase {
     // Populate dialogue tokens for option requirements
     encounter.populateDialogueTokensFromRequirements();
 
-    if (option.onPreOptionPhase) {
+    if (option.onPreOptionPhase && !skipPreOption) {
       globalScene.executeWithSeedOffset(async () => {
         return await option.onPreOptionPhase!().then(result => {
           if (result == null || result) {

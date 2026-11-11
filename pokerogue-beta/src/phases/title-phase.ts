@@ -4,6 +4,7 @@ import type { PlayerIndex } from "#app/battle-scene";
 import { GameMode, getGameMode } from "#app/game-mode";
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
+import { queueMultiplayerOpeningSwitches } from "#phases/check-switch-phase";
 import { globalScene } from "#app/global-scene";
 import { isHauntingSeason, SeasonalEncounterState } from "#data/seasonal-encounters";
 import { activeOverrides } from "#app/overrides";
@@ -2691,11 +2692,7 @@ export class TitlePhase extends Phase {
           globalScene.currentBattle.battleType !== BattleType.TRAINER
           && (globalScene.currentBattle.waveIndex > 1 || !globalScene.gameMode.isDaily)
         ) {
-          playerIndexes.forEach((playerIndex, fieldIndex) => {
-            if (availablePartyMembersByField[fieldIndex].length > 1) {
-              globalScene.phaseManager.pushNew("CheckSwitchPhase", fieldIndex, true);
-            }
-          });
+          queueMultiplayerOpeningSwitches();
         }
       } else {
         const availablePartyMembers = globalScene.getPokemonAllowedInBattle().length;

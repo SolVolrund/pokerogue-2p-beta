@@ -14,6 +14,7 @@ import type { CommandPhase } from "#phases/command-phase";
 import type { EnemyCommandPhase } from "#phases/enemy-command-phase";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { PartyUiHandler } from "#ui/party-ui-handler";
+import { getBattleMenuPhase, type BattleMenuPhase } from "#ui/battle-menu-phase";
 import { shouldRedactCombatInputOwner } from "#ui/private-input-display";
 import { addTextObject, getTextColor } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
@@ -38,17 +39,7 @@ export class CommandUiHandler extends UiHandler {
     super(UiMode.COMMAND);
   }
 
-  private getCommandPhase(): CommandPhase | EnemyCommandPhase {
-    const currentPhase = globalScene.phaseManager.getCurrentPhase();
-    if (currentPhase.is("CommandPhase")) {
-      return currentPhase;
-    }
-    if (currentPhase.is("EnemyCommandPhase")) {
-      return currentPhase as EnemyCommandPhase;
-    }
-
-    return globalScene.phaseManager.getStandbyPhase() as CommandPhase | EnemyCommandPhase;
-  }
+  private getCommandPhase = getBattleMenuPhase;
 
   private isEnemyCommandPhase(commandPhase = this.getCommandPhase()): commandPhase is EnemyCommandPhase {
     return commandPhase.is("EnemyCommandPhase");
@@ -203,6 +194,19 @@ export class CommandUiHandler extends UiHandler {
           ui.playError();
           return true;
         }
+        if (commandPhase.is("PrivateFightPhase")) {
+          if (cursor === Command.FIGHT) {
+            ui.setMode(UiMode.FIGHT, commandPhase.getFieldIndex());
+          } else if (cursor === Command.POKEMON) {
+            this.openPartySwitch(commandPhase);
+          } else if (cursor === Command.BALL) {
+            ui.setModeWithoutClear(UiMode.BALL);
+          } else {
+            commandPhase.confirmNormalMenus(UiMode.COMMAND);
+          }
+          ui.playSelect();
+          return true;
+        }
         switch (cursor) {
           // Fight
           case Command.FIGHT:
@@ -253,7 +257,7 @@ export class CommandUiHandler extends UiHandler {
         }
       } else {
         const commandPhase = this.getCommandPhase();
-        if (!this.isEnemyCommandPhase(commandPhase)) {
+        if (!this.isEnemyCommandPhase(commandPhase) && !commandPhase.is("PrivateFightPhase")) {
           commandPhase.cancel();
         }
       }
@@ -335,7 +339,7 @@ export class CommandUiHandler extends UiHandler {
     this.showCommandOptionSelect({ options, noCancel: true });
   }
 
-  private openPartySwitch(commandPhase: CommandPhase): void {
+  private openPartySwitch(commandPhase: Pick<CommandPhase, "getFieldIndex">): void {
     globalScene.ui.setMode(
       UiMode.PARTY,
       PartyUiMode.SWITCH,
@@ -394,7 +398,7 @@ export class CommandUiHandler extends UiHandler {
     globalScene.ui.setModeWithoutClear(UiMode.OPTION_SELECT, config, null, true);
   }
 
-  private refreshCommandTextStates(commandPhase: CommandPhase | EnemyCommandPhase): void {
+  private refreshCommandTextStates(commandPhase: BattleMenuPhase): void {
     for (const command of [Command.FIGHT, Command.BALL, Command.POKEMON, Command.RUN]) {
       const commandText = this.commandTexts.get(command);
       if (!commandText) {
@@ -408,7 +412,7 @@ export class CommandUiHandler extends UiHandler {
     }
   }
 
-  private canUseCommand(commandPhase: CommandPhase | EnemyCommandPhase, command: Command): boolean {
+  private canUseCommand(commandPhase: BattleMenuPhase, command: Command): boolean {
     if (!this.isEnemyCommandPhase(commandPhase)) {
       return true;
     }
@@ -509,13 +513,18 @@ export class CommandUiHandler extends UiHandler {
   }
 
   getCursor(): number {
+    const phase = globalScene.phaseManager.getCurrentPhase();
+    if (phase?.is("PrivateFightPhase")) return phase.cursors.command;
     return this.fieldIndex === 2 ? this.cursor3 : this.fieldIndex ? this.cursor2 : this.cursor;
   }
 
   setCursor(cursor: number): boolean {
     const changed = this.getCursor() !== cursor;
     if (changed) {
-      if (this.fieldIndex === 2) {
+      const phase = globalScene.phaseManager.getCurrentPhase();
+      if (phase?.is("PrivateFightPhase")) {
+        phase.cursors.command = cursor;
+      } else if (this.fieldIndex === 2) {
         this.cursor3 = cursor;
       } else if (this.fieldIndex) {
         this.cursor2 = cursor;

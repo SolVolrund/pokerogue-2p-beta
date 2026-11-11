@@ -4,6 +4,7 @@ import type { InputsController } from "#app/inputs-controller";
 import type { InputSeat, PlayerIndex, TwoPlayerDebugStateCheckpoint } from "#app/battle-scene";
 import { isDev } from "#constants/app-constants";
 import { onlineSaveSession } from "#utils/online-save-session";
+import type { PrivateTurnPick, ReviewPrivateTurn } from "#utils/private-turn";
 import { Button } from "#enums/buttons";
 import { GameChallengesUiHandler } from "#ui/handlers/challenges-select-ui-handler";
 import { ContestInputUiHandler } from "#ui/contest-input-ui-handler";
@@ -37,7 +38,7 @@ import { SummaryUiHandler } from "#ui/summary-ui-handler";
 import Phaser from "phaser";
 
 type ActionKeys = Record<Button, () => void>;
-const CONTEST_MOVE_BUTTONS = new Set([
+const MENU_NAVIGATION_BUTTONS = new Set([
   Button.UP, Button.DOWN, Button.LEFT, Button.RIGHT, Button.ACTION, Button.SUBMIT, Button.CANCEL,
 ]);
 type RemoteButtonInput = Button | keyof typeof Button;
@@ -92,6 +93,33 @@ export class UiInputs {
   private events: Phaser.Events.EventEmitter;
   private inputsController: InputsController;
   private twoPlayerInputTransport: TwoPlayerInputTransport | undefined;
+  get privateFightSeats(): number {
+    const exchange = this.twoPlayerInputTransport?.privateTurns;
+    return exchange?.enabled ? exchange.seats : 0;
+  }
+  get privateTrainerFightsEnabled(): boolean { return this.twoPlayerInputTransport?.privateTrainerFightsEnabled === true; }
+
+  get privateContestSeats(): number {
+    const exchange = this.twoPlayerInputTransport?.privateContests;
+    return exchange?.enabled ? exchange.seats : 0;
+  }
+  get privateEventVotesEnabled(): boolean { return this.twoPlayerInputTransport?.privateEventVotesEnabled === true; }
+  get privateEventVotesV2Enabled(): boolean { return this.twoPlayerInputTransport?.privateEventVotesV2Enabled === true; }
+  get privateOpeningSwitchEnabled(): boolean { return this.twoPlayerInputTransport?.privateOpeningSwitchEnabled === true; }
+
+  submitPrivateContest(key: string, pick: number, review: (choices: number[]) => boolean) {
+    if (!this.twoPlayerInputTransport) throw new Error("No contest transport");
+    return this.twoPlayerInputTransport.submitPrivateContest(key, pick, review);
+  }
+
+  beginPrivateDraft(key: string, pause: (owner: PlayerIndex, openedAt: number) => void, veto?: () => void): void {
+    this.twoPlayerInputTransport?.beginPrivateDraft(key, pause, veto);
+  }
+
+  submitPrivateFight(key: string, pick: PrivateTurnPick | null, review: ReviewPrivateTurn) {
+    if (!this.twoPlayerInputTransport) throw new Error("No private-turn transport");
+    return this.twoPlayerInputTransport.submitPrivateFight(key, pick, review);
+  }
   private readonly twoPlayerInputDebugEnabled = isTwoPlayerInputDebugEnabled();
   private readonly twoPlayerInputDebugEvents: TwoPlayerInputDebugEvent[] = [];
   private syncRepairOverlay: HTMLDivElement | undefined;
@@ -190,6 +218,8 @@ export class UiInputs {
     pressed = true,
     checkpoint?: TwoPlayerStateCheckpoint,
   ): boolean {
+    const phase = globalScene.phaseManager.getCurrentPhase();
+    if (phase?.phaseName === "PrivateFightPhase" || phase?.phaseName === "PrivateRegistrationPhase") return false;
     if (!globalScene.canAcceptRemoteInput(inputSeat)) {
       this.recordInputDebugEvent({
         action: "rejected",
@@ -210,7 +240,7 @@ export class UiInputs {
     }
 
     const contestInput = pressed ? this.getContestMoveInput(button) : undefined;
-    const contestReplay = pressed && CONTEST_MOVE_BUTTONS.has(button) && checkpoint?.contestMoveSelection;
+    const contestReplay = pressed && MENU_NAVIGATION_BUTTONS.has(button) && checkpoint?.contestMoveSelection;
     const processed = contestInput || contestReplay
       ? !!contestInput && !globalScene.ui.isOverlayActive()
         && contestInput.processSyncedInput(button, checkpoint?.contestMoveSelection)
@@ -270,6 +300,17 @@ export class UiInputs {
   }
 
   private processButtonInput(button: Button, pressed: boolean): boolean {
+    const phase = globalScene.phaseManager.getCurrentPhase();
+    if (phase?.is?.("PrivatePauseMenuPhase")) {
+      if (globalScene.ui.getMode() === UiMode.MENU && (button === Button.MENU || button === Button.CANCEL)) {
+        if (pressed) void phase.resume();
+        return true;
+      }
+      const dex = [UiMode.POKEDEX, UiMode.POKEDEX_PAGE].includes(globalScene.ui.getMode());
+      if (!MENU_NAVIGATION_BUTTONS.has(button) && button !== Button.CYCLE_FORM && button !== Button.CYCLE_SHINY
+        && !(dex && [Button.STATS, Button.CYCLE_TERA, Button.CYCLE_ABILITY, Button.CYCLE_GENDER, Button.CYCLE_NATURE,
+          Button.CYCLE_PASSIVE].includes(button))) return false;
+    }
     if (pressed && this.getContestMoveInput(button)) {
       // Unlike the generic action wrapper, report whether the contest actually consumed the input.
       return globalScene.ui.processInput(button);
@@ -285,7 +326,7 @@ export class UiInputs {
 
   private getContestMoveInput(button: Button): ContestInputUiHandler | undefined {
     if (globalScene.ui?.getMode() !== UiMode.CONTEST_INPUT
-      || !CONTEST_MOVE_BUTTONS.has(button)) {
+      || !MENU_NAVIGATION_BUTTONS.has(button)) {
       return;
     }
     const handler = globalScene.ui.getHandler();
@@ -297,6 +338,26 @@ export class UiInputs {
   }
 
   private processLocalButtonInput(button: Button, pressed: boolean): boolean {
+    const phase = globalScene.phaseManager.getCurrentPhase();
+    if (phase?.is?.("PrivateRegistrationPhase")) {
+      if (!pressed || phase.pausing) return false;
+      if (button === Button.MENU) return !globalScene.disableMenu && (this.twoPlayerInputTransport?.requestPrivatePause() ?? false);
+      return !phase.locked && MENU_NAVIGATION_BUTTONS.has(button)
+        && [UiMode.MYSTERY_ENCOUNTER, UiMode.PARTY, UiMode.CONFIRM].includes(globalScene.ui.getMode())
+        && globalScene.ui.processInput(button === Button.SUBMIT ? Button.ACTION : button);
+    }
+    if (phase?.is?.("PrivateFightPhase")) {
+      if (phase.pausing) return false;
+      if (button === Button.MENU) return pressed && !globalScene.disableMenu
+        && (this.twoPlayerInputTransport?.requestPrivatePause() ?? false);
+      const mode = globalScene.ui.getMode();
+      if (button === Button.STATS && (mode === UiMode.FIGHT || !pressed)) {
+        this.buttonStats(pressed);
+        return true;
+      }
+      return pressed && [UiMode.COMMAND, UiMode.FIGHT, UiMode.TARGET_SELECT, UiMode.PARTY, UiMode.CONFIRM, UiMode.BALL, UiMode.MESSAGE].includes(mode)
+        && MENU_NAVIGATION_BUTTONS.has(button) && globalScene.ui.processInput(button === Button.SUBMIT ? Button.ACTION : button);
+    }
     const contestInput = pressed ? this.getContestMoveInput(button) : undefined;
     if (contestInput && (globalScene.ui.isOverlayActive() || !contestInput.isInputReady())) {
       return false;

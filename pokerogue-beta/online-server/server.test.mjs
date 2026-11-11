@@ -92,10 +92,10 @@ async function fixture(t, options = {}) {
     const control = (type, extra = {}) => socket.send(JSON.stringify({ protocol, type, ...extra }));
     return { socket, messages, next, send, title, control };
   };
-  const host = async (count = 2, ep = false) => {
+  const host = async (count = 2, ep = false, capabilities = {}) => {
     const member = await create(count, ep);
     assert.equal(member.status, 201);
-    const client = await connect(member);
+    const client = await connect(member, capabilities);
     await client.next(m => m.type === "authenticated");
     client.title();
     await client.next(m => m.type === "status" && m.lobby.hostAtMainMenu);
@@ -103,6 +103,204 @@ async function fixture(t, options = {}) {
   };
   return { request, create, connect, host };
 }
+
+test("private fights wait for both seats and publish one ordered batch without revealing drafts", async t => {
+  const f = await fixture(t);
+  const cap = { privateTurnV7: true, privateTrainerFightV1: true };
+  const { member, client: host } = await f.host(2, false, cap);
+  const guest = await f.connect(await f.request(`/lobbies/${member.lobby.id}/join`, { seat: "p2" }), cap);
+  guest.title();
+  assert.equal((await host.next(m => m.type === "status" && m.ready && m.privateTurnV7)).privateTrainerFightV1, true);
+  host.send("input-accepted", { authoritySequence: 1 });
+  await guest.next(m => m.kind === "input-accepted");
+  const a = { actor: 12, slot: 0, move: 4, target: 1 };
+  const b = { kind: "switch", actor: 34, reserve: 78, baton: false };
+  const result = m => m.type === "private-fight-result";
+  const begin = key => { for (const client of [host, guest]) client.control("private-draft", { key }); };
+  begin("turn1");
+  guest.control("private-fight", { key: "turn1", pick: b });
+  guest.control("private-fight", { key: "turn1", pick: a });
+  guest.send("state-checkpoint", { checkpoint: { fingerprint: "locked", summary: {} } });
+  await host.next(m => m.kind === "state-checkpoint" && m.checkpoint?.fingerprint === "locked");
+  assert.ok(!host.messages.some(m => result(m) || m.type === "private-fight"));
+  host.control("private-fight", { key: "turn1", pick: a });
+  assert.deepEqual((await host.next(result)).picks, [a, b]);
+  assert.deepEqual((await guest.next(result)).picks, [a, b]);
+  for (const [client, pick] of [[host, a], [guest, b]]) client.control("private-fight", { key: "turn1:review", pick });
+  for (const client of [host, guest]) assert.deepEqual((await client.next(result)).picks, [a, b]);
+  guest.control("private-pause", { key: "turn1" }); // Already committed.
+  host.control("private-fight", { key: "turn1", pick: a });
+  begin("turn2");
+  host.control("private-fight", { key: "turn2", pick: null });
+  guest.control("private-fight", { key: "turn2", pick: b });
+  for (const client of [host, guest]) {
+    assert.deepEqual(await client.next(result), { protocol, type: "private-fight-result", key: "turn2", picks: null });
+  }
+  const medicine = { kind: "medicine", actor: 12, typeId: "ETHER", targetId: 15, moveIndex: 0 };
+  const ball = { kind: "ball", actor: 34, ball: 7, targetId: 12 };
+  begin("turn3");
+  host.control("private-fight", { key: "turn3", pick: medicine });
+  guest.control("private-fight", { key: "turn3", pick: ball });
+  for (const client of [host, guest]) assert.deepEqual((await client.next(result)).picks, [medicine, ball]);
+  host.control("private-fight", { key: "turn3:review", pick: medicine });
+  guest.control("private-pause", { key: "turn3" });
+  const paused = m => m.type === "private-paused";
+  const firstPause = await host.next(paused);
+  assert.ok(Number.isSafeInteger(firstPause.openedAt));
+  assert.deepEqual(firstPause, { protocol, type: "private-paused", openedAt: firstPause.openedAt, key: "turn3", owner: 1 });
+  assert.deepEqual(await guest.next(paused), firstPause);
+  host.control("private-pause", { key: "turn3" });
+  guest.control("private-fight", { key: "turn3:review", pick: ball });
+  host.control("private-draft", { key: "retry" });
+  host.control("private-pause", { key: "retry" }); // Other client is still entering its draft.
+  guest.control("private-draft", { key: "retry" });
+  guest.control("private-pause", { key: "retry" });
+  for (const client of [host, guest]) {
+    const { openedAt, ...rest } = await client.next(paused);
+    assert.ok(Number.isSafeInteger(openedAt));
+    assert.deepEqual(rest, { protocol, type: "private-paused", key: "retry", owner: 0 });
+    assert.ok(!client.messages.some(m => result(m) || paused(m)));
+  }
+});
+
+test("three private battle picks stay hidden until complete and a P3 rejection discards the turn", async t => {
+  const f = await fixture(t);
+  const cap = { privateTurnV7: true, privateTripleFightV1: true, privateTrainerFightV1: true };
+  const { member, client: host } = await f.host(3, false, cap);
+  const peers = [host];
+  for (const seat of ["p2", "p3"]) {
+    const client = await f.connect(await f.request(`/lobbies/${member.lobby.id}/join`, { seat }), cap);
+    client.title();
+    peers.push(client);
+  }
+  const status = await host.next(m => m.type === "status" && m.ready);
+  assert.equal(status.privateTripleFightV1, true);
+  assert.equal(status.privateTrainerFightV1, true);
+  assert.equal(status.privateTurnV7, false);
+  host.send("input-accepted", { authoritySequence: 1 });
+  await peers[2].next(m => m.kind === "input-accepted");
+  const picks = [
+    { actor: 1, move: 33, slot: 0, target: 2 },
+    { kind: "ball", actor: 2, ball: 0, targetId: 20 },
+    { kind: "switch", actor: 3, reserve: 13, baton: false },
+  ];
+  for (const key of ["first", "second"]) {
+    for (const peer of peers) peer.control("private-draft", { key });
+    for (const i of [2, 1]) peers[i].control("private-fight", { key, pick: picks[i] });
+    peers[1].send("state-checkpoint", { checkpoint: { fingerprint: key, summary: {} } });
+    await host.next(m => m.kind === "state-checkpoint" && m.checkpoint?.fingerprint === key);
+    assert.ok(!host.messages.some(m => m.type === "private-fight-result"));
+    host.control("private-fight", { key, pick: picks[0] });
+    for (const peer of peers) assert.deepEqual((await peer.next(m => m.key === key)).picks, picks);
+    const review = key + ":review";
+    for (const i of [1, 0, 2]) peers[i].control("private-fight", { key: review, pick: i === 2 && key === "second" ? null : picks[i] });
+    for (const peer of peers) assert.deepEqual((await peer.next(m => m.key === review)).picks, key === "second" ? null : picks);
+  }
+  const key = "third";
+  for (const peer of peers) peer.control("private-draft", { key });
+  for (const i of [0, 1]) peers[i].control("private-fight", { key, pick: picks[i] });
+  peers[2].control("private-pause", { key });
+  for (const peer of peers) {
+    assert.equal((await peer.next(m => m.type === "private-paused" && m.key === key)).owner, 2);
+    assert.ok(!peer.messages.some(m => m.type === "private-fight-result" && m.key === key));
+  }
+});
+
+test("three contest seats reveal only complete ordered ballots; P3 can interrupt the next ballot", async t => {
+  const f = await fixture(t);
+  const cap = { privateContestV1: true, privateOpeningSwitchV1: true, privateEventVotesV1: true, privateEventVotesV2: true };
+  const { member, client: host } = await f.host(3, false, cap);
+  const peers = [host];
+  for (const seat of ["p2", "p3"]) {
+    const peer = await f.connect(await f.request(`/lobbies/${member.lobby.id}/join`, { seat }), cap);
+    peer.title();
+    peers.push(peer);
+  }
+  const status = await host.next(m => m.type === "status" && m.ready);
+  assert.equal(status.privateContestSeats, 3);
+  assert.equal(status.privateOpeningSwitchV1, true);
+  assert.equal(status.privateEventVotesV2, true);
+  assert.equal(status.privateTripleFightV1, false);
+  assert.equal(status.privateTurnV7, false);
+  host.send("input-accepted", { authoritySequence: 1 });
+  await peers[2].next(m => m.kind === "input-accepted");
+  const key = "contest:category";
+  for (const peer of peers) peer.control("private-draft", { key });
+  for (const i of [2, 1]) peers[i].control("private-fight", { key, pick: i });
+  peers[1].send("state-checkpoint", { checkpoint: { fingerprint: "waiting", summary: {} } });
+  await host.next(m => m.kind === "state-checkpoint" && m.checkpoint?.fingerprint === "waiting");
+  assert.ok(!host.messages.some(m => m.type === "private-fight-result"));
+  host.control("private-fight", { key, pick: 0 });
+  for (const peer of peers) assert.deepEqual((await peer.next(m => m.key === key)).picks, [0, 1, 2]);
+  for (const [i, peer] of peers.entries()) peer.control("private-fight", { key: key + ":review", pick: i });
+  for (const peer of peers) assert.deepEqual((await peer.next(m => m.key === key + ":review")).picks, [0, 1, 2]);
+  const next = "contest:entrant";
+  for (const peer of peers) peer.control("private-draft", { key: next });
+  host.control("private-fight", { key: next, pick: -1 });
+  peers[2].control("private-pause", { key: next });
+  for (const peer of peers) assert.equal((await peer.next(m => m.type === "private-paused")).owner, 2);
+});
+
+test("one invitation veto ends the ballot once every menu is open, without waiting for other votes", async t => {
+  const f = await fixture(t);
+  const cap = { privateContestV1: true, privateEventVotesV1: true };
+  const { member, client: host } = await f.host(3, false, { ...cap, privateEventVotesV2: true });
+  const peers = [host];
+  for (const seat of ["p2", "p3"]) {
+    const peer = await f.connect(await f.request(`/lobbies/${member.lobby.id}/join`, { seat }), cap);
+    peer.title();
+    peers.push(peer);
+  }
+  const status = await host.next(m => m.type === "status" && m.ready);
+  assert.equal(status.privateEventVotesV1, true);
+  assert.equal(status.privateEventVotesV2, false);
+  host.send("input-accepted", { authoritySequence: 1 });
+  await peers[1].next(m => m.kind === "input-accepted");
+  const key = "contest:unanimous:invitation";
+  host.control("private-draft", { key });
+  peers[1].control("private-draft", { key });
+  peers[1].control("private-fight", { key, pick: 1 });
+  peers[1].send("state-checkpoint", { checkpoint: { fingerprint: "voted", summary: {} } });
+  await host.next(m => m.kind === "state-checkpoint" && m.checkpoint?.fingerprint === "voted");
+  assert.ok(!host.messages.some(m => m.type === "private-vetoed"));
+  peers[2].control("private-draft", { key });
+  for (const peer of peers) assert.deepEqual(await peer.next(m => m.type === "private-vetoed"), {
+    protocol, type: "private-vetoed", key,
+  });
+});
+
+test("one experimental client cannot enable private fights in a mixed room", async t => {
+  const f = await fixture(t);
+  const { member, client: host } = await f.host(2, false, { privateTurnV7: true });
+  const guest = await f.connect(await f.request(`/lobbies/${member.lobby.id}/join`, { seat: "p2" }), { privateTurnV6: true });
+  guest.title();
+  assert.equal((await host.next(m => m.type === "status" && m.ready)).privateTurnV7, false);
+});
+
+test("a wild-only guest keeps trainer turns sequential without disabling private wild turns", async t => {
+  const f = await fixture(t);
+  const { member, client: host } = await f.host(2, false, { privateTurnV7: true, privateTrainerFightV1: true });
+  const guest = await f.connect(await f.request(`/lobbies/${member.lobby.id}/join`, { seat: "p2" }), { privateTurnV7: true });
+  guest.title();
+  const status = await host.next(m => m.type === "status" && m.ready);
+  assert.equal(status.privateTurnV7, true);
+  assert.equal(status.privateTrainerFightV1, false);
+});
+
+test("a three-human room with a doubles-only guest cannot enable private battles", async t => {
+  const f = await fixture(t);
+  const cap = { privateTurnV7: true, privateTripleFightV1: true, privateContestV1: true, privateOpeningSwitchV1: true };
+  const { member, client: host } = await f.host(3, false, cap);
+  for (const seat of ["p2", "p3"]) {
+    const guest = await f.connect(await f.request(`/lobbies/${member.lobby.id}/join`, { seat }), seat === "p2" ? cap : { privateTurnV7: true, privateContestV1: true });
+    guest.title();
+  }
+  const status = await host.next(m => m.type === "status" && m.ready);
+  assert.equal(status.privateContestSeats, 3);
+  assert.equal(status.privateOpeningSwitchV1, false);
+  assert.equal(status.privateTripleFightV1, false);
+  assert.equal(status.privateTurnV7, false);
+});
 
 test("health, build compatibility, modes, sanitized names, and private membership tickets", async t => {
   const f = await fixture(t);

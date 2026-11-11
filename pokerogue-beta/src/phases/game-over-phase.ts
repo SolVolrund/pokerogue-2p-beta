@@ -2,6 +2,7 @@ import { pokerogueApi } from "#api/api";
 import { clientSessionId } from "#app/account";
 import type { PlayerIndex } from "#app/battle-scene";
 import { audioManager } from "#app/global-audio-manager";
+import { queueMultiplayerOpeningSwitches } from "#phases/check-switch-phase";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { bypassLogin } from "#constants/app-constants";
@@ -117,11 +118,7 @@ export class GameOverPhase extends BattlePhase {
                     globalScene.currentBattle.waveIndex > 1
                     && globalScene.currentBattle.battleType !== BattleType.TRAINER
                   ) {
-                    playerIndexes.forEach((playerIndex, fieldIndex) => {
-                      if (globalScene.getPokemonAllowedInBattle(playerIndex).length > 1) {
-                        globalScene.phaseManager.pushNew("CheckSwitchPhase", fieldIndex, true);
-                      }
-                    });
+                    queueMultiplayerOpeningSwitches();
                   }
                 } else {
                   const availablePartyMembers = globalScene.getPokemonAllowedInBattle().length;

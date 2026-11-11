@@ -62,6 +62,7 @@ export const DejaVuEncounter: MysteryEncounter = MysteryEncounterBuilder.withEnc
   MysteryEncounterType.DEJA_VU,
 )
   .withEncounterTier(MysteryEncounterTier.ROGUE)
+  .withPrivateOptionVotes(getDejaVuData)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withCountsForEncounterPacing(false)
   .withCatchAllowed(false)

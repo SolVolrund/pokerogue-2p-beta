@@ -121,16 +121,13 @@ export class TargetSelectUiHandler extends UiHandler {
 
     if (button === Button.ACTION || button === Button.CANCEL) {
       const targetIndexes: BattlerIndex[] = this.isMultipleTargets ? this.targets : [this.cursor];
+      const rememberCursor = !globalScene.phaseManager.getCurrentPhase()?.is("PrivateFightPhase");
       this.targetSelectCallback(button === Button.ACTION ? targetIndexes : []);
       success = true;
-      if (this.fieldIndex === 0) {
-        if (this.cursor0 == null || this.cursor0 !== this.cursor) {
-          this.cursor0 = this.cursor;
-        }
-      } else if (this.fieldIndex === 1 && (this.cursor1 == null || this.cursor1 !== this.cursor)) {
-        this.cursor1 = this.cursor;
-      } else if (this.fieldIndex === 2 && (this.cursor2 == null || this.cursor2 !== this.cursor)) {
-        this.cursor2 = this.cursor;
+      if (rememberCursor) {
+        if (this.fieldIndex === 0) this.cursor0 = this.cursor;
+        else if (this.fieldIndex === 1) this.cursor1 = this.cursor;
+        else if (this.fieldIndex === 2) this.cursor2 = this.cursor;
       }
     } else if (this.isMultipleTargets) {
       success = false;

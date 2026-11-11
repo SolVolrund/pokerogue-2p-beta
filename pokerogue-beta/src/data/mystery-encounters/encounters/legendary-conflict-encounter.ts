@@ -193,6 +193,7 @@ export const LegendaryConflictEncounter: MysteryEncounter = MysteryEncounterBuil
   MysteryEncounterType.LEGENDARY_CONFLICT,
 )
   .withEncounterTier(MysteryEncounterTier.ROGUE)
+  .withPrivateOptionVotes(getLegendaryConflictData)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withMaxAllowedEncounters(1)
   .withFleeAllowed(false)

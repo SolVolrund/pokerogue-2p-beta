@@ -13,6 +13,9 @@ import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import { EvolutionItemModifierType, FormChangeItemModifierType } from "#modifiers/modifier-type";
 import { CommandPhase } from "#phases/command-phase";
+import { PrivatePauseMenuPhase } from "#phases/private-fight-phase";
+import type { EggGachaUiHandler } from "#ui/egg-gacha-ui-handler";
+import { GameDataType } from "#enums/game-data-type";
 import { SelectModifierPhase } from "#phases/select-modifier-phase";
 import { GameManager } from "#test/framework/game-manager";
 import type { BallUiHandler } from "#ui/ball-ui-handler";
@@ -389,6 +392,52 @@ describe("UI - Upstream interface polish", () => {
     menu.setCursor(menu["menuOptions"].indexOf(4));
     menu.processInput(Button.ACTION);
     expect(overlay).toHaveBeenCalledWith(UiMode.EGG_GACHA);
+  });
+
+  it.each([0, 1] as const)("uses P2's collection in a shared pause and keeps file and browser actions local (seat %i)", seat => {
+    const scene = game.scene;
+    scene.configureTwoPlayerMode(true, 6, false, 2);
+    scene.twoPlayerLocalInputSeat = seat;
+    const clock = Date.UTC(2026, 9, 31, 23, 59);
+    const pause = new PrivatePauseMenuPhase(1, new Map(), 1, clock);
+    vi.spyOn(scene.phaseManager, "getCurrentPhase").mockReturnValue(pause);
+    scene.waitForPlayerInput(1);
+    menu.render();
+    const overlay = vi.spyOn(scene.ui, "setOverlayMode").mockResolvedValue();
+    const revert = vi.spyOn(scene.ui, "revertMode").mockResolvedValue(true);
+    const choose = (id: number) => {
+      const index = menu["menuOptions"].findIndex(option => option === id);
+      expect(index).toBeGreaterThanOrEqual(0);
+      menu.setCursor(index);
+      menu.processInput(Button.ACTION);
+    };
+    const gacha = scene.ui.handlers[UiMode.EGG_GACHA] as EggGachaUiHandler;
+    const before = [scene.getPlayerGameData(0).eggs.length, scene.getPlayerGameData(1).eggs.length];
+    choose(4);
+    expect(overlay).toHaveBeenLastCalledWith(UiMode.EGG_GACHA);
+    const [egg] = gacha["pullEggs"](1);
+    expect(egg.timestamp).toBe(clock);
+    expect(scene.getPlayerGameData(0).eggs.length).toBe(before[0]);
+    expect(scene.getPlayerGameData(1).eggs.length).toBe(before[1] + 1);
+    choose(3);
+    expect(overlay).toHaveBeenLastCalledWith(UiMode.EGG_LIST);
+    choose(5);
+    expect(overlay).toHaveBeenLastCalledWith(UiMode.POKEDEX);
+    expect(revert).not.toHaveBeenCalled();
+    const download = vi.spyOn(scene.gameData, "tryExportData").mockResolvedValue(true);
+    choose(6);
+    const exports = overlay.mock.lastCall![1].options;
+    expect(exports.map(o => o.label)).toEqual(["exportSession", "exportRunHistory", "exportData", "cancel"]
+      .map(key => i18next.t("menuUiHandler:" + key)));
+    exports[2].handler();
+    if (seat === 1) expect(download).toHaveBeenCalledWith(GameDataType.SYSTEM, 0);
+    else expect(download).not.toHaveBeenCalled();
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    choose(7);
+    const links = overlay.mock.lastCall![1].options;
+    expect(links.some(o => o.label === "Admin")).toBe(false);
+    links[0].handler();
+    expect(open).toHaveBeenCalledTimes(seat === 1 ? 1 : 0);
   });
 
   it("retains enemy-player menu restrictions", () => {

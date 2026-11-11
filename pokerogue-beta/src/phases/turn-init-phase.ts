@@ -1,5 +1,6 @@
 import { globalScene } from "#app/global-scene";
 import { BattlerIndex } from "#enums/battler-index";
+import { BattleType } from "#enums/battle-type";
 import { TurnInitEvent } from "#events/battle-scene";
 import type { PlayerPokemon } from "#field/pokemon";
 import {
@@ -8,6 +9,7 @@ import {
   handleMysteryEncounterTurnStartEffects,
 } from "#mystery-encounters/encounter-phase-utils";
 import { FieldPhase } from "#phases/field-phase";
+import type { PlannedFight } from "#phases/private-fight-phase";
 import { reformHordePlayers } from "#utils/horde-battle";
 import i18next from "i18next";
 
@@ -89,6 +91,8 @@ export class TurnInitPhase extends FieldPhase {
     if (globalScene.currentBattle.horde) {
       await reformHordePlayers();
     }
+    const plans = canPlanPrivateTurn() ? new Map<number, PlannedFight>() : undefined;
+    if (plans) globalScene.phaseManager.pushNew("PrivateFightPhase", plans);
     globalScene.getField().forEach((pokemon, i) => {
       if (pokemon?.isActive()) {
         if (pokemon.isPlayer()) {
@@ -99,7 +103,7 @@ export class TurnInitPhase extends FieldPhase {
         pokemon.resetTurnData();
 
         if (pokemon.isPlayer()) {
-          globalScene.phaseManager.pushNew("CommandPhase", globalScene.getFieldIndexForBattlerIndex(i));
+          globalScene.phaseManager.pushNew("CommandPhase", globalScene.getFieldIndexForBattlerIndex(i), plans);
         } else {
           globalScene.phaseManager.pushNew("EnemyCommandPhase", globalScene.getFieldIndexForBattlerIndex(i));
         }
@@ -110,4 +114,18 @@ export class TurnInitPhase extends FieldPhase {
 
     this.end();
   }
+}
+
+export function canPlanPrivateTurn(): boolean {
+  const scene = globalScene;
+  if (!scene.privateTurnSelection || !scene.twoPlayerMode || scene.twoPlayerEnemyPlayerMode
+    || scene.uiInputs?.privateFightSeats !== scene.multiplayerPlayerCount) return false;
+  const players = scene.getActivePlayerIndexes();
+  if (![2, 3].includes(players.length) || players.some(p => scene.isComputerPartnerPlayer(p))) return false;
+  const battle = scene.currentBattle;
+  if (battle.mysteryEncounter?.misc?.shinyBadgeDuelActive) return players.length === 2;
+  if (!battle.double || scene.twoPlayerVsMode || battle.mysteryEncounter || battle.horde
+    || battle.isClassicFinalBoss || scene.seasonalEncounters.tower || battle.getBattlerCount() !== players.length) return false;
+  if (battle.battleType === BattleType.TRAINER) return !!battle.trainer && scene.uiInputs.privateTrainerFightsEnabled;
+  return battle.battleType === BattleType.WILD && !scene.getEnemyField().some(p => p?.isBoss());
 }

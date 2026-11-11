@@ -40,9 +40,9 @@ export function getDexNumber(speciesId: SpeciesId): SpeciesId {
  * Method to get the daily list of starters with Pokerus.
  * @returns A list of starters with Pokerus
  */
-export function getPokerusStarters(): PokemonSpecies[] {
+export function getPokerusStarters(timestamp = Date.now()): PokemonSpecies[] {
   const pokerusStarters: PokemonSpecies[] = [];
-  const date = new Date();
+  const date = new Date(timestamp);
   date.setUTCHours(0, 0, 0, 0);
   globalScene.executeWithSeedOffset(
     () => {

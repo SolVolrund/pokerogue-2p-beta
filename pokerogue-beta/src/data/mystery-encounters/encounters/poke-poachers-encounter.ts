@@ -85,6 +85,7 @@ export const PokePoachersEncounter: MysteryEncounter = MysteryEncounterBuilder.w
   MysteryEncounterType.POKE_POACHERS,
 )
   .withEncounterTier(MysteryEncounterTier.ROGUE)
+  .withPrivateOptionVotes(getPokePoachersData)
   .withSceneWaveRangeRequirement(...CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES)
   .withMaxAllowedEncounters(1)
   .withFleeAllowed(false)

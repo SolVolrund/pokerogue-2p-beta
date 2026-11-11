@@ -258,6 +258,8 @@ export class BaseSettingsUiHandler extends MessageUiHandler {
    * @returns `true` if the action associated with the button was successfully processed, `false` otherwise.
    */
   private processLeftRightInput(cursor: number, dir: -1 | 1): boolean {
+    if (globalScene.phaseManager.getCurrentPhase()?.phaseName === "PrivatePauseMenuPhase"
+      && this.settings[cursor]?.requireReload) return false;
     let boundaryAction = Phaser.Math.Wrap;
     let upperBound = this.optionValueLabels[cursor].length;
     if (this.settings[cursor]?.clamp) {
@@ -358,6 +360,7 @@ export class BaseSettingsUiHandler extends MessageUiHandler {
    * @returns Whether the setting was successfully activated.
    */
   private activateSetting(setting: Setting): boolean {
+    if (globalScene.phaseManager.getCurrentPhase()?.phaseName === "PrivatePauseMenuPhase") return false;
     switch (setting.key) {
       case SettingKeys.Move_Touch_Controls:
         globalScene.inputController.moveTouchControlsHandler.enableConfigurationMode(this.getUi());
