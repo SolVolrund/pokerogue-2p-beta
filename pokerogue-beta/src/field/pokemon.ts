@@ -2098,7 +2098,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     const critStage = new NumberHolder(0);
     applyMoveAttrs("HighCritAttr", source, this, move, critStage);
     globalScene.applyModifiersForPokemon(CritBoosterModifier, source, source, critStage);
-    globalScene.applyModifiersForPokemon(ShinyBadgeModifier, source, source, "crit", critStage);
+    ShinyBadgeModifier.applyBattleBond(source, "crit", critStage);
     globalScene.applyModifiersForPokemon(TempCritBoosterModifier, source, critStage);
     applyAbAttrs("BonusCritAbAttr", { pokemon: source, critStage });
     const critBoostTag = source.getTag(CritBoostTag);
@@ -5178,7 +5178,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
         globalScene.applyModifiersForPokemon(SurviveDamageModifier, this, this, surviveDamage);
       }
       if (!surviveDamage.value) {
-        globalScene.applyModifiersForPokemon(ShinyBadgeModifier, this, this, "survive", surviveDamage);
+        ShinyBadgeModifier.applyBattleBond(this, "survive", surviveDamage);
       }
 
       if (surviveDamage.value) {
@@ -7359,7 +7359,9 @@ export class PlayerPokemon extends Pokemon {
     if (fusionStarterSpeciesId) {
       starterData.push([starterGameData[fusionStarterSpeciesId], fusionStarterSpeciesId]);
     }
-    const amount = new NumberHolder(friendship);
+    const luxuryBall = this.pokeball === PokeballType.LUXURY_BALL
+      || (this.pokeball === PokeballType.POKEBALL && this.ballDesign === "luxury");
+    const amount = new NumberHolder(friendship + (luxuryBall ? 1 : 0));
     globalScene.applyModifierForPokemon(PokemonFriendshipBoosterModifier, this, this, amount);
     friendship = amount.value;
 
@@ -8651,6 +8653,17 @@ export class EnemyPokemon extends Pokemon {
 
       // Hide the Pokemon since it is not on the field
       newPokemon.setVisible(false);
+
+      if (newPokemon.ballDesign === "friend") {
+        newPokemon.friendship = 200;
+      } else if (newPokemon.ballDesign === "heal") {
+        newPokemon.hp = newPokemon.getMaxHp();
+        newPokemon.status = null;
+        // Transform can hide the recruit's permanent moves until capture cleanup finishes.
+        for (const move of new Set([...newPokemon.moveset, ...newPokemon.getMovesetForPpRestore()])) {
+          move.ppUsed = 0;
+        }
+      }
 
       // Capture transfers recovery claims to the new player-side instance, never both copies.
       this.battleData.removedHeldItems = [];

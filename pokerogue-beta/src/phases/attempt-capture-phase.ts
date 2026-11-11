@@ -1,6 +1,5 @@
 import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
-import { timedEventManager } from "#app/global-event-manager";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { getGreatHauntCaptureBlock } from "#utils/great-haunt-utils";
@@ -12,17 +11,16 @@ import {
   doPokeballBounceAnim,
   getCriticalCaptureChance,
   getPokeballAtlasKey,
-  getPokeballCatchMultiplier,
+  getPokeballCatchRate,
   getPokeballTintColor,
 } from "#data/pokeball";
-import { getStatusEffectCatchRateMultiplier } from "#data/status-effect";
 import { BattleType } from "#enums/battle-type";
 import { ChallengeType } from "#enums/challenge-type";
 import type { FieldPosition } from "#enums/field-position";
 import { PokeballType } from "#enums/pokeball";
 import { StatusEffect } from "#enums/status-effect";
 import { UiMode } from "#enums/ui-mode";
-import type { EnemyPokemon, PlayerPokemon } from "#field/pokemon";
+import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
 import { PokemonHeldItemModifier } from "#modifiers/modifier";
 import { PokemonPhase } from "#phases/pokemon-phase";
 import { achvs } from "#system/achv";
@@ -43,7 +41,7 @@ export class AttemptCapturePhase extends PokemonPhase {
   private pokeball: Phaser.GameObjects.Sprite;
   private originalY: number;
 
-  constructor(targetIndex: number, pokeballType: PokeballType, playerIndex: PlayerIndex = 0) {
+  constructor(targetIndex: number, pokeballType: PokeballType, playerIndex: PlayerIndex = 0, private readonly thrower?: Pokemon) {
     super(globalScene.getEnemyBattlerIndex(targetIndex));
 
     this.pokeballType = pokeballType;
@@ -89,15 +87,8 @@ export class AttemptCapturePhase extends PokemonPhase {
 
     this.originalY = pokemon.y;
 
-    const _3m = 3 * pokemon.getMaxHp();
-    const _2h = 2 * pokemon.hp;
-    const catchRate = pokemon.species.catchRate;
-    const pokeballMultiplier = getPokeballCatchMultiplier(this.pokeballType);
-    const statusMultiplier = pokemon.status ? getStatusEffectCatchRateMultiplier(pokemon.status.effect) : 1;
-    const shinyMultiplier = pokemon.isShiny() ? timedEventManager.getShinyCatchMultiplier() : 1;
-    const modifiedCatchRate = Math.round(
-      (((_3m - _2h) * catchRate * pokeballMultiplier) / _3m) * statusMultiplier * shinyMultiplier,
-    );
+    const { catchRate, pokeballMultiplier, statusMultiplier, shinyMultiplier, modifiedCatchRate } =
+      getPokeballCatchRate(this.pokeballType, pokemon, this.playerIndex, this.thrower);
     const shakeProbability = Math.round(65536 / Math.pow(255 / modifiedCatchRate, 0.1875)); // Formula taken from gen 6
     const criticalCaptureChance = getCriticalCaptureChance(modifiedCatchRate, this.playerIndex);
 

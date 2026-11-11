@@ -33,6 +33,7 @@ export type MysteryEncounterVsVariant =
   | "special-scripted";
 
 export const TRAINER_BATTLE_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.PALLET_EXHIBITION,
   MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
   MysteryEncounterType.A_TRAINERS_TEST,
   MysteryEncounterType.WEIRD_DREAM,
@@ -116,6 +117,7 @@ for (const [group, encounterTypes] of Object.entries(MYSTERY_ENCOUNTER_BATTLE_GR
 }
 
 export const VS_DISABLED_MYSTERY_ENCOUNTERS: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.PALLET_EXHIBITION,
   MysteryEncounterType.FIELD_TRIP,
   MysteryEncounterType.GTS_MALFUNCTION,
   MysteryEncounterType.SAFARI_ZONE,
@@ -213,6 +215,7 @@ export function isMysteryEncounterAllowedInVsMode(encounterType: MysteryEncounte
 }
 
 export const TWO_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.PALLET_EXHIBITION,
   MysteryEncounterType.CAPTURE_CUSTOMIZER,
   MysteryEncounterType.SPOOKY_INVITATION,
   MysteryEncounterType.MYSTERIOUS_CHEST,
@@ -260,6 +263,7 @@ export const TWO_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryE
 ];
 
 export const THREE_PLAYER_FULL_COOP_MYSTERY_ENCOUNTER_ALLOWLIST: readonly MysteryEncounterType[] = [
+  MysteryEncounterType.PALLET_EXHIBITION,
   MysteryEncounterType.CAPTURE_CUSTOMIZER,
   MysteryEncounterType.SPOOKY_INVITATION,
   MysteryEncounterType.UNCOMMON_BREED,

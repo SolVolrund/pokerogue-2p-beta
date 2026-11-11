@@ -111,6 +111,7 @@ import {
   PokemonBaseStatTotalModifier,
   PokemonExpBoosterModifier,
   PokemonFormChangeItemModifier,
+  PartnerCapModifier,
   PokemonFriendshipBoosterModifier,
   PokemonHeldItemModifier,
   PokemonHpRestoreModifier,
@@ -1755,10 +1756,13 @@ export class FormChangeItemModifierType extends PokemonModifierType implements G
     super(
       "",
       FormChangeItem[formChangeItem].toLowerCase(),
-      (_type, args) => new PokemonFormChangeItemModifier(
-        this, (args[0] as PlayerPokemon).id, formChangeItem, !isFormSelectionItem(formChangeItem),
-      ),
+      (_type, [pokemon]) => formChangeItem === FormChangeItem.PARTNER_CAP
+        ? new PartnerCapModifier(this, pokemon.id, true, PartnerCapModifier.getUncappedForm(pokemon))
+        : new PokemonFormChangeItemModifier(this, pokemon.id, formChangeItem, !isFormSelectionItem(formChangeItem)),
       (pokemon: PlayerPokemon) => {
+        if (formChangeItem === FormChangeItem.PARTNER_CAP && pokemon.getHeldItems().some(m => m.is("PartnerCapModifier"))) {
+          return PartyUiHandler.NoEffectMessage;
+        }
         if (isFormSelectionItem(formChangeItem)) {
           return canReceiveFormSelectionItem(pokemon, formChangeItem) ? null : PartyUiHandler.NoEffectMessage;
         }
@@ -1794,8 +1798,8 @@ export class FormChangeItemModifierType extends PokemonModifierType implements G
     if (isFormSelectionItem(this.formChangeItem)) {
       return i18next.t(`modifierType:ModifierType.${FormChangeItem[this.formChangeItem]}.description`);
     }
-    if (this.formChangeItem === FormChangeItem.STRANGE_HELMET) {
-      return i18next.t("modifierType:ModifierType.STRANGE_HELMET.description");
+    if (this.formChangeItem === FormChangeItem.STRANGE_HELMET || this.formChangeItem === FormChangeItem.PARTNER_CAP) {
+      return i18next.t(`modifierType:ModifierType.${FormChangeItem[this.formChangeItem]}.description`);
     }
     return i18next.t("modifierType:ModifierType.FormChangeItemModifierType.description");
   }
@@ -2247,7 +2251,8 @@ function getFormChangeItemPool(party: readonly Pokemon[], isRareFormChangeItem: 
   ]
     .flat()
     .flatMap(fc => fc.item)
-    .filter(i => i !== FormChangeItem.STRANGE_HELMET && getReplacementFormItem(i) === undefined && (i && i < 100) === isRareFormChangeItem);
+    .filter(i => i !== FormChangeItem.STRANGE_HELMET && i !== FormChangeItem.PARTNER_CAP
+      && getReplacementFormItem(i) === undefined && (i && i < 100) === isRareFormChangeItem);
   // Menu items have no automatic form-change trigger. Add one candidate per eligible family.
   if (!isRareFormChangeItem) {
     for (const { item } of FORM_SELECTION_ITEMS) {
@@ -2300,7 +2305,7 @@ export function getDowsingItemOptions(party: readonly Pokemon[], group: DowsingG
     case "FORM_CHANGE_ITEM": {
       const mega = group === "RARE_FORM_CHANGE_ITEM";
       items = getEnumValues(FormChangeItem).filter(
-        item => item !== FormChangeItem.NONE && item !== FormChangeItem.STRANGE_HELMET
+        item => item !== FormChangeItem.NONE && item !== FormChangeItem.STRANGE_HELMET && item !== FormChangeItem.PARTNER_CAP
           && getReplacementFormItem(item) === undefined && (item < 100) === mega,
       );
       eligible = getFormChangeItemPool(party, mega);
@@ -3164,6 +3169,12 @@ const modifierTypeInitObj = Object.freeze({
 
   STRANGE_HELMET: () => {
     const type = new FormChangeItemModifierType(FormChangeItem.STRANGE_HELMET);
+    type.setTier(ModifierTier.ROGUE);
+    return type;
+  },
+
+  PARTNER_CAP: () => {
+    const type = new FormChangeItemModifierType(FormChangeItem.PARTNER_CAP);
     type.setTier(ModifierTier.ROGUE);
     return type;
   },

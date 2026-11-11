@@ -1,7 +1,6 @@
 import type { PlayerIndex } from "#app/battle-scene";
 import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { audioManager } from "#app/global-audio-manager";
-import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { getPlayerMessageOptions } from "#utils/player-messages";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
@@ -11,12 +10,11 @@ import { Gender } from "#data/gender";
 import {
   doPokeballBounceAnim,
   getPokeballAtlasKey,
-  getPokeballCatchMultiplier,
+  getPokeballCatchRate,
   getPokeballTintColor,
 } from "#data/pokeball";
 import { CustomPokemonData } from "#data/pokemon-data";
 import type { PokemonSpecies } from "#data/pokemon-species";
-import { getStatusEffectCatchRateMultiplier } from "#data/status-effect";
 import type { AbilityId } from "#enums/ability-id";
 import { ChallengeType } from "#enums/challenge-type";
 import type { PokeballType } from "#enums/pokeball";
@@ -458,13 +456,7 @@ export function trainerThrowPokeball(
   const originalY: number = pokemon.y;
 
   if (!ballTwitchRate) {
-    const _3m = 3 * pokemon.getMaxHp();
-    const _2h = 2 * pokemon.hp;
-    const catchRate = pokemon.species.catchRate;
-    const pokeballMultiplier = getPokeballCatchMultiplier(pokeballType);
-    const statusMultiplier = pokemon.status ? getStatusEffectCatchRateMultiplier(pokemon.status.effect) : 1;
-    const shinyMultiplier = pokemon.isShiny() ? timedEventManager.getShinyCatchMultiplier() : 1;
-    const x = Math.round((((_3m - _2h) * catchRate * pokeballMultiplier) / _3m) * statusMultiplier * shinyMultiplier);
+    const { modifiedCatchRate: x } = getPokeballCatchRate(pokeballType, pokemon, playerIndex);
     ballTwitchRate = Math.round(65536 / Math.sqrt(Math.sqrt(255 / x)));
   }
 

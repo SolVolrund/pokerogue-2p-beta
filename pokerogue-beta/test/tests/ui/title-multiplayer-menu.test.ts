@@ -236,7 +236,7 @@ describe("Multiplayer menu preparation", () => {
     expect(game.scene.getComputerPartnerKey(1)).toBe("amber_two");
   });
 
-  it("cycles a locked AmberTwo slot to a selectable Ash and back without changing her unlock", () => {
+  it("cycles between locked partners and lets an independently unlocked Ash be selected", () => {
     game.scene.gameData.computerPartnerUnlocks = {};
     title["showComputerPartnerSelect"](GameModes.CLASSIC, 2);
     const slot = options()[10];
@@ -244,7 +244,9 @@ describe("Multiplayer menu preparation", () => {
     expect(slot.disabled).toBe(true);
     expect(slot.onCycle?.()).toBe(true);
     expect(slot.label).toBe("Ash Ketchum");
-    expect(slot.disabled).toBe(false);
+    expect(slot.disabled).toBe(true);
+    expect(slot.handler()).toBe(false);
+    game.scene.gameData.unlockComputerPartner("ash_ketchum");
     slot.onCycle!();
     expect(slot.label).toBe("AmberTwo");
     expect(slot.handler()).toBe(false);
@@ -252,7 +254,7 @@ describe("Multiplayer menu preparation", () => {
     vi.spyOn(title as any, "showTwoPlayerModeSelect").mockImplementation(() => {});
     select("Ash Ketchum");
     expect(game.scene.getComputerPartnerKey(1)).toBe("ash_ketchum");
-    expect(game.scene.gameData.computerPartnerUnlocks).toEqual({});
+    expect(Object.keys(game.scene.gameData.computerPartnerUnlocks)).toEqual(["ash_ketchum"]);
   });
 
   it("enables Whitney in her existing slot only after a Normal monotype clear", () => {

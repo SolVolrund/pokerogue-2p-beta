@@ -1,6 +1,18 @@
 import { audioManager } from "#app/global-audio-manager";
 import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
+import { timedEventManager } from "#app/global-event-manager";
+import { NON_LEGEND_ULTRA_BEASTS } from "#balance/special-species-groups";
+import { NIGHT_TIME } from "#constants/game-constants";
+import { Gender } from "#data/gender";
+import { getStatusEffectCatchRateMultiplier } from "#data/status-effect";
+import { AbilityId } from "#enums/ability-id";
+import { BiomeId } from "#enums/biome-id";
+import { PokemonType } from "#enums/pokemon-type";
+import { SpeciesId } from "#enums/species-id";
+import { Stat } from "#enums/stat";
+import { StatusEffect } from "#enums/status-effect";
+import type { EnemyPokemon, Pokemon } from "#field/pokemon";
 import { PokeballType } from "#enums/pokeball";
 import { type BallDesign, designBattleFrame } from "#data/ball-design";
 import { NumberHolder } from "#utils/common";
@@ -61,10 +73,57 @@ export function getPokeballDescription(type: PokeballType, design?: BallDesign):
   return i18next.t(`pokeball:descriptions.${key}`);
 }
 
-export function getPokeballCatchMultiplier(type: PokeballType): number {
+const duskBiomes = new Set<BiomeId>([BiomeId.ABYSS, BiomeId.CAVE, BiomeId.ICE_CAVE, BiomeId.FAIRY_CAVE]);
+const diveBiomes = new Set<BiomeId>([BiomeId.LAKE, BiomeId.SEABED, BiomeId.SEA]);
+const moonStoneFamilies = new Set<SpeciesId>([
+  SpeciesId.NIDORAN_F, SpeciesId.NIDORAN_M, SpeciesId.CLEFFA, SpeciesId.IGGLYBUFF, SpeciesId.SKITTY, SpeciesId.MUNNA,
+]);
+
+function getDesignCatchMultiplier(target: EnemyPokemon, owner: PlayerIndex, thrower?: Pokemon): number {
+  switch (globalScene.getPlayerState(owner).ballDesign) {
+    case "quick":
+      return globalScene.currentBattle.turn === 1 ? 5 : 1;
+    case "timer":
+      return Math.min(4, 1 + 0.3 * Math.max(0, globalScene.currentBattle.turn - 1));
+    case "fast":
+      return target.getSpeciesForm(true).baseStats[Stat.SPD] >= 100 ? 4 : 1;
+    case "level":
+      if (!thrower || thrower.level <= target.level) return 1;
+      if (thrower.level >= target.level * 4) return 8;
+      return thrower.level >= target.level * 2 ? 4 : 2;
+    case "love":
+      return thrower?.species.speciesId === target.species.speciesId
+        && thrower.gender !== Gender.GENDERLESS && target.gender !== Gender.GENDERLESS
+        && thrower.gender !== target.gender ? 8 : 1;
+    case "nest":
+      return target.level < 30 ? (41 - target.level) / 10 : 1;
+    case "dusk":
+      return duskBiomes.has(globalScene.arena.biomeId) || NIGHT_TIME.includes(globalScene.arena.getTimeOfDay()) ? 3 : 1;
+    case "dive":
+      return diveBiomes.has(globalScene.arena.biomeId) ? 3.5 : 1;
+    case "lure":
+      return globalScene.getActivePlayerIndexes().some(p =>
+        globalScene.findModifierForPlayer(m => m.is("DoubleBattleChanceBoosterModifier"), p)) ? 4 : 1;
+    case "repeat":
+      return !globalScene.isComputerPartnerPlayer(owner)
+        && globalScene.getPlayerGameData(owner).dexData[target.species.speciesId]?.caughtAttr ? 3.5 : 1;
+    case "moon":
+      return moonStoneFamilies.has(target.species.getRootSpeciesId()) ? 4 : 1;
+    case "beast":
+      return NON_LEGEND_ULTRA_BEASTS.includes(target.species.speciesId) ? 5 : 0.1;
+    case "net":
+      return target.isOfType(PokemonType.WATER) || target.isOfType(PokemonType.BUG) ? 3.5 : 1;
+    case "dream":
+      return target.status?.effect === StatusEffect.SLEEP || target.hasAbility(AbilityId.COMATOSE) ? 4 : 1;
+    default:
+      return 1;
+  }
+}
+
+export function getPokeballCatchMultiplier(type: PokeballType, target?: EnemyPokemon, owner?: PlayerIndex, thrower?: Pokemon): number {
   switch (type) {
     case PokeballType.POKEBALL:
-      return 1;
+      return target && owner !== undefined ? getDesignCatchMultiplier(target, owner, thrower) : 1;
     case PokeballType.GREAT_BALL:
     case PokeballType.SAFARI_BALL:
       return 1.5;
@@ -81,6 +140,24 @@ export function getPokeballCatchMultiplier(type: PokeballType): number {
     case PokeballType.CLONE_BALL:
       return -1;
   }
+}
+
+export function getPokeballCatchRate(type: PokeballType, target: EnemyPokemon, owner: PlayerIndex, thrower?: Pokemon) {
+  let catchRate = target.species.catchRate;
+  if (catchRate > 0 && type === PokeballType.POKEBALL && globalScene.getPlayerState(owner).ballDesign === "heavy") {
+    const kg = target.getSpeciesForm(true).weight;
+    const adjustment = kg < 100 ? -20 : kg < 200 ? 0 : kg < 300 ? 20 : 30;
+    catchRate = Math.max(1, Math.min(255, catchRate + adjustment));
+  }
+  const pokeballMultiplier = getPokeballCatchMultiplier(type, target, owner, thrower);
+  const statusMultiplier = target.status ? getStatusEffectCatchRateMultiplier(target.status.effect) : 1;
+  const shinyMultiplier = target.isShiny() ? timedEventManager.getShinyCatchMultiplier() : 1;
+  const tripleHp = 3 * target.getMaxHp();
+  const raw = tripleHp ? (((tripleHp - 2 * target.hp) * catchRate * pokeballMultiplier) / tripleHp)
+    * statusMultiplier * shinyMultiplier : 0;
+  // Even an off-target Beast Ball can catch a low catch-rate species.
+  const modifiedCatchRate = raw > 0 ? Math.max(1, Math.round(raw)) : Math.round(raw);
+  return { catchRate, pokeballMultiplier, statusMultiplier, shinyMultiplier, modifiedCatchRate };
 }
 
 export function getPokeballTintColor(type: PokeballType): number {

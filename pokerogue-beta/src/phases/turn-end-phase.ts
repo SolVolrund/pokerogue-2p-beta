@@ -64,7 +64,7 @@ export class TurnEndPhase extends FieldPhase {
           globalScene.applyEnemyModifierForPokemon(EnemyStatusEffectHealChanceModifier, pokemon, pokemon);
         }
 
-        globalScene.applyModifiersForPokemon(ShinyBadgeModifier, pokemon, pokemon, "status");
+        ShinyBadgeModifier.applyBattleBond(pokemon, "status");
 
         applyAbAttrs("PostTurnAbAttr", { pokemon });
       }

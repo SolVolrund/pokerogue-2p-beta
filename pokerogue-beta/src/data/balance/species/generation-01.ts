@@ -4,7 +4,7 @@ import { EvoCondKey, EvolutionItem, SpeciesEvolution, SpeciesFormEvolution } fro
 import { COSPLAY_PIKACHU_BASE_FORM_KEY, COSPLAY_PIKACHU_SCARF_FORMS } from "#data/cosplay-pikachu";
 import { GrowthRate } from "#data/exp";
 import { SpeciesFormChangeItemTrigger } from "#data/form-change-triggers";
-import { SpeciesFormChange } from "#data/pokemon-forms";
+import { SpeciesFormChange, SpeciesFormChangeCondition } from "#data/pokemon-forms";
 import { PokemonForm, PokemonSpecies } from "#data/pokemon-species";
 import { AbilityId } from "#enums/ability-id";
 import { EggTier } from "#enums/egg-type";
@@ -22,7 +22,8 @@ function createPartnerPikachuForm(capped: boolean): PokemonForm {
     formKey: capped ? "partner-cap" : "partner",
     type1: PokemonType.ELECTRIC, type2: null,
     height: 0.4, weight: 6,
-    ability1: AbilityId.STATIC, ability2: AbilityId.NONE, abilityHidden: AbilityId.LIGHTNING_ROD,
+    ability1: capped ? AbilityId.BATTLE_BOND : AbilityId.STATIC, ability2: AbilityId.NONE,
+    abilityHidden: capped ? AbilityId.BATTLE_BOND : AbilityId.LIGHTNING_ROD,
     baseTotal: 430, baseHp: 45, baseAtk: 80, baseDef: 50, baseSpatk: 75, baseSpdef: 60, baseSpd: 120,
     catchRate: 190, baseFriendship: 50, baseExp: 112,
     genderDiffs: !capped, isStarterSelectable: !capped,
@@ -2598,6 +2599,20 @@ export function initGenerationOne(): SpeciesDataMapConfig {
       }),
     ],
     formChanges: [
+      ...["", "partner", COSPLAY_PIKACHU_BASE_FORM_KEY, ...COSPLAY_PIKACHU_SCARF_FORMS.map(f => f.formKey), SpeciesFormKey.GIGANTAMAX]
+        .flatMap(original => [
+          new SpeciesFormChange({
+            speciesId: SpeciesId.PIKACHU, preFormKey: original, evoFormKey: "partner-cap",
+            trigger: new SpeciesFormChangeItemTrigger(FormChangeItem.PARTNER_CAP),
+          }),
+          new SpeciesFormChange({
+            speciesId: SpeciesId.PIKACHU, preFormKey: "partner-cap", evoFormKey: original,
+            trigger: new SpeciesFormChangeItemTrigger(FormChangeItem.PARTNER_CAP, false),
+            conditions: [new SpeciesFormChangeCondition(p => p.getHeldItems().some(
+              item => item.is("PartnerCapModifier") && item.originalForm === original,
+            ))],
+          }),
+        ]),
       new SpeciesFormChange({
         speciesId: SpeciesId.PIKACHU,
         preFormKey: "",
@@ -2624,7 +2639,7 @@ export function initGenerationOne(): SpeciesDataMapConfig {
       6: [AbilityId.TINTED_LENS, AbilityId.COMPOUND_EYES],
       7: [AbilityId.LIBERO, AbilityId.MOLD_BREAKER],
       8: [AbilityId.THICK_FAT, AbilityId.CHEEK_POUCH],
-      9: [AbilityId.STURDY, AbilityId.BATTLE_BOND],
+      9: AbilityId.TERAVOLT,
     },
     levelMoves: [
       [1, MoveId.TAIL_WHIP],

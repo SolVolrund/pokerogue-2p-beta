@@ -50,7 +50,7 @@ import {
   rollSameSpeciesEggShiny,
   rollSameSpeciesEggVariant,
 } from "#utils/egg-pity";
-import { getPokemonSpecies } from "#utils/pokemon-utils";
+import { getDexNumber, getPokemonSpecies } from "#utils/pokemon-utils";
 
 export type ComputerPartnerKey =
   | "alex"
@@ -112,6 +112,8 @@ export interface ComputerPartnerProfile {
   aceStarterSpeciesIds?: SpeciesId[];
   randomizeStarterAce?: boolean;
   allowedReplacementSpeciesIds?: readonly SpeciesId[];
+  /** Treat the listed IDs as evolutionary family roots, including regional branches. */
+  matchReplacementSpeciesByFamily?: boolean;
   requiresUnlock?: boolean;
   unlockAchievement?: string;
   monotype?: PokemonType;
@@ -415,6 +417,26 @@ export const COMPUTER_PARTNER_PROFILES: Record<ComputerPartnerKey, ComputerPartn
   ash_ketchum: {
     key: "ash_ketchum",
     name: "Ash Ketchum",
+    requiresUnlock: true,
+    matchReplacementSpeciesByFamily: true,
+    allowedReplacementSpeciesIds: [
+      SpeciesId.PICHU, SpeciesId.CATERPIE, SpeciesId.PIDGEY, SpeciesId.BULBASAUR,
+      SpeciesId.CHARMANDER, SpeciesId.SQUIRTLE, SpeciesId.KRABBY, SpeciesId.MANKEY,
+      SpeciesId.GRIMER, SpeciesId.TAUROS, SpeciesId.LAPRAS, SpeciesId.MUNCHLAX,
+      SpeciesId.MIME_JR, SpeciesId.WEEDLE, SpeciesId.HERACROSS, SpeciesId.CHIKORITA,
+      SpeciesId.CYNDAQUIL, SpeciesId.TOTODILE, SpeciesId.HOOTHOOT, SpeciesId.PHANPY,
+      SpeciesId.LARVITAR, SpeciesId.TAILLOW, SpeciesId.TREECKO, SpeciesId.CORPHISH,
+      SpeciesId.TORKOAL, SpeciesId.SNORUNT, SpeciesId.STARLY, SpeciesId.TURTWIG,
+      SpeciesId.CHIMCHAR, SpeciesId.BUIZEL, SpeciesId.GLIGAR, SpeciesId.GIBLE,
+      SpeciesId.AIPOM, SpeciesId.PIDOVE, SpeciesId.OSHAWOTT, SpeciesId.TEPIG,
+      SpeciesId.SNIVY, SpeciesId.SCRAGGY, SpeciesId.SEWADDLE, SpeciesId.TYMPOLE,
+      SpeciesId.ROGGENROLA, SpeciesId.SANDILE, SpeciesId.FROAKIE, SpeciesId.FLETCHLING,
+      SpeciesId.HAWLUCHA, SpeciesId.GOOMY, SpeciesId.NOIBAT, SpeciesId.ROWLET,
+      SpeciesId.ROCKRUFF, SpeciesId.LITTEN, SpeciesId.POIPOLE, SpeciesId.MELTAN,
+      SpeciesId.DRATINI, SpeciesId.GASTLY, SpeciesId.RIOLU, SpeciesId.FARFETCHD,
+      SpeciesId.DRACOVISH, SpeciesId.RATTATA, SpeciesId.GOLDEEN, SpeciesId.BUZZWOLE,
+      SpeciesId.STAKATAKA, SpeciesId.PHEROMOSA, SpeciesId.COSMOG, SpeciesId.LATIAS,
+    ],
     trainerSprite: PlayerTrainerSprite.ASH_KETCHUM,
     trainerGender: PlayerGender.MALE,
     starterNature: Nature.HARDY,
@@ -1784,7 +1806,17 @@ export function isComputerPartnerCandidateAllowed(
     return true;
   }
 
-  return allowedSpeciesIds.includes(getPokemonSpeciesForScoring(candidate).speciesId);
+  let speciesId = getPokemonSpeciesForScoring(candidate).speciesId;
+  if (profile.matchReplacementSpeciesByFamily) {
+    // Normalize each link: Sirfetch'd, for example, points to Galarian Farfetch'd.
+    speciesId = getDexNumber(speciesId);
+    let prevo = speciesDataRegistry.getPrevolution(speciesId);
+    while (prevo !== null) {
+      speciesId = getDexNumber(prevo);
+      prevo = speciesDataRegistry.getPrevolution(speciesId);
+    }
+  }
+  return allowedSpeciesIds.includes(speciesId);
 }
 
 function scoreComputerPartnerTeam(

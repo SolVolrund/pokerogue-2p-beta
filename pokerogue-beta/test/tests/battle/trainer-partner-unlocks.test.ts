@@ -65,6 +65,12 @@ describe("CPU unlocks from defeated trainer teams", () => {
     expect(game.scene.savePlayerSystemSaveLocal).toHaveBeenCalledWith(0);
   });
 
+  it("unlocks Ash independently of AmberTwo on exhibition victory", () => {
+    expect(game.scene.gameData.isComputerPartnerUnlocked("ash_ketchum")).toBe(false);
+    win(TrainerType.ASH_KETCHUM, TrainerType.BROCK, TrainerType.MISTY);
+    expect(Object.keys(game.scene.gameData.computerPartnerUnlocks)).toEqual(["ash_ketchum"]);
+  });
+
   it("unlocks each distinct special trainer on the defeated team", () => {
     win(TrainerType.DAWN_ZORUA, TrainerType.BIANCA_LATIAS, TrainerType.DUPLICA_DITTO);
     expect([...Object.keys(game.scene.gameData.computerPartnerUnlocks)].sort()).toEqual([

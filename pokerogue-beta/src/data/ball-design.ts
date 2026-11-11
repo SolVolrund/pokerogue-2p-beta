@@ -1,4 +1,4 @@
-// These are cosmetic IDs, never inventory or capture-mechanics IDs.
+// Designs replace the regular ball, not its inventory slot or other ball types.
 export const BALL_DESIGNS = [
   "beast",
   "cherish",

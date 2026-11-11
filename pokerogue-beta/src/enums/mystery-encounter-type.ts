@@ -44,4 +44,5 @@ export enum MysteryEncounterType {
   GAME_CORNER,
   CAPTURE_CUSTOMIZER,
   SPOOKY_INVITATION,
+  PALLET_EXHIBITION,
 }

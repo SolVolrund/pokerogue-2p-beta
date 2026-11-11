@@ -355,4 +355,5 @@ export enum TrainerType {
   TOWER_EVENT,
   TOWER_NOT,
   TOWER_BLAKE,
+  ASH_KETCHUM,
 }

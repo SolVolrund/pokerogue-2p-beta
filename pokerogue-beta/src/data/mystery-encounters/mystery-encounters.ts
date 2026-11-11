@@ -26,6 +26,7 @@ import { GtsMalfunctionEncounter } from "#mystery-encounters/gts-malfunction-enc
 import { ItIsDangerousToGoAloneEncounter } from "#mystery-encounters/it-is-dangerous-to-go-alone-encounter";
 import { LegendaryConflictEncounter } from "#mystery-encounters/legendary-conflict-encounter";
 import { LifeIsWonderfulEncounter } from "#mystery-encounters/life-is-wonderful-encounter";
+import { PalletExhibitionEncounter } from "#mystery-encounters/pallet-exhibition-encounter";
 import { LostAtSeaEncounter } from "#mystery-encounters/lost-at-sea-encounter";
 import { MiningEncounter } from "#mystery-encounters/mining-encounter";
 import { MysteriousChallengersEncounter } from "#mystery-encounters/mysterious-challengers-encounter";
@@ -164,6 +165,7 @@ const nonExtremeBiomeEncounters: MysteryEncounterType[] = [
 ];
 
 const humanTransitableBiomeEncounters: MysteryEncounterType[] = [
+  MysteryEncounterType.PALLET_EXHIBITION,
   MysteryEncounterType.CAPTURE_CUSTOMIZER,
   MysteryEncounterType.MYSTERIOUS_CHALLENGERS,
   MysteryEncounterType.SHADY_VITAMIN_DEALER,
@@ -304,6 +306,7 @@ export function initMysteryEncounters() {
   allMysteryEncounters[MysteryEncounterType.DEJA_VU] = DejaVuEncounter;
   allMysteryEncounters[MysteryEncounterType.MINING] = MiningEncounter;
   allMysteryEncounters[MysteryEncounterType.LIFE_IS_WONDERFUL] = LifeIsWonderfulEncounter;
+  allMysteryEncounters[MysteryEncounterType.PALLET_EXHIBITION] = PalletExhibitionEncounter;
 
   // Add extreme encounters to biome map
   extremeBiomeEncounters.forEach(encounter => {

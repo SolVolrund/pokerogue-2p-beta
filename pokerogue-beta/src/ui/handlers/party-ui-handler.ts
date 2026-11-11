@@ -22,7 +22,7 @@ import { StatusEffect } from "#enums/status-effect";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
-import { ZCrystalModifier } from "#modifiers/modifier";
+import { PartnerCapModifier, ZCrystalModifier } from "#modifiers/modifier";
 import type { PokemonFormChangeItemModifier, PokemonHeldItemModifier } from "#modifiers/modifier";
 import type { PokemonMove } from "#moves/pokemon-move";
 import type { CommandPhase } from "#phases/command-phase";
@@ -1083,6 +1083,9 @@ export class PartyUiHandler extends MessageUiHandler {
             otherModifier.active = false;
           }
         }
+      }
+      if (!modifier.active && modifier.is("PartnerCapModifier")) {
+        modifier.originalForm = PartnerCapModifier.getUncappedForm(pokemon);
       }
       modifier.active = !modifier.active;
       globalScene.triggerPokemonFormChange(pokemon, SpeciesFormChangeItemTrigger, false, true);
@@ -2243,6 +2246,10 @@ export class PartyUiHandler extends MessageUiHandler {
         && !isFormSelectionItem(m.formChangeItem) && !isLegacyFormItemSuperseded(pokemon, m.formChangeItem),
       this.getPlayerIndex(),
     ) as PokemonFormChangeItemModifier[];
+    const activeCap = formChangeItemModifiers.find(m => m.active && m.formChangeItem === FormChangeItem.PARTNER_CAP);
+    if (activeCap) {
+      return [activeCap];
+    }
     const ultraNecrozmaModifiers = formChangeItemModifiers.filter(
       m => m.active && m.formChangeItem === FormChangeItem.ULTRANECROZIUM_Z,
     );
@@ -2254,12 +2261,12 @@ export class PartyUiHandler extends MessageUiHandler {
       pokemon.hasSpecies(SpeciesId.PIKACHU)
       && formChangeItemModifiers.find(m => m.active && isCosplayPikachuScarfItem(m.formChangeItem))
     ) {
-      return formChangeItemModifiers.filter(m => isCosplayPikachuScarfItem(m.formChangeItem));
+      return formChangeItemModifiers.filter(m => isCosplayPikachuScarfItem(m.formChangeItem) || m.formChangeItem === FormChangeItem.PARTNER_CAP);
     }
     if (formChangeItemModifiers.find(m => m.active)) {
       // a form is currently active. the user has to disable the form or activate ULTRANECROZIUM_Z
       formChangeItemModifiers = formChangeItemModifiers.filter(
-        m => m.active || m.formChangeItem === FormChangeItem.ULTRANECROZIUM_Z,
+        m => m.active || m.formChangeItem === FormChangeItem.ULTRANECROZIUM_Z || m.formChangeItem === FormChangeItem.PARTNER_CAP,
       );
     } else if (pokemon.species.speciesId === SpeciesId.NECROZMA) {
       // no form is currently active. the user has to activate some form, except ULTRANECROZIUM_Z

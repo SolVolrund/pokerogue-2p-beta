@@ -7,6 +7,8 @@ import { getPokemonNameWithAffix } from "#app/messages";
 import { activeOverrides } from "#app/overrides";
 import { STARTING_WAVE } from "#balance/misc";
 import { FusionSpeciesFormEvolution } from "#balance/pokemon-evolutions";
+import { TrainerSlot } from "#enums/trainer-slot";
+import { TrainerType } from "#enums/trainer-type";
 import { FRIENDSHIP_GAIN_FROM_RARE_CANDY } from "#balance/starters";
 import { canBerryTriggerInContext, getBerryEffectFunc, getBerryPredicate, type BerryUseContext } from "#data/berry";
 import { allMoves, modifierTypes } from "#data/data-lists";
@@ -3641,19 +3643,20 @@ export class ShinyBadgeModifier extends PokemonHeldItemModifier {
     return new ShinyBadgeModifier(this.type, this.pokemonId, this.stackCount);
   }
 
-  private getFriendshipTier(pokemon: Pokemon): number {
+  private static getFriendshipTier(pokemon: Pokemon): number {
     return Math.min(Math.max(Math.floor(pokemon.friendship / 51), 0), 5);
   }
 
-  private rollFriendshipChance(pokemon: Pokemon, chancePerTier: number): boolean {
+  private static rollFriendshipChance(pokemon: Pokemon, chancePerTier: number): boolean {
     const chance = this.getFriendshipTier(pokemon) * chancePerTier;
     return chance > 0 && pokemon.randBattleSeedInt(100) < chance;
   }
 
-  private applySurvive(pokemon: Pokemon, surviveDamage?: BooleanHolder | NumberHolder): boolean {
+  private static applySurvive(pokemon: Pokemon, surviveDamage?: BooleanHolder | NumberHolder, badgeName?: string): boolean {
     if (
-      !(surviveDamage instanceof BooleanHolder)
+      typeof surviveDamage?.value !== "boolean"
       || surviveDamage.value
+      || pokemon.hp <= 1
       || !this.rollFriendshipChance(pokemon, 5)
     ) {
       return false;
@@ -3661,15 +3664,15 @@ export class ShinyBadgeModifier extends PokemonHeldItemModifier {
 
     surviveDamage.value = true;
     globalScene.phaseManager.queueMessage(
-      i18next.t("modifier:surviveDamageApply", {
+      i18next.t(badgeName === undefined ? "mysteryEncounters/palletExhibition:holdOn" : "modifier:surviveDamageApply", {
         pokemonNameWithAffix: getPokemonNameWithAffix(pokemon),
-        typeName: this.type.name,
+        typeName: badgeName,
       }),
     );
     return true;
   }
 
-  private applyStatusCure(pokemon: Pokemon): boolean {
+  private static applyStatusCure(pokemon: Pokemon): boolean {
     if (!pokemon.status || pokemon.status.effect === StatusEffect.FAINT || !this.rollFriendshipChance(pokemon, 4)) {
       return false;
     }
@@ -3682,7 +3685,7 @@ export class ShinyBadgeModifier extends PokemonHeldItemModifier {
     return true;
   }
 
-  private applyDodge(pokemon: Pokemon, dodged?: BooleanHolder | NumberHolder): boolean {
+  private static applyDodge(pokemon: Pokemon, dodged?: BooleanHolder | NumberHolder): boolean {
     if (!(dodged instanceof BooleanHolder) || dodged.value || !this.rollFriendshipChance(pokemon, 2)) {
       return false;
     }
@@ -3691,8 +3694,8 @@ export class ShinyBadgeModifier extends PokemonHeldItemModifier {
     return true;
   }
 
-  private applyRevive(pokemon: Pokemon): boolean {
-    if (!this.rollFriendshipChance(pokemon, 1)) {
+  private static applyRevive(pokemon: Pokemon, badgeName?: string): boolean {
+    if (!ShinyBadgeModifier.rollFriendshipChance(pokemon, 1)) {
       return false;
     }
 
@@ -3701,9 +3704,9 @@ export class ShinyBadgeModifier extends PokemonHeldItemModifier {
       pokemon.getBattlerIndex(),
       toDmgValue(pokemon.getMaxHp() / 2),
       {
-        message: i18next.t("modifier:pokemonInstantReviveApply", {
+        message: i18next.t(badgeName === undefined ? "mysteryEncounters/palletExhibition:revive" : "modifier:pokemonInstantReviveApply", {
           pokemonNameWithAffix: getPokemonNameWithAffix(pokemon),
-          typeName: this.type.name,
+          typeName: badgeName,
         }),
         showFullHpMessage: false,
         revive: true,
@@ -3736,7 +3739,7 @@ export class ShinyBadgeModifier extends PokemonHeldItemModifier {
     return true;
   }
 
-  private applyCritStage(pokemon: Pokemon, critStage?: BooleanHolder | NumberHolder): boolean {
+  private static applyCritStage(pokemon: Pokemon, critStage?: BooleanHolder | NumberHolder): boolean {
     if (!(critStage instanceof NumberHolder) || this.getFriendshipTier(pokemon) < 5) {
       return false;
     }
@@ -3758,6 +3761,35 @@ export class ShinyBadgeModifier extends PokemonHeldItemModifier {
     return true;
   }
 
+  private static hasAshBond(pokemon: Pokemon): boolean {
+    return pokemon.isEnemy() && pokemon.trainerSlot === TrainerSlot.TRAINER
+      && globalScene.currentBattle.trainer?.config.trainerType === TrainerType.ASH_KETCHUM;
+  }
+
+  static tryBattleBondRevive(pokemon: Pokemon, heldItemsSuppressed: boolean): boolean {
+    return this.hasAshBond(pokemon)
+      ? this.applyRevive(pokemon)
+      : !heldItemsSuppressed && !!globalScene.applyModifierForPokemon(ShinyBadgeModifier, pokemon, pokemon, "revive");
+  }
+
+  static applyBattleBond(pokemon: Pokemon, effect: "crit" | "survive" | "dodge" | "status", value?: BooleanHolder | NumberHolder): void {
+    if (this.hasAshBond(pokemon)) {
+      this.applyBondEffect(pokemon, effect, value);
+    } else {
+      globalScene.applyModifiersForPokemon(ShinyBadgeModifier, pokemon, pokemon, effect, value);
+    }
+  }
+
+  private static applyBondEffect(pokemon: Pokemon, effect: "crit" | "survive" | "dodge" | "status",
+    value?: BooleanHolder | NumberHolder, badgeName?: string): boolean {
+    switch (effect) {
+      case "survive": return this.applySurvive(pokemon, value, badgeName);
+      case "status": return this.applyStatusCure(pokemon);
+      case "dodge": return this.applyDodge(pokemon, value);
+      case "crit": return this.applyCritStage(pokemon, value);
+    }
+  }
+
   override apply(
     pokemon: Pokemon,
     effect: ShinyBadgeEffect = "survive",
@@ -3767,17 +3799,14 @@ export class ShinyBadgeModifier extends PokemonHeldItemModifier {
       case "shiny":
         return this.applyShiny(pokemon);
       case "survive":
-        return this.applySurvive(pokemon, value);
       case "status":
-        return this.applyStatusCure(pokemon);
       case "dodge":
-        return this.applyDodge(pokemon, value);
+      case "crit":
+        return ShinyBadgeModifier.applyBondEffect(pokemon, effect, value, this.type.name);
       case "revive":
-        return this.applyRevive(pokemon);
+        return ShinyBadgeModifier.applyRevive(pokemon, this.type.name);
       case "partyRevive":
         return this.applyPartyRevive(pokemon);
-      case "crit":
-        return this.applyCritStage(pokemon, value);
     }
   }
 
@@ -4158,6 +4187,24 @@ export class PokemonFormChangeItemModifier extends PokemonHeldItemModifier {
 
   getMaxHeldItemCount(_pokemon: Pokemon): number {
     return 1;
+  }
+}
+
+export class PartnerCapModifier extends PokemonFormChangeItemModifier {
+  static getUncappedForm(pokemon: Pokemon): string {
+    return (pokemon.fusionSpecies?.speciesId === SpeciesId.PIKACHU ? pokemon.getFusionFormKey() : pokemon.getFormKey()) ?? "";
+  }
+
+  constructor(type: FormChangeItemModifierType, pokemonId: number, active: boolean, public originalForm: string, stackCount?: number) {
+    super(type, pokemonId, FormChangeItem.PARTNER_CAP, active, stackCount);
+  }
+
+  override clone(): PartnerCapModifier {
+    return new PartnerCapModifier(this.type, this.pokemonId, this.active, this.originalForm, this.stackCount);
+  }
+
+  override getArgs(): any[] {
+    return [this.pokemonId, this.active, this.originalForm];
   }
 }
 
@@ -5289,6 +5336,7 @@ const ModifierClassMap = Object.freeze({
   BoosterEnergyModifier,
   PokemonMultiHitModifier,
   PokemonFormChangeItemModifier,
+  PartnerCapModifier,
   MoneyRewardModifier,
   DamageMoneyRewardModifier,
   MoneyInterestModifier,

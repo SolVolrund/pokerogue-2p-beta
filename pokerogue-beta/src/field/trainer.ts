@@ -105,6 +105,7 @@ const TRAINER_ANIMATION_FRAME_SEQUENCES: Partial<Record<string, number[]>> = {
   tower_ghost_f: Array.from({ length: 21 }, (_, i) => i + 1),
   amber_two: Array.from({ length: 32 }, (_, i) => i + 1),
   ambers_joy: [1],
+  ash_ketchum: [1],
   molly_hale: [1, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13],
 };
 

@@ -189,6 +189,7 @@ export enum FormChangeItem {
   PROP_CASE,
   ROTOM_CATALOGUE,
   NECTAR_CASE,
+  PARTNER_CAP,
 
   // #endregion Form Change Items
 }

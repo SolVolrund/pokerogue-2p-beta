@@ -485,7 +485,7 @@ export class MoveEffectPhase extends PokemonPhase {
 
     if (rand < moveAccuracy * accuracyMultiplier) {
       const dodged = new BooleanHolder(false);
-      globalScene.applyModifiersForPokemon(ShinyBadgeModifier, target, target, "dodge", dodged);
+      ShinyBadgeModifier.applyBattleBond(target, "dodge", dodged);
       if (dodged.value) {
         return [HitCheckResult.MISS, 0];
       }

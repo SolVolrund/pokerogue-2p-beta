@@ -1,9 +1,7 @@
 import type { PlayerIndex, PokeballCounts } from "#app/battle-scene";
-import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import type { Move } from "#data/moves/move";
-import { getCriticalCaptureChance, getPokeballCatchMultiplier } from "#data/pokeball";
-import { getStatusEffectCatchRateMultiplier } from "#data/status-effect";
+import { getCriticalCaptureChance, getPokeballCatchRate } from "#data/pokeball";
 import { getTypeDamageMultiplier } from "#data/type";
 import { MoveCategory } from "#enums/move-category";
 import { PokeballType } from "#enums/pokeball";
@@ -202,6 +200,7 @@ export function getComputerPartnerCaptureDecisionsFromInterests(
 
       const ballChoice = chooseComputerPartnerPokeball(
         target,
+        activePokemon,
         pokeballCounts,
         forceThrowTargetIdSet.has(target.id),
         options.playerIndex,
@@ -295,14 +294,14 @@ export function getComputerPartnerCaptureChance(
   pokemon: EnemyPokemon,
   pokeballType: PokeballType,
   playerIndex: PlayerIndex = 0,
+  thrower?: PlayerPokemon,
 ): number {
-  const pokeballMultiplier = getPokeballCatchMultiplier(pokeballType);
+  const { pokeballMultiplier, modifiedCatchRate } = getPokeballCatchRate(pokeballType, pokemon, playerIndex, thrower);
   if (pokeballMultiplier === -1) {
     return 1;
   }
 
   const maxHp = pokemon.getMaxHp();
-  const modifiedCatchRate = getComputerPartnerModifiedCatchRate(pokemon, pokeballType);
   if (modifiedCatchRate >= 255) {
     return 1;
   }
@@ -319,6 +318,7 @@ export function getComputerPartnerCaptureChance(
 
 function chooseComputerPartnerPokeball(
   pokemon: EnemyPokemon,
+  thrower: PlayerPokemon,
   pokeballCounts: PokeballCounts,
   preferBestBall = false,
   playerIndex: PlayerIndex = 0,
@@ -330,7 +330,7 @@ function chooseComputerPartnerPokeball(
 
   const ballScores = usableBalls.map(ballType => ({
     ballType,
-    chance: getComputerPartnerCaptureChance(pokemon, ballType, playerIndex),
+    chance: getComputerPartnerCaptureChance(pokemon, ballType, playerIndex, thrower),
   }));
 
   if (preferBestBall) {
@@ -343,20 +343,6 @@ function chooseComputerPartnerPokeball(
   }
 
   return ballScores.sort((a, b) => b.chance - a.chance)[0];
-}
-
-function getComputerPartnerModifiedCatchRate(pokemon: EnemyPokemon, pokeballType: PokeballType): number {
-  const maxHp = pokemon.getMaxHp();
-  if (!maxHp) {
-    return 0;
-  }
-
-  const hpFactor = Math.max(3 * maxHp - 2 * pokemon.hp, 1) / (3 * maxHp);
-  const statusMultiplier = pokemon.status ? getStatusEffectCatchRateMultiplier(pokemon.status.effect) : 1;
-  const pokeballMultiplier = getPokeballCatchMultiplier(pokeballType);
-  const shinyMultiplier = pokemon.isShiny() ? timedEventManager.getShinyCatchMultiplier() : 1;
-
-  return Math.round(hpFactor * pokemon.species.catchRate * pokeballMultiplier * statusMultiplier * shinyMultiplier);
 }
 
 function getSafestComputerPartnerWeakeningMoveIndex(

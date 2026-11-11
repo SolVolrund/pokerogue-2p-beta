@@ -5869,6 +5869,13 @@ export const trainerConfigs: TrainerConfigs = {
       }),
     ),
 
+  [TrainerType.ASH_KETCHUM]: new TrainerConfig(TrainerType.ASH_KETCHUM)
+    .setName("Ash Ketchum")
+    .setSpriteKey("ash_ketchum")
+    .setPartyTemplates(trainerPartyTemplates.SIX_STRONG)
+    .setBattleBgm("battle_trainer")
+    .setMixedBattleBgm("battle_trainer"),
+
   [TrainerType.AMBER_TWO]: new TrainerConfig(TrainerType.AMBER_TWO)
     .setName("Amber-Two")
     .setSpriteKey("amber_two")

@@ -177,6 +177,7 @@ export class TurnStartPhase extends FieldPhase {
           globalScene.getFieldIndexForBattlerIndex(turnCommand.targets![0]),
           turnCommand.cursor!,
           turnCommand.playerIndex,
+          pokemon,
         ); //TODO: is the bang correct here?
         break;
       case Command.POKEMON:

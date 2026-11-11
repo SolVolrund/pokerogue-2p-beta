@@ -150,16 +150,15 @@ export class FaintPhase extends PokemonPhase {
     faintPokemon.resetSummonData();
 
     if (this.wasOnField) {
-      const shinyBadgeModifier =
+      const bondRevived =
         !(
           this.preventInstantRevive
           && globalScene.currentBattle.greatHauntState?.forcedFaintIds.includes(faintPokemon.id)
         )
         && !this.forceSacrifice
-        && !heldItemsSuppressed
-        && globalScene.applyModifierForPokemon(ShinyBadgeModifier, faintPokemon, faintPokemon, "revive");
+        && ShinyBadgeModifier.tryBattleBondRevive(faintPokemon, heldItemsSuppressed);
 
-      if (shinyBadgeModifier) {
+      if (bondRevived) {
         this.waitForRevive();
         return;
       }
