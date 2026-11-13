@@ -160,14 +160,20 @@ export class SwitchSummonPhase extends SummonPhase {
   }
 
   private promptEnemyPlayerReplacement(): void {
+    const outgoing = globalScene.getEnemyField()[this.fieldIndex];
+    const battlers = globalScene.currentBattle.getBattlerCount();
+    if (!outgoing || !globalScene.getEnemyParty().slice(battlers)
+      .some(p => p.trainerSlot === outgoing.trainerSlot && p.isAllowedInBattle())) {
+      this.end();
+      return;
+    }
     globalScene.waitForEnemyPlayerInput();
     globalScene.ui.setMode(
       UiMode.PARTY,
-      PartyUiMode.ENEMY_SWITCH,
+      PartyUiMode.ENEMY_REPLACEMENT,
       this.fieldIndex,
       (partyIndex: number, option: PartyOption) => {
         if (option !== PartyOption.SEND_OUT || partyIndex < 0) {
-          this.promptEnemyPlayerReplacement();
           return;
         }
 

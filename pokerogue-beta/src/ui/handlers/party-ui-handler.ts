@@ -38,6 +38,8 @@ import { addWindow } from "#ui/ui-theme";
 import { applyChallenges } from "#utils/challenge-utils";
 import { BooleanHolder, getLocalizedSpriteKey } from "#utils/common";
 import { isMysteryEncounterSwitchProtectedPokemon } from "#utils/mystery-encounter-switch-protection";
+import { getEnemyRecoveryItem } from "#utils/enemy-trainer-medicine";
+import { shouldRedactCombatInputOwner } from "#ui/private-input-display";
 import { isDestinyKnot } from "#utils/soul-bond";
 import { addBagTextureFrames } from "#ui/bag-textures";
 import { toCamelCase, toTitleCase } from "#utils/strings";
@@ -152,7 +154,7 @@ export class PartyUiHandler extends MessageUiHandler {
   private lastCursor = 0;
   private lastLeftPokemonCursor = 0;
   private lastRightPokemonCursor = 0;
-  private restoreRegistrationCursor: (() => void) | undefined;
+  private restoreSharedCursor: (() => void) | undefined;
   private selectCallback: PartySelectCallback | PartyModifierTransferSelectCallback | null;
   private selectFilter: PokemonSelectFilter | PokemonModifierTransferSelectFilter;
   private moveSelectFilter: PokemonMoveSelectFilter;
@@ -160,6 +162,7 @@ export class PartyUiHandler extends MessageUiHandler {
   private showMovePp: boolean;
   private enemySwitchPartyIndexes: number[] = [];
   private enemySwitchCanSwitch = false;
+  private enemyMedicineId?: string | undefined;
 
   private iconAnimHandler: PokemonIconAnimHelper;
 
@@ -208,7 +211,7 @@ export class PartyUiHandler extends MessageUiHandler {
   }
 
   private getParty(): Pokemon[] {
-    if (this.isEnemySwitchMode()) {
+    if (this.isEnemyPartyMode()) {
       return this.enemySwitchPartyIndexes
         .map(partyIndex => globalScene.getEnemyParty()[partyIndex])
         .filter((pokemon): pokemon is EnemyPokemon => !!pokemon);
@@ -218,7 +221,7 @@ export class PartyUiHandler extends MessageUiHandler {
   }
 
   private getActivePartySlotCount(): number {
-    if (this.isEnemySwitchMode()) {
+    if (this.isEnemyPartyMode()) {
       return 1;
     }
 
@@ -226,17 +229,21 @@ export class PartyUiHandler extends MessageUiHandler {
   }
 
   private usesDoublePartyLayout(): boolean {
-    return !this.isEnemySwitchMode() && globalScene.currentBattle.double && this.getActivePartySlotCount() > 1;
+    return !this.isEnemyPartyMode() && globalScene.currentBattle.double && this.getActivePartySlotCount() > 1;
+  }
+
+  private isEnemyPartyMode(): boolean {
+    return this.isEnemySwitchMode() || this.partyUiMode === PartyUiMode.ENEMY_MEDICINE;
   }
 
   private isEnemySwitchMode(): boolean {
-    return this.partyUiMode === PartyUiMode.ENEMY_SWITCH;
+    return this.partyUiMode === PartyUiMode.ENEMY_SWITCH || this.partyUiMode === PartyUiMode.ENEMY_REPLACEMENT;
   }
 
   private refreshEnemySwitchPartyIndexes(): void {
     this.enemySwitchPartyIndexes = [];
     this.enemySwitchCanSwitch = false;
-    if (!this.isEnemySwitchMode()) {
+    if (!this.isEnemyPartyMode()) {
       return;
     }
 
@@ -251,9 +258,19 @@ export class PartyUiHandler extends MessageUiHandler {
       this.enemySwitchPartyIndexes.push(activePartyIndex);
     }
 
+    if (this.partyUiMode === PartyUiMode.ENEMY_MEDICINE) {
+      const trainer = globalScene.currentBattle.trainer;
+      enemyParty.forEach((pokemon, index) => {
+        if (trainer && index !== activePartyIndex && trainer.getMedicineOwner(pokemon) === trainer.getMedicineOwner(activePokemon)) {
+          this.enemySwitchPartyIndexes.push(index);
+        }
+      });
+      return;
+    }
+
     this.enemySwitchCanSwitch =
       !!globalScene.currentBattle.trainer
-      && (activePokemon.isFainted() || !activePokemon.isTrapped())
+      && (this.partyUiMode === PartyUiMode.ENEMY_REPLACEMENT || activePokemon.isFainted() || !activePokemon.isTrapped())
       && !isMysteryEncounterSwitchProtectedPokemon(activePokemon);
 
     const battlerCount = globalScene.currentBattle.getBattlerCount();
@@ -435,18 +452,25 @@ export class PartyUiHandler extends MessageUiHandler {
     this.moveInfoOverlay.clear();
 
     this.partyUiMode = args[0] as PartyUiMode;
-    if (globalScene.phaseManager.getCurrentPhase()?.is("PrivateRegistrationPhase")) {
+    this.enemyMedicineId = this.partyUiMode === PartyUiMode.ENEMY_MEDICINE ? args[3] : undefined;
+    const phase = globalScene.phaseManager.getCurrentPhase();
+    const privateParty = phase?.is("PrivateFightPhase") || phase?.is("PrivateRegistrationPhase");
+    if (privateParty) {
       const { cursor, lastCursor, lastLeftPokemonCursor, lastRightPokemonCursor } = this;
-      this.restoreRegistrationCursor = () => Object.assign(this, { cursor, lastCursor, lastLeftPokemonCursor, lastRightPokemonCursor });
+      this.restoreSharedCursor = () => Object.assign(this, { cursor, lastCursor, lastLeftPokemonCursor, lastRightPokemonCursor });
+    }
+    if (privateParty || (globalScene.twoPlayerMode && phase?.is("SelectModifierPhase"))) {
+      // The same directional input must select the same recipient on every client.
+      this.partyCancelButton.deselect();
+      this.partyDiscardModeButton.deselect();
       this.cursor = this.lastCursor = this.lastLeftPokemonCursor = this.lastRightPokemonCursor = 0;
     }
 
     this.fieldIndex = args.length > 1 ? (args[1] as number) : -1;
     this.refreshEnemySwitchPartyIndexes();
-    if (this.isEnemySwitchMode()) {
-      globalScene.waitForEnemyPlayerInput();
-    } else if (globalScene.twoPlayerMode && !globalScene.phaseManager.getCurrentPhase()?.is("PrivateFightPhase")
-      && !globalScene.phaseManager.getCurrentPhase()?.is("PrivateRegistrationPhase")) {
+    if (this.isEnemyPartyMode()) {
+      if (!privateParty) globalScene.waitForEnemyPlayerInput();
+    } else if (globalScene.twoPlayerMode && !privateParty) {
       const playerIndex = this.getPlayerIndex();
       globalScene.waitForPlayerInput(playerIndex);
     }
@@ -463,7 +487,7 @@ export class PartyUiHandler extends MessageUiHandler {
     this.storeBagCallback = typeof args[7] === "function" ? args[7] : undefined;
     this.blockInput = false;
 
-    this.partyContainer.setVisible(true);
+    this.partyContainer.setVisible(this.partyUiMode !== PartyUiMode.ENEMY_MEDICINE || !shouldRedactCombatInputOwner());
     this.getUi().bringToTop(this.partyContainer);
     this.getUi().bringToTop(this.moveInfoOverlay);
     const doublePartyLayout = this.usesDoublePartyLayout();
@@ -483,7 +507,7 @@ export class PartyUiHandler extends MessageUiHandler {
       );
     }
     this.showPartyText();
-    this.setCursor(0);
+    this.setCursor(this.partySlots.length ? 0 : 6);
 
     return true;
   }
@@ -1265,7 +1289,8 @@ export class PartyUiHandler extends MessageUiHandler {
 
   private allowCancel(): boolean {
     if (this.partyUiMode === PartyUiMode.SELECT && globalScene.phaseManager.getCurrentPhase()?.is("PrivateRegistrationPhase")) return false;
-    return !(this.partyUiMode === PartyUiMode.FAINT_SWITCH || this.partyUiMode === PartyUiMode.REVIVAL_BLESSING);
+    return !(this.partyUiMode === PartyUiMode.FAINT_SWITCH || this.partyUiMode === PartyUiMode.ENEMY_REPLACEMENT
+      || this.partyUiMode === PartyUiMode.REVIVAL_BLESSING);
   }
 
   /**
@@ -1291,6 +1316,18 @@ export class PartyUiHandler extends MessageUiHandler {
       return true;
     }
     if (this.cursor < 6) {
+      if (this.partyUiMode === PartyUiMode.ENEMY_MEDICINE) {
+        const index = this.getEnemySwitchPartyIndex(this.cursor);
+        const target = globalScene.getEnemyParty()[index];
+        if (!target || !this.enemyMedicineId || !getEnemyRecoveryItem(this.enemyMedicineId, target)) {
+          ui.playError();
+        } else if (this.selectCallback) {
+          const callback = this.selectCallback;
+          this.selectCallback = null;
+          callback(index, PartyOption.APPLY);
+        }
+        return true;
+      }
       if (this.partyUiMode === PartyUiMode.BAG) {
         const pokemon = this.getParty()[this.cursor];
         if (!pokemon?.isPlayer()) {
@@ -1385,10 +1422,10 @@ export class PartyUiHandler extends MessageUiHandler {
     const battlerCount = this.getActivePartySlotCount();
     const doublePartyLayout = this.usesDoublePartyLayout();
 
-    if (this.lastCursor < battlerCount) {
+    if (this.lastCursor >= 0 && this.lastCursor < Math.min(battlerCount, slotCount)) {
       this.lastLeftPokemonCursor = this.lastCursor;
     }
-    if (this.lastCursor >= battlerCount && this.lastCursor < 6) {
+    if (this.lastCursor >= battlerCount && this.lastCursor < slotCount) {
       this.lastRightPokemonCursor = this.lastCursor;
     }
 
@@ -1489,7 +1526,8 @@ export class PartyUiHandler extends MessageUiHandler {
           break;
         }
         if (this.cursor < battlerCount) {
-          success = this.setCursor(this.lastRightPokemonCursor || battlerCount);
+          const remembered = this.lastRightPokemonCursor;
+          success = this.setCursor(remembered >= battlerCount && remembered < slotCount ? remembered : battlerCount);
           break;
         }
     }
@@ -1538,12 +1576,15 @@ export class PartyUiHandler extends MessageUiHandler {
     if (this.optionsMode) {
       return this.setOptionsCursor(cursor);
     }
+    if (cursor < 6 && !this.partySlots[cursor]) {
+      return false;
+    }
     const changed = this.cursor !== cursor;
     if (changed) {
       this.lastCursor = this.cursor;
       this.cursor = cursor;
       if (this.lastCursor < 6) {
-        this.partySlots[this.lastCursor].deselect();
+        this.partySlots[this.lastCursor]?.deselect();
       } else if (this.lastCursor === 6) {
         this.partyCancelButton.deselect();
       } else if (this.lastCursor === 7) {
@@ -1839,8 +1880,9 @@ export class PartyUiHandler extends MessageUiHandler {
       case PartyUiMode.FAINT_SWITCH:
       case PartyUiMode.POST_BATTLE_SWITCH:
       case PartyUiMode.ENEMY_SWITCH:
-        if (this.partyUiMode === PartyUiMode.ENEMY_SWITCH) {
-          this.options.push(PartyOption.SUMMARY);
+      case PartyUiMode.ENEMY_REPLACEMENT:
+        if (this.isEnemySwitchMode()) {
+          if (!privateTurn) this.options.push(PartyOption.SUMMARY);
           if (this.enemySwitchCanSwitch && this.cursor >= this.getActivePartySlotCount()) {
             this.options.push(PartyOption.SEND_OUT);
           }
@@ -2360,10 +2402,11 @@ export class PartyUiHandler extends MessageUiHandler {
 
   clear() {
     super.clear();
-    if (this.restoreRegistrationCursor) {
+    if (this.restoreSharedCursor) {
       if (this.optionsMode) this.clearOptions();
-      this.restoreRegistrationCursor();
-      this.restoreRegistrationCursor = undefined;
+      this.partyCancelButton.deselect();
+      this.restoreSharedCursor();
+      this.restoreSharedCursor = undefined;
       this.selectCallback = null;
     }
     this.storeBagCallback = undefined;

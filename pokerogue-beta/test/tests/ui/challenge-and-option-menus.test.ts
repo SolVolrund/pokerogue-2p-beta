@@ -8,6 +8,7 @@ import { UiMode } from "#enums/ui-mode";
 import { GameManager } from "#test/framework/game-manager";
 import type { BaseOptionSelectUiHandler, OptionSelectConfig } from "#ui/base-option-select-ui-handler";
 import type { GameChallengesUiHandler } from "#ui/handlers/challenges-select-ui-handler";
+import type { StarterSelectUiHandler } from "#ui/starter-select-ui-handler";
 import Phaser from "phaser";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -125,6 +126,35 @@ describe("UI - Upstream menu integration", () => {
     expect(options.getCursor()).toBe(6);
     options.processInput(Button.ACTION);
     expect(items[6].handler).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the Spinda pattern cursor on the chosen digit after each preview refresh", async () => {
+    const { ui, gameData } = game.scene;
+    const starter = ui.handlers[UiMode.STARTER_SELECT] as StarterSelectUiHandler;
+    vi.spyOn(gameData, "getSpindaPidDigitMasks").mockReturnValue(Array(8).fill(0xffff));
+    vi.spyOn(starter, "setSpeciesDetails").mockImplementation(() => {});
+    vi.spyOn(ui, "setMode").mockResolvedValue();
+    vi.spyOn(ui, "showText").mockImplementation((_text, _delay, callback) => callback?.());
+    vi.spyOn(ui, "setModeWithoutClear").mockImplementation(async (_mode, config) => {
+      options.show([config]);
+    });
+
+    const attributes = { spindaPid: 0 };
+    const original = { ...attributes };
+    starter["showSpindaPatternOptions"](attributes, original);
+    await Promise.resolve();
+    expect(options.getCursor()).toBe(8); // First digit, after the eight position labels.
+    options.setCursor(127); // F in the last position.
+    options.processInput(Button.ACTION);
+    await Promise.resolve();
+    expect(attributes.spindaPid).toBe(0xf);
+    expect(options.getCursor()).toBe(135);
+
+    options.processInput(Button.LEFT);
+    options.processInput(Button.ACTION);
+    await Promise.resolve();
+    expect(original.spindaPid).toBe(0xe);
+    expect(options.getCursor()).toBe(127);
   });
 
   it("reserves a consistent icon column across mixed rows and scroll positions", () => {

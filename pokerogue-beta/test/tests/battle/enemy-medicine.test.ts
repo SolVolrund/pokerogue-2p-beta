@@ -1,5 +1,11 @@
 import { Battle } from "#app/battle";
 import { BattleType } from "#enums/battle-type";
+import { Button } from "#enums/buttons";
+import { UiMode } from "#enums/ui-mode";
+import type { BallUiHandler } from "#ui/ball-ui-handler";
+import { PartyOption, PartyUiMode, type PartyUiHandler } from "#ui/party-ui-handler";
+import { SwitchType } from "#enums/switch-type";
+import { SwitchSummonPhase } from "#phases/switch-summon-phase";
 import { Command } from "#enums/command";
 import { MoveId } from "#enums/move-id";
 import { MoveUseMode } from "#enums/move-use-mode";
@@ -115,6 +121,94 @@ describe("Enemy trainer bags", () => {
     phase.start();
     expect(target.hp).toBe(Math.floor(target.getMaxHp() / 2));
     expect(trainer.medicineBags[TrainerSlot.TRAINER]).toEqual([]);
+  });
+
+  it("lets EP cancel, then revive an owned reserve through the medicine-only Bag", async () => {
+    const { trainer, party, battle } = encounter(true);
+    game.scene.twoPlayerEnemyPlayerMode = true;
+    const [actor, other, reserve, otherReserve] = party;
+    reserve.hp = otherReserve.hp = 0;
+    trainer.medicineBags[trainer.getMedicineOwner(actor)] = ["REVIVE", "REVIVE"];
+    trainer.medicineBags[trainer.getMedicineOwner(other)] = ["POTION"];
+    const phase = new EnemyCommandPhase(0);
+    vi.spyOn(phase, "end").mockImplementation(() => {});
+    vi.spyOn(game.scene.phaseManager, "getCurrentPhase").mockReturnValue(phase);
+    expect(phase.canUseCommand(Command.BALL)).toBe(true);
+    expect(phase.handleMedicineCommand("REVIVE", otherReserve.id)).toBe(false);
+    expect(phase.handleMedicineCommand("POTION", actor.id)).toBe(false);
+    await game.scene.ui.setMode(UiMode.COMMAND, 0);
+    await game.scene.ui.setModeWithoutClear(UiMode.BALL);
+    const bag = game.scene.ui.handlers[UiMode.BALL] as BallUiHandler;
+    expect(bag["medicines"]).toEqual([{ typeId: "REVIVE", quantity: 2 }]);
+    bag.processInput(Button.RIGHT);
+    expect(bag["pocket"]).toBe("medicine");
+    const picker = game.scene.ui.handlers[UiMode.PARTY] as PartyUiHandler;
+    bag.processInput(Button.ACTION);
+    await vi.waitFor(() => expect(picker["getParty"]()).toEqual([actor, reserve]));
+    expect(game.scene.inputOwner).toBe("ep");
+    picker.processInput(Button.CANCEL);
+    await vi.waitFor(() => expect(game.scene.ui.getMode()).toBe(UiMode.BALL));
+    expect(phase.end).not.toHaveBeenCalled();
+    bag.processInput(Button.ACTION);
+    await vi.waitFor(() => expect(game.scene.ui.getMode()).toBe(UiMode.PARTY));
+    picker.setCursor(1);
+    picker.processInput(Button.ACTION);
+    expect(battle.turnCommands[actor.getBattlerIndex()]?.medicine).toEqual({ typeId: "REVIVE", targetId: reserve.id });
+    expect(phase.canUseCommand(Command.BALL)).toBe(false);
+    expect(new EnemyCommandPhase(1).canUseCommand(Command.BALL)).toBe(true);
+    expect(reserve.hp).toBe(0);
+    expect(trainer.medicineBags[trainer.getMedicineOwner(actor)]).toHaveLength(2);
+  });
+
+  it("keeps a required EP replacement open on either Cancel, but permits voluntary cancellation", async () => {
+    const { party } = encounter(true);
+    game.scene.twoPlayerEnemyPlayerMode = true;
+    const voluntary = new EnemyCommandPhase(0);
+    const current = vi.spyOn(game.scene.phaseManager, "getCurrentPhase").mockReturnValue(voluntary);
+    const picker = game.scene.ui.handlers[UiMode.PARTY] as PartyUiHandler;
+    expect(voluntary.handleCommand(Command.POKEMON, 0)).toBe(true);
+    await vi.waitFor(() => expect(picker["partyUiMode"]).toBe(PartyUiMode.ENEMY_SWITCH));
+    picker.processInput(Button.CANCEL);
+    await vi.waitFor(() => expect(game.scene.ui.getMode()).toBe(UiMode.COMMAND));
+
+    party[0].hp = 0;
+    const required = new SwitchSummonPhase(SwitchType.SWITCH, 0, -1, false, false);
+    current.mockReturnValue(required);
+    const resume = vi.spyOn(required, "preSummon").mockImplementation(() => {});
+    required["promptEnemyPlayerReplacement"]();
+    await vi.waitFor(() => expect(picker["partyUiMode"]).toBe(PartyUiMode.ENEMY_REPLACEMENT));
+    picker.processInput(Button.CANCEL);
+    picker.setCursor(6);
+    picker.processInput(Button.ACTION);
+    expect(game.scene.ui.getMode()).toBe(UiMode.PARTY);
+    expect(resume).not.toHaveBeenCalled();
+    expect(picker["getParty"]()).toEqual([party[0], party[2]]);
+    picker.setCursor(1);
+    picker.processInput(Button.ACTION);
+    const sendOut = picker["options"].indexOf(PartyOption.SEND_OUT);
+    expect(sendOut).toBeGreaterThanOrEqual(0);
+    picker.setCursor(sendOut);
+    picker.processInput(Button.ACTION);
+    await vi.waitFor(() => expect(resume).toHaveBeenCalledOnce());
+    expect(required["slotIndex"]).toBe(2);
+    expect(game.scene.ui.getMode()).toBe(UiMode.MESSAGE);
+  });
+
+  it("does not offer EP medicine in wild battles, with an empty bag, or for a second action by the same trainer", () => {
+    const { trainer, battle, party } = encounter(true);
+    game.scene.twoPlayerEnemyPlayerMode = true;
+    const phase = new EnemyCommandPhase(0);
+    const owner = trainer.getMedicineOwner(party[0]);
+    expect(phase.canUseCommand(Command.BALL)).toBe(false);
+    trainer.medicineBags[owner] = ["POTION"];
+    battle.battleType = BattleType.WILD;
+    expect(phase.canUseCommand(Command.BALL)).toBe(false);
+    battle.battleType = BattleType.TRAINER;
+    party[1].trainerSlot = party[0].trainerSlot;
+    battle.turnCommands[party[1].getBattlerIndex()] = {
+      command: Command.MEDICINE, medicine: { typeId: "POTION", targetId: party[0].id },
+    };
+    expect(phase.canUseCommand(Command.BALL)).toBe(false);
   });
 
   it("evaluates fainted reserves at restored HP and priority without consuming items or changing the field", () => {

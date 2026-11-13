@@ -163,9 +163,37 @@ test("private fights wait for both seats and publish one ordered batch without r
   }
 });
 
+for (const count of [1, 2, 3]) test(`EP and ${count} player seats exchange grouped commands and EP owns its pause`, async t => {
+  const f = await fixture(t);
+  const cap = { privateEpFightV1: true };
+  const { member, client: host } = await f.host(count, true, cap);
+  const peers = [host];
+  for (const seat of [...["p2", "p3"].slice(0, count - 1), "ep"]) {
+    const peer = await f.connect(await f.request(`/lobbies/${member.lobby.id}/join`, { seat }), cap);
+    peer.title();
+    peers.push(peer);
+  }
+  const ep = peers.at(-1);
+  const status = await host.next(m => m.type === "status" && m.ready);
+  assert.equal(status.privateEpSeats, peers.length);
+  assert.equal(status.privateTurnV7, false);
+  host.send("input-accepted", { authoritySequence: 1 });
+  await ep.next(m => m.kind === "input-accepted");
+  const picks = peers.map((_, i) => [{ actor: i, move: 1, slot: 0, target: 0 }]);
+  picks.at(-1).push({ actor: 41, kind: "medicine", targetId: 41, typeId: "POTION" });
+  for (const peer of peers) peer.control("private-draft", { key: "ep:1" });
+  for (const key of ["ep:1", "ep:1:review"]) {
+    for (let i = peers.length - 1; i >= 0; i--) peers[i].control("private-fight", { key, pick: picks[i] });
+    for (const peer of peers) assert.deepEqual((await peer.next(m => m.type === "private-fight-result" && m.key === key)).picks, picks);
+  }
+  for (const peer of peers) peer.control("private-draft", { key: "ep:2" });
+  ep.control("private-pause", { key: "ep:2" });
+  for (const peer of peers) assert.equal((await peer.next(m => m.type === "private-paused")).owner, "ep");
+});
+
 test("three private battle picks stay hidden until complete and a P3 rejection discards the turn", async t => {
   const f = await fixture(t);
-  const cap = { privateTurnV7: true, privateTripleFightV1: true, privateTrainerFightV1: true };
+  const cap = { privateTurnV7: true, privateTripleFightV1: true, privateTrainerFightV1: true, privateFieldActionsV1: true };
   const { member, client: host } = await f.host(3, false, cap);
   const peers = [host];
   for (const seat of ["p2", "p3"]) {
@@ -175,6 +203,7 @@ test("three private battle picks stay hidden until complete and a P3 rejection d
   }
   const status = await host.next(m => m.type === "status" && m.ready);
   assert.equal(status.privateTripleFightV1, true);
+  assert.equal(status.privateFieldActionsV1, true);
   assert.equal(status.privateTrainerFightV1, true);
   assert.equal(status.privateTurnV7, false);
   host.send("input-accepted", { authoritySequence: 1 });
@@ -185,6 +214,10 @@ test("three private battle picks stay hidden until complete and a P3 rejection d
     { kind: "switch", actor: 3, reserve: 13, baton: false },
   ];
   for (const key of ["first", "second"]) {
+    if (key === "second") {
+      picks[1] = { kind: "pass", actor: 2 };
+      picks[2] = { kind: "reposition", actor: 3, position: 0 };
+    }
     for (const peer of peers) peer.control("private-draft", { key });
     for (const i of [2, 1]) peers[i].control("private-fight", { key, pick: picks[i] });
     peers[1].send("state-checkpoint", { checkpoint: { fingerprint: key, summary: {} } });

@@ -9,10 +9,17 @@ const CONTROL_PROTOCOL = "pokerogue-online-v1";
 const MAX_PAYLOAD = 8 * 1024 * 1024;
 const SEATS = ["p1", "p2", "p3", "ep"];
 const seatIndex = seat => (seat === "ep" ? "ep" : SEATS.indexOf(seat));
-function parsePrivatePick(pick) {
+function parsePrivatePick(pick, fieldActions) {
   if (!pick || !Number.isSafeInteger(pick.actor)) return;
   const { actor, kind, targetId, typeId, moveIndex, ball, reserve, baton, slot, move, target } = pick;
   switch (kind) {
+    case "pass":
+      if (fieldActions) return { actor, kind };
+      break;
+    case "reposition":
+      if (fieldActions && Number.isInteger(pick.position) && pick.position >= 0 && pick.position <= 4)
+        return { actor, kind, position: pick.position };
+      break;
     case "medicine":
       if (Number.isSafeInteger(targetId) && typeof typeId === "string" && /^[A-Z0-9_]{1,64}$/.test(typeId)
         && (moveIndex === undefined || Number.isInteger(moveIndex) && moveIndex >= 0 && moveIndex < 4))
@@ -65,8 +72,12 @@ export function createOnlineServer({
     && requiredSeats(room).every(seat => room.members.get(seat)?.privateTurnV7 === true);
   const privateTripleFightsEnabled = room => room.setup.playerCount === 3 && !room.setup.enemyPlayer
     && requiredSeats(room).every(seat => room.members.get(seat)?.privateTripleFightV1 === true);
+  const privateEpSeats = room => room.setup.enemyPlayer && requiredSeats(room).every(seat => room.members.get(seat)?.privateEpFightV1)
+    ? requiredSeats(room).length : 0;
   const privateContestSeats = room => !room.setup.enemyPlayer && requiredSeats(room).every(seat => room.members.get(seat)?.privateContestV1)
     ? room.setup.playerCount : 0;
+  const privateFieldActionsEnabled = room => privateTripleFightsEnabled(room)
+    && requiredSeats(room).every(seat => room.members.get(seat)?.privateFieldActionsV1);
   const privateEventVotesEnabled = room => privateContestSeats(room) > 0
     && requiredSeats(room).every(seat => room.members.get(seat)?.privateEventVotesV1);
   const summary = room => ({
@@ -99,7 +110,9 @@ export function createOnlineServer({
         protocol: CONTROL_PROTOCOL,
         type: "status",
         privateTurnV7: privateFightsEnabled(room),
+        privateEpSeats: privateEpSeats(room),
         privateTripleFightV1: privateTripleFightsEnabled(room),
+        privateFieldActionsV1: privateFieldActionsEnabled(room),
         privateTrainerFightV1: (privateFightsEnabled(room) || privateTripleFightsEnabled(room))
           && requiredSeats(room).every(seat => room.members.get(seat)?.privateTrainerFightV1 === true),
         privateContestSeats: privateContestSeats(room),
@@ -300,7 +313,9 @@ export function createOnlineServer({
         }
         member = candidate;
         member.privateTurnV7 = msg.privateTurnV7 === true;
+        member.privateEpFightV1 = msg.privateEpFightV1 === true;
         member.privateTripleFightV1 = msg.privateTripleFightV1 === true;
+        member.privateFieldActionsV1 = msg.privateFieldActionsV1 === true;
         member.privateTrainerFightV1 = msg.privateTrainerFightV1 === true;
         member.privateContestV1 = msg.privateContestV1 === true;
         member.privateOpeningSwitchV1 = msg.privateOpeningSwitchV1 === true;
@@ -321,7 +336,8 @@ export function createOnlineServer({
       if (msg.protocol === CONTROL_PROTOCOL) {
         if (["private-draft", "private-pause", "private-fight"].includes(msg.type)) {
           const contest = typeof msg.key === "string" && msg.key.startsWith("contest:");
-          const enabled = contest ? privateContestSeats(room) : privateFightsEnabled(room) || privateTripleFightsEnabled(room);
+          const ep = typeof msg.key === "string" && msg.key.startsWith("ep:");
+          const enabled = ep ? privateEpSeats(room) : contest ? privateContestSeats(room) : privateFightsEnabled(room) || privateTripleFightsEnabled(room);
           if (!(room.started || room.resumed) || !room.ready || !enabled) {
             return ws.close(1008, "Private turn unavailable");
           }
@@ -352,7 +368,15 @@ export function createOnlineServer({
             }
             return;
           }
-          const action = contest ? (Number.isSafeInteger(pick) ? pick : undefined) : parsePrivatePick(pick);
+          let action;
+          if (ep) {
+            if (Array.isArray(pick) && pick.length >= 1 && pick.length <= 3) {
+              const parsed = pick.map(p => parsePrivatePick(p, true));
+              if (parsed.every(Boolean) && new Set(parsed.map(p => p.actor)).size === parsed.length) action = parsed;
+            }
+          } else {
+            action = contest ? (Number.isSafeInteger(pick) ? pick : undefined) : parsePrivatePick(pick, privateFieldActionsEnabled(room));
+          }
           const valid = pick === null || action !== undefined;
           if (typeof key !== "string" || !key.length || key.length > 256 || !valid) {
             return ws.close(1008, "Invalid private turn");

@@ -3012,6 +3012,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   private showSpindaPatternOptions(
     starterAttributes: StarterAttributes,
     originalStarterAttributes: StarterAttributes,
+    initialCursor = 0,
   ): void {
     const ui = this.getUi();
     const spindaPidDigitMasks = globalScene.gameData.getSpindaPidDigitMasks();
@@ -3028,7 +3029,8 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     ui.setMode(UiMode.STARTER_SELECT).then(() => {
       ui.showText(i18next.t("starterSelectUiHandler:selectPattern"), null, () => {
         const options: OptionSelectItem[] = [];
-        for (let position = 0; position < 8; position++) {
+        const rows = spindaPidDigitMasks.length;
+        for (let position = 0; position < rows; position++) {
           options.push({
             label: `${position + 1}:`,
             style: TextStyle.SUMMARY_GOLD,
@@ -3036,8 +3038,8 @@ export class StarterSelectUiHandler extends MessageUiHandler {
             handler: () => false,
           });
         }
-        for (let digit = 0; digit < 16; digit++) {
-          for (let position = 0; position < 8; position++) {
+        for (let digit = 0; digit < SPINDA_PATTERN_HEX_DIGITS.length; digit++) {
+          for (let position = 0; position < rows; position++) {
             const unlocked = !!(spindaPidDigitMasks[position] & (1 << digit));
             const selected = GameData.getSpindaPidDigit(selectedPid, position) === digit;
             options.push({
@@ -3054,7 +3056,8 @@ export class StarterSelectUiHandler extends MessageUiHandler {
                 starterAttributes.spindaPid = nextPid;
                 originalStarterAttributes.spindaPid = nextPid;
                 this.setSpeciesDetails(this.lastSpecies, { spindaPid: nextPid });
-                this.showSpindaPatternOptions(starterAttributes, originalStarterAttributes);
+                // The cursor counts selectable cells, so the disabled position labels don't count.
+                this.showSpindaPatternOptions(starterAttributes, originalStarterAttributes, digit * rows + position);
                 return true;
               },
             });
@@ -3073,10 +3076,10 @@ export class StarterSelectUiHandler extends MessageUiHandler {
 
         ui.setModeWithoutClear(UiMode.OPTION_SELECT, {
           options,
+          initialCursor,
           gridLayout: {
-            rows: 8,
-            columns: 17,
-            slotCount: 136,
+            rows,
+            columns: SPINDA_PATTERN_HEX_DIGITS.length + 1,
             minColumnWidth: 9,
             columnGap: 5,
             centerLastOption: true,

@@ -9,8 +9,8 @@ import { PartyUiMode } from "#enums/party-ui-mode";
 import { PokemonType } from "#enums/pokemon-type";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
-import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
-import type { CommandPhase } from "#phases/command-phase";
+import type { PlayerPokemon, Pokemon } from "#field/pokemon";
+import { CommandPhase } from "#phases/command-phase";
 import type { EnemyCommandPhase } from "#phases/enemy-command-phase";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { PartyUiHandler } from "#ui/party-ui-handler";
@@ -99,7 +99,7 @@ export class CommandUiHandler extends UiHandler {
 
   private getActivePokemon(): Pokemon | undefined {
     const commandPhase = this.getCommandPhase();
-    if (this.isEnemyCommandPhase(commandPhase)) {
+    if (this.isEnemyCommandPhase(commandPhase) || commandPhase.is("PrivateFightPhase")) {
       return commandPhase.getPokemon();
     }
 
@@ -198,7 +198,7 @@ export class CommandUiHandler extends UiHandler {
           if (cursor === Command.FIGHT) {
             ui.setMode(UiMode.FIGHT, commandPhase.getFieldIndex());
           } else if (cursor === Command.POKEMON) {
-            this.openPartySwitch(commandPhase);
+            this.openPokemonCommandMenu(commandPhase);
           } else if (cursor === Command.BALL) {
             ui.setModeWithoutClear(UiMode.BALL);
           } else {
@@ -222,15 +222,7 @@ export class CommandUiHandler extends UiHandler {
             break;
           // Pokemon
           case Command.POKEMON:
-            if (this.isEnemyCommandPhase(commandPhase)) {
-              if (globalScene.currentBattle.horde) {
-                this.openRepositionMenu(commandPhase);
-              } else {
-                commandPhase.handleCommand(Command.POKEMON, 0);
-              }
-            } else {
-              this.openPokemonCommandMenu(commandPhase);
-            }
+            this.openPokemonCommandMenu(commandPhase);
             success = true;
             break;
           // Run
@@ -301,8 +293,9 @@ export class CommandUiHandler extends UiHandler {
     return success;
   }
 
-  private openPokemonCommandMenu(commandPhase: CommandPhase): void {
-    if (!this.shouldShowTriplePokemonMenu()) {
+  private openPokemonCommandMenu(commandPhase: BattleMenuPhase): void {
+    const enemy = commandPhase.getPokemon().isEnemy();
+    if (!CommandPhase.hasFieldOptions(enemy)) {
       this.openPartySwitch(commandPhase);
       return;
     }
@@ -310,6 +303,7 @@ export class CommandUiHandler extends UiHandler {
     const options: OptionSelectItem[] = [
       {
         label: "Pokemon",
+        disabled: enemy && !globalScene.currentBattle.trainer,
         handler: () => {
           this.openPartySwitch(commandPhase);
           return true;
@@ -325,7 +319,8 @@ export class CommandUiHandler extends UiHandler {
       },
       {
         label: "Pass",
-        handler: () => commandPhase.passTurn(),
+        handler: () => commandPhase.is("PrivateFightPhase")
+          ? commandPhase.chooseFieldAction({ kind: "pass", actor: commandPhase.getPokemon().id }) : commandPhase.passTurn(),
       },
       {
         label: i18next.t("menu:cancel"),
@@ -339,7 +334,15 @@ export class CommandUiHandler extends UiHandler {
     this.showCommandOptionSelect({ options, noCancel: true });
   }
 
-  private openPartySwitch(commandPhase: Pick<CommandPhase, "getFieldIndex">): void {
+  private openPartySwitch(commandPhase: BattleMenuPhase): void {
+    if (this.isEnemyCommandPhase(commandPhase)) {
+      commandPhase.handleCommand(Command.POKEMON, 0);
+      return;
+    }
+    if (commandPhase.is("PrivateFightPhase") && commandPhase.getPokemon().isEnemy()) {
+      commandPhase.openEnemyParty();
+      return;
+    }
     globalScene.ui.setMode(
       UiMode.PARTY,
       PartyUiMode.SWITCH,
@@ -349,7 +352,7 @@ export class CommandUiHandler extends UiHandler {
     );
   }
 
-  private openRepositionMenu(commandPhase: CommandPhase | EnemyCommandPhase): void {
+  private openRepositionMenu(commandPhase: BattleMenuPhase): void {
     const pokemon = commandPhase.getPokemon();
     const positionOptions: Array<{ label: string; position: FieldPosition }> = [
       { label: "Switch to Far Left", position: FieldPosition.FAR_LEFT },
@@ -362,31 +365,21 @@ export class CommandUiHandler extends UiHandler {
       .filter(option => getRepositionPositions(pokemon).includes(option.position))
       .map(option => ({
         label: option.label,
-        handler: () => commandPhase.handleCommand(Command.REPOSITION, option.position),
+        handler: () => commandPhase.is("PrivateFightPhase")
+          ? commandPhase.chooseFieldAction({ kind: "reposition", actor: pokemon.id, position: option.position })
+          : commandPhase.handleCommand(Command.REPOSITION, option.position),
         disabled: pokemon.fieldPosition === option.position,
       }));
     options.push({
       label: i18next.t("menu:cancel"),
       keepOpen: true,
       handler: () => {
-        if (this.isEnemyCommandPhase(commandPhase)) {
-          globalScene.ui.setMode(UiMode.COMMAND, commandPhase.getFieldIndex());
-        } else {
-          this.openPokemonCommandMenu(commandPhase);
-        }
+        this.openPokemonCommandMenu(commandPhase);
         return true;
       },
     });
 
     this.showCommandOptionSelect({ options, noCancel: true });
-  }
-
-  private shouldShowTriplePokemonMenu(): boolean {
-    return (
-      !globalScene.isVsLaneBattle()
-      && (globalScene.currentBattle?.horde ? globalScene.currentBattle.horde.playerCount > 1 : globalScene.getBattleFieldSlotCount() > 2)
-      && (globalScene.currentBattle?.getBattlerCount() ?? 1) > 2
-    );
   }
 
   private showCommandOptionSelect(config: OptionSelectConfig): void {
@@ -413,6 +406,7 @@ export class CommandUiHandler extends UiHandler {
   }
 
   private canUseCommand(commandPhase: BattleMenuPhase, command: Command): boolean {
+    if (commandPhase.is("PrivateFightPhase") && commandPhase.getPokemon().isEnemy()) return commandPhase.canUseEnemyCommand(command);
     if (!this.isEnemyCommandPhase(commandPhase)) {
       return true;
     }

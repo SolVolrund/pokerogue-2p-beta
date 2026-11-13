@@ -9,8 +9,7 @@ import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon } from "#field/pokemon";
 import { PokemonPpRestoreModifierType } from "#modifiers/modifier-type";
-import type { CommandPhase } from "#phases/command-phase";
-import type { PrivateFightPhase } from "#phases/private-fight-phase";
+import { getBattleMenuPhase } from "#ui/battle-menu-phase";
 import type { BagMedicineData } from "#types/save-data";
 import { getModifierIconTexture } from "#ui/modifier-icon";
 import { PartyOption, PartyUiHandler } from "#ui/party-ui-handler";
@@ -21,6 +20,7 @@ import { UiHandler } from "#ui/ui-handler";
 import { addWindow } from "#ui/ui-theme";
 import { getAvailableBattleMedicineCount } from "#utils/battle-medicine";
 import { fixedInt } from "#utils/common";
+import { getAvailableTrainerMedicine } from "#utils/enemy-trainer-medicine";
 import { canUseBagMedicine, getBagMedicineType } from "#utils/item-bag";
 import i18next from "i18next";
 
@@ -42,7 +42,8 @@ export class BallUiHandler extends UiHandler {
   private readonly pokeballImages: Phaser.GameObjects.Image[] = [];
   private pokeballTypes: PokeballType[] = [];
   private ballDesign?: import("#data/ball-design").BallDesign | undefined;
-  private pokeballCounts: PokeballCounts;
+  private pokeballCounts: PokeballCounts | undefined;
+  private enemyMedicineOnly = false;
   private pocket: "ball" | "medicine" = "ball";
   private ballCursor = 0;
   private medicineCursor = 0;
@@ -60,18 +61,17 @@ export class BallUiHandler extends UiHandler {
     super(UiMode.BALL);
   }
 
-  private getCommandPhase(): CommandPhase | PrivateFightPhase {
-    return globalScene.phaseManager.getCurrentPhase() as CommandPhase | PrivateFightPhase;
-  }
+  private getCommandPhase = getBattleMenuPhase;
 
   private getPokeballCounts() {
+    if (this.enemyMedicineOnly) return undefined;
     const commandPhase = this.getCommandPhase();
     const playerIndex = globalScene.getPlayerIndexForFieldSlot(commandPhase.getFieldIndex());
     return globalScene.getPlayerPokeballCounts(playerIndex);
   }
 
-  private getPokeballTypes(pokeballCounts: PokeballCounts): PokeballType[] {
-    return Object.keys(pokeballCounts)
+  private getPokeballTypes(pokeballCounts?: PokeballCounts): PokeballType[] {
+    return Object.keys(pokeballCounts ?? {})
       .map(Number)
       .sort((a, b) => a - b) as PokeballType[];
   }
@@ -115,6 +115,7 @@ export class BallUiHandler extends UiHandler {
     super.show(args);
 
     const phase = this.getCommandPhase();
+    this.enemyMedicineOnly = phase.is("EnemyCommandPhase") || (phase.is("PrivateFightPhase") && phase.getPokemon().isEnemy());
     if (phase.is("PrivateFightPhase") && !this.restoreSharedCursor) {
       const { ballCursor, medicineCursor, scrollOffset, pocket } = this;
       this.restoreSharedCursor = () => {
@@ -126,10 +127,10 @@ export class BallUiHandler extends UiHandler {
       this.medicineCursor = phase.bagCursors.medicine;
       this.scrollOffset = 0;
     }
-    this.pocket = args[0] === true ? "medicine" : "ball";
+    this.pocket = this.enemyMedicineOnly || args[0] === true ? "medicine" : "ball";
     this.cursor = this.pocket === "ball" ? this.ballCursor : this.medicineCursor;
     this.updateCounts();
-    this.pokeballSelectContainer.setVisible(true);
+    this.pokeballSelectContainer.setVisible(!this.enemyMedicineOnly || !shouldRedactCombatInputOwner());
     this.getUi().bringToTop(this.pokeballSelectContainer);
     this.setCursor(this.cursor);
 
@@ -166,7 +167,7 @@ export class BallUiHandler extends UiHandler {
           return true;
         }
         const pokeballType = pokeballTypes[this.cursor];
-        if (pokeballCounts[pokeballType]) {
+        if (pokeballCounts?.[pokeballType]) {
           if (commandPhase.is("PrivateFightPhase")) return commandPhase.chooseBall(pokeballType);
           if (commandPhase.handleCommand(Command.BALL, pokeballType)) {
             globalScene.ui.setMode(UiMode.COMMAND, commandPhase.getFieldIndex());
@@ -184,6 +185,7 @@ export class BallUiHandler extends UiHandler {
       switch (button) {
         case Button.LEFT:
         case Button.RIGHT:
+          if (this.enemyMedicineOnly) return false;
           this.pocket = this.pocket === "ball" ? "medicine" : "ball";
           this.updateLayout(pokeballCounts, this.ballDesign);
           this.setCursor(this.pocket === "ball" ? this.ballCursor : this.medicineCursor);
@@ -207,10 +209,17 @@ export class BallUiHandler extends UiHandler {
 
   updateCounts() {
     const command = this.getCommandPhase();
-    const owner = globalScene.getPlayerIndexForFieldSlot(command.getFieldIndex());
-    this.medicines = globalScene
-      .getPlayerBagMedicines(owner)
-      .filter(item => item.quantity > 0 && getBagMedicineType(item));
+    let design: typeof this.ballDesign;
+    const actor = this.enemyMedicineOnly ? command.getPokemon() : undefined;
+    if (actor?.isEnemy()) {
+      const counts = new Map<string, number>();
+      for (const id of getAvailableTrainerMedicine(actor)) counts.set(id, (counts.get(id) ?? 0) + 1);
+      this.medicines = Array.from(counts, ([typeId, quantity]) => ({ typeId, quantity })).filter(item => getBagMedicineType(item));
+    } else {
+      const owner = globalScene.getPlayerIndexForFieldSlot(command.getFieldIndex());
+      this.medicines = globalScene.getPlayerBagMedicines(owner).filter(item => item.quantity > 0 && getBagMedicineType(item));
+      design = globalScene.getPlayerState(owner).ballDesign;
+    }
     this.medicineImages.splice(0).forEach(image => image.destroy());
     for (const item of this.medicines) {
       const image = globalScene.add
@@ -219,10 +228,11 @@ export class BallUiHandler extends UiHandler {
       this.medicineImages.push(image);
       this.pokeballSelectContainer.add(image);
     }
-    this.updateLayout(this.getPokeballCounts(), globalScene.getPlayerState(owner).ballDesign);
+    this.updateLayout(this.getPokeballCounts(), design);
   }
 
   private getMedicineCount(item: BagMedicineData): number {
+    if (this.enemyMedicineOnly) return item.quantity;
     const fieldIndex = this.getCommandPhase().getFieldIndex();
     return getAvailableBattleMedicineCount(
       globalScene.getPlayerIndexForFieldSlot(fieldIndex),
@@ -239,14 +249,24 @@ export class BallUiHandler extends UiHandler {
     }
     const command = this.getCommandPhase();
     const fieldIndex = command.getFieldIndex();
-    const owner = globalScene.getPlayerIndexForFieldSlot(fieldIndex);
-    const party = globalScene.getPlayerParty(owner);
-    const isEther = type instanceof PokemonPpRestoreModifierType;
     const returnToMedicine = () => {
       void this.getUi()
         .setMode(UiMode.COMMAND, fieldIndex)
         .then(() => this.getUi().setModeWithoutClear(UiMode.BALL, true));
     };
+    if (command.is("EnemyCommandPhase") || (command.is("PrivateFightPhase") && this.enemyMedicineOnly)) {
+      void this.getUi().setMode(UiMode.PARTY, PartyUiMode.ENEMY_MEDICINE, fieldIndex,
+        (index: number, option: PartyOption) => {
+          const target = globalScene.getEnemyParty()[index];
+          if (option !== PartyOption.APPLY || !target || !command.handleMedicineCommand(item.typeId, target.id)) {
+            returnToMedicine();
+          }
+        }, item.typeId);
+      return;
+    }
+    const owner = globalScene.getPlayerIndexForFieldSlot(fieldIndex);
+    const party = globalScene.getPlayerParty(owner);
+    const isEther = type instanceof PokemonPpRestoreModifierType;
     void this.getUi().setMode(
       UiMode.PARTY,
       isEther ? PartyUiMode.MOVE_MODIFIER : PartyUiMode.MODIFIER,
@@ -267,7 +287,7 @@ export class BallUiHandler extends UiHandler {
     );
   }
 
-  private updateLayout(pokeballCounts: PokeballCounts, design?: import("#data/ball-design").BallDesign) {
+  private updateLayout(pokeballCounts: PokeballCounts | undefined, design?: import("#data/ball-design").BallDesign) {
     this.stopPokeballWiggle();
     this.pokeballCounts = pokeballCounts;
     const types = this.getPokeballTypes(pokeballCounts);
@@ -290,7 +310,7 @@ export class BallUiHandler extends UiHandler {
     );
     this.countsText.setText(
       showBalls
-        ? types.map(type => `×${pokeballCounts[type]}`).join("\n")
+        ? types.map(type => `×${pokeballCounts?.[type]}`).join("\n")
         : this.medicines.map(item => `×${this.getMedicineCount(item)}`).join("\n"),
     );
     const contentWidth = Math.max(
@@ -306,6 +326,8 @@ export class BallUiHandler extends UiHandler {
     this.pocketText.setPositionRelative(this.pocketHeader, width / 2, 3);
     this.pocketLeft.setPositionRelative(this.pocketHeader, 12, 3);
     this.pocketRight.setPositionRelative(this.pocketHeader, width - 12, 3);
+    this.pocketLeft.setVisible(!this.enemyMedicineOnly);
+    this.pocketRight.setVisible(!this.enemyMedicineOnly);
     this.optionsText.setPositionRelative(this.pokeballSelectBg, 36, 9);
     this.countsText.setPositionRelative(this.pokeballSelectBg, 36 + this.optionsText.displayWidth + 4, 9);
     this.cancelText.setPositionRelative(this.pokeballSelectBg, 18, 9 + VISIBLE_BALL_ROWS * 96 * this.scale);
@@ -333,7 +355,7 @@ export class BallUiHandler extends UiHandler {
     this.countsText
       .setText(
         showBalls
-          ? visibleTypes.map(type => `×${this.pokeballCounts[type]}`).join("\n")
+          ? visibleTypes.map(type => `×${this.pokeballCounts?.[type]}`).join("\n")
           : visibleMedicines.map(item => `×${this.getMedicineCount(item)}`).join("\n"),
       )
       .setVisible(count > 0);

@@ -1179,7 +1179,11 @@ export class CommandPhase extends FieldPhase {
 
     const planned = this.privatePlans?.get(this.getPokemon().id);
     if (planned) {
-      if ("kind" in planned && planned.kind === "medicine") {
+      if ("kind" in planned && planned.kind === "pass") {
+        if (CommandPhase.hasFieldOptions() && this.passTurn()) return;
+      } else if ("kind" in planned && planned.kind === "reposition") {
+        if (this.handleCommand(Command.REPOSITION, planned.position)) return;
+      } else if ("kind" in planned && planned.kind === "medicine") {
         if (this.handleMedicineCommand(planned.typeId, planned.targetId, planned.moveIndex)) return;
       } else if ("baton" in planned) {
         if (this.handleCommand(Command.POKEMON, planned.cursor, planned.baton)) return;
@@ -1358,8 +1362,8 @@ export class CommandPhase extends FieldPhase {
 
     if (plannedTargets && turnCommand.move) {
       // Never replay targets for a move that became Struggle, or for a slot no longer in range.
-      if (useStruggle || !plannedTargets.length || !plannedTargets.every(t => moveTargets.targets.includes(t))
-        || plannedTargets.length !== (moveTargets.multiple ? moveTargets.targets.length : 1)) return false;
+      const expectedCount = moveTargets.multiple ? moveTargets.targets.length : Math.min(1, moveTargets.targets.length);
+      if (useStruggle || plannedTargets.length !== expectedCount || !plannedTargets.every(t => moveTargets.targets.includes(t))) return false;
       turnCommand.move.targets = plannedTargets;
       this.setPreTurnCommand(preTurnCommand);
       this.setTurnCommand(turnCommand);
@@ -1713,15 +1717,18 @@ export class CommandPhase extends FieldPhase {
     return success;
   }
 
+  static hasFieldOptions(enemy = false): boolean {
+    const battle = globalScene.currentBattle;
+    return !globalScene.isVsLaneBattle() && (battle?.getBattlerCount() ?? 0) > 2
+      && (enemy || (battle.horde ? battle.horde.playerCount > 1 : globalScene.getBattleFieldSlotCount() > 2));
+  }
+
+  static canReposition(pokemon: Pokemon, position: FieldPosition): boolean {
+    return CommandPhase.hasFieldOptions(pokemon.isEnemy()) && pokemon.fieldPosition !== position && getRepositionPositions(pokemon).includes(position);
+  }
+
   private handleRepositionCommand(targetPosition: FieldPosition): boolean {
-    const playerPokemon = this.getPokemon();
-    if (
-      globalScene.isVsLaneBattle()
-      || (!globalScene.currentBattle.horde && globalScene.getBattleFieldSlotCount() < 3)
-      || globalScene.currentBattle.getBattlerCount() < 3
-      || !getRepositionPositions(playerPokemon).includes(targetPosition)
-      || playerPokemon.fieldPosition === targetPosition
-    ) {
+    if (!CommandPhase.canReposition(this.getPokemon(), targetPosition)) {
       return false;
     }
 

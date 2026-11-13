@@ -12,7 +12,7 @@ import {
   showOnlineConnectionStatus,
 } from "#utils/online-lobby-client";
 
-import { PrivateChoiceExchange, PrivateTurnExchange, type PrivateTurnPick, type ReviewPrivateTurn } from "#utils/private-turn";
+import { isPrivateSeatPicks, PrivateChoiceExchange, PrivateTurnExchange, type PrivateTurnPick, type ReviewPrivateTurn } from "#utils/private-turn";
 
 const LOCAL_INPUT_PROTOCOL = "pokerogue-2p-local-input";
 const LOCAL_INPUT_PROTOCOL_VERSION = 1;
@@ -417,15 +417,20 @@ function parseTwoPlayerInputMessage(value: unknown): TwoPlayerInputMessage | und
 
 export class TwoPlayerInputTransport {
   readonly privateTurns = new PrivateTurnExchange();
+  readonly privateEpTurns = new PrivateChoiceExchange<PrivateTurnPick[], PrivateTurnPick[][]>(isPrivateSeatPicks);
+  private exchangeFor(key: string) {
+    return key.startsWith("ep:") ? this.privateEpTurns : key.startsWith("contest:") ? this.privateContests : this.privateTurns;
+  }
   privateTrainerFightsEnabled = false;
+  privateFieldActionsEnabled = false;
   readonly privateContests = new PrivateChoiceExchange<number, number[]>(Number.isSafeInteger);
   privateEventVotesEnabled = false;
   privateEventVotesV2Enabled = false;
   privateOpeningSwitchEnabled = false;
-  private draft: { key: string; pause: (owner: PlayerIndex, openedAt: number) => void; veto: (() => void) | undefined } | undefined;
+  private draft: { key: string; pause: (owner: PlayerIndex | "ep", openedAt: number) => void; veto: (() => void) | undefined } | undefined;
 
-  beginPrivateDraft(key: string, pause: (owner: PlayerIndex, openedAt: number) => void, veto?: () => void): void {
-    if (!(key.startsWith("contest:") ? this.privateContests : this.privateTurns).enabled) return;
+  beginPrivateDraft(key: string, pause: (owner: PlayerIndex | "ep", openedAt: number) => void, veto?: () => void): void {
+    if (!this.exchangeFor(key).enabled) return;
     this.draft = { key, pause, veto };
     this.webSocket?.send(JSON.stringify({ protocol: ONLINE_PROTOCOL, type: "private-draft", key }));
   }
@@ -455,6 +460,21 @@ export class TwoPlayerInputTransport {
     const agreement = await this.exchangePrivatePicks(key + ":review", accepted ? pick : null);
     this.draft = undefined;
     return agreement ? candidates : null;
+  }
+  async submitPrivateEpFight(key: string, picks: PrivateTurnPick[] | null, review: (seats: PrivateTurnPick[][]) => boolean) {
+    const exchange = (round: string, value: PrivateTurnPick[] | null) => this.privateEpTurns.submit(round, value, () => {
+      if (this.webSocket?.readyState !== WebSocket.OPEN) throw new Error("Relay not connected");
+      this.webSocket.send(JSON.stringify({ protocol: ONLINE_PROTOCOL, type: "private-fight", key: round, pick: value }));
+    });
+    try {
+      const seats = await exchange(key, picks);
+      if (!seats) return null;
+      let accepted = false;
+      try { accepted = review(seats); } catch { /* Reject on every client. */ }
+      return await exchange(key + ":review", accepted ? picks : null) ? seats : null;
+    } finally {
+      if (this.draft?.key === key) this.draft = undefined;
+    }
   }
   async submitPrivateContest(key: string, pick: number, review: (choices: number[]) => boolean) {
     const exchange = (round: string, value: number | null) => this.privateContests.submit(round, value, () => {
@@ -1120,8 +1140,10 @@ export class TwoPlayerInputTransport {
             protocol: ONLINE_PROTOCOL,
             type: "authenticate",
             privateTurnV7: true,
+            privateEpFightV1: true,
             privateTripleFightV1: true,
             privateTrainerFightV1: true,
+            privateFieldActionsV1: true,
             privateContestV1: true,
             privateOpeningSwitchV1: true,
             privateEventVotesV1: true,
@@ -1147,7 +1169,7 @@ export class TwoPlayerInputTransport {
     });
     this.webSocket.addEventListener("message", event => {
       if (this.onlineSession && typeof event.data === "string") {
-        let control: (OnlineSaveControl & { protocol?: string; ready?: boolean; privateTurnV7?: boolean; privateTripleFightV1?: boolean; privateTrainerFightV1?: boolean; privateContestSeats?: number; privateEventVotesV1?: boolean; privateEventVotesV2?: boolean; privateOpeningSwitchV1?: boolean; key?: string; picks?: unknown }) | undefined;
+        let control: (OnlineSaveControl & { protocol?: string; ready?: boolean; privateTurnV7?: boolean; privateTripleFightV1?: boolean; privateTrainerFightV1?: boolean; privateFieldActionsV1?: boolean; privateContestSeats?: number; privateEventVotesV1?: boolean; privateEventVotesV2?: boolean; privateOpeningSwitchV1?: boolean; key?: string; picks?: unknown }) | undefined;
         try {
           control = JSON.parse(event.data);
         } catch {
@@ -1165,18 +1187,18 @@ export class TwoPlayerInputTransport {
           }
           if (control.type === "private-paused") {
             const draft = this.draft;
-            if (draft && control.key === draft.key && "owner" in control && (control.owner === 0 || control.owner === 1 || control.owner === 2)
+            if (draft && control.key === draft.key && "owner" in control && (control.owner === 0 || control.owner === 1 || control.owner === 2 || (control.owner === "ep" && draft.key.startsWith("ep:")))
               && "openedAt" in control && typeof control.openedAt === "number" && Number.isSafeInteger(control.openedAt)) {
               this.draft = undefined;
               draft.pause(control.owner, control.openedAt);
-              const exchange = draft.key.startsWith("contest:") ? this.privateContests : this.privateTurns;
+              const exchange = this.exchangeFor(draft.key);
               exchange.receive(draft.key, null);
               exchange.receive(draft.key + ":review", null);
             }
             return;
           }
           if (control.type === "private-fight-result") {
-            const exchange = typeof control.key === "string" && control.key.startsWith("contest:") ? this.privateContests : this.privateTurns;
+            const exchange = this.exchangeFor(typeof control.key === "string" ? control.key : "");
             exchange.receive(control.key, control.picks);
             return;
           }
@@ -1196,9 +1218,13 @@ export class TwoPlayerInputTransport {
             this.sendCheckpoint("online-connected");
           }
           if (control.type === "status") {
+            const epSeats = "privateEpSeats" in control ? Number(control.privateEpSeats) : 0;
+            this.privateEpTurns.seats = epSeats;
+            this.privateEpTurns.enabled = [2, 3, 4].includes(epSeats);
             this.privateTurns.seats = control.privateTripleFightV1 === true ? 3 : 2;
             this.privateTurns.enabled = control.privateTripleFightV1 === true || control.privateTurnV7 === true;
             this.privateTrainerFightsEnabled = this.privateTurns.enabled && control.privateTrainerFightV1 === true;
+            this.privateFieldActionsEnabled = this.privateTurns.enabled && control.privateFieldActionsV1 === true;
             this.privateContests.seats = control.privateContestSeats ?? 0;
             this.privateContests.enabled = [2, 3].includes(this.privateContests.seats);
             this.privateEventVotesEnabled = this.privateContests.enabled && control.privateEventVotesV1 === true;
@@ -1219,7 +1245,9 @@ export class TwoPlayerInputTransport {
     });
     this.webSocket.addEventListener("close", () => {
       this.privateTurns.close();
+      this.privateEpTurns.close();
       this.privateTrainerFightsEnabled = false;
+      this.privateFieldActionsEnabled = false;
       this.privateContests.close();
       this.privateEventVotesEnabled = false;
       this.privateEventVotesV2Enabled = false;

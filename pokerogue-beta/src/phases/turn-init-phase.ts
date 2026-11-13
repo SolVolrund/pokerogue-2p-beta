@@ -105,7 +105,7 @@ export class TurnInitPhase extends FieldPhase {
         if (pokemon.isPlayer()) {
           globalScene.phaseManager.pushNew("CommandPhase", globalScene.getFieldIndexForBattlerIndex(i), plans);
         } else {
-          globalScene.phaseManager.pushNew("EnemyCommandPhase", globalScene.getFieldIndexForBattlerIndex(i));
+          globalScene.phaseManager.pushNew("EnemyCommandPhase", globalScene.getFieldIndexForBattlerIndex(i), plans);
         }
       }
     });
@@ -118,7 +118,14 @@ export class TurnInitPhase extends FieldPhase {
 
 export function canPlanPrivateTurn(): boolean {
   const scene = globalScene;
-  if (!scene.privateTurnSelection || !scene.twoPlayerMode || scene.twoPlayerEnemyPlayerMode
+  if (scene.twoPlayerEnemyPlayerMode) {
+    const battle = scene.currentBattle;
+    return scene.privateTurnSelection && scene.twoPlayerMode && scene.uiInputs?.privateEpSeats === scene.multiplayerPlayerCount + 1
+      && !scene.getActivePlayerIndexes().some(p => scene.isComputerPartnerPlayer(p))
+      && !scene.twoPlayerVsMode && !battle.horde && !battle.mysteryEncounter && !scene.seasonalEncounters.tower
+      && (battle.battleType === BattleType.WILD || (battle.battleType === BattleType.TRAINER && !!battle.trainer));
+  }
+  if (!scene.privateTurnSelection || !scene.twoPlayerMode
     || scene.uiInputs?.privateFightSeats !== scene.multiplayerPlayerCount) return false;
   const players = scene.getActivePlayerIndexes();
   if (![2, 3].includes(players.length) || players.some(p => scene.isComputerPartnerPlayer(p))) return false;

@@ -13,7 +13,7 @@ import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import { EvolutionItemModifierType, FormChangeItemModifierType } from "#modifiers/modifier-type";
 import { CommandPhase } from "#phases/command-phase";
-import { PrivatePauseMenuPhase } from "#phases/private-fight-phase";
+import { PrivateFightPhase, PrivatePauseMenuPhase } from "#phases/private-fight-phase";
 import type { EggGachaUiHandler } from "#ui/egg-gacha-ui-handler";
 import { GameDataType } from "#enums/game-data-type";
 import { SelectModifierPhase } from "#phases/select-modifier-phase";
@@ -336,6 +336,49 @@ describe("UI - Upstream interface polish", () => {
     expect(labels()).toEqual(["", ""]);
   });
 
+  it.each([1, 2])("discards a private submenu on slot %i before shared reward targeting", async privateSlot => {
+    const scene = game.scene;
+    scene.configureTwoPlayerMode(true, 6, false, 2);
+    for (const species of [SpeciesId.EEVEE, SpeciesId.CHARMANDER, SpeciesId.SQUIRTLE]) {
+      scene.getPlayerParty(1).push(scene.addPlayerPokemon(getPokemonSpecies(species), 20));
+    }
+    const current = vi.spyOn(scene.phaseManager, "getCurrentPhase").mockReturnValue(new PrivateFightPhase(new Map()));
+    const abandoned = vi.fn();
+    party["lastRightPokemonCursor"] = 2;
+    await scene.ui.setMode(UiMode.PARTY, PartyUiMode.MODIFIER, 1, abandoned);
+    expect(party["lastRightPokemonCursor"]).toBe(0);
+    party.setCursor(privateSlot);
+    party.showOptions();
+    expect(party["optionsMode"]).toBe(true);
+    await scene.ui.dismissPrivateDraft();
+    expect(party["optionsMode"]).toBe(false);
+    expect(party["options"]).toHaveLength(0);
+    expect(party["selectCallback"]).toBeNull();
+    expect(party["lastRightPokemonCursor"]).toBe(2);
+
+    current.mockReturnValue(new SelectModifierPhase());
+    const apply = vi.fn();
+    await scene.ui.setMode(UiMode.PARTY, PartyUiMode.MODIFIER, 1, apply);
+    expect(party.getCursor()).toBe(0);
+    expect(party.processInput(Button.RIGHT)).toBe(true);
+    expect(party.getCursor()).toBe(1);
+    party.processInput(Button.ACTION);
+    party.processInput(Button.ACTION);
+    expect(apply).toHaveBeenCalledWith(1, PartyOption.APPLY);
+    expect(abandoned).not.toHaveBeenCalled();
+  });
+
+  it("keeps the current highlight for a missing slot and uses an existing reserve on Right", async () => {
+    await game.scene.ui.setMode(UiMode.PARTY, PartyUiMode.MODIFIER, 0, vi.fn());
+    party["lastRightPokemonCursor"] = 4;
+    const deselect = vi.spyOn(party["partySlots"][0], "deselect");
+    expect(party.setCursor(4)).toBe(false);
+    expect(deselect).not.toHaveBeenCalled();
+    expect(party.getCursor()).toBe(0);
+    expect(party.processInput(Button.RIGHT)).toBe(true);
+    expect(party.getCursor()).toBe(1);
+  });
+
   it("keeps item eligibility and confirmation on the second player's party", async () => {
     game.scene.configureTwoPlayerMode(true, 6, false, 3);
     const eevee = game.scene.addPlayerPokemon(getPokemonSpecies(SpeciesId.EEVEE), 20);
@@ -447,6 +490,22 @@ describe("UI - Upstream interface polish", () => {
     expect(menu["menuOptions"]).not.toContain(3);
     expect(menu["menuOptions"]).not.toContain(4);
     expect(menu["menuOptions"]).toContain(9);
+  });
+
+  it("renders the pause owner's menu on both sides of an EP lobby", () => {
+    const scene = game.scene;
+    scene.configureTwoPlayerMode(true, 6, false, 1, undefined, false, true);
+    for (const owner of [0, "ep"] as const) {
+      const pause = new PrivatePauseMenuPhase(owner, new Map(), 1, 0);
+      vi.spyOn(scene.phaseManager, "getCurrentPhase").mockReturnValue(pause);
+      scene.setInputOwner(owner);
+      for (const seat of [0, "ep"] as const) {
+        scene.twoPlayerLocalInputSeat = seat;
+        menu.render();
+        expect(menu["menuOptions"].includes(9)).toBe(owner === "ep");
+        expect(menu["menuOptions"].includes(4)).toBe(owner === 0);
+      }
+    }
   });
 
   it("layers held item icons below stats and still shows the inspected player's items", async () => {

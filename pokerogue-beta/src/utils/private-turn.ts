@@ -1,3 +1,5 @@
+import { FieldPosition } from "#enums/field-position";
+
 /** A private menu never writes battle commands. Only the relay's completed batch can do that. */
 export interface PrivateFightPick {
   actor: number;
@@ -25,13 +27,23 @@ export interface PrivateBallPick {
   ball: number;
   targetId: number;
 }
-export type PrivateTurnPick = PrivateFightPick | PrivateSwitchPick | PrivateMedicinePick | PrivateBallPick;
+export type PrivateFieldPick = { kind: "pass"; actor: number } | { kind: "reposition"; actor: number; position: FieldPosition };
+export type PrivateTurnPick = PrivateFightPick | PrivateSwitchPick | PrivateMedicinePick | PrivateBallPick | PrivateFieldPick;
 export type PrivateTurnBatch = PrivateTurnPick[] | null;
 export type ReviewPrivateTurn = (picks: NonNullable<PrivateTurnBatch>) => boolean;
+
+export const isPrivateSeatPicks = (picks: unknown): picks is PrivateTurnPick[] =>
+  Array.isArray(picks) && picks.length >= 1 && picks.length <= 3 && picks.every(isPrivateTurnPick)
+  && new Set(picks.map(p => p.actor)).size === picks.length;
 
 export function isPrivateTurnPick(value: unknown): value is PrivateTurnPick {
   if (!value || typeof value !== "object") return false;
   if ("kind" in value) {
+    if (value.kind === "pass" || value.kind === "reposition") {
+      const p = value as PrivateFieldPick;
+      return Number.isSafeInteger(p.actor) && (p.kind === "pass" || Number.isInteger(p.position)
+        && p.position >= FieldPosition.CENTER && p.position <= FieldPosition.FAR_RIGHT);
+    }
     if (value.kind === "medicine" || value.kind === "ball") {
       const p = value as PrivateMedicinePick | PrivateBallPick;
       return Number.isSafeInteger(p.actor) && Number.isSafeInteger(p.targetId) && (p.kind === "medicine"

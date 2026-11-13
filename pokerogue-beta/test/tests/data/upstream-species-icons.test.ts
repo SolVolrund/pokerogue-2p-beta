@@ -72,4 +72,31 @@ describe("Upstream species metadata with custom sprite compatibility", () => {
     expect(species.getIconId(true, mega, false, 0)).toBe("208-mega");
     expect(species.getIconId(true, mega, true, 0)).toBe("208s-mega");
   });
+
+  it.each([false, true])("packs every requested Mega party icon (experimental: %s)", async experimental => {
+    game.scene.experimentalSprites = experimental;
+    await game.scene.initVariantData();
+    const atlases = new Map<string, Set<string>>();
+    const missing = new Set<string>();
+    for (const species of speciesDataRegistry.getAllSpecies()) {
+      for (const form of species.forms.filter(form => form.formKey.startsWith("mega"))) {
+        for (const [shiny, variant] of [[false, 0], [true, 0], [true, 1], [true, 2]] as const) {
+          const key = form.getIconAtlasKey(form.formIndex, shiny, variant);
+          if (!atlases.has(key)) {
+            const atlas = JSON.parse(readFileSync(`assets/images/${key}.json`, "utf8"));
+            atlases.set(key, new Set(atlas.textures.flatMap((texture: { frames: { filename: string }[] }) =>
+              texture.frames.map(frame => frame.filename),
+            )));
+          }
+          for (const female of [false, true]) {
+            const id = form.getIconId(female, form.formIndex, shiny, variant);
+            if (!atlases.get(key)!.has(id)) {
+              missing.add(`${key}/${id}`);
+            }
+          }
+        }
+      }
+    }
+    expect([...missing]).toEqual([]);
+  });
 });

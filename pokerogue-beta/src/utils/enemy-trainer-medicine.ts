@@ -76,6 +76,22 @@ export function initializeTrainerMedicine(): void {
   }
 }
 
+/** One medicine action per trainer per turn, even when that trainer controls multiple field slots. */
+export function getAvailableTrainerMedicine(actor: EnemyPokemon): string[] {
+  const battle = globalScene.currentBattle;
+  const trainer = battle.trainer;
+  if (!trainer || battle.battleType !== BattleType.TRAINER || globalScene.isVsLaneBattle() || !actor.hp) {
+    return [];
+  }
+  const owner = trainer.getMedicineOwner(actor);
+  const active = globalScene.getEnemyField(true);
+  if (!active.includes(actor) || active.some(p =>
+    trainer.getMedicineOwner(p) === owner && battle.turnCommands[p.getBattlerIndex()]?.medicine)) {
+    return [];
+  }
+  return trainer.medicineBags[owner] ?? [];
+}
+
 export function getEnemyRecoveryItem(id: string, target: EnemyPokemon): PokemonHpRestoreModifierType | undefined {
   if (!ENEMY_MEDICINE.has(id)) {
     return;

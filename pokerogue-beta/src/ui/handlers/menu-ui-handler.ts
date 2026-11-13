@@ -89,7 +89,7 @@ export class MenuUiHandler extends MessageUiHandler {
   private isEnemyPlayerMenu(): boolean {
     return (
       globalScene.twoPlayerEnemyPlayerMode
-      && (globalScene.twoPlayerLocalInputSeat === "ep" || globalScene.inputOwner === "ep")
+      && (globalScene.inputOwner === "ep" || (!this.sharedPause && globalScene.twoPlayerLocalInputSeat === "ep"))
     );
   }
 

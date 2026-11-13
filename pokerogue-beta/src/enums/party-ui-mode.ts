@@ -86,6 +86,10 @@ export const PartyUiMode = {
   FORM_CHANGE_ITEM_MODIFIER: 16,
   /** Select the Pokemon whose held items will be managed through the bag. */
   BAG: 17,
+  /** Select a recipient from the acting enemy trainer's roster, including fainted reserves. */
+  ENEMY_MEDICINE: 18,
+  /** Mandatory EP trainer replacement after a knockout or forced switch. */
+  ENEMY_REPLACEMENT: 19,
 } as const;
 
 export type PartyUiMode = ObjectValues<typeof PartyUiMode>;

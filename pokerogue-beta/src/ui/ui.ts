@@ -150,7 +150,7 @@ export class UI extends Phaser.GameObjects.Container {
     // A seat can be mid-fade into Party while the other seat opens the menu.
     while (this.privateTransitions.size) await Promise.all([...this.privateTransitions]);
     await this.setMode(UiMode.MESSAGE);
-    for (const mode of [UiMode.COMMAND, UiMode.FIGHT, UiMode.BALL, UiMode.TARGET_SELECT, UiMode.PARTY, UiMode.CONFIRM]) {
+    for (const mode of [UiMode.COMMAND, UiMode.OPTION_SELECT, UiMode.FIGHT, UiMode.BALL, UiMode.TARGET_SELECT, UiMode.PARTY, UiMode.CONFIRM]) {
       if (this.handlers[mode].active) this.handlers[mode].clear();
     }
     this.resetModeChain();

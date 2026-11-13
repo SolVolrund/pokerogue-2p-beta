@@ -6,7 +6,7 @@ import { PokemonHpRestoreModifierType } from "#modifiers/modifier-type";
 import type { TurnMove } from "#types/turn-move";
 import { forecastMedicineTurn } from "#utils/battle-planner-ai";
 import { getAvailableBattleMedicineCount } from "#utils/battle-medicine";
-import { getEnemyRecoveryItem } from "#utils/enemy-trainer-medicine";
+import { getAvailableTrainerMedicine, getEnemyRecoveryItem } from "#utils/enemy-trainer-medicine";
 import { canUseBagMedicine, getBagMedicineType } from "#utils/item-bag";
 
 export function chooseTrainerMedicine(actor: EnemyPokemon, planned: TurnMove): MedicineCommand | undefined {
@@ -16,9 +16,8 @@ export function chooseTrainerMedicine(actor: EnemyPokemon, planned: TurnMove): M
     return;
   }
   const owner = trainer.getMedicineOwner(actor);
-  const bag = trainer.medicineBags[owner];
-  if (!bag?.length || globalScene.getEnemyField(true).some(p =>
-    trainer.getMedicineOwner(p) === owner && battle.turnCommands[p.getBattlerIndex()]?.medicine)) {
+  const bag = getAvailableTrainerMedicine(actor);
+  if (!bag.length) {
     return;
   }
   const party = battle.enemyParty.filter(p => trainer.getMedicineOwner(p) === owner);

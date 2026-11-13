@@ -98,6 +98,15 @@ export class UiInputs {
     return exchange?.enabled ? exchange.seats : 0;
   }
   get privateTrainerFightsEnabled(): boolean { return this.twoPlayerInputTransport?.privateTrainerFightsEnabled === true; }
+  get privateEpSeats(): number {
+    const exchange = this.twoPlayerInputTransport?.privateEpTurns;
+    return exchange?.enabled ? exchange.seats : 0;
+  }
+  submitPrivateEpFight(key: string, picks: PrivateTurnPick[] | null, review: (seats: PrivateTurnPick[][]) => boolean) {
+    if (!this.twoPlayerInputTransport) throw new Error("No private-turn transport");
+    return this.twoPlayerInputTransport.submitPrivateEpFight(key, picks, review);
+  }
+  get privateFieldActionsEnabled(): boolean { return this.twoPlayerInputTransport?.privateFieldActionsEnabled === true; }
 
   get privateContestSeats(): number {
     const exchange = this.twoPlayerInputTransport?.privateContests;
@@ -112,7 +121,7 @@ export class UiInputs {
     return this.twoPlayerInputTransport.submitPrivateContest(key, pick, review);
   }
 
-  beginPrivateDraft(key: string, pause: (owner: PlayerIndex, openedAt: number) => void, veto?: () => void): void {
+  beginPrivateDraft(key: string, pause: (owner: PlayerIndex | "ep", openedAt: number) => void, veto?: () => void): void {
     this.twoPlayerInputTransport?.beginPrivateDraft(key, pause, veto);
   }
 
@@ -355,7 +364,7 @@ export class UiInputs {
         this.buttonStats(pressed);
         return true;
       }
-      return pressed && [UiMode.COMMAND, UiMode.FIGHT, UiMode.TARGET_SELECT, UiMode.PARTY, UiMode.CONFIRM, UiMode.BALL, UiMode.MESSAGE].includes(mode)
+      return pressed && [UiMode.COMMAND, UiMode.OPTION_SELECT, UiMode.FIGHT, UiMode.TARGET_SELECT, UiMode.PARTY, UiMode.CONFIRM, UiMode.BALL, UiMode.MESSAGE].includes(mode)
         && MENU_NAVIGATION_BUTTONS.has(button) && globalScene.ui.processInput(button === Button.SUBMIT ? Button.ACTION : button);
     }
     const contestInput = pressed ? this.getContestMoveInput(button) : undefined;

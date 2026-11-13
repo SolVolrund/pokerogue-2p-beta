@@ -6,19 +6,20 @@ import { BattleType } from "#enums/battle-type";
 import type { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { Command } from "#enums/command";
-import { FieldPosition } from "#enums/field-position";
+import { CommandPhase } from "#phases/command-phase";
 import { MoveId } from "#enums/move-id";
 import { isIgnorePP, MoveUseMode } from "#enums/move-use-mode";
 import { UiMode } from "#enums/ui-mode";
 import type { EnemyPokemon } from "#field/pokemon";
 import { getMoveTargets } from "#moves/move-utils";
 import { FieldPhase } from "#phases/field-phase";
+import type { PlannedFight } from "#phases/private-fight-phase";
 import type { MoveTargetSet } from "#types/move-target-set";
 import type { TurnMove } from "#types/turn-move";
 import { PartyOption, PartyUiMode } from "#ui/party-ui-handler";
 import { getAiEmergencyRepositionTarget } from "#utils/ai-targeting";
 import { chooseTrainerMedicine } from "#utils/battle-medicine-ai";
-import { getRepositionPositions } from "#utils/horde-battle";
+import { getAvailableTrainerMedicine, getEnemyRecoveryItem } from "#utils/enemy-trainer-medicine";
 import { getPlannerRepositionTarget, getPlannerSwitchIndex } from "#utils/battle-planner-ai";
 import { isMysteryEncounterSwitchProtectedPokemon } from "#utils/mystery-encounter-switch-protection";
 import { getZMoveForPokemonMove, shouldSpendZMoveForTurnMove } from "#utils/z-move-utils";
@@ -37,7 +38,7 @@ export class EnemyCommandPhase extends FieldPhase {
   protected fieldIndex: number;
   protected skipTurn = false;
 
-  constructor(fieldIndex: number) {
+  constructor(fieldIndex: number, private readonly privatePlans?: Map<number, PlannedFight>) {
     super();
 
     this.fieldIndex = fieldIndex;
@@ -68,6 +69,18 @@ export class EnemyCommandPhase extends FieldPhase {
     }
 
     if (this.shouldAskEnemyPlayerForCommand(enemyPokemon)) {
+      const plan = this.privatePlans?.get(enemyPokemon.id);
+      if (plan) {
+        if ("kind" in plan && plan.kind === "pass" && this.passTurn()) return;
+        if ("kind" in plan && plan.kind === "reposition" && this.handleCommand(Command.REPOSITION, plan.position)) return;
+        if ("targets" in plan && this.handleEnemyPlayerFightCommand(enemyPokemon, plan.cursor, MoveUseMode.NORMAL, plan.targets)) return;
+        if ("kind" in plan && plan.kind === "medicine" && this.handleMedicineCommand(plan.typeId, plan.targetId)) return;
+        if ("baton" in plan && !plan.baton && this.getSwitchOptions(enemyPokemon).some(p => p.partyIndex === plan.cursor)) {
+          this.queueEnemyPlayerSwitchCommand(plan.cursor);
+          return;
+        }
+        this.privatePlans?.clear();
+      }
       this.showEnemyPlayerCommandMenu();
       return;
     }
@@ -227,8 +240,10 @@ export class EnemyCommandPhase extends FieldPhase {
     switch (command) {
       case Command.FIGHT:
         return true;
+      case Command.BALL:
+        return this.shouldAskEnemyPlayerForCommand(this.getPokemon()) && getAvailableTrainerMedicine(this.getPokemon()).length > 0;
       case Command.POKEMON:
-        return !!globalScene.currentBattle.horde || this.canInspectTrainerParty(this.getPokemon());
+        return CommandPhase.hasFieldOptions(true) || this.canInspectTrainerParty(this.getPokemon());
       default:
         return false;
     }
@@ -239,8 +254,7 @@ export class EnemyCommandPhase extends FieldPhase {
 
     switch (command) {
       case Command.REPOSITION:
-        if (!globalScene.currentBattle.horde || !getRepositionPositions(enemyPokemon).includes(cursor)
-          || cursor === enemyPokemon.fieldPosition) {
+        if (!CommandPhase.canReposition(enemyPokemon, cursor)) {
           return false;
         }
         globalScene.currentBattle.turnCommands[this.getBattlerIndex()] = { command, cursor };
@@ -249,7 +263,7 @@ export class EnemyCommandPhase extends FieldPhase {
       case Command.FIGHT:
         return this.handleEnemyPlayerFightCommand(enemyPokemon, cursor, _useMode ?? MoveUseMode.NORMAL);
       case Command.POKEMON:
-        if (!this.canUseCommand(Command.POKEMON)) {
+        if (!this.canInspectTrainerParty(enemyPokemon)) {
           return false;
         }
         this.showEnemyPlayerSwitchSelect(enemyPokemon);
@@ -261,6 +275,36 @@ export class EnemyCommandPhase extends FieldPhase {
 
   public getFieldIndex(): number {
     return this.fieldIndex;
+  }
+
+  public passTurn(): boolean {
+    if (!CommandPhase.hasFieldOptions(true)) return false;
+    globalScene.currentBattle.turnCommands[this.getBattlerIndex()] = {
+      command: Command.FIGHT, move: { move: MoveId.NONE, targets: [], useMode: MoveUseMode.NORMAL }, skip: true,
+    };
+    this.end();
+    return true;
+  }
+
+  public handleMedicineCommand(typeId: string, targetId: number): boolean {
+    if (!this.canQueueMedicine(typeId, targetId)) return false;
+    globalScene.currentBattle.turnCommands[this.getBattlerIndex()] = {
+      command: Command.MEDICINE, medicine: { typeId, targetId },
+    };
+    this.end();
+    return true;
+  }
+
+  public canQueueMedicine(typeId: string, targetId: number): boolean {
+    const actor = this.getPokemon();
+    const trainer = globalScene.currentBattle.trainer;
+    const target = globalScene.getEnemyParty().find(p => p.id === targetId);
+    if (!trainer || !this.shouldAskEnemyPlayerForCommand(actor) || !getAvailableTrainerMedicine(actor).includes(typeId)
+      || !target || trainer.getMedicineOwner(actor) !== trainer.getMedicineOwner(target)
+      || !getEnemyRecoveryItem(typeId, target)) {
+      return false;
+    }
+    return true;
   }
 
   public getPokemon(): EnemyPokemon {
@@ -295,7 +339,7 @@ export class EnemyCommandPhase extends FieldPhase {
     );
   }
 
-  private getSwitchOptions(enemyPokemon: EnemyPokemon): Array<{ pokemon: EnemyPokemon; partyIndex: number }> {
+  public getSwitchOptions(enemyPokemon: EnemyPokemon): Array<{ pokemon: EnemyPokemon; partyIndex: number }> {
     const trainer = globalScene.currentBattle.trainer;
     if (!trainer || enemyPokemon.isTrapped() || isMysteryEncounterSwitchProtectedPokemon(enemyPokemon)) {
       return [];
@@ -349,6 +393,7 @@ export class EnemyCommandPhase extends FieldPhase {
     enemyPokemon: EnemyPokemon,
     moveIndex: number,
     useMode: MoveUseMode = MoveUseMode.NORMAL,
+    plannedTargets?: BattlerIndex[],
   ): boolean {
     const ignorePP = isIgnorePP(useMode);
     const [canUse, reason] = moveIndex === -1 ? [true, ""] : enemyPokemon.trySelectMove(moveIndex, ignorePP);
@@ -356,6 +401,7 @@ export class EnemyCommandPhase extends FieldPhase {
       ? false
       : moveIndex > -1 && !enemyPokemon.getMoveset().some(move => move.isUsable(enemyPokemon, ignorePP, true)[0]);
 
+    if (plannedTargets && (!canUse || useStruggle)) return false;
     if (!canUse && !useStruggle) {
       this.queueFightErrorMessage(reason);
       return false;
@@ -381,7 +427,11 @@ export class EnemyCommandPhase extends FieldPhase {
     }
 
     const moveTargets = getMoveTargets(enemyPokemon, moveId);
-    if (turnCommand.move && (moveTargets.targets.length <= 1 || moveTargets.multiple)) {
+    if (plannedTargets && turnCommand.move) {
+      if (plannedTargets.length !== (moveTargets.multiple ? moveTargets.targets.length : Math.min(moveTargets.targets.length, 1))
+        || !plannedTargets.every(t => moveTargets.targets.includes(t))) return false;
+      turnCommand.move.targets = plannedTargets;
+    } else if (turnCommand.move && (moveTargets.targets.length <= 1 || moveTargets.multiple)) {
       turnCommand.move.targets = moveTargets.targets;
     } else if (
       turnCommand.move

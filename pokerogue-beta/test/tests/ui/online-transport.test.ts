@@ -81,7 +81,7 @@ describe("Online transport handshake", () => {
     const socket = TestSocket.latest;
     socket.open();
     expect(socket.sent).toEqual([
-      { protocol: ONLINE_PROTOCOL, type: "authenticate", token: "local-test-token", buildId: ONLINE_BUILD_ID, privateTurnV7: true, privateTripleFightV1: true, privateTrainerFightV1: true, privateContestV1: true, privateOpeningSwitchV1: true, privateEventVotesV1: true, privateEventVotesV2: true },
+      { protocol: ONLINE_PROTOCOL, type: "authenticate", token: "local-test-token", buildId: ONLINE_BUILD_ID, privateTurnV7: true, privateEpFightV1: true, privateTripleFightV1: true, privateTrainerFightV1: true, privateFieldActionsV1: true, privateContestV1: true, privateOpeningSwitchV1: true, privateEventVotesV1: true, privateEventVotesV2: true },
     ]);
     expect(transport.getInputReadinessBlockReason()).toBe("online-lobby-waiting-for-players");
     socket.receive({ protocol: ONLINE_PROTOCOL, type: "authenticated" });

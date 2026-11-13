@@ -1,11 +1,15 @@
 import type { BattleScene } from "#app/battle-scene";
 import { BiomeId } from "#enums/biome-id";
+import { MoveId } from "#enums/move-id";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { SpeciesId } from "#enums/species-id";
+import { PokemonMove } from "#moves/pokemon-move";
+import * as EncounterDialogueUtils from "#mystery-encounters/encounter-dialogue-utils";
 import * as EncounterPhaseUtils from "#mystery-encounters/encounter-phase-utils";
 import { LostAtSeaEncounter } from "#mystery-encounters/lost-at-sea-encounter";
+import { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
 import * as MysteryEncounters from "#mystery-encounters/mystery-encounters";
 import { MysteryEncounterPhase } from "#phases/mystery-encounter-phases";
 import { GameManager } from "#test/framework/game-manager";
@@ -47,9 +51,7 @@ describe("Lost at Sea - Mystery Encounter", () => {
     );
   });
 
-  it("should have the correct properties", async () => {
-    await game.runToMysteryEncounter(MysteryEncounterType.LOST_AT_SEA, defaultParty);
-
+  it("should have the correct properties", () => {
     expect(LostAtSeaEncounter.encounterType).toBe(MysteryEncounterType.LOST_AT_SEA);
     expect(LostAtSeaEncounter.encounterTier).toBe(MysteryEncounterTier.COMMON);
     expect(LostAtSeaEncounter.dialogue).toBeDefined();
@@ -57,7 +59,7 @@ describe("Lost at Sea - Mystery Encounter", () => {
     expect(LostAtSeaEncounter.dialogue.encounterOptionsDialogue?.title).toBe(`${namespace}:title`);
     expect(LostAtSeaEncounter.dialogue.encounterOptionsDialogue?.description).toBe(`${namespace}:description`);
     expect(LostAtSeaEncounter.dialogue.encounterOptionsDialogue?.query).toBe(`${namespace}:query`);
-    expect(LostAtSeaEncounter.options.length).toBe(3);
+    expect(LostAtSeaEncounter.options).toHaveLength(4);
   });
 
   it("should not spawn outside of sea biome", async () => {
@@ -82,6 +84,54 @@ describe("Lost at Sea - Mystery Encounter", () => {
     expect(LostAtSeaEncounter.dialogueTokens?.option1RequiredMove).toBe(i18next.t("move:surf.name"));
     expect(LostAtSeaEncounter.dialogueTokens?.option2RequiredMove).toBe(i18next.t("move:fly.name"));
     expect(onInitResult).toBe(true);
+  });
+
+  describe("Option 4 - Alto Mare", () => {
+    const route = LostAtSeaEncounter.options[3];
+
+    it.each([SpeciesId.TOTODILE, SpeciesId.CROCONAW, SpeciesId.FERALIGATR, SpeciesId.LATIAS, SpeciesId.LATIOS])(
+      "accepts species %i without Aqua Jet",
+      species => {
+        initSceneWithoutEncounterPhase(scene, [species]);
+        const [guide] = scene.getPlayerParty();
+        guide.moveset = [new PokemonMove(MoveId.TACKLE)];
+        expect(route.meetsRequirements()).toBe(true);
+        expect(route.primaryPokemon).toBe(guide);
+      },
+    );
+
+    it("requires Aqua Jet in the moveset for other species and a guide fit for battle", () => {
+      initSceneWithoutEncounterPhase(scene, [SpeciesId.BUIZEL]);
+      const [guide] = scene.getPlayerParty();
+      guide.moveset = [new PokemonMove(MoveId.WATER_GUN)];
+      expect(route.meetsRequirements()).toBe(false);
+      guide.moveset.push(new PokemonMove(MoveId.AQUA_JET));
+      expect(route.meetsRequirements()).toBe(true);
+      guide.hp = 0;
+      expect(route.meetsRequirements()).toBe(false);
+    });
+
+    it("takes both players to Alto Mare when only player two has a guide and chooses the route", async () => {
+      initSceneWithoutEncounterPhase(scene, [SpeciesId.ABRA, SpeciesId.BUIZEL]);
+      scene.twoPlayerMode = true;
+      const guide = scene.getPlayerParty(0).pop()!;
+      guide.moveset = [new PokemonMove(MoveId.AQUA_JET)];
+      scene.getPlayerParty(1).push(guide);
+      const encounter = new MysteryEncounter(LostAtSeaEncounter);
+      scene.currentBattle.mysteryEncounter = encounter;
+      encounter.misc = {
+        choices: [{ playerIndex: 0, optionIndex: 3 }, { playerIndex: 1, optionIndex: 4 }],
+      };
+      vi.spyOn(EncounterDialogueUtils, "showEncounterText").mockResolvedValue();
+      const awardExp = vi.spyOn(EncounterPhaseUtils, "setEncounterExp").mockImplementation(() => {});
+      vi.spyOn(EncounterPhaseUtils, "leaveEncounterWithoutBattle").mockImplementation(() => {});
+      const switchBiome = vi.spyOn(scene.phaseManager, "unshiftNew");
+
+      expect(route.meetsRequirements()).toBe(false); // Player one cannot borrow player two's guide.
+      await route.onOptionPhase();
+      expect(switchBiome).toHaveBeenCalledWith("SwitchBiomePhase", BiomeId.ALTO_MARE);
+      expect(awardExp).toHaveBeenCalledWith(guide.id, getPokemonSpecies(SpeciesId.LAPRAS).baseExp, true, 1);
+    });
   });
 
   describe("Option 1 - Surf", () => {
