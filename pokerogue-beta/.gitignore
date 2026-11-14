@@ -46,6 +46,7 @@ coverage
 
 # Local tools
 /tools/
+/scripts/yes-move-*.mjs
 
 # Local Documentation
 /typedoc
