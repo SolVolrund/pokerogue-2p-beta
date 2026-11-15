@@ -11,6 +11,9 @@ import { TrainerVariant } from "#enums/trainer-variant";
 import { Arena, getBiomeAssetKey, getBiomeHasProps } from "#field/arena";
 import { Trainer } from "#field/trainer";
 import { Pokemon } from "#field/pokemon";
+import { MysteryEncounterSaveData } from "#mystery-encounters/mystery-encounter-save-data";
+import { NewBattlePhase } from "#phases/new-battle-phase";
+import { VictoryPhase } from "#phases/victory-phase";
 import { SelectModifierPhase } from "#phases/select-modifier-phase";
 import { TrainerVictoryPhase } from "#phases/trainer-victory-phase";
 import { GameManager } from "#test/framework/game-manager";
@@ -70,7 +73,7 @@ describe("Rocket HQ", () => {
     propVisibility.forEach(visibility => expect(visibility).toHaveBeenLastCalledWith(false));
   });
 
-  it("generates consecutive trainers, including x1 floors and Giovanni on x0 floors", () => {
+  it("keeps the old wave-based layout for HQ saves without a return point", () => {
     const allowed = [
       TrainerType.ROCKET_GRUNT,
       TrainerType.ARCHER,
@@ -88,6 +91,85 @@ describe("Rocket HQ", () => {
       }
     }
     expect(game.scene.gameMode.isTrainerBoss(200, BiomeId.ROCKET_HQ, false)).toBe(false);
+  });
+
+  it.each([1, 2, 3] as const)("shares five floors across %i players and returns to the real wave 30", count => {
+    const scene = game.scene;
+    scene.configureTwoPlayerMode(count > 1, 6, false, count);
+    scene.currentBattle.waveIndex = 29;
+    scene.mysteryEncounterSaveData.rocketHqVisited = true;
+    scene.mysteryEncounterSaveData.rocketHq = { entryWave: 29, returnBiome: BiomeId.METROPOLIS, floor: 0 };
+    scene.arena.startPlayerWhiteHerbRecharge(0, 29);
+    const remaining = scene.arena.getPlayerWhiteHerbRechargeWavesRemaining();
+    const executives = allBiomes.get(BiomeId.ROCKET_HQ).trainerPool[BiomePoolTier.SUPER_RARE];
+    const seeds = new Set<string>();
+    for (let floor = 1; floor <= 5; floor++) {
+      const battle = scene.newBattle();
+      expect(battle.waveIndex).toBe(29);
+      expect(battle.rocketHqFloor).toBe(floor);
+      expect(battle.battleType).toBe(BattleType.TRAINER);
+      const allowed = floor === 5 ? [TrainerType.GIOVANNI] : floor === 4 ? executives : [TrainerType.ROCKET_GRUNT, ...executives];
+      expect(allowed).toContain(battle.trainer!.config.trainerType);
+      expect(scene.arena.getPlayerWhiteHerbRechargeWavesRemaining()).toBe(remaining);
+      seeds.add(scene.waveSeed);
+
+      if (floor === 4 || floor === 5) {
+        const seed = scene.waveSeed;
+        const saved = scene.gameData.parseSessionData(JSON.stringify(scene.gameData.getSessionSaveData()));
+        scene.mysteryEncounterSaveData = new MysteryEncounterSaveData(saved.mysteryEncounterSaveData);
+        const restored = scene.newBattle(saved);
+        expect(restored.rocketHqFloor).toBe(floor);
+        expect(restored.trainer!.config.trainerType).toBe(battle.trainer!.config.trainerType);
+        expect(scene.waveSeed).toBe(seed);
+      }
+    }
+    expect(seeds.size).toBe(5);
+    const exit = new NewBattlePhase();
+    vi.spyOn(exit, "end").mockImplementation(() => {});
+    const transition = vi.spyOn(scene.phaseManager, "unshiftNew");
+    exit.start();
+    expect(transition.mock.calls).toEqual([["SwitchBiomePhase", BiomeId.METROPOLIS], ["NewBattlePhase"]]);
+    expect(scene.mysteryEncounterSaveData.rocketHqVisited).toBe(true);
+    expect(scene.mysteryEncounterSaveData.rocketHq).toBeUndefined();
+    scene.newArena(BiomeId.METROPOLIS, 0, true);
+    const outside = scene.newBattle();
+    expect(outside.waveIndex).toBe(30);
+    expect(scene.gameMode.isBoss(outside.waveIndex)).toBe(true);
+    expect(outside.rocketHqFloor).toBeUndefined();
+    expect(scene.waveSeed).not.toContain("rocket-hq");
+    expect(scene.arena.getPlayerWhiteHerbRechargeWavesRemaining()).toBe(remaining - 1);
+  });
+
+  it("resumes the scheduled wave-35 story trainer when leaving HQ from wave 34", () => {
+    const scene = game.scene;
+    scene.currentBattle.waveIndex = 34;
+    scene.mysteryEncounterSaveData.rocketHq = { entryWave: 34, returnBiome: BiomeId.SLUM, floor: 4 };
+    expect(scene.newBattle().trainer?.config.trainerType).toBe(TrainerType.GIOVANNI);
+    const exit = new NewBattlePhase();
+    vi.spyOn(exit, "end").mockImplementation(() => {});
+    exit.start();
+    scene.newArena(BiomeId.SLUM, 0, true);
+    const storyTrainer = vi.spyOn(scene.gameMode.getFixedBattle(35)!, "getTrainer");
+    const outside = scene.newBattle();
+    expect(outside.waveIndex).toBe(35);
+    expect(storyTrainer).toHaveBeenCalledOnce();
+    expect(outside.trainer).toBe(storyTrainer.mock.results[0].value);
+  });
+
+  it("awards EXP and trainer victory inside HQ without a normal shop or advancing eggs", () => {
+    const scene = game.scene;
+    scene.mysteryEncounterSaveData.rocketHq = { entryWave: 34, returnBiome: BiomeId.SLUM, floor: 0 };
+    scene.newBattle();
+    scene.phaseManager.clearPhaseQueue();
+    const defeated = { getExpValue: () => 42, id: 9876 } as Pokemon;
+    const victory = new VictoryPhase(2);
+    vi.spyOn(victory, "end").mockImplementation(() => {});
+    vi.spyOn(victory, "getPokemon").mockReturnValue(defeated);
+    const exp = vi.spyOn(scene, "applyPartyExp").mockImplementation(() => {});
+    const queued = vi.spyOn(scene.phaseManager, "pushNew");
+    victory.start();
+    expect(exp).toHaveBeenCalledWith(42, true);
+    expect(queued.mock.calls).toEqual([["BattleEndPhase", true], ["TrainerVictoryPhase"], ["NewBattlePhase"]]);
   });
 
   it.each([35, 112, 115, 165, 182, 190, 195])("preserves the scheduled story battle at wave %i", wave => {

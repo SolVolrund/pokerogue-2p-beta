@@ -31,6 +31,7 @@ import type { PlayerIndex } from "#app/battle-scene";
 import type { TurnMove } from "#types/turn-move";
 import { MessageUiHandler } from "#ui/message-ui-handler";
 import type { OptionSelectItem } from "#ui/base-option-select-ui-handler";
+import { SummaryUiMode } from "#ui/summary-ui-handler";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
 import { PokemonIconAnimHelper, PokemonIconAnimMode } from "#ui/pokemon-icon-anim-helper";
 import { addBBCodeTextObject, addTextObject, getTextColor } from "#ui/text";
@@ -515,7 +516,9 @@ export class PartyUiHandler extends MessageUiHandler {
   private processSummaryOption(pokemon: Pokemon): boolean {
     const ui = this.getUi();
     ui.playSelect();
-    ui.setModeWithoutClear(UiMode.SUMMARY, pokemon, undefined, undefined, undefined, pokemon.isPlayer()).then(() =>
+    const phase = globalScene.phaseManager.getCurrentPhase();
+    const readOnly = phase?.is("PrivateFightPhase") || phase?.is("PrivateRegistrationPhase");
+    ui.setModeWithoutClear(UiMode.SUMMARY, pokemon, readOnly ? SummaryUiMode.READ_ONLY : undefined, undefined, undefined, pokemon.isPlayer()).then(() =>
       this.clearOptions(),
     );
     return true;
@@ -1839,6 +1842,7 @@ export class PartyUiHandler extends MessageUiHandler {
       if (this.partyUiMode === PartyUiMode.SELECT) this.options.push(PartyOption.SELECT);
       if (this.partyUiMode === PartyUiMode.POST_BATTLE_SWITCH && this.cursor >= this.getActivePartySlotCount()
         && pokemon.isAllowedInBattle() && !pokemon.isOnField()) this.options.push(PartyOption.SEND_OUT);
+      this.options.push(PartyOption.SUMMARY);
       this.addCancelAndScrollOptions();
       this.updateOptionsWindow();
       this.updatePartyMessageBox();
@@ -1886,6 +1890,7 @@ export class PartyUiHandler extends MessageUiHandler {
           if (this.enemySwitchCanSwitch && this.cursor >= this.getActivePartySlotCount()) {
             this.options.push(PartyOption.SEND_OUT);
           }
+          if (privateTurn) this.options.push(PartyOption.SUMMARY);
           break;
         }
 
@@ -1915,8 +1920,8 @@ export class PartyUiHandler extends MessageUiHandler {
             this.options.push(PartyOption.PASS_BATON);
           }
         }
-        // Only submit a switch during a private turn; party edits would change one client.
-        if (!privateTurn) this.addCommonOptions(pokemon);
+        if (privateTurn) this.options.push(PartyOption.SUMMARY);
+        else this.addCommonOptions(pokemon);
         break;
       case PartyUiMode.REVIVAL_BLESSING:
         this.options.push(PartyOption.REVIVE);
@@ -1926,7 +1931,8 @@ export class PartyUiHandler extends MessageUiHandler {
       case PartyUiMode.EVO_ITEM_MODIFIER:
       case PartyUiMode.FORM_CHANGE_ITEM_MODIFIER:
         this.options.push(PartyOption.APPLY);
-        if (!privateTurn) this.addCommonOptions(pokemon);
+        if (privateTurn) this.options.push(PartyOption.SUMMARY);
+        else this.addCommonOptions(pokemon);
         break;
       case PartyUiMode.TM_MODIFIER:
         this.options.push(PartyOption.TEACH);

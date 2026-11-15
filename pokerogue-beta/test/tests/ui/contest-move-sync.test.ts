@@ -1,5 +1,6 @@
 import type { Phase } from "#app/phase";
 import type { TwoPlayerInputTransport } from "#app/two-player-input-transport";
+import * as ContestAi from "#data/contests/contest-ai";
 import * as ContestAudio from "#data/contests/contest-audio";
 import { applyContestMove } from "#data/contests/contest-rules";
 import { ContestState, createContestParticipant } from "#data/contests/contest-state";
@@ -7,6 +8,7 @@ import { ContestType } from "#data/contests/contest-type";
 import { Button } from "#enums/buttons";
 import { MoveId } from "#enums/move-id";
 import type { Pokemon } from "#field/pokemon";
+import { ContestAppealResultPhase } from "#phases/contests/contest-appeal-result-phase";
 import { ContestCommandPhase } from "#phases/contests/contest-command-phase";
 import { GameManager } from "#test/framework/game-manager";
 import { ContestInputUiHandler } from "#ui/contest-input-ui-handler";
@@ -44,10 +46,13 @@ describe("Contest move synchronization", () => {
     vi.spyOn(game.scene.ui, "getHandler").mockImplementation(() => activeHandler);
     vi.spyOn(game.scene.ui, "playSelect").mockImplementation(() => {});
     vi.spyOn(ContestAudio, "playContestTurnNotification").mockImplementation(() => {});
+    vi.spyOn(ContestAudio, "playContestCheering").mockImplementation(() => {});
     vi.spyOn(UiTheme, "updateWindowType").mockImplementation(() => {});
     vi.spyOn(ContestUi, "getContestUi").mockReturnValue({
       showPhase: vi.fn(),
       setCommandSelection: vi.fn(),
+      animateAppealScoreChanges: vi.fn().mockResolvedValue(undefined),
+      playContestantAppealExit: vi.fn().mockResolvedValue(undefined),
     } as unknown as ReturnType<typeof ContestUi.getContestUi>);
     vi.spyOn(ContestUi, "getContestPlayerMoves").mockReturnValue([MoveId.HARDEN, MoveId.TACKLE]);
     vi.spyOn(game.scene, "getPlayerIndexForPokemon").mockReturnValue(0);
@@ -63,6 +68,10 @@ describe("Contest move synchronization", () => {
     });
     state.round = round;
     state.beginRound();
+    return startTurn(state, contestantId);
+  }
+
+  function startTurn(state: ContestState, contestantId: string) {
     const phase = new ContestCommandPhase(state, contestantId);
     const handler = new ContestInputUiHandler();
     const attach = () => {
@@ -82,6 +91,77 @@ describe("Contest move synchronization", () => {
     state.finishRound();
     return { scores: state.contestants.map(c => c.roundScore), order: state.turnOrder };
   }
+
+  function coordinator(id: string) {
+    return createContestParticipant(id, id, undefined, {
+      contestMoves: [MoveId.TACKLE, MoveId.ASTONISH, MoveId.GROWL, MoveId.HARDEN],
+    });
+  }
+
+  it("hands consecutive coordinator turns to EP after each appeal, allowing EP to jam the previous entrant", async () => {
+    game.scene.configureTwoPlayerMode(true, 6, false, 1, [], false, true);
+    vi.mocked(ContestUi.getContestPlayerMoves).mockRestore();
+    const playerPokemon = { getMoveset: () => [{ moveId: MoveId.TACKLE }] } as Pokemon;
+    const state = new ContestState({
+      contestType: ContestType.BEAUTY,
+      contestants: [coordinator("first"), coordinator("second"), createContestParticipant("player", "Player", playerPokemon)],
+    });
+    state.beginRound();
+    async function resolveAppeal(id: string, next: string) {
+      const result = new ContestAppealResultPhase(state, id);
+      const ended = new Promise<void>(resolve => vi.spyOn(result, "end").mockImplementationOnce(resolve));
+      result.start();
+      await ended;
+      expect(game.scene.phaseManager.unshiftNew).toHaveBeenCalledWith("ContestCommandPhase", state, next);
+    }
+
+    const first = startTurn(state, "first");
+    now = 800;
+    const previous = game.scene.getTwoPlayerDebugStateCheckpoint()!;
+    expect(first.handler.getMoveSelection()).toEqual({ round: 1, contestantId: "first", moveId: MoveId.TACKLE });
+    expect(game.scene.inputOwner).toBe("ep");
+    expect(game.scene.uiInputs.processRemoteInput(0, Button.ACTION, true, previous)).toBe(false);
+    expect(game.scene.uiInputs.processRemoteInput("ep", Button.ACTION, true, previous)).toBe(true);
+    expect(game.scene.phaseManager.unshiftNew).toHaveBeenCalledExactlyOnceWith("ContestAppealPhase", state, "first");
+    expect(state.getQueuedMove("second")).toBeUndefined();
+    await resolveAppeal("first", "second");
+    const firstScore = state.getContestant("first").roundScore;
+    expect(firstScore).toBeGreaterThan(0);
+
+    startTurn(state, "second");
+    now = 1600;
+    const current = game.scene.getTwoPlayerDebugStateCheckpoint()!;
+    expect(game.scene.uiInputs.processRemoteInput("ep", Button.ACTION, true, previous)).toBe(false);
+    expect(game.scene.uiInputs.processRemoteInput("ep", Button.DOWN, true, current)).toBe(true);
+    const confirm = game.scene.getTwoPlayerDebugStateCheckpoint()!;
+    expect(confirm.contestMoveSelection?.moveId).toBe(MoveId.ASTONISH);
+    expect(game.scene.uiInputs.processRemoteInput("ep", Button.ACTION, true, confirm)).toBe(true);
+    await resolveAppeal("second", "player");
+    expect(state.getContestant("first").roundScore).toBeLessThan(firstScore);
+
+    startTurn(state, "player");
+    expect(game.scene.inputOwner).toBe(0);
+    const playerTurn = game.scene.getTwoPlayerDebugStateCheckpoint()!;
+    expect(game.scene.uiInputs.processRemoteInput("ep", Button.ACTION, true, playerTurn)).toBe(false);
+  });
+
+  it("keeps a CPU partner on AI even with EP present", () => {
+    game.scene.configureTwoPlayerMode(true, 6, true, 2, [1], false, true);
+    vi.mocked(game.scene.getPlayerIndexForPokemon).mockReturnValue(1);
+    const ai = vi.spyOn(ContestAi, "chooseContestAiMove").mockReturnValue(MoveId.HARDEN);
+    const turn = peer(1, "player_2");
+    expect(ai).toHaveBeenCalledOnce();
+    expect(turn.state.getQueuedMove("player_2")).toBe(MoveId.HARDEN);
+    expect(turn.handler.getMoveSelection()).toBeUndefined();
+  });
+
+  it("keeps opposing coordinators on AI when the run has no EP", () => {
+    const state = new ContestState({ contestType: ContestType.COOL, contestants: [coordinator("npc")] });
+    state.beginRound();
+    const turn = startTurn(state, "npc");
+    expect(state.getContestant("npc").contestMoves).toContain(state.getQueuedMove("npc"));
+    expect(turn.handler.getMoveSelection()).toBeUndefined();
+  });
 
   it.each([Button.ACTION, Button.SUBMIT])("confirms the same move despite a lost direction input (button %i)", button => {
     const host = peer();

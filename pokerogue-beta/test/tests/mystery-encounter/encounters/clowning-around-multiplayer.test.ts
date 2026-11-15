@@ -256,7 +256,7 @@ describe("Clowning Around multiplayer fields and trials", () => {
       const phase = new CommandPhase(fieldIndex);
       phase["setActiveCommandPlayer"]();
       expect(scene.activePlayerIndex).toBe(2);
-      expect(phase["shouldAutoSkipClearedVsModeLane"](scene.getPlayerPokemonForFieldSlot(fieldIndex)!)).toBe(false);
+      expect(CommandPhase.shouldAutoSkipClearedVsModeLane(scene.getPlayerPokemonForFieldSlot(fieldIndex)!)).toBe(false);
     }
   });
 

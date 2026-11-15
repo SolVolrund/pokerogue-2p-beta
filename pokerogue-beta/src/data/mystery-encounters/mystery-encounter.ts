@@ -62,7 +62,7 @@ export interface IMysteryEncounter {
   catchAllowed: boolean;
   fleeAllowed: boolean;
   continuousEncounter: boolean;
-  maxAllowedEncounters: number;
+  maxAllowedEncounters?: number;
   hasBattleAnimationsWithoutTargets: boolean;
   skipEnemyBattleTurns: boolean;
   skipToFightInput: boolean;
@@ -152,7 +152,7 @@ export class MysteryEncounter implements IMysteryEncounter {
   continuousEncounter: boolean;
   /**
    * Maximum number of times the encounter can be seen per run
-   * Rogue tier encounters default to 1, others default to 3
+   * Rogue tier encounters default to 1, others default to 2
    */
   maxAllowedEncounters: number;
   /**
@@ -314,9 +314,9 @@ export class MysteryEncounter implements IMysteryEncounter {
     this.spriteConfigs = this.spriteConfigs ? [...this.spriteConfigs] : [];
     // Default max is 1 for ROGUE encounters, 2 for others
     this.maxAllowedEncounters =
-      (this.maxAllowedEncounters ?? this.encounterTier === MysteryEncounterTier.ROGUE)
+      this.maxAllowedEncounters ?? (this.encounterTier === MysteryEncounterTier.ROGUE
         ? DEFAULT_MAX_ALLOWED_ROGUE_ENCOUNTERS
-        : DEFAULT_MAX_ALLOWED_ENCOUNTERS;
+        : DEFAULT_MAX_ALLOWED_ENCOUNTERS);
     this.encounterMode = MysteryEncounterMode.DEFAULT;
     this.requirements = this.requirements ? this.requirements : [];
     this.hideBattleIntroMessage = this.hideBattleIntroMessage ?? false;
@@ -345,8 +345,8 @@ export class MysteryEncounter implements IMysteryEncounter {
    * This is used to filter the pool of encounters down to only the ones with all requirements met
    * @returns
    */
-  meetsRequirements(): boolean {
-    const sceneReq = !this.requirements.some(requirement => !requirement.meetsRequirement());
+  meetsRequirements(waveIndex?: number): boolean {
+    const sceneReq = !this.requirements.some(requirement => !requirement.meetsRequirement(waveIndex));
     const secReqs = this.meetsSecondaryRequirementAndSecondaryPokemonSelected(); // secondary is checked first to handle cases of primary overlapping with secondary
     const priReqs = this.meetsPrimaryRequirementAndPrimaryPokemonSelected();
 
@@ -609,7 +609,6 @@ export class MysteryEncounterBuilder implements Partial<IMysteryEncounter> {
   preventGameStatsUpdates = false;
   countsForEncounterPacing = true;
   twoPlayerSharedDecision: IMysteryEncounter["twoPlayerSharedDecision"] = false;
-  maxAllowedEncounters = 3;
   expMultiplier = 1;
 
   /**

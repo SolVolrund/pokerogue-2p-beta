@@ -421,12 +421,10 @@ export class CommandPhase extends FieldPhase {
     return enemyField.filter(target => target.getFieldIndex() === fieldIndex);
   }
 
-  private hasActiveVsModeLaneOpponent(playerPokemon: PlayerPokemon): boolean {
-    return this.getVsModeCaptureTargetsForPokemon(playerPokemon).some(target => target.isActive(true) && !target.isFainted());
-  }
-
-  private shouldAutoSkipClearedVsModeLane(playerPokemon: PlayerPokemon): boolean {
-    return globalScene.isVsLaneBattle() && !playerPokemon.status?.isPostTurn() && !this.hasActiveVsModeLaneOpponent(playerPokemon);
+  static shouldAutoSkipClearedVsModeLane(playerPokemon: PlayerPokemon): boolean {
+    return globalScene.isVsLaneBattle() && !playerPokemon.status?.isPostTurn()
+      && !globalScene.getEnemyField().some(target => target.getFieldIndex() === playerPokemon.getFieldIndex()
+        && target.isActive(true) && !target.isFainted());
   }
 
   private queueSkippedFightCommand(): void {
@@ -1152,7 +1150,7 @@ export class CommandPhase extends FieldPhase {
   public override start(): void {
     super.start();
 
-    if (this.shouldAutoSkipClearedVsModeLane(this.getPokemon())) {
+    if (CommandPhase.shouldAutoSkipClearedVsModeLane(this.getPokemon())) {
       this.queueSkippedFightCommand();
       this.end();
       return;

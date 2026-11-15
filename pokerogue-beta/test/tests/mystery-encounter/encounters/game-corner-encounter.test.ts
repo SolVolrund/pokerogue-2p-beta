@@ -335,6 +335,9 @@ describe("Game Corner multiplayer visits and CPU rewards", () => {
     await thirdOptions[0].onPostOptionPhase!();
     expect(immediate).toHaveBeenCalledExactlyOnceWith("SwitchBiomePhase", BiomeId.ROCKET_HQ);
     expect(game.scene.mysteryEncounterSaveData.rocketHqVisited).toBe(true);
+    expect(game.scene.mysteryEncounterSaveData.rocketHq).toEqual({
+      entryWave: 33, returnBiome: game.scene.arena.biomeId, floor: 0,
+    });
     await thirdOptions[0].onPostOptionPhase!();
     expect(immediate).toHaveBeenCalledOnce();
   });

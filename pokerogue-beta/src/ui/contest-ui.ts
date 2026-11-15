@@ -5,6 +5,7 @@ import { playContestAppealHeartChange } from "#data/contests/contest-audio";
 import { contestCoordinatorConfigs } from "#data/contests/contest-coordinator-types";
 import { CONTEST_AD_REEL_MESSAGES, CONTEST_CHAT_MESSAGES, CONTEST_CHAT_NAMES } from "#data/contests/contest-live-feed";
 import { ContestRank } from "#data/contests/contest-opponents";
+import { getContestCommandOwner } from "#data/contests/contest-setup";
 import {
   ContestSpectacularEffectBehavior,
   getContestSpectacularEffect,
@@ -1753,9 +1754,7 @@ function isPlayerCommandPhase(contestState: ContestState): boolean {
   }
 
   const contestant = contestState.getContestant(contestState.currentCommandContestantId);
-  const playerIndex = contestant.pokemon ? globalScene.getPlayerIndexForPokemon(contestant.pokemon) : undefined;
-
-  return !!contestant.pokemon && (playerIndex === undefined || !globalScene.isComputerPartnerPlayer(playerIndex));
+  return getContestCommandOwner(contestant) !== undefined;
 }
 
 function isContestSchedulePhase(phaseName: string): boolean {

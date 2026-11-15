@@ -1,5 +1,7 @@
 import type { InputOwner, InputSeat, LocalInputSeat, PlayerIndex } from "#app/battle-scene";
 import { Button } from "#enums/buttons";
+import type { MysteryEncounterType } from "#enums/mystery-encounter-type";
+import { isReservableEncounter } from "#mystery-encounters/encounter-reservation";
 import type { ContestMoveSelection } from "#data/contests/contest-state";
 import type { PlayerCardIdentity } from "#utils/player-card";
 import { onlineSaveSession, type OnlineSaveControl } from "#utils/online-save-session";
@@ -52,6 +54,7 @@ export interface TwoPlayerRunBootstrap {
 export interface TwoPlayerTitleStart {
   action: "new-run" | "load-session";
   mysteryEncounterFrequency?: number;
+  scheduledEncounter?: MysteryEncounterType;
   hauntingSeasonActive?: boolean;
   gameMode?: number;
   challenges?: { id: number; value: number; severity: number }[];
@@ -71,6 +74,7 @@ export type TwoPlayerProfileSnapshot = {
   systemSave: string;
   starterPreferences?: string;
   playerCardVersion?: 1;
+  privateVsLanes?: true;
   identity?: never;
 } | {
   playerIndex: "ep";
@@ -286,6 +290,7 @@ function isValidTitleStart(titleStart: unknown): titleStart is TwoPlayerTitleSta
   const data = titleStart as Partial<TwoPlayerTitleStart>;
   return (data.action === "new-run" || data.action === "load-session")
     && (data.hauntingSeasonActive === undefined || typeof data.hauntingSeasonActive === "boolean")
+    && (data.scheduledEncounter === undefined || isReservableEncounter(data.scheduledEncounter))
     && (data.mysteryEncounterFrequency === undefined
       || (Number.isInteger(data.mysteryEncounterFrequency)
         && data.mysteryEncounterFrequency >= 0 && data.mysteryEncounterFrequency <= 6))

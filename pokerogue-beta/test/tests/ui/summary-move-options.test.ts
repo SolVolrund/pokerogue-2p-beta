@@ -6,6 +6,10 @@ import { SpeciesId } from "#enums/species-id";
 import { UiMode } from "#enums/ui-mode";
 import type { Pokemon } from "#field/pokemon";
 import { SelectModifierPhase } from "#phases/select-modifier-phase";
+import { PrivateFightPhase } from "#phases/private-fight-phase";
+import { PrivateRegistrationPhase } from "#phases/private-registration-phase";
+import { UiInputs } from "#app/ui-inputs";
+import { PartyOption, PartyUiMode, type PartyUiHandler } from "#ui/party-ui-handler";
 import { GameManager } from "#test/framework/game-manager";
 import type { BaseOptionSelectUiHandler } from "#ui/base-option-select-ui-handler";
 import { type SummaryUiHandler, SummaryUiMode } from "#ui/summary-ui-handler";
@@ -57,6 +61,66 @@ describe("UI - Summary move options", () => {
     expect(game.scene.ui.getMode()).toBe(UiMode.OPTION_SELECT);
     return game.scene.ui.getHandler<BaseOptionSelectUiHandler>();
   }
+
+  it.each(["battle", "ep", "vote", "entrant"])("inspects a private %s party without committing a choice", async context => {
+    const scene = game.scene;
+    const ui = scene.ui;
+    scene.twoPlayerLocalInputSeat = context === "ep" ? "ep" : 0;
+    const phase = context === "battle" || context === "ep" ? new PrivateFightPhase(new Map()) : new PrivateRegistrationPhase({
+      name: "test", legal: () => [0], queueSequential: vi.fn(), queueCommit: vi.fn(),
+    });
+    vi.spyOn(scene.phaseManager, "getCurrentPhase").mockReturnValue(phase);
+    // Exercise actual Party/Summary transitions without waiting for Phaser's clock.
+    vi.spyOn(ui, "fadeOut").mockResolvedValue();
+    vi.spyOn(ui, "fadeIn").mockResolvedValue();
+    const timer = scene.time.delayedCall.bind(scene.time);
+    vi.spyOn(scene.time, "delayedCall").mockImplementation((delay, cb, args, scope) => {
+      if (delay !== 100) return timer(delay, cb, args, scope);
+      cb.apply(scope, args ?? []);
+      return {} as Phaser.Time.TimerEvent;
+    });
+    const pick = vi.fn();
+    const party = ui.handlers[UiMode.PARTY] as PartyUiHandler;
+    await ui.setMode(UiMode.PARTY, context === "ep" ? PartyUiMode.ENEMY_SWITCH : context === "battle" ? PartyUiMode.SWITCH
+      : context === "vote" ? PartyUiMode.CHECK : PartyUiMode.SELECT, 0, pick);
+    const pokemon = context === "ep" ? game.field.getEnemyPokemon() : game.field.getPlayerPokemon();
+    const original = [...pokemon.moveset];
+    const inputs: UiInputs = Object.create(UiInputs.prototype);
+    const press = (button: Button) => inputs["processLocalButtonInput"](button, true);
+    press(Button.ACTION);
+    expect(party["options"]).toContain(PartyOption.SUMMARY);
+    expect(party["options"]).not.toContain(PartyOption.RENAME);
+    party.setCursor(party["options"].indexOf(PartyOption.SUMMARY));
+    press(Button.ACTION);
+    await vi.waitFor(() => expect(ui.getMode()).toBe(UiMode.SUMMARY));
+    expect(summary["summaryUiMode"]).toBe(SummaryUiMode.READ_ONLY);
+    expect(summary["pokemon"]).toBe(pokemon);
+    const nextPage = () => {
+      expect(press(Button.RIGHT)).toBe(true);
+      scene.tweens.getTweensOf(summary["summaryPageTransitionContainer"]).forEach(tween => tween.complete());
+    };
+    nextPage();
+    expect(press(Button.STATS)).toBe(true);
+    expect(press(Button.STATS)).toBe(true);
+    expect(summary["contestStatsContainer"].visible).toBe(true);
+    nextPage();
+    expect(press(Button.STATS)).toBe(true);
+    expect(summary["contestMoveInfoVisible"]).toBe(true);
+    expect(press(Button.ACTION)).toBe(true);
+    expect(ui.getMode()).toBe(UiMode.SUMMARY);
+    expect(pokemon.moveset).toEqual(original);
+    press(Button.CANCEL);
+    press(Button.CANCEL);
+    await vi.waitFor(() => expect(ui.getMode()).toBe(UiMode.PARTY));
+    expect(party.getCursor()).toBe(0);
+    expect(pick).not.toHaveBeenCalled();
+    // A shared pause can arrive during the fade into inspection.
+    party["processSummaryOption"](pokemon);
+    await ui.dismissPrivateDraft();
+    expect(ui.getMode()).toBe(UiMode.MESSAGE);
+    expect(summary.active || party.active).toBe(false);
+    expect(pick).not.toHaveBeenCalled();
+  });
 
   function chooseForget() {
     const options = openOptions();

@@ -65,6 +65,7 @@ import {
   EnemyDamageReducerModifier,
   EnemyEndureChanceModifier,
   EnemyFusionChanceModifier,
+  EnemyThiefTokenModifier,
   type EnemyPersistentModifier,
   EnemyStatusEffectHealChanceModifier,
   EnemyTurnHealModifier,
@@ -3215,6 +3216,12 @@ const modifierTypeInitObj = Object.freeze({
       "modifierType:ModifierType.ENEMY_DAMAGE_BOOSTER",
       "wl_item_drop",
       (type, _args) => new EnemyDamageBoosterModifier(type, 5),
+    ),
+  ENEMY_THIEF: () =>
+    new ModifierType(
+      "modifierType:ModifierType.ENEMY_THIEF",
+      "wl_custom_thief",
+      type => new EnemyThiefTokenModifier(type),
     ),
   ENEMY_DAMAGE_REDUCTION: () =>
     new ModifierType(

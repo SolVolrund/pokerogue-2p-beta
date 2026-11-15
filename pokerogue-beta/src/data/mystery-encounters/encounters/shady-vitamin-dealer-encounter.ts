@@ -60,13 +60,13 @@ interface VitaminDealerData {
 }
 
 class TwoPlayerAnyPlayerMoneyRequirement extends MoneyRequirement {
-  override meetsRequirement(): boolean {
+  override meetsRequirement(waveIndex?: number): boolean {
     if (!globalScene.twoPlayerMode) {
-      return super.meetsRequirement();
+      return super.meetsRequirement(waveIndex);
     }
 
     if (this.scalingMultiplier > 0) {
-      this.requiredMoney = globalScene.getWaveMoneyAmount(this.scalingMultiplier);
+      this.requiredMoney = globalScene.getWaveMoneyAmount(this.scalingMultiplier, waveIndex);
     }
 
     return getMysteryEncounterPlayerIndexes().some(playerIndex =>

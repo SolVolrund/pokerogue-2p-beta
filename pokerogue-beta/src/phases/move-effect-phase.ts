@@ -26,6 +26,7 @@ import {
   ContactHeldItemTransferChanceModifier,
   DamageMoneyRewardModifier,
   EnemyAttackStatusEffectChanceModifier,
+  EnemyThiefTokenModifier,
   EnemyEndureChanceModifier,
   FlinchChanceModifier,
   HitHealModifier,
@@ -912,9 +913,10 @@ export class MoveEffectPhase extends PokemonPhase {
       globalScene.applyModifiersForPokemon(StickyBarbModifier, target, target, user, this.move);
     }
 
-    // We assume only enemy Pokemon are able to have the EnemyAttackStatusEffectChanceModifier from tokens
+    // Enemy-side on-hit tokens use the attacker's lane in VS battles.
     if (!user.isPlayer() && this.move.is("AttackMove")) {
       globalScene.applyShuffledEnemyModifiersForPokemon(EnemyAttackStatusEffectChanceModifier, user, target);
+      globalScene.applyEnemyModifiersForPokemon(EnemyThiefTokenModifier, user, user, target);
     }
 
     // Apply Grip Claw's chance to steal an item from the target

@@ -77,6 +77,8 @@ interface TurnCommands {
 export class Battle {
   protected gameMode: GameMode;
   public waveIndex: number;
+  /** The local HQ floor, restored from the shared visit when loading this battle. */
+  public rocketHqFloor?: number | undefined;
   public battleType: BattleType;
   public trainer: Trainer | null;
   public enemyLevels: number[] | undefined;

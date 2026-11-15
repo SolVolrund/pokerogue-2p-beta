@@ -111,9 +111,9 @@ class DelibirdyPlayerAnyPaymentRequirement extends EncounterSceneRequirement {
     super();
   }
 
-  override meetsRequirement(): boolean {
+  override meetsRequirement(waveIndex?: number): boolean {
     return (
-      globalScene.getPlayerMoney(this.playerIndex) >= getDelibirdyMoneyPrice()
+      globalScene.getPlayerMoney(this.playerIndex) >= getDelibirdyMoneyPrice(waveIndex)
       || globalScene.getPlayerParty(this.playerIndex).some(
         pokemon => getDelibirdyValidItems(pokemon, 2).length > 0 || getDelibirdyValidItems(pokemon, 3).length > 0,
       )
@@ -126,10 +126,10 @@ class DelibirdyPlayerAnyPaymentRequirement extends EncounterSceneRequirement {
 }
 
 class DelibirdySpawnRequirement extends EncounterSceneRequirement {
-  override meetsRequirement(): boolean {
+  override meetsRequirement(waveIndex?: number): boolean {
     if (!globalScene.twoPlayerMode) {
       return (
-        globalScene.getPlayerMoney() >= getDelibirdyMoneyPrice()
+        globalScene.getPlayerMoney() >= getDelibirdyMoneyPrice(waveIndex)
         && globalScene.getPlayerParty().some(
           pokemon => getDelibirdyValidItems(pokemon, 2).length > 0 || getDelibirdyValidItems(pokemon, 3).length > 0,
         )
@@ -137,7 +137,7 @@ class DelibirdySpawnRequirement extends EncounterSceneRequirement {
     }
 
     return getMysteryEncounterPlayerIndexes().every(playerIndex =>
-      new DelibirdyPlayerAnyPaymentRequirement(playerIndex).meetsRequirement(),
+      new DelibirdyPlayerAnyPaymentRequirement(playerIndex).meetsRequirement(waveIndex),
     );
   }
 
@@ -175,8 +175,8 @@ function getDelibirdyData(): DelibirdyData {
   return encounter.misc as DelibirdyData;
 }
 
-function getDelibirdyMoneyPrice(): number {
-  return globalScene.getWaveMoneyAmount(DELIBIRDY_MONEY_PRICE_MULTIPLIER);
+function getDelibirdyMoneyPrice(waveIndex?: number): number {
+  return globalScene.getWaveMoneyAmount(DELIBIRDY_MONEY_PRICE_MULTIPLIER, waveIndex);
 }
 
 function spendDelibirdyMoney(cost: number, playerIndex: PlayerIndex): void {

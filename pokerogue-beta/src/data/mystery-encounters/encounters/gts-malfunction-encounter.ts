@@ -112,11 +112,11 @@ const GTS_MALFUNCTION_BUCKETS = [
 ] as const;
 
 class GtsMalfunctionSpawnRequirement extends EncounterSceneRequirement {
-  override meetsRequirement(): boolean {
+  override meetsRequirement(waveIndex = globalScene.currentBattle.waveIndex): boolean {
     const playerIndexes = getMysteryEncounterPlayerIndexes();
     return (
       globalScene.twoPlayerMode
-      && globalScene.currentBattle.waveIndex >= getGtsMalfunctionTargetWave()
+      && waveIndex >= getGtsMalfunctionTargetWave()
       && playerIndexes.every(playerIndex => globalScene.getPokemonAllowedInBattle(playerIndex).length >= 2)
     );
   }

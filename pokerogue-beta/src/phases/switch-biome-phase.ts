@@ -28,9 +28,11 @@ export class SwitchBiomePhase extends BattlePhase {
     // Before switching biomes, make sure to set the last encounter for other phases that need it too.
     globalScene.lastEnemyTrainer = globalScene.currentBattle?.trainer ?? null;
     globalScene.lastMysteryEncounter = globalScene.currentBattle?.mysteryEncounter;
+    const departingEncounter = globalScene.lastMysteryEncounter;
+    const departingVisuals = departingEncounter?.introVisuals;
 
     globalScene.tweens.add({
-      targets: [globalScene.arenaEnemy, globalScene.lastEnemyTrainer],
+      targets: [globalScene.arenaEnemy, globalScene.lastEnemyTrainer, ...(departingVisuals ? [departingVisuals] : [])],
       x: "+=300",
       duration: 2000,
       onComplete: async () => {
@@ -69,6 +71,10 @@ export class SwitchBiomePhase extends BattlePhase {
             globalScene.arenaPlayerTransition.setVisible(false);
             if (globalScene.lastEnemyTrainer) {
               globalScene.lastEnemyTrainer.destroy();
+            }
+            if (departingEncounter && departingVisuals) {
+              globalScene.field.remove(departingVisuals, true);
+              departingEncounter.introVisuals = undefined;
             }
             // The crystal gauntlet cycles biomes quickly and can revisit END immediately for wave 220.
             // Keep those assets warm so visible transition sprites never point at a cleared texture.

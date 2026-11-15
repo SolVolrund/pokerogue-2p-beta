@@ -1,7 +1,7 @@
-import type { PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { chooseContestAiMove } from "#data/contests/contest-ai";
 import { playContestTurnNotification } from "#data/contests/contest-audio";
+import { getContestCommandOwner } from "#data/contests/contest-setup";
 import type { ContestParticipant, ContestParticipantId, ContestState } from "#data/contests/contest-state";
 import { MoveId } from "#enums/move-id";
 import { clearContestInputMode, setContestInputMode } from "#ui/contest-input-ui-handler";
@@ -18,7 +18,6 @@ export class ContestCommandPhase extends ContestPhase {
   private playerMoves: readonly MoveId[] = [];
   private selectionIndex = 0;
   private complete = false;
-  private playerIndex: PlayerIndex | undefined;
 
   constructor(contestState: ContestState, contestantId: ContestParticipantId) {
     super(contestState);
@@ -33,20 +32,19 @@ export class ContestCommandPhase extends ContestPhase {
     this.showContestUi();
     playContestTurnNotification();
 
-    this.playerIndex = this.contestant.pokemon
-      ? globalScene.getPlayerIndexForPokemon(this.contestant.pokemon)
-      : undefined;
-
-    if (!this.contestant.pokemon || isComputerPartnerContestant(this.playerIndex)) {
+    const owner = getContestCommandOwner(this.contestant);
+    if (owner === undefined) {
       this.contestState.queueMove(this.contestant.id, chooseContestAiMove(this.contestant, this.contestState));
       this.queueAppealPhase();
       this.end();
       return;
     }
 
-    if (this.playerIndex !== undefined) {
-      globalScene.waitForPlayerInput(this.playerIndex);
-      updateWindowType(this.playerIndex + 1);
+    if (owner === "ep") {
+      globalScene.waitForEnemyPlayerInput();
+    } else {
+      globalScene.waitForPlayerInput(owner);
+      updateWindowType(owner + 1);
     }
 
     this.playerMoves = getContestPlayerMoves(this.contestState);
@@ -112,8 +110,4 @@ function wrapMoveSelection(selectionIndex: number, moveCount: number): number {
   }
 
   return ((selectionIndex % moveCount) + moveCount) % moveCount;
-}
-
-function isComputerPartnerContestant(playerIndex: PlayerIndex | undefined): boolean {
-  return playerIndex !== undefined && globalScene.isComputerPartnerPlayer(playerIndex);
 }

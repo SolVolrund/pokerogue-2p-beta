@@ -27,7 +27,8 @@ import type { Modifier } from "#modifiers/modifier";
 import { getDailyRunStarterModifiers, regenerateModifierPoolThresholds } from "#modifiers/modifier-type";
 import { normalizeMysteryEncounterFrequency } from "#mystery-encounters/mystery-encounter-save-data";
 import { ChallengeData } from "#system/challenge-data";
-import { getMysteryEncounterFrequencySetting } from "#system/settings-events";
+import type { MysteryEncounterType } from "#enums/mystery-encounter-type";
+import { getMysteryEncounterFrequencySetting, getScheduledEncounterSetting } from "#system/settings-events";
 import { vouchers } from "#system/voucher";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import type { ChallengeSelectConfig } from "#ui/challenges-select-ui-handler";
@@ -146,6 +147,7 @@ export class TitlePhase extends Phase {
   private customPartnerVariant?: "kyle" | "amber";
   private eventPartnerVariant: "amber_two" | "ash_ketchum" = "amber_two";
   private mysteryEncounterFrequency: number | undefined;
+  private scheduledEncounter?: MysteryEncounterType | null;
   private hauntingSeasonActive: boolean | undefined;
   private profileStartupAnnounceInterval: ReturnType<typeof globalThis.setInterval> | undefined;
   // TODO: Make `end` take a `GameModes` as a parameter rather than storing it on the class itself
@@ -2066,10 +2068,12 @@ export class TitlePhase extends Phase {
     globalScene.setSeed(runSeed);
     globalScene.resetSeed();
     this.mysteryEncounterFrequency = getMysteryEncounterFrequencySetting();
+    this.scheduledEncounter = getScheduledEncounterSetting(globalScene.getPlayerGameData(0).computerPartnerUnlocks);
     this.hauntingSeasonActive = isHauntingSeason();
     const titleStart: TwoPlayerTitleStart = {
       action: "new-run",
       mysteryEncounterFrequency: this.mysteryEncounterFrequency,
+      ...(this.scheduledEncounter != null ? { scheduledEncounter: this.scheduledEncounter } : {}),
       hauntingSeasonActive: this.hauntingSeasonActive,
       gameMode,
       ...(gameMode === GameModes.CHALLENGE ? { challenges: this.selectedChallenges } : {}),
@@ -2329,6 +2333,8 @@ export class TitlePhase extends Phase {
           : [];
 
       this.mysteryEncounterFrequency = normalizeMysteryEncounterFrequency(titleStart.mysteryEncounterFrequency);
+      // No selection (including older hosts) is authoritative; never use a guest's preference.
+      this.scheduledEncounter = titleStart.scheduledEncounter ?? null;
       // Missing metadata from an older host must not fall back to a guest's calendar.
       this.hauntingSeasonActive = titleStart.hauntingSeasonActive === true;
 
@@ -2656,6 +2662,9 @@ export class TitlePhase extends Phase {
       globalScene.mysteryEncounterSaveData.frequency =
         this.mysteryEncounterFrequency ?? getMysteryEncounterFrequencySetting();
       globalScene.gameMode = getGameMode(this.gameMode);
+      globalScene.mysteryEncounterSaveData.scheduledEncounter = !globalScene.gameMode.hasMysteryEncounters ? null
+        : this.scheduledEncounter !== undefined ? this.scheduledEncounter
+        : getScheduledEncounterSetting(globalScene.getPlayerGameData(0).computerPartnerUnlocks);
       this.applySelectedChallenges();
       const players = globalScene.getActivePlayerIndexes();
       for (const challenge of globalScene.gameMode.challenges) {

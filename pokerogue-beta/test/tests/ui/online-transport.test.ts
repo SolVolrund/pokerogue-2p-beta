@@ -262,11 +262,11 @@ describe("Online transport handshake", () => {
     expect(transport.getInputReadinessBlockReason()).toBeUndefined();
   });
 
-  const contestCheckpoint = (moveId: MoveId): TwoPlayerStateCheckpoint => ({
+  const contestCheckpoint = (moveId: MoveId, contestantId = "player_2"): TwoPlayerStateCheckpoint => ({
     fingerprint: String(moveId),
     summary: { phase: "ContestCommandPhase", uiMode: UiMode.CONTEST_INPUT },
-    inputContext: { id: "round-1-player-2", promptId: "round-1-player-2", strict: true, key: {} },
-    contestMoveSelection: { round: 1, contestantId: "player_2", moveId },
+    inputContext: { id: `round-1-${contestantId}`, promptId: `round-1-${contestantId}`, strict: true, key: {} },
+    contestMoveSelection: { round: 1, contestantId, moveId },
   });
   const remoteInput = (kind: string, checkpoint: TwoPlayerStateCheckpoint, senderRole = "guest") => ({
     protocol: "pokerogue-2p-local-input",
@@ -282,21 +282,23 @@ describe("Online transport handshake", () => {
     checkpoint,
   });
 
-  it("echoes the guest's confirmed contest move, not the host's local cursor", () => {
+  it.each([1, "ep"] as const)("echoes seat %s's confirmed contest move, not the host's local cursor", seat => {
     const receive = vi.fn(() => true);
-    const hostCheckpoint = contestCheckpoint(MoveId.HARDEN);
-    const guestCheckpoint = contestCheckpoint(MoveId.TACKLE);
+    const id = seat === "ep" ? "contestant_3" : "player_2";
+    const hostCheckpoint = contestCheckpoint(MoveId.HARDEN, id);
+    const guestCheckpoint = contestCheckpoint(MoveId.TACKLE, id);
     const transport = create(receive, () => hostCheckpoint);
     const socket = TestSocket.latest;
     socket.open();
     socket.receive({ protocol: ONLINE_PROTOCOL, type: "authenticated" });
     socket.receive({ protocol: ONLINE_PROTOCOL, type: "status", ready: true });
     transport.sendCheckpoint();
-    socket.receive(remoteInput("state-checkpoint", guestCheckpoint));
+    socket.receive({ ...remoteInput("state-checkpoint", guestCheckpoint), playerIndex: seat });
     vi.advanceTimersByTime(150);
-    socket.receive({ ...remoteInput("input-request", guestCheckpoint), sequence: 2 });
-    expect(receive).toHaveBeenCalledWith(1, Button.ACTION, true, guestCheckpoint);
+    socket.receive({ ...remoteInput("input-request", guestCheckpoint), playerIndex: seat, sequence: 2 });
+    expect(receive).toHaveBeenCalledWith(seat, Button.ACTION, true, guestCheckpoint);
     const accepted = socket.sent.find(m => m.kind === "input-accepted");
+    expect(accepted?.playerIndex).toBe(seat);
     expect(accepted?.checkpoint.contestMoveSelection).toEqual(guestCheckpoint.contestMoveSelection);
     expect(accepted?.checkpoint.inputContext).toEqual(hostCheckpoint.inputContext);
   });

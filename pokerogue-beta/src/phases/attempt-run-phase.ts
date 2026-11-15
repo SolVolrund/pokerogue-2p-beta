@@ -16,7 +16,7 @@ export class AttemptRunPhase extends FieldPhase {
   public start() {
     super.start();
 
-    if (globalScene.seasonalEncounters.tower) {
+    if (globalScene.seasonalEncounters.tower || globalScene.currentBattle.rocketHqFloor) {
       globalScene.phaseManager.queueMessage(i18next.t("battle:runAwayCannotEscape"), null, true, 500);
       this.end();
       return;

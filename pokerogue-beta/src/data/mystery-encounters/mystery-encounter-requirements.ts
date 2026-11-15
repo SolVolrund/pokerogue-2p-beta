@@ -26,7 +26,7 @@ export abstract class EncounterSceneRequirement implements EncounterRequirement 
   /**
    * Returns whether the EncounterSceneRequirement's... requirements, are met by the given scene
    */
-  abstract meetsRequirement(): boolean;
+  abstract meetsRequirement(waveIndex?: number): boolean;
   /**
    * Returns a dialogue token key/value pair for a given Requirement.
    * Should be overridden by child Requirement classes.
@@ -61,10 +61,10 @@ export class CombinationSceneRequirement extends EncounterSceneRequirement {
    * Checks if all/any requirements are met (depends on {@linkcode isAnd})
    * @returns true if all/any requirements are met (depends on {@linkcode isAnd})
    */
-  override meetsRequirement(): boolean {
+  override meetsRequirement(waveIndex?: number): boolean {
     return this.isAnd
-      ? this.requirements.every(req => req.meetsRequirement())
-      : this.requirements.some(req => req.meetsRequirement());
+      ? this.requirements.every(req => req.meetsRequirement(waveIndex))
+      : this.requirements.some(req => req.meetsRequirement(waveIndex));
   }
 
   /**
@@ -218,9 +218,8 @@ export class WaveRangeRequirement extends EncounterSceneRequirement {
     this.waveRange = waveRange;
   }
 
-  override meetsRequirement(): boolean {
+  override meetsRequirement(waveIndex = globalScene.currentBattle.waveIndex): boolean {
     if (this.waveRange != null && this.waveRange[0] <= this.waveRange[1]) {
-      const waveIndex = globalScene.currentBattle.waveIndex;
       if (
         (waveIndex >= 0 && this.waveRange[0] >= 0 && this.waveRange[0] > waveIndex)
         || (this.waveRange[1] >= 0 && this.waveRange[1] < waveIndex)
@@ -256,8 +255,8 @@ export class WaveModulusRequirement extends EncounterSceneRequirement {
     this.modulusValue = modulusValue;
   }
 
-  override meetsRequirement(): boolean {
-    return this.waveModuli.includes(globalScene.currentBattle.waveIndex % this.modulusValue);
+  override meetsRequirement(waveIndex = globalScene.currentBattle.waveIndex): boolean {
+    return this.waveModuli.includes(waveIndex % this.modulusValue);
   }
 
   override getDialogueToken(_pokemon?: PlayerPokemon): [string, string] {
@@ -273,8 +272,8 @@ export class TimeOfDayRequirement extends EncounterSceneRequirement {
     this.requiredTimeOfDay = coerceArray(timeOfDay);
   }
 
-  override meetsRequirement(): boolean {
-    const timeOfDay = globalScene.arena?.getTimeOfDay();
+  override meetsRequirement(waveIndex?: number): boolean {
+    const timeOfDay = globalScene.arena?.getTimeOfDay(waveIndex);
     return !(timeOfDay != null && this.requiredTimeOfDay?.length > 0 && !this.requiredTimeOfDay.includes(timeOfDay));
   }
 
@@ -390,14 +389,14 @@ export class MoneyRequirement extends EncounterSceneRequirement {
     this.scalingMultiplier = scalingMultiplier ?? 0;
   }
 
-  override meetsRequirement(): boolean {
+  override meetsRequirement(waveIndex?: number): boolean {
     const money = globalScene.money;
     if (money == null) {
       return false;
     }
 
     if (this.scalingMultiplier > 0) {
-      this.requiredMoney = globalScene.getWaveMoneyAmount(this.scalingMultiplier);
+      this.requiredMoney = globalScene.getWaveMoneyAmount(this.scalingMultiplier, waveIndex);
     }
     return !(this.requiredMoney > 0 && this.requiredMoney > money);
   }

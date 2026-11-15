@@ -80,9 +80,12 @@ export class MysteryEncounterPhase extends Phase {
     if (!this.optionSelectSettings && encounter.countsForEncounterPacing) {
       // Record normal ME history, only if this is not a followup option select phase.
       // Scheduled side encounters can skip this and track their own progress.
-      globalScene.mysteryEncounterSaveData.encounteredEvents.push(
-        new SeenEncounterData(encounter.encounterType, encounter.encounterTier, globalScene.currentBattle.waveIndex),
-      );
+      const history = globalScene.mysteryEncounterSaveData.encounteredEvents;
+      const last = history.at(-1);
+      const wave = globalScene.currentBattle.waveIndex;
+      if (last?.type !== encounter.encounterType || last.waveIndex !== wave) {
+        history.push(new SeenEncounterData(encounter.encounterType, encounter.encounterTier, wave));
+      }
     }
 
     if (globalScene.twoPlayerMode && this.optionSelectSettings?.playerIndex != null) {
@@ -821,7 +824,7 @@ export class PostMysteryEncounterPhase extends Phase {
         return;
       }
 
-      if (globalScene.gameMode.hasRandomBiomes || globalScene.isNewBiome()) {
+      if (!globalScene.mysteryEncounterSaveData.rocketHq && (globalScene.gameMode.hasRandomBiomes || globalScene.isNewBiome())) {
         globalScene.phaseManager.pushNew("SelectBiomePhase");
       }
 

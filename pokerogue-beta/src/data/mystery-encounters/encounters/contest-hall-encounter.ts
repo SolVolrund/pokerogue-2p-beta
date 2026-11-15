@@ -70,12 +70,12 @@ interface ContestHallData {
 }
 
 class ContestHallProgressRequirement extends EncounterSceneRequirement {
-  override meetsRequirement(): boolean {
+  override meetsRequirement(waveIndex = globalScene.currentBattle.waveIndex): boolean {
     const progress = globalScene.mysteryEncounterSaveData.contestHallProgress;
     return (
       !progress.declined
       && !progress.wonGrand
-      && ensureContestHallScheduledWave() === globalScene.currentBattle.waveIndex
+      && ensureContestHallScheduledWave(waveIndex) === waveIndex
     );
   }
 

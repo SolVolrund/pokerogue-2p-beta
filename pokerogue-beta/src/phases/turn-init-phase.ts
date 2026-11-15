@@ -131,7 +131,9 @@ export function canPlanPrivateTurn(): boolean {
   if (![2, 3].includes(players.length) || players.some(p => scene.isComputerPartnerPlayer(p))) return false;
   const battle = scene.currentBattle;
   if (battle.mysteryEncounter?.misc?.shinyBadgeDuelActive) return players.length === 2;
-  if (!battle.double || scene.twoPlayerVsMode || battle.mysteryEncounter || battle.horde
+  if (scene.twoPlayerVsMode && (!scene.isVsLaneBattle() || players.some(p =>
+    p !== scene.twoPlayerLocalInputSeat && !scene.privateVsLanePeers.has(p)))) return false;
+  if (!battle.double || battle.mysteryEncounter || battle.horde
     || battle.isClassicFinalBoss || scene.seasonalEncounters.tower || battle.getBattlerCount() !== players.length) return false;
   if (battle.battleType === BattleType.TRAINER) return !!battle.trainer && scene.uiInputs.privateTrainerFightsEnabled;
   return battle.battleType === BattleType.WILD && !scene.getEnemyField().some(p => p?.isBoss());

@@ -94,7 +94,7 @@ it.each(["enter", "decline", "switch-mode", "no-entrant"])("registers three cont
     expect(party["getParty"]()).toBe(scene.getPlayerParty(2));
     expect(scene.inputOwner).toBe("both");
     party.showOptions();
-    expect(party["options"]).toEqual([PartyOption.SELECT, PartyOption.CANCEL]);
+    expect(party["options"]).toEqual([PartyOption.SELECT, PartyOption.SUMMARY, PartyOption.CANCEL]);
     const [, pause] = vi.mocked(scene.uiInputs.beginPrivateDraft).mock.lastCall!;
     await pause(2, 1000);
     expect(party["lastRightPokemonCursor"]).toBe(1);

@@ -78,6 +78,13 @@ export class VictoryPhase extends PokemonPhase {
         globalScene.phaseManager.pushNew("TrainerVictoryPhase");
       }
 
+      if (globalScene.currentBattle.rocketHqFloor) {
+        // TrainerVictoryPhase still grants trainer money and Giovanni's HQ rewards.
+        globalScene.phaseManager.pushNew("NewBattlePhase");
+        this.end();
+        return;
+      }
+
       if (globalScene.seasonalEncounters.tower) {
         // Tower floors grant ordinary rewards, never main-wave milestone rewards or route advances.
         for (const player of globalScene.getActivePlayerIndexes()) {

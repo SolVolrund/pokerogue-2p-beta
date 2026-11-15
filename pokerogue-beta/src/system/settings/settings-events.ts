@@ -1,5 +1,6 @@
 import { WEIGHT_INCREMENT_ON_SPAWN_MISS } from "#app/constants";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
+import { canReserveEncounter, isReservableEncounter } from "#mystery-encounters/encounter-reservation";
 import { normalizeMysteryEncounterFrequency } from "#mystery-encounters/mystery-encounter-save-data";
 import type { Setting } from "#system/settings";
 import { SettingType } from "#system/settings";
@@ -81,16 +82,43 @@ export function getMysteryEncounterSettingKey(encounterType: MysteryEncounterTyp
   return `${EVENT_SETTING_PREFIX}${MysteryEncounterType[encounterType]}`;
 }
 
+const eventTypes = Object.values(MysteryEncounterType).filter((v): v is MysteryEncounterType => typeof v === "number");
+const typeByKey = new Map(eventTypes.map(type => [getMysteryEncounterSettingKey(type), type]));
+export const getEventTypeForSetting = (key: string) => typeByKey.get(key);
+export const SCHEDULED_OPTION = 2;
+
+export function getScheduledEncounterSetting(unlocks: Parameters<typeof canReserveEncounter>[1]): MysteryEncounterType | null {
+  try {
+    const settings = JSON.parse(localStorage.getItem("settings") ?? "{}");
+    return eventTypes.find(type => settings?.[getMysteryEncounterSettingKey(type)] === SCHEDULED_OPTION
+      && canReserveEncounter(type, unlocks)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function demoteOtherScheduledEvents(settings: Record<string, unknown>, selectedKey: string): void {
+  if (!isReservableEncounter(typeByKey.get(selectedKey))) {
+    return;
+  }
+  for (const key of typeByKey.keys()) {
+    if (key !== selectedKey && settings[key] === SCHEDULED_OPTION) {
+      settings[key] = 1;
+    }
+  }
+}
+
 export function getMysteryEncounterEventSettings(): Setting[] {
-  const eventSettings = Object.values(MysteryEncounterType)
-    .filter((value): value is MysteryEncounterType => typeof value === "number")
+  const eventSettings = eventTypes
     .map(encounterType => ({
       key: getMysteryEncounterSettingKey(encounterType),
       label:
         encounterType === MysteryEncounterType.SLUMBERING_SNORLAX
           ? "Slumbering Snorlax"
           : i18next.t(EVENT_TITLE_KEYS[encounterType]),
-      options: EVENT_SETTING_OPTIONS,
+      options: isReservableEncounter(encounterType)
+        ? [...EVENT_SETTING_OPTIONS, { value: "Scheduled", label: i18next.t("settings:scheduled") }]
+        : EVENT_SETTING_OPTIONS,
       default: 1,
       type: SettingType.EVENTS,
     }));

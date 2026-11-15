@@ -157,6 +157,11 @@ async function enterDiscoveredRocketHq(): Promise<void> {
   }
   data.rocketHqDiscovered = false;
   globalScene.mysteryEncounterSaveData.rocketHqVisited = true;
+  globalScene.mysteryEncounterSaveData.rocketHq = {
+    entryWave: globalScene.currentBattle.waveIndex,
+    returnBiome: globalScene.arena.biomeId,
+    floor: 0,
+  };
   globalScene.waitForPlayerSideProgressionInput();
   await showEncounterText(`${namespace}:enterRocketHq`);
   globalScene.phaseManager.unshiftNew("SwitchBiomePhase", BiomeId.ROCKET_HQ);

@@ -376,6 +376,13 @@ describe("Player Cards", () => {
       systemSave: guest.getSystemSaveDataString(),
     });
     expect(game.scene.getRunPlayerAppearances()[1]).toBe("sabrina_back");
+    expect(game.scene.privateVsLanePeers.has(1)).toBe(false);
+    expect(game.scene.applyTwoPlayerProfileSnapshot({
+      playerIndex: 1, playerCardVersion: 1, privateVsLanes: true, systemSave: guest.getSystemSaveDataString(),
+    })).toBe(true);
+    expect(game.scene.privateVsLanePeers.has(1)).toBe(true);
+    game.scene.resetTwoPlayerProfileExchangeForRun();
+    expect(game.scene.privateVsLanePeers.size).toBe(0);
   });
 
   it("exchanges only EP identity without importing a Dex, and waits for that identity", () => {

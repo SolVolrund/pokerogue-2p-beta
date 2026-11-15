@@ -2,6 +2,7 @@ import { FixedBattleConfig } from "#app/battle";
 import type { PlayerIndex } from "#app/battle-scene";
 import { CHALLENGE_MODE_MYSTERY_ENCOUNTER_WAVES, CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import { globalScene } from "#app/global-scene";
+import { ROCKET_HQ_FLOORS } from "#mystery-encounters/mystery-encounter-save-data";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { activeOverrides } from "#app/overrides";
 import { allChallenges, type Challenge, copyChallenge } from "#data/challenge";
@@ -275,6 +276,10 @@ export class GameMode implements GameModeConfig {
 
   isTrainerBoss(waveIndex: number, biomeType: BiomeId, offsetGym: boolean): boolean {
     if (biomeType === BiomeId.ROCKET_HQ) {
+      const visit = globalScene?.mysteryEncounterSaveData?.rocketHq;
+      if (visit) {
+        return visit.floor === ROCKET_HQ_FLOORS;
+      }
       return waveIndex % 10 === 0 && !this.isWaveFinal(waveIndex);
     }
     switch (this.modeId) {

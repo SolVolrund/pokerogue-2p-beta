@@ -1,10 +1,10 @@
-import type { PlayerIndex } from "#app/battle-scene";
+import type { InputSeat, PlayerIndex } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import type { PlayerPokemon } from "#field/pokemon";
 import { randSeedShuffle } from "#utils/common";
 import { chooseContestStageBgm } from "./contest-audio";
 import { type ContestOpponentEntry, ContestRank, getContestOpponents } from "./contest-opponents";
-import { ContestState, createContestParticipant } from "./contest-state";
+import { type ContestParticipant, ContestState, createContestParticipant } from "./contest-state";
 import { ContestType } from "./contest-type";
 
 const CONTEST_NPC_COUNT = 3;
@@ -37,6 +37,17 @@ export interface CreateContestStateOptions {
   rank?: ContestRank;
   playerContestants?: readonly ContestPlayerContestantOptions[];
   playerPokemon?: PlayerPokemon;
+}
+
+/** The seat choosing this appeal, or undefined for an AI turn. */
+export function getContestCommandOwner(contestant: ContestParticipant): InputSeat | undefined {
+  if (contestant.pokemon) {
+    const playerIndex = globalScene.getPlayerIndexForPokemon(contestant.pokemon) ?? globalScene.activePlayerIndex;
+    return globalScene.isComputerPartnerPlayer(playerIndex) ? undefined : playerIndex;
+  }
+
+  // Opposing coordinators have preset moves; an empty player slot does not.
+  return globalScene.twoPlayerEnemyPlayerMode && contestant.contestMoves ? "ep" : undefined;
 }
 
 export function createContestStateForRank(options: CreateContestStateOptions = {}): ContestState {

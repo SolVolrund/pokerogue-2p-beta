@@ -1149,7 +1149,7 @@ export class Arena {
 
   // #region Time of Day
 
-  public getTimeOfDay(): TimeOfDay {
+  public getTimeOfDay(waveIndex = globalScene.currentBattle?.waveIndex ?? 0): TimeOfDay {
     switch (this.biomeId) {
       case BiomeId.ABYSS:
         return TimeOfDay.NIGHT;
@@ -1159,7 +1159,7 @@ export class Arena {
       return activeOverrides.TIME_OF_DAY_OVERRIDE;
     }
 
-    const waveCycle = ((globalScene.currentBattle?.waveIndex ?? 0) + globalScene.waveCycleOffset) % 40;
+    const waveCycle = (waveIndex + globalScene.waveCycleOffset) % 40;
 
     if (waveCycle < 15) {
       return TimeOfDay.DAY;

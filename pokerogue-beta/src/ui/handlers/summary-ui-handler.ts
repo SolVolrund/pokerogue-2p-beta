@@ -54,6 +54,7 @@ enum StatsViewMode {
 export enum SummaryUiMode {
   DEFAULT,
   LEARN_MOVE,
+  READ_ONLY,
 }
 
 /** Holds all objects related to an ability for each iteration */
@@ -348,7 +349,7 @@ export class SummaryUiHandler extends UiHandler {
   show(
     args: [
       pokemon: Pokemon,
-      uiMode?: SummaryUiMode.DEFAULT,
+      uiMode?: SummaryUiMode.DEFAULT | SummaryUiMode.READ_ONLY,
       startPage?: Page,
       selectCallback?: (cursor: number) => void,
       player?: boolean,
@@ -439,15 +440,15 @@ export class SummaryUiHandler extends UiHandler {
     }
 
     if (
-      globalScene.gameData.starterData[this.pokemon.species.getRootSpeciesId()].classicWinCount > 0
-      && globalScene.gameData.starterData[this.pokemon.species.getRootSpeciesId(true)].classicWinCount > 0
+      this.profileData.starterData[this.pokemon.species.getRootSpeciesId()].classicWinCount > 0
+      && this.profileData.starterData[this.pokemon.species.getRootSpeciesId(true)].classicWinCount > 0
     ) {
       this.championRibbon.setVisible(true);
     } else {
       this.championRibbon.setVisible(false);
     }
 
-    let currentFriendship = globalScene.gameData.starterData[this.pokemon.species.getRootSpeciesId()].friendship;
+    let currentFriendship = this.profileData.starterData[this.pokemon.species.getRootSpeciesId()].friendship;
     if (!currentFriendship || currentFriendship === undefined) {
       currentFriendship = 0;
     }
@@ -464,7 +465,7 @@ export class SummaryUiHandler extends UiHandler {
       this.candyShadow.on("pointerout", () => globalScene.ui.hideTooltip());
     }
 
-    const candyCount = globalScene.gameData.starterData[this.pokemon.species.getRootSpeciesId()].candyCount;
+    const candyCount = this.profileData.starterData[this.pokemon.species.getRootSpeciesId()].candyCount;
     this.candyCountText.setText(`×${candyCount}`);
     updateCandyCountTextStyle(this.candyCountText, candyCount);
 
@@ -522,6 +523,7 @@ export class SummaryUiHandler extends UiHandler {
     this.genderText.setShadowColor(getGenderColor(this.pokemon.getGender(true), true));
 
     switch (this.summaryUiMode) {
+      case SummaryUiMode.READ_ONLY:
       case SummaryUiMode.DEFAULT: {
         const page = (args[2] as Page) ?? Page.PROFILE;
         this.hideMoveEffect(true);
@@ -564,7 +566,8 @@ export class SummaryUiHandler extends UiHandler {
     if (this.moveSelect) {
       if (button === Button.ACTION) {
         if (this.pokemon && this.moveCursor < this.pokemon.moveset.length) {
-          if (!this.pokemon.isPlayer() && this.summaryUiMode !== SummaryUiMode.LEARN_MOVE) {
+          if (this.summaryUiMode === SummaryUiMode.READ_ONLY
+            || (!this.pokemon.isPlayer() && this.summaryUiMode !== SummaryUiMode.LEARN_MOVE)) {
             error = true;
           } else if (this.summaryUiMode === SummaryUiMode.LEARN_MOVE) {
             this.moveSelectFunction?.(this.moveCursor);
@@ -974,9 +977,9 @@ export class SummaryUiHandler extends UiHandler {
         const profileContainer = globalScene.add.container(0, -pageBg.height);
         pageContainer.add(profileContainer);
         const otColor =
-          globalScene.gameData.gender === PlayerGender.FEMALE ? TextStyle.SUMMARY_PINK : TextStyle.SUMMARY_BLUE;
+          this.profileData.gender === PlayerGender.FEMALE ? TextStyle.SUMMARY_PINK : TextStyle.SUMMARY_BLUE;
         const usernameReplacement =
-          globalScene.gameData.gender === PlayerGender.FEMALE
+          this.profileData.gender === PlayerGender.FEMALE
             ? i18next.t("trainerNames:playerF")
             : i18next.t("trainerNames:playerM");
 
@@ -999,7 +1002,7 @@ export class SummaryUiHandler extends UiHandler {
         ).setOrigin(0);
         profileContainer.add(trainerText);
 
-        const idToDisplay = globalScene.hideUsername ? "*****" : globalScene.gameData.trainerId.toString();
+        const idToDisplay = globalScene.hideUsername ? "*****" : this.profileData.trainerId.toString();
         const trainerIdText = addTextObject(
           141,
           12,
@@ -1055,7 +1058,7 @@ export class SummaryUiHandler extends UiHandler {
           profileContainer.add(luckText);
         }
 
-        if (Object.hasOwn(globalScene.gameData.achvUnlocks, achvs.TERASTALLIZE.id) && this.pokemon != null) {
+        if (Object.hasOwn(this.profileData.achvUnlocks, achvs.TERASTALLIZE.id) && this.pokemon != null) {
           const teraIcon = globalScene.add.sprite(128, 26, "button_tera");
           teraIcon.setName("terastallize-icon");
           teraIcon.setFrame(PokemonType[this.pokemon.getTeraType()].toLowerCase());
@@ -1468,7 +1471,12 @@ export class SummaryUiHandler extends UiHandler {
   }
 
   private getContestStatValue(contestType: ContestType): number {
-    return this.pokemon ? globalScene.gameData.getPokemonContestStat(this.pokemon, contestType) : 0;
+    return this.pokemon ? this.profileData.getPokemonContestStat(this.pokemon, contestType) : 0;
+  }
+
+  private get profileData() {
+    return this.summaryUiMode === SummaryUiMode.READ_ONLY && this.pokemon?.isPlayer()
+      ? globalScene.getPlayerGameData(this.playerIndex) : globalScene.gameData;
   }
 
   private cycleStatsViewMode(): void {
@@ -1720,6 +1728,11 @@ export class SummaryUiHandler extends UiHandler {
 
   clear() {
     super.clear();
+    if (this.transitioning) {
+      globalScene.tweens.killTweensOf(this.summaryPageTransitionContainer);
+      this.summaryPageTransitionContainer.setX(this.summaryPageContainer.x).setVisible(false);
+      this.transitioning = false;
+    }
     this.pokemon = null;
     this.cursor = -1;
     this.newMove = null;

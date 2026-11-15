@@ -81,7 +81,9 @@ export function grantHauntingVictoryRewards(): string[] {
   const tower = state.tower;
   const battle = scene.currentBattle;
   const haunted = !!tower || !!battle.trainer?.haunted;
-  const key = state.getBattleRewardKey(battle.waveIndex);
+  const key = battle.rocketHqFloor
+    ? `rocket-hq:${battle.waveIndex}:${battle.rocketHqFloor}`
+    : state.getBattleRewardKey(battle.waveIndex);
   const messages: string[] = [];
   for (const player of scene.getBattleParticipantPlayerIndexes()) {
     if (state.hasRewardedPlayer(key, player)) {

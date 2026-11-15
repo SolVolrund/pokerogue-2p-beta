@@ -229,9 +229,7 @@ export class AbstractSettingsUiHandler extends MessageUiHandler {
     super.show(args);
     this.updateBindings();
 
-    const settings: object = Object.hasOwn(localStorage, this.localStorageKey)
-      ? JSON.parse(localStorage.getItem(this.localStorageKey)!)
-      : {}; // TODO: is this bang correct?
+    const settings = JSON.parse(localStorage.getItem(this.localStorageKey) ?? "{}");
 
     this.settings.forEach((setting, s) => {
       this.setOptionCursor(s, Object.hasOwn(settings, setting.key) ? settings[setting.key] : this.settings[s].default);
@@ -263,7 +261,7 @@ export class AbstractSettingsUiHandler extends MessageUiHandler {
     if (globalScene.phaseManager.getCurrentPhase()?.phaseName === "PrivatePauseMenuPhase"
       && this.settings[cursor]?.requireReload) return false;
     let boundaryAction = Phaser.Math.Wrap;
-    let upperBound = this.optionValueLabels[cursor].length;
+    let upperBound = this.getOptionCount(cursor);
     if (this.settings[cursor]?.clamp) {
       boundaryAction = Phaser.Math.Clamp;
       // clamping is right inclusive; wrapping isn't
@@ -405,7 +403,7 @@ export class AbstractSettingsUiHandler extends MessageUiHandler {
       settingIndex = this.cursor + this.scrollCursor;
     }
     const setting = this.settings[settingIndex];
-    if (!this.optionValueLabels[settingIndex][cursor]) {
+    if (!this.optionValueLabels[settingIndex][cursor] || cursor >= this.getOptionCount(settingIndex)) {
       cursor = setting.default;
     }
     const lastCursor = this.optionCursors[settingIndex];
@@ -489,10 +487,13 @@ export class AbstractSettingsUiHandler extends MessageUiHandler {
     for (let s = 0; s < this.settingLabels.length; s++) {
       const visible = s >= this.scrollCursor && s < this.scrollCursor + this.rowsToDisplay;
       this.settingLabels[s].setVisible(visible);
-      for (const option of this.optionValueLabels[s]) {
-        option.setVisible(visible);
-      }
+      const count = this.getOptionCount(s);
+      this.optionValueLabels[s].forEach((option, index) => option.setVisible(visible && index < count));
     }
+  }
+
+  protected getOptionCount(settingIndex: number): number {
+    return this.settings[settingIndex].options.length;
   }
 
   /**

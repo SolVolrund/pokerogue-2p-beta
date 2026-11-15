@@ -17,6 +17,7 @@ export type VsEnemyTokenKey =
   | "paralyze"
   | "poison"
   | "burn"
+  | "thief"
   | "fusion";
 
 export interface VsEnemyTokenDefinition {
@@ -60,6 +61,12 @@ export const VS_ENEMY_TOKEN_DEFINITIONS: readonly VsEnemyTokenDefinition[] = [
     modifierTypeId: "ENEMY_ATTACK_BURN_CHANCE",
     tier: ModifierTier.ROGUE,
     maxStacks: 10,
+  },
+  {
+    key: "thief",
+    modifierTypeId: "ENEMY_THIEF",
+    tier: ModifierTier.ROGUE,
+    maxStacks: 5,
   },
   {
     key: "full_heal",

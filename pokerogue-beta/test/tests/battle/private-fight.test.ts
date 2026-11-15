@@ -1,4 +1,6 @@
 import { MoveId } from "#enums/move-id";
+import { Status } from "#data/status-effect";
+import { StatusEffect } from "#enums/status-effect";
 import { SpeciesId } from "#enums/species-id";
 import { PokemonMove } from "#moves/pokemon-move";
 import { CommandPhase } from "#phases/command-phase";
@@ -152,6 +154,91 @@ it.each([1, 2, 3] as const)("drafts enemy commands privately opposite %i player 
     ui.processInput(Button.ACTION);
     menuOption("Pass").handler();
     expect(scene.currentBattle.turnCommands[enemies[0].getBattlerIndex()]).toMatchObject({ skip: true });
+  }
+});
+
+it.each([
+  [2, false, false], [2, true, false], [3, true, false], [3, false, true],
+] as const)("plans VS lanes: %i seats, trainer=%s, cleared last lane=%s", async (count, trainerBattle, cleared) => {
+  const game = new GameManager(phaser);
+  await game.runToTitle();
+  const scene = game.scene;
+  const local = count === 2 ? 1 : 2;
+  scene.twoPlayerLocalInputSeat = local;
+  scene.configureTwoPlayerMode(true, 6, false, count, undefined, true);
+  scene.resetTwoPlayerProfileExchangeForRun();
+  scene.newBattle();
+  const battle = scene.currentBattle;
+  battle.double = true;
+  battle.battleType = trainerBattle ? BattleType.TRAINER : BattleType.WILD;
+  battle.trainer = trainerBattle ? new Trainer(TrainerType.BROCK, TrainerVariant.DEFAULT) : null;
+  scene.privateTurnSelection = true;
+  scene.uiInputs ??= {} as typeof scene.uiInputs;
+  const seats = scene.getActivePlayerIndexes();
+  for (const [key, value] of Object.entries({
+    privateFightSeats: count, privateTrainerFightsEnabled: true, privateFieldActionsEnabled: count === 3,
+  })) Object.defineProperty(scene.uiInputs, key, { configurable: true, value });
+  expect(canPlanPrivateTurn()).toBe(false);
+  seats.filter(i => i !== local).forEach(i => scene.privateVsLanePeers.add(i));
+  expect(canPlanPrivateTurn()).toBe(true);
+  const picks: PrivateTurnPick[] = [];
+  const actors = seats.map(i => {
+    const ally = scene.addPlayerPokemon(getPokemonSpecies(SpeciesId.EEVEE), 20);
+    const foe = scene.addEnemyPokemon(getPokemonSpecies(SpeciesId.PSYDUCK), 20,
+      trainerBattle ? TrainerSlot.TRAINER : TrainerSlot.NONE);
+    scene.getPlayerParty(i).push(ally);
+    scene.getEnemyParty().push(foe);
+    vi.spyOn(ally, "getMoveset").mockReturnValue([new PokemonMove(MoveId.TACKLE)]);
+    const idle = cleared && i === local;
+    if (idle) foe.hp = 0;
+    for (const mon of [ally, foe]) {
+      mon.fieldPosition = [FieldPosition.LEFT, FieldPosition.CENTER, FieldPosition.RIGHT][i];
+      vi.spyOn(mon, "getFieldIndex").mockReturnValue(i);
+      vi.spyOn(mon, "isActive").mockReturnValue(mon === ally || !idle);
+      vi.spyOn(mon, "isOnField").mockReturnValue(true);
+    }
+    picks.push(idle ? { actor: ally.id, kind: "pass" }
+      : { actor: ally.id, slot: 0, move: MoveId.TACKLE, target: scene.getEnemyBattlerIndex(i) });
+    return ally;
+  });
+  if (!trainerBattle && !cleared) {
+    scene.getPlayerPokeballCounts(local)[PokeballType.POKEBALL] = 1;
+    expect(CommandPhase.getBallOptions(local, PokeballType.POKEBALL).targets).toEqual([scene.getEnemyBattlerIndex(local)]);
+  }
+  if (cleared) {
+    const lead = actors[local];
+    const original = lead.status;
+    lead.status = new Status(StatusEffect.POISON);
+    expect(CommandPhase.shouldAutoSkipClearedVsModeLane(lead)).toBe(false);
+    lead.status = original;
+  }
+  const plans = new Map<number, PlannedFight>();
+  const phase = new PrivateFightPhase(plans);
+  vi.spyOn(scene.phaseManager, "getCurrentPhase").mockReturnValue(phase);
+  const done = vi.spyOn(phase, "end").mockImplementation(() => {});
+  const mode = vi.spyOn(scene.ui, "setMode").mockResolvedValue();
+  vi.spyOn(scene.ui, "showText").mockImplementation(() => {});
+  scene.uiInputs.beginPrivateDraft = vi.fn();
+  scene.uiInputs.submitPrivateFight = vi.fn(async (_key, pick, review) => {
+    expect(pick).toEqual(picks[local]);
+    const first = actors[0].id;
+    expect(review([{ actor: first, kind: "pass" }, ...picks.slice(1)])).toBe(false);
+    expect(review([{ actor: first, slot: 0, move: MoveId.TACKLE, target: scene.getEnemyBattlerIndex(1) }, ...picks.slice(1)])).toBe(false);
+    if (cleared) expect(review([...picks.slice(0, -1), { actor: actors[local].id, slot: 0, move: MoveId.TACKLE, target: null }])).toBe(false);
+    expect(review(picks)).toBe(true);
+    return picks;
+  });
+  phase.start();
+  if (cleared) expect(mode).not.toHaveBeenCalledWith(UiMode.COMMAND, local);
+  else expect(phase.chooseMove(0)).toBe(true);
+  await vi.waitFor(() => expect(done).toHaveBeenCalledOnce());
+  expect(plans.size).toBe(count - Number(cleared));
+  for (const i of seats) {
+    const replay = new CommandPhase(i, plans);
+    vi.spyOn(replay, "end").mockImplementation(() => {});
+    replay.start();
+    expect(battle.turnCommands[actors[i].getBattlerIndex()]).toMatchObject(cleared && i === local
+      ? { skip: true } : { move: { move: MoveId.TACKLE, targets: [scene.getEnemyBattlerIndex(i)] } });
   }
 });
 

@@ -10,6 +10,7 @@ import { TrainerSlot } from "#enums/trainer-slot";
 import { Pokemon } from "#field/pokemon";
 import {
   type ContactHeldItemTransferChanceModifier,
+  EnemyThiefTokenModifier,
   LaggingTailModifier,
   type PokemonHeldItemModifier,
   StickyBarbModifier,
@@ -95,6 +96,24 @@ describe("Battle-only held item recovery", () => {
     vi.spyOn(phase, "end").mockImplementation(() => {});
     phase.start();
   }
+
+  it("steals only in the VS token's lane and respects player two's item ownership and recovery flags", async () => {
+    const scene = game.scene;
+    const target = scene.getPlayerParty(1)[0];
+    const [otherEnemy, thief] = scene.getEnemyParty();
+    const type = modifierTypes.ENEMY_THIEF().withIdFromFunc(modifierTypes.ENEMY_THIEF);
+    await scene.addVsEnemyModifier(1, type.newModifier() as EnemyThiefTokenModifier, true);
+    vi.spyOn(thief, "randBattleSeedInt").mockReturnValue(0);
+    addItem(target, "LEFTOVERS");
+    addItem(target, "FLAME_ORB");
+    expect(scene.applyEnemyModifiersForPokemon(EnemyThiefTokenModifier, otherEnemy, otherEnemy, target)).toHaveLength(0);
+    for (const id of ["LEFTOVERS", "FLAME_ORB"]) {
+      expect(scene.applyEnemyModifiersForPokemon(EnemyThiefTokenModifier, thief, thief, target)).toHaveLength(1);
+      expect(thief.getHeldItems().some(item => item.type.id === id)).toBe(true);
+    }
+    finishBattle();
+    expect(target.getHeldItems().map(item => item.type.id)).toEqual(["FLAME_ORB"]);
+  });
 
   function expectRecovered(original: Pokemon, ally: Pokemon) {
     expect(

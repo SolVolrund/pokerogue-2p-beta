@@ -36,6 +36,7 @@ import type {
   TwoPlayerTitleStart,
 } from "#app/two-player-input-transport";
 import { UiInputs } from "#app/ui-inputs";
+import { ROCKET_HQ_EXECUTIVES } from "#balance/biomes/rocket-hq";
 import { STARTING_WAVE } from "#balance/misc";
 import { FRIENDSHIP_GAIN_FROM_BATTLE } from "#balance/starters";
 import {
@@ -162,10 +163,11 @@ import {
   type MysteryEncounterVsVariant,
 } from "#mystery-encounters/mystery-encounter-compatibility";
 import { MysteryEncounter } from "#mystery-encounters/mystery-encounter";
-import { MysteryEncounterSaveData } from "#mystery-encounters/mystery-encounter-save-data";
+import { MysteryEncounterSaveData, ROCKET_HQ_FLOORS } from "#mystery-encounters/mystery-encounter-save-data";
 import { SeasonalEncounterState } from "#data/seasonal-encounters";
 import { rollTowerTrainerEncounter } from "#utils/pokemon-tower-utils";
 import { allMysteryEncounters, mysteryEncountersByBiome } from "#mystery-encounters/mystery-encounters";
+import { FIRST_RESERVED_ENCOUNTER_WAVE } from "#mystery-encounters/encounter-reservation";
 import { expSpriteKeys } from "#sprites/sprite-keys";
 import { hasExpSprite } from "#sprites/sprite-utils";
 import type { Variant } from "#sprites/variant";
@@ -751,6 +753,7 @@ export class BattleScene extends SceneBase {
   public playerDecisionTieBreakPriorities: Partial<Record<string, PlayerIndex>> = {};
   public aiReservationTieBreakPriorities: Partial<Record<string, PlayerIndex>> = {};
   public twoPlayerProfileSlotsReady: boolean[] = [false, false, false];
+  public readonly privateVsLanePeers = new Set<PlayerIndex>();
   public readonly fieldSlotOwners: PlayerIndex[] = [0, 1, 2];
   public players: PlayerRunState[] = createPlayerRunStates();
   private localPlayerSystemSaveLoaded = false;
@@ -1446,6 +1449,7 @@ export class BattleScene extends SceneBase {
     return {
       playerIndex: localSeat,
       playerCardVersion: 1,
+      privateVsLanes: true,
       systemSave: this.getLocalPlayerSystemSave().getSystemSaveDataString(),
       starterPreferences: getStarterPreferencesDataString(loadStarterPreferences()),
     };
@@ -1587,6 +1591,8 @@ export class BattleScene extends SceneBase {
 
     const systemSaves = this.ensurePlayerSystemSaves();
     systemSaves[profileSnapshot.playerIndex] = gameData;
+    if (profileSnapshot.privateVsLanes === true) this.privateVsLanePeers.add(profileSnapshot.playerIndex);
+    else this.privateVsLanePeers.delete(profileSnapshot.playerIndex);
     this.twoPlayerProfileSlotsReady[profileSnapshot.playerIndex] = true;
     this.saveSessionSystemSaveLocal(profileSnapshot.playerIndex, gameData);
     this.saveSessionStarterPreferencesLocal(
@@ -1640,6 +1646,7 @@ export class BattleScene extends SceneBase {
   }
 
   public resetTwoPlayerProfileExchangeForRun(): void {
+    this.privateVsLanePeers.clear();
     this.playerCardCompatibilityError = undefined;
     this.enemyPlayerIdentity = undefined;
     if (!this.twoPlayerMode) {
@@ -2180,6 +2187,7 @@ export class BattleScene extends SceneBase {
     if ((uiMode === UiMode.MESSAGE || uiMode === UiMode.EVOLUTION_SCENE) && messageInputContextKey) {
       const messagePromptKey = {
         waveIndex: this.currentBattle?.waveIndex ?? null,
+        rocketHqFloor: this.currentBattle?.rocketHqFloor,
         battleType: this.currentBattle?.battleType ?? null,
         phase: currentPhase?.phaseName ?? null,
         phaseFieldIndex: phaseWithFieldIndex?.getFieldIndex?.() ?? null,
@@ -2202,6 +2210,7 @@ export class BattleScene extends SceneBase {
         ?.getTwoPlayerInputContextPromptState?.() ?? null;
     const promptKey = {
       waveIndex: this.currentBattle?.waveIndex ?? null,
+      rocketHqFloor: this.currentBattle?.rocketHqFloor,
       battleType: this.currentBattle?.battleType ?? null,
       phase: currentPhase?.phaseName ?? null,
       phaseFieldIndex: phaseWithFieldIndex?.getFieldIndex?.() ?? null,
@@ -3309,6 +3318,10 @@ export class BattleScene extends SceneBase {
   }
 
   private queueVsModeTrainerRoundVictoryRewards(): void {
+    if (this.currentBattle.rocketHqFloor) {
+      this.phaseManager.pushNew("NewBattlePhase");
+      return;
+    }
     const gameMode = this.gameMode;
     const currentWaveIndex = this.currentBattle.waveIndex;
     const isFinalWave = gameMode.isWaveFinal(currentWaveIndex);
@@ -4060,6 +4073,10 @@ export class BattleScene extends SceneBase {
    */
   public newBattle(fromSession?: SessionSaveData): Battle {
     const tower = this.seasonalEncounters.tower;
+    const hq = this.mysteryEncounterSaveData.rocketHq;
+    if (hq && !fromSession) {
+      hq.floor++;
+    }
     if (tower && !fromSession) {
       tower.floor++;
       tower.boss = this.getActivePlayerIndexes().every(isReadyForGreatHaunt);
@@ -4074,6 +4091,21 @@ export class BattleScene extends SceneBase {
     // Set attributes of the `resolved` object based on the type of battle being created.
     if (fromSession) {
       this.handleSavedBattle(resolved, props);
+      if (resolved.battleType === BattleType.MYSTERY_ENCOUNTER && resolved.mysteryEncounterType == null) {
+        // Older checkpoints could omit the type before the encounter finished initializing.
+        resolved.mysteryEncounterType = this.mysteryEncounterSaveData.encounteredEvents
+          .findLast(event => event.waveIndex === waveIndex)?.type ?? this.rollMysteryEncounterType(waveIndex);
+        if (resolved.mysteryEncounterType == null) {
+          resolved.battleType = BattleType.WILD;
+        }
+      }
+    } else if (hq) {
+      const trainerType = hq.floor === ROCKET_HQ_FLOORS ? TrainerType.GIOVANNI
+        : hq.floor === ROCKET_HQ_FLOORS - 1 ? randSeedItem(ROCKET_HQ_EXECUTIVES)
+        : this.arena.randomTrainerType(waveIndex);
+      resolved.battleType = BattleType.TRAINER;
+      resolved.trainer = this.generateNewBattleTrainer(waveIndex, trainerType);
+      this.field.add(resolved.trainer);
     } else if (tower) {
       const players = this.getActivePlayerIndexes().length;
       if (!tower.boss && rollTowerTrainerEncounter()) {
@@ -4129,6 +4161,7 @@ export class BattleScene extends SceneBase {
       waveIndex << 3, // TODO: Why use this specific bitshift?
       this.waveSeed,
     );
+    this.currentBattle.rocketHqFloor = hq?.floor;
     this.currentBattle.incrementTurn();
     if (fromSession?.greatHauntState) {
       this.currentBattle.greatHauntState = fromSession.greatHauntState;
@@ -4136,7 +4169,7 @@ export class BattleScene extends SceneBase {
       this.currentBattle.greatHauntState = { stage: "ghost", fallen: [], forcedFaintIds: [] };
       this.currentBattle.enemyLevels = this.currentBattle.enemyLevels?.slice(0, 1);
     }
-    if (!fromSession && !tower) {
+    if (!fromSession && !tower && !hq) {
       this.grantComputerPartnerCloneBallAllowance();
     }
 
@@ -4159,7 +4192,7 @@ export class BattleScene extends SceneBase {
         battleType: BattleType.WILD,
         // Don't increment wave index when computing starting wave
         waveIndex:
-          this.seasonalEncounters.tower?.returnWave ?? (this.currentBattle == null
+          this.mysteryEncounterSaveData.rocketHq?.entryWave ?? this.seasonalEncounters.tower?.returnWave ?? (this.currentBattle == null
             ? (activeOverrides.STARTING_WAVE_OVERRIDE ?? STARTING_WAVE)
             : this.currentBattle.waveIndex + 1),
       };
@@ -4289,14 +4322,18 @@ export class BattleScene extends SceneBase {
       && !activeOverrides.BATTLE_TYPE_OVERRIDE
       && (forcedMysteryEncounterType != null || this.isWaveMysteryEncounter(resolved.battleType, waveIndex));
 
-    if (isMysteryEncounterWave) {
+    if (isMysteryEncounterWave || resolved.battleType === BattleType.MYSTERY_ENCOUNTER) {
+      const type = this.rollMysteryEncounterType(waveIndex, forcedMysteryEncounterType);
+      if (type == null) {
+        resolved.battleType = BattleType.WILD;
+        return;
+      }
       const shouldResetEncounterSpawnChance =
         !this.isScheduledContestHallMysteryEncounterWave(resolved.battleType, waveIndex)
         && !this.isScheduledGtsMalfunctionMysteryEncounterWave(resolved.battleType, waveIndex)
-        && !this.isScheduledDejaVuMysteryEncounterWave(resolved.battleType, waveIndex)
-        && !this.isScheduledLostAtSeaMysteryEncounterWave(resolved.battleType, waveIndex);
+        && !this.isScheduledDejaVuMysteryEncounterWave(resolved.battleType, waveIndex);
       resolved.battleType = BattleType.MYSTERY_ENCOUNTER;
-      resolved.mysteryEncounterType = forcedMysteryEncounterType;
+      resolved.mysteryEncounterType = type;
       if (shouldResetEncounterSpawnChance) {
         // Reset to base spawn weight
         this.mysteryEncounterSaveData.encounterSpawnChance = BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT;
@@ -4369,8 +4406,10 @@ export class BattleScene extends SceneBase {
    * @param waveIndex - The wave number being generated
    * @returns The generated trainer.
    */
-  private generateNewBattleTrainer(waveIndex: number): Trainer {
-    const trainerType = activeOverrides.RANDOM_TRAINER_OVERRIDE?.trainerType ?? this.arena.randomTrainerType(waveIndex);
+  private generateNewBattleTrainer(
+    waveIndex: number,
+    trainerType = activeOverrides.RANDOM_TRAINER_OVERRIDE?.trainerType ?? this.arena.randomTrainerType(waveIndex),
+  ): Trainer {
     const config = trainerConfigs[trainerType];
 
     let doubleTrainer: boolean;
@@ -4520,7 +4559,10 @@ export class BattleScene extends SceneBase {
 
   // TODO: Split this up and move it to a "post battle phase"
   private doPostBattleCleanup(lastBattle: Battle, maxExpLevel: number): void {
-    const isNewBiome = this.isNewBiome(lastBattle);
+    const hqFloor = this.currentBattle.rocketHqFloor;
+    const isNewBiome = hqFloor
+      ? hqFloor === 1
+      : lastBattle.rocketHqFloor === ROCKET_HQ_FLOORS || this.isNewBiome(lastBattle);
     /** Whether to reset and recall pokemon */
     const resetArenaState =
       isNewBiome
@@ -4531,8 +4573,10 @@ export class BattleScene extends SceneBase {
       enemyPokemon.destroy();
     }
 
-    this.trySpreadPokerus();
-    if (!isNewBiome && this.currentBattle.waveIndex % 10 === 5) {
+    if (!hqFloor) {
+      this.trySpreadPokerus();
+    }
+    if (!hqFloor && !isNewBiome && this.currentBattle.waveIndex % 10 === 5) {
       this.arena.updatePoolsForTimeOfDay();
     }
 
@@ -4593,7 +4637,7 @@ export class BattleScene extends SceneBase {
       this.triggerPokemonFormChange(pokemon, SpeciesFormChangeTimeOfDayTrigger);
     }
 
-    if (!this.gameMode.hasRandomBiomes && !isNewBiome) {
+    if ((hqFloor || !this.gameMode.hasRandomBiomes) && !isNewBiome) {
       this.phaseManager.pushNew("NextEncounterPhase");
     } else {
       this.phaseManager.pushNew("NewBiomeEncounterPhase");
@@ -5098,6 +5142,10 @@ export class BattleScene extends SceneBase {
     if (tower) {
       this.waveSeed += `:tower:${this.seasonalEncounters.towerVisits}:${tower.floor}`;
     }
+    const hqFloor = this.mysteryEncounterSaveData?.rocketHq?.floor;
+    if (hqFloor) {
+      this.waveSeed += `:rocket-hq:${hqFloor}`;
+    }
     Phaser.Math.RND.sow([this.waveSeed]);
     console.log("Wave Seed:", this.waveSeed, wave);
   }
@@ -5109,10 +5157,11 @@ export class BattleScene extends SceneBase {
     const tempRngOffset = this.rngOffset;
     const tempRngSeedOverride = this.rngSeedOverride;
     const state = Phaser.Math.RND.state();
-    const seed = seedOverride || (this.seasonalEncounters.tower ? this.waveSeed : this.seed);
+    const floorSeed = this.seasonalEncounters.tower || this.mysteryEncounterSaveData?.rocketHq?.floor ? this.waveSeed : "";
+    const seed = seedOverride || floorSeed || this.seed;
     Phaser.Math.RND.sow([shiftCharCodes(seed, offset)]);
     this.rngOffset = offset;
-    this.rngSeedOverride = seedOverride || (this.seasonalEncounters.tower ? this.waveSeed : "");
+    this.rngSeedOverride = seedOverride || floorSeed;
     func();
     Phaser.Math.RND.state(state);
     this.rngOffset = tempRngOffset;
@@ -5238,13 +5287,16 @@ export class BattleScene extends SceneBase {
 
   updateBiomeWaveText(): void {
     const tower = this.seasonalEncounters.tower;
-    const isBoss = tower ? tower.boss : !(this.currentBattle.waveIndex % 10);
+    const hqFloor = this.currentBattle.rocketHqFloor;
+    const isBoss = hqFloor ? hqFloor === ROCKET_HQ_FLOORS : tower ? tower.boss : !(this.currentBattle.waveIndex % 10);
+    const floor = hqFloor ?? tower?.floor;
+    const location = tower?.boss ? i18next.t("battle:towerBoss")
+      : floor != null ? i18next.t("battle:towerFloor", { floor })
+      : this.currentBattle.waveIndex.toString();
     const biomeString: string = getBiomeName(this.arena.biomeId);
     this.fieldUI.moveAbove(this.biomeWaveText, this.luckText);
     this.biomeWaveText
-      .setText(biomeString + " - " + (tower
-        ? tower.boss ? i18next.t("battle:towerBoss") : i18next.t("battle:towerFloor", { floor: tower.floor })
-        : this.currentBattle.waveIndex.toString()))
+      .setText(biomeString + " - " + location)
       .setColor(isBoss ? "#f89890" : "#ffffff")
       .setShadowColor(isBoss ? "#984038" : "#636363")
       .setVisible(true);
@@ -5477,8 +5529,7 @@ export class BattleScene extends SceneBase {
     }
   }
 
-  getWaveMoneyAmount(moneyMultiplier: number): number {
-    const waveIndex = this.seasonalEncounters.getTowerDifficultyWave() ?? this.currentBattle.waveIndex;
+  getWaveMoneyAmount(moneyMultiplier: number, waveIndex = this.seasonalEncounters.getTowerDifficultyWave() ?? this.currentBattle.waveIndex): number {
     const waveSetIndex = Math.ceil(waveIndex / 10) - 1;
     const moneyValue =
       Math.pow((waveSetIndex + 1 + (0.75 + (((waveIndex - 1) % 10) + 1) / 10)) * 100, 1 + 0.005 * waveSetIndex)
@@ -7335,10 +7386,6 @@ export class BattleScene extends SceneBase {
       return true;
     }
 
-    if (this.isScheduledLostAtSeaMysteryEncounterWave(battleType, waveIndex)) {
-      return true;
-    }
-
     if (this.mysteryEncounterSaveData.frequency === 0 && activeOverrides.MYSTERY_ENCOUNTER_RATE_OVERRIDE === null) {
       return false;
     }
@@ -7414,10 +7461,30 @@ export class BattleScene extends SceneBase {
     if (this.isScheduledDejaVuMysteryEncounterWave(battleType, waveIndex)) {
       return MysteryEncounterType.DEJA_VU;
     }
-    if (this.isScheduledLostAtSeaMysteryEncounterWave(battleType, waveIndex)) {
-      return MysteryEncounterType.LOST_AT_SEA;
+    const type = this.mysteryEncounterSaveData.scheduledEncounter;
+    if (type == null || waveIndex < FIRST_RESERVED_ENCOUNTER_WAVE
+      || !this.isMysteryEncounterValidForWave(battleType, waveIndex)
+      || this.gameMode.isFixedBattle(waveIndex) || this.gameMode.isWaveFinal(waveIndex)
+      || this.isDebugForcedMysteryEncounterWave(battleType, waveIndex)
+      || this.arena.biomeId === BiomeId.SECRET_GARDEN
+      || !mysteryEncountersByBiome.get(this.arena.biomeId)?.includes(type)
+      || this.mysteryEncounterSaveData.encounteredEvents.some(event => event.type === type)
+      || timedEventManager.getEventMysteryEncountersDisabled().includes(type)
+      || !this.isMysteryEncounterAllowedInMultiplayer(type)) {
+      return;
     }
-    return;
+    const candidate = allMysteryEncounters[type];
+    if (!candidate || candidate.disallowedGameModes?.includes(this.gameMode.modeId)
+      || candidate.disallowedChallenges?.some(challenge => this.gameMode.hasChallenge(challenge))) {
+      return;
+    }
+    // Checking party requirements can select a random participant. Don't advance the battle RNG
+    // or modify the encounter template while checking whether to replace this wild wave.
+    let eligible = false;
+    this.executeWithSeedOffset(() => {
+      eligible = new MysteryEncounter(candidate).meetsRequirements(waveIndex);
+    }, waveIndex * 3000 + 1);
+    return eligible ? type : undefined;
   }
 
   private isSecretGardenPokePoachersAvailable(): boolean {
@@ -7479,49 +7546,6 @@ export class BattleScene extends SceneBase {
       && !timedEventManager.getEventMysteryEncountersDisabled().includes(encounterType)
       && this.isMysteryEncounterValidForWave(battleType, waveIndex)
       && !!getDueDejaVuSchedule(this, waveIndex)
-    );
-  }
-
-  private isScheduledLostAtSeaMysteryEncounterWave(battleType: BattleType, waveIndex: number): boolean {
-    const encounterType = MysteryEncounterType.LOST_AT_SEA;
-    const encounter = allMysteryEncounters[encounterType];
-    const saveData = this.mysteryEncounterSaveData;
-    const localBiomeWave = ((waveIndex - 1) % 10) + 1;
-
-    if (
-      saveData.lostAtSeaFirstSeaForcedDone
-      || this.arena.biomeId !== BiomeId.SEA
-      || this.mysteryEncounterSaveData.encounteredEvents.some(event => event.type === encounterType)
-    ) {
-      return false;
-    }
-
-    saveData.lostAtSeaFirstSeaStartWave ??= waveIndex - localBiomeWave + 1;
-    const firstSeaStartWave = saveData.lostAtSeaFirstSeaStartWave;
-    const isInFirstSeaWindow = waveIndex >= firstSeaStartWave && waveIndex <= firstSeaStartWave + 4;
-    if (!isInFirstSeaWindow) {
-      if (waveIndex > firstSeaStartWave + 4) {
-        saveData.lostAtSeaFirstSeaForcedDone = true;
-      }
-      return false;
-    }
-
-    const maxAllowedEncounters = encounter?.maxAllowedEncounters ?? 0;
-    const previousEncounters = this.mysteryEncounterSaveData.encounteredEvents.filter(
-      event => event.type === encounterType,
-    ).length;
-
-    return (
-      battleType === BattleType.WILD
-      && !!encounter
-      && this.isMysteryEncounterEnabled(encounterType)
-      && !timedEventManager.getEventMysteryEncountersDisabled().includes(encounterType)
-      && this.isMysteryEncounterValidForWave(battleType, waveIndex)
-      && !this.isScheduledContestHallMysteryEncounterWave(battleType, waveIndex)
-      && !this.isScheduledGtsMalfunctionMysteryEncounterWave(battleType, waveIndex)
-      && !this.isScheduledDejaVuMysteryEncounterWave(battleType, waveIndex)
-      && encounter.meetsRequirements()
-      && (maxAllowedEncounters <= 0 || previousEncounters < maxAllowedEncounters)
     );
   }
 
@@ -7622,74 +7646,50 @@ export class BattleScene extends SceneBase {
   private isMysteryEncounterEnabled(encounterType: MysteryEncounterType, canBypass = false): boolean {
     return (
       this.isMysteryEncounterAllowedInMultiplayer(encounterType)
-      && (canBypass || isMysteryEncounterEnabledBySettings(encounterType))
+      && (canBypass || this.mysteryEncounterSaveData?.scheduledEncounter === encounterType
+        || isMysteryEncounterEnabledBySettings(encounterType))
     );
   }
 
-  /**
-   * Loads or generates a mystery encounter
-   * @param encounterType used to load session encounter when restarting game, etc.
-   * @param canBypass optional boolean to indicate that the request is coming from a function that needs to access a Mystery Encounter outside of gameplay requirements
-   * @returns
-   */
-  getMysteryEncounter(encounterType?: MysteryEncounterType, canBypass?: boolean): MysteryEncounter {
-    // Loading override or session encounter
-    let encounter: MysteryEncounter | null;
-    if (
-      activeOverrides.MYSTERY_ENCOUNTER_OVERRIDE != null
-      && Object.hasOwn(allMysteryEncounters, activeOverrides.MYSTERY_ENCOUNTER_OVERRIDE)
-      && this.isMysteryEncounterEnabled(activeOverrides.MYSTERY_ENCOUNTER_OVERRIDE, canBypass)
-    ) {
-      encounter = allMysteryEncounters[activeOverrides.MYSTERY_ENCOUNTER_OVERRIDE];
-      if (canBypass) {
-        return encounter;
-      }
-    } else if (canBypass) {
-      encounter = allMysteryEncounters[encounterType ?? -1];
-      return encounter;
-    } else if (getDailyMysteryEncounter(this.currentBattle.waveIndex) == null) {
-      encounter =
-        encounterType == null || !this.isMysteryEncounterEnabled(encounterType)
-          ? null
-          : allMysteryEncounters[encounterType];
-    } else {
-      const dailyMysteryEncounter = getDailyMysteryEncounter(this.currentBattle.waveIndex)!;
-      encounter = this.isMysteryEncounterEnabled(dailyMysteryEncounter)
-        ? allMysteryEncounters[dailyMysteryEncounter]
-        : null;
+  /** Instantiate an already selected encounter; restoring it is not another spawn. */
+  getMysteryEncounter(encounterType: MysteryEncounterType, templateOnly = false): MysteryEncounter {
+    const template = allMysteryEncounters[encounterType];
+    if (templateOnly) {
+      return template;
     }
+    const encounter = new MysteryEncounter(template);
+    encounter.populateDialogueTokensFromRequirements();
+    return encounter;
+  }
 
-    // Check for queued encounters first
-    // TODO: the inner `while` loop will never run, should this code be deleted or fixed?
-    const queuedEncounters = this.mysteryEncounterSaveData?.queuedEncounters ?? [];
-    if (!encounter && queuedEncounters.length > 0) {
-      let i = 0;
-      while (i < queuedEncounters.length && encounter) {
-        const candidate = queuedEncounters[i];
-        const forcedChance = candidate.spawnPercent;
-        if (this.isMysteryEncounterEnabled(candidate.type) && randSeedInt(100) < forcedChance) {
-          encounter = allMysteryEncounters[candidate.type];
-        }
+  private rollMysteryEncounterType(waveIndex: number, forcedType?: MysteryEncounterType): MysteryEncounterType | undefined {
+    let type: MysteryEncounterType | undefined;
+    this.executeWithSeedOffset(() => {
+      type = this.selectMysteryEncounterType(waveIndex, forcedType);
+    }, waveIndex * 16);
+    return type;
+  }
 
-        i++;
-      }
+  private selectMysteryEncounterType(waveIndex: number, forcedType?: MysteryEncounterType): MysteryEncounterType | undefined {
+    const override = activeOverrides.MYSTERY_ENCOUNTER_OVERRIDE;
+    if (override != null && Object.hasOwn(allMysteryEncounters, override) && this.isMysteryEncounterEnabled(override)) {
+      return override;
     }
-
-    if (encounter) {
-      encounter = new MysteryEncounter(encounter);
-      encounter.populateDialogueTokensFromRequirements();
-      return encounter;
+    const daily = getDailyMysteryEncounter(waveIndex);
+    if (daily != null && this.isMysteryEncounterEnabled(daily)) {
+      return daily;
+    }
+    if (forcedType != null) {
+      return forcedType;
     }
 
     if (
       this.isMysteryEncounterEnabled(MysteryEncounterType.CONTEST_HALL)
-      && isContestHallScheduledEncounterDue(this.currentBattle.waveIndex)
+      && isContestHallScheduledEncounterDue(waveIndex)
     ) {
       const contestHallEncounter = allMysteryEncounters[MysteryEncounterType.CONTEST_HALL];
-      if (contestHallEncounter.meetsRequirements()) {
-        encounter = new MysteryEncounter(contestHallEncounter);
-        encounter.populateDialogueTokensFromRequirements();
-        return encounter;
+      if (contestHallEncounter.meetsRequirements(waveIndex)) {
+        return MysteryEncounterType.CONTEST_HALL;
       }
     }
 
@@ -7699,13 +7699,11 @@ export class BattleScene extends SceneBase {
         : allMysteryEncounters[DEBUG_FORCED_MYSTERY_ENCOUNTER_TYPE];
     if (
       forcedDebugEncounter
-      && this.isDebugForcedMysteryEncounterWave(BattleType.WILD, this.currentBattle.waveIndex)
-      && (DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS || forcedDebugEncounter.meetsRequirements())
+      && this.isDebugForcedMysteryEncounterWave(BattleType.WILD, waveIndex)
+      && (DEBUG_FORCED_MYSTERY_ENCOUNTER_BYPASS_REQUIREMENTS || forcedDebugEncounter.meetsRequirements(waveIndex))
     ) {
       this.seedDebugForcedMysteryEncounterPlayerMoney();
-      encounter = new MysteryEncounter(forcedDebugEncounter);
-      encounter.populateDialogueTokensFromRequirements();
-      return encounter;
+      return forcedDebugEncounter.encounterType;
     }
 
     // See Enum values for base tier weights
@@ -7776,19 +7774,14 @@ export class BattleScene extends SceneBase {
           if (encounterCandidate.disallowedChallenges?.some(challenge => this.gameMode.hasChallenge(challenge))) {
             return false;
           }
-          if (!encounterCandidate.meetsRequirements()) {
+          if (!encounterCandidate.meetsRequirements(waveIndex)) {
             return false;
           }
           if (previousEncounter !== null && encounterType === previousEncounter) {
             return false;
           }
-          return !(
-            this.mysteryEncounterSaveData.encounteredEvents.length > 0
-            && encounterCandidate.maxAllowedEncounters
-            && encounterCandidate.maxAllowedEncounters > 0
-            && this.mysteryEncounterSaveData.encounteredEvents.filter(e => e.type === encounterType).length
-              >= encounterCandidate.maxAllowedEncounters
-          );
+          const cap = encounterCandidate.maxAllowedEncounters;
+          return cap <= 0 || this.mysteryEncounterSaveData.encounteredEvents.filter(e => e.type === encounterType).length < cap;
         })
         .map(m => allMysteryEncounters[m]);
       // Decrement tier
@@ -7803,34 +7796,8 @@ export class BattleScene extends SceneBase {
       }
     }
 
-    // If absolutely no encounters are available, spawn 0th encounter
-    if (availableEncounters.length === 0) {
-      const multiplayerAllowlist = this.getMultiplayerMysteryEncounterAllowlist();
-      // Never use the one-time haunting invitation as an unrestricted out-of-pool fallback.
-      const enabledFallback = (type: MysteryEncounterType) =>
-        isMysteryEncounterEnabledBySettings(type) && (type !== MysteryEncounterType.SPOOKY_INVITATION
-          || (biomeMysteryEncounters.includes(type) && allMysteryEncounters[type].meetsRequirements()
-            && !this.mysteryEncounterSaveData.encounteredEvents.some(e => e.type === type)));
-      const fallbackEncounterType = this.twoPlayerMode
-        ? (multiplayerAllowlist.find(enabledFallback)
-          ?? multiplayerAllowlist[0]
-          ?? MysteryEncounterType.MYSTERIOUS_CHALLENGERS)
-        : isMysteryEncounterEnabledBySettings(MysteryEncounterType.MYSTERIOUS_CHALLENGERS)
-          ? MysteryEncounterType.MYSTERIOUS_CHALLENGERS
-          : (Object.values(MysteryEncounterType).find(
-              (type): type is MysteryEncounterType =>
-                typeof type === "number" && enabledFallback(type),
-            ) ?? MysteryEncounterType.MYSTERIOUS_CHALLENGERS);
-      console.log(`No Mystery Encounters found, falling back to ${MysteryEncounterType[fallbackEncounterType]}.`);
-      encounter = new MysteryEncounter(allMysteryEncounters[fallbackEncounterType]);
-      encounter.populateDialogueTokensFromRequirements();
-      return encounter;
-    }
-    // TODO: should this use `randSeedItem`?
-    encounter = availableEncounters[randSeedInt(availableEncounters.length)];
-    // New encounter object to not dirty flags
-    encounter = new MysteryEncounter(encounter);
-    encounter.populateDialogueTokensFromRequirements();
-    return encounter;
+    return availableEncounters.length
+      ? availableEncounters[randSeedInt(availableEncounters.length)].encounterType
+      : undefined;
   }
 }

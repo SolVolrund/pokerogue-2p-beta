@@ -223,20 +223,25 @@ export class PrivateFightPhase extends Phase {
     if (ep) groups.push(scene.getEnemyField(true));
     const localSeat = seat === "ep" && ep ? players.length : typeof seat === "number" && players.includes(seat) ? seat : -1;
     const actors = groups.flat();
-    if (localSeat < 0 || groups.some(group => !group.length || group.length > (ep ? 3 : 1)) || actors.some(p =>
+    const autoSkip = new Set(actors.filter(p => !ep && !scene.currentBattle.mysteryEncounter && p.isPlayer()
+      && CommandPhase.shouldAutoSkipClearedVsModeLane(p)));
+    if (localSeat < 0 || groups.some(group => !group.length || group.length > (ep ? 3 : 1))
+      || (autoSkip.size && (!scene.uiInputs.privateFieldActionsEnabled || actors.length - autoSkip.size < 2))
+      || actors.some(p => !autoSkip.has(p) && (
       p.getMoveQueue().length || p.isCommandingDondozo() || (p.isPlayer() && (CommandPhase.shouldAutoSelectFightMove(p) || scene.isEonFluteGuest(p)))
-      || scene.currentBattle.turnCommands[p.getBattlerIndex()]?.skip)) {
+      || scene.currentBattle.turnCommands[p.getBattlerIndex()]?.skip))) {
       this.end();
       return;
     }
-    const options = actors.map(optionsFor);
+    const options = actors.map(p => autoSkip.has(p) ? [] : optionsFor(p));
     // Keep turn entry in sync with older clients, which only count moves with targets here.
-    if (options.some(list => !list.some(option => option.plan.targets.length))) {
+    if (options.some((list, i) => !autoSkip.has(actors[i]) && !list.some(option => option.plan.targets.length))) {
       this.end();
       return;
     }
     const { waveIndex, turn } = scene.currentBattle;
-    const key = (ep ? "ep:" : "") + JSON.stringify([scene.seed, waveIndex, turn, ...actors.map(p => p.id), this.attempt]);
+    const battleSeed = scene.currentBattle.rocketHqFloor ? scene.waveSeed : scene.seed;
+    const key = (ep ? "ep:" : "") + JSON.stringify([battleSeed, waveIndex, turn, ...actors.map(p => p.id), this.attempt]);
     scene.waitForSharedInput();
     applyWindowAppearance(seat === "ep" ? 4 : localSeat + 1);
     const ui = scene.ui;
@@ -247,7 +252,8 @@ export class PrivateFightPhase extends Phase {
     const showActor = () => {
       this.actor = localGroup[this.localPicks.length];
       this.choices = options[actors.indexOf(this.actor)];
-      void ui.setMode(UiMode.COMMAND, this.getFieldIndex());
+      if (autoSkip.has(this.actor)) this.submit({ kind: "pass", actor: this.actor.id });
+      else void ui.setMode(UiMode.COMMAND, this.getFieldIndex());
     };
     this.submit = async (pick: PrivateTurnPick | null) => {
       if (locked || !current()) return;
@@ -270,6 +276,8 @@ export class PrivateFightPhase extends Phase {
           const chosen = candidates.map((p, i): PlannedFight | undefined => {
             const actor = actors[i];
             if (p.actor !== actor.id) return;
+            // The relay needs one pick per seat. Only a cleared lane may acknowledge without choosing.
+            if (autoSkip.has(actor)) return "kind" in p && p.kind === "pass" ? p : undefined;
             if ("kind" in p) {
               if (p.kind === "pass" || p.kind === "reposition") {
                 return (ep || scene.uiInputs.privateFieldActionsEnabled) && (p.kind === "pass"
@@ -296,7 +304,9 @@ export class PrivateFightPhase extends Phase {
           return review(seats.flat());
         }) : await scene.uiInputs.submitPrivateFight(key, pick, review);
         if (!current()) return;
-        if (batch) prepared.forEach((plan, i) => this.plans.set(actors[i].id, plan));
+        if (batch) prepared.forEach((plan, i) => {
+          if (!autoSkip.has(actors[i])) this.plans.set(actors[i].id, plan);
+        });
         ui.clearText();
         applyWindowAppearance(5);
         scene.clearInputOwner();
@@ -305,7 +315,6 @@ export class PrivateFightPhase extends Phase {
         if (current()) ui.showText("Turn sync interrupted. Leave the lobby and resume together.", 0);
       }
     };
-    showActor();
     scene.uiInputs.beginPrivateDraft(key, async (owner, openedAt) => {
       if (!current()) return;
       this.pausing = true;
@@ -315,6 +324,7 @@ export class PrivateFightPhase extends Phase {
       scene.phaseManager.unshiftNew("PrivatePauseMenuPhase", owner, this.plans, this.attempt + 1, openedAt);
       this.end();
     });
+    showActor();
   }
 }
 

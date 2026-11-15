@@ -348,6 +348,12 @@ export class UiInputs {
 
   private processLocalButtonInput(button: Button, pressed: boolean): boolean {
     const phase = globalScene.phaseManager.getCurrentPhase();
+    if ((phase?.is?.("PrivateRegistrationPhase") || phase?.is?.("PrivateFightPhase"))
+      && globalScene.ui.getMode() === UiMode.SUMMARY && button !== Button.MENU) {
+      return pressed && !phase.pausing && !(phase.is("PrivateRegistrationPhase") && phase.locked)
+        && (MENU_NAVIGATION_BUTTONS.has(button) || button === Button.STATS)
+        && globalScene.ui.processInput(button === Button.SUBMIT ? Button.ACTION : button);
+    }
     if (phase?.is?.("PrivateRegistrationPhase")) {
       if (!pressed || phase.pausing) return false;
       if (button === Button.MENU) return !globalScene.disableMenu && (this.twoPlayerInputTransport?.requestPrivatePause() ?? false);

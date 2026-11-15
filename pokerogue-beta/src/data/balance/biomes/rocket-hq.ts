@@ -72,12 +72,14 @@ const pokemonPool: BiomePokemonPools = {
   },
 };
 
+export const ROCKET_HQ_EXECUTIVES = [TrainerType.ARCHER, TrainerType.ARIANA, TrainerType.PROTON, TrainerType.PETREL];
+
 const trainerPool: TrainerPools = {
   [BiomePoolTier.COMMON]: [TrainerType.ROCKET_GRUNT],
   [BiomePoolTier.UNCOMMON]: [TrainerType.ROCKET_GRUNT],
   [BiomePoolTier.RARE]: [TrainerType.ROCKET_GRUNT],
-  [BiomePoolTier.SUPER_RARE]: [TrainerType.ARCHER, TrainerType.ARIANA, TrainerType.PROTON, TrainerType.PETREL],
-  [BiomePoolTier.ULTRA_RARE]: [TrainerType.ARCHER, TrainerType.ARIANA, TrainerType.PROTON, TrainerType.PETREL],
+  [BiomePoolTier.SUPER_RARE]: ROCKET_HQ_EXECUTIVES,
+  [BiomePoolTier.ULTRA_RARE]: ROCKET_HQ_EXECUTIVES,
   [BiomePoolTier.BOSS]: [TrainerType.GIOVANNI],
   [BiomePoolTier.BOSS_RARE]: [],
   [BiomePoolTier.BOSS_SUPER_RARE]: [],

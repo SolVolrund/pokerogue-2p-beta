@@ -68,6 +68,7 @@ import type { PokeballType } from "#enums/pokeball";
 import { readBallDesign } from "#data/ball-design";
 import { RibbonData } from "#system/ribbons/ribbon-data";
 import { resetSettings, SettingKeys, setSetting } from "#system/settings";
+import { demoteOtherScheduledEvents, SCHEDULED_OPTION } from "#system/settings-events";
 import { SettingGamepad, setSettingGamepad, settingGamepadDefaults } from "#system/settings-gamepad";
 import type { SettingKeyboard } from "#system/settings-keyboard";
 import { setSettingKeyboard } from "#system/settings-keyboard";
@@ -1263,13 +1264,13 @@ export class GameData {
    * @returns true
    */
   public saveSetting(setting: string, valueIndex: number): boolean {
-    let settings: object = {};
-    if (Object.hasOwn(localStorage, "settings")) {
-      settings = JSON.parse(localStorage.getItem("settings")!); // TODO: is this bang correct?
-    }
+    const settings: Record<string, unknown> = JSON.parse(localStorage.getItem("settings") ?? "{}");
 
     setSetting(setting, valueIndex);
 
+    if (valueIndex === SCHEDULED_OPTION) {
+      demoteOtherScheduledEvents(settings, setting);
+    }
     settings[setting] = valueIndex;
     settings["gameVersion"] = globalScene.game.config.gameVersion;
 
@@ -1603,7 +1604,8 @@ export class GameData {
       gameVersion: globalScene.game.config.gameVersion,
       timestamp: Date.now(),
       challenges: globalScene.gameMode.challenges.map(c => new ChallengeData(c)),
-      mysteryEncounterType: globalScene.currentBattle.mysteryEncounter?.encounterType ?? -1,
+      mysteryEncounterType: globalScene.currentBattle.mysteryEncounter?.encounterType
+        ?? globalScene.currentBattle.mysteryEncounterType ?? -1,
       mysteryEncounterSaveData: globalScene.mysteryEncounterSaveData,
       seasonalEncounters: globalScene.seasonalEncounters,
       playerFaints: globalScene.arena.playerFaints,
@@ -1876,7 +1878,11 @@ export class GameData {
     const battle = globalScene.newBattle(fromSession);
     const { battleType } = battle;
     battle.unownFinalBossState = fromSession.unownFinalBossState;
-    battle.enemyLevels = fromSession.enemyParty.map(p => p.level);
+    // An old, uninitialized event checkpoint can now resolve to a fresh wild battle.
+    if (!(fromSession.battleType === BattleType.MYSTERY_ENCOUNTER && battleType === BattleType.WILD
+      && !fromSession.enemyParty.length)) {
+      battle.enemyLevels = fromSession.enemyParty.map(p => p.level);
+    }
 
     globalScene.arena.init();
 

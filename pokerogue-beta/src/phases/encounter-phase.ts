@@ -93,7 +93,7 @@ export class EncounterPhase extends BattlePhase {
   // Union type is necessary as this is subclassed, and typescript will otherwise complain
   public readonly phaseName: "EncounterPhase" | "NextEncounterPhase" | "NewBiomeEncounterPhase" = "EncounterPhase";
 
-  private readonly loaded: boolean;
+  private loaded: boolean;
 
   constructor(loaded = false) {
     super();
@@ -326,11 +326,15 @@ export class EncounterPhase extends BattlePhase {
 
     const battle = globalScene.currentBattle;
 
+    if (this.loaded && battle.battleType === BattleType.WILD && !battle.enemyParty.length && battle.enemyLevels?.length) {
+      this.loaded = false;
+    }
+
     // Generate and Init Mystery Encounter
-    if (battle.isBattleMysteryEncounter() && !battle.mysteryEncounter) {
+    const encounterType = battle.mysteryEncounterType;
+    if (battle.isBattleMysteryEncounter() && !battle.mysteryEncounter && encounterType != null) {
       globalScene.executeWithSeedOffset(() => {
-        const currentSessionEncounterType = battle.mysteryEncounterType;
-        battle.mysteryEncounter = globalScene.getMysteryEncounter(currentSessionEncounterType);
+        battle.mysteryEncounter = globalScene.getMysteryEncounter(encounterType);
       }, battle.waveIndex * 16);
     }
     const mysteryEncounter = battle.mysteryEncounter;

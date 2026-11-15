@@ -4560,23 +4560,7 @@ export abstract class HeldItemTransferModifier extends PokemonHeldItemModifier {
       return false;
     }
 
-    const transferredModifierTypes: ModifierType[] = [];
-    const itemModifiers = globalScene.findModifiers(
-      m => m instanceof PokemonHeldItemModifier && m.pokemonId === targetPokemon.id && m.isTransferable,
-      targetPokemon.isPlayer(),
-    ) as PokemonHeldItemModifier[];
-
-    for (let i = 0; i < transferredItemCount; i++) {
-      if (itemModifiers.length === 0) {
-        break;
-      }
-      const randItemIndex = pokemon.randBattleSeedInt(itemModifiers.length);
-      const randItem = itemModifiers[randItemIndex];
-      if (globalScene.tryTransferHeldItemModifier(randItem, pokemon, false)) {
-        transferredModifierTypes.push(randItem.type);
-        itemModifiers.splice(randItemIndex, 1);
-      }
-    }
+    const transferredModifierTypes = stealRandomHeldItems(pokemon, targetPokemon, transferredItemCount);
 
     for (const mt of transferredModifierTypes) {
       globalScene.phaseManager.queueMessage(this.getTransferMessage(pokemon, targetPokemon, mt));
@@ -4588,6 +4572,29 @@ export abstract class HeldItemTransferModifier extends PokemonHeldItemModifier {
   abstract getTransferredItemCount(): number;
 
   abstract getTransferMessage(pokemon: Pokemon, targetPokemon: Pokemon, item: ModifierType): string;
+}
+
+function stealRandomHeldItems(thief: Pokemon, target: Pokemon, count: number): ModifierType[] {
+  const items = target.getHeldItems().filter(item => item.isTransferable);
+  const stolen: ModifierType[] = [];
+  for (let i = 0; i < count && items.length; i++) {
+    const index = thief.randBattleSeedInt(items.length);
+    const item = items[index];
+    if (globalScene.tryTransferHeldItemModifier(item, thief, false)) {
+      stolen.push(item.type);
+      items.splice(index, 1);
+    }
+  }
+  return stolen;
+}
+
+function getOnHitTheftMessage(thief: Pokemon, target: Pokemon, item: ModifierType, type: ModifierType): string {
+  return i18next.t("modifier:contactHeldItemTransferApply", {
+    pokemonNameWithAffix: getPokemonNameWithAffix(target),
+    itemName: item.name,
+    pokemonName: getPokemonNameWithAffix(thief),
+    typeName: type.name,
+  });
 }
 
 /**
@@ -4677,12 +4684,7 @@ export class ContactHeldItemTransferChanceModifier extends HeldItemTransferModif
   }
 
   getTransferMessage(pokemon: Pokemon, targetPokemon: Pokemon, item: ModifierType): string {
-    return i18next.t("modifier:contactHeldItemTransferApply", {
-      pokemonNameWithAffix: getPokemonNameWithAffix(targetPokemon),
-      itemName: item.name,
-      pokemonName: getPokemonNameWithAffix(pokemon),
-      typeName: this.type.name,
-    });
+    return getOnHitTheftMessage(pokemon, targetPokemon, item, this.type);
   }
 
   getMaxHeldItemCount(_pokemon: Pokemon): number {
@@ -4848,6 +4850,32 @@ export class TempExtraModifierModifier extends LapsingPersistentModifier {
 export abstract class EnemyPersistentModifier extends PersistentModifier {
   getMaxStackCount(): number {
     return 5;
+  }
+}
+
+export class EnemyThiefTokenModifier extends EnemyPersistentModifier {
+  override match(modifier: Modifier): boolean {
+    return modifier instanceof EnemyThiefTokenModifier;
+  }
+
+  override clone(): EnemyThiefTokenModifier {
+    return new EnemyThiefTokenModifier(this.type, this.stackCount);
+  }
+
+  override shouldApply(thief: Pokemon, target: Pokemon): boolean {
+    return thief.isEnemy() && !thief.isFainted() && target.isPlayer();
+  }
+
+  override apply(thief: Pokemon, target: Pokemon): boolean {
+    if (thief.randBattleSeedInt(100) >= this.getStackCount()) {
+      return false;
+    }
+    const [item] = stealRandomHeldItems(thief, target, 1);
+    if (!item) {
+      return false;
+    }
+    globalScene.phaseManager.queueMessage(getOnHitTheftMessage(thief, target, item, this.type));
+    return true;
   }
 }
 
@@ -5357,6 +5385,7 @@ const ModifierClassMap = Object.freeze({
   ExtraModifierModifier,
   TempExtraModifierModifier,
   EnemyPersistentModifier,
+  EnemyThiefTokenModifier,
   EnemyDamageMultiplierModifier,
   EnemyDamageBoosterModifier,
   EnemyDamageReducerModifier,

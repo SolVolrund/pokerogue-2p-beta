@@ -1,4 +1,5 @@
 import { Battle } from "#app/battle";
+import { activeOverrides } from "#app/overrides";
 import { SeasonalEncounterState } from "#data/seasonal-encounters";
 import { BattleType } from "#enums/battle-type";
 import { BiomeId } from "#enums/biome-id";
@@ -88,12 +89,35 @@ describe("A Spooky Invitation", () => {
     await encounter.selectedOption!.onOptionPhase();
     expect(JSON.stringify(game.scene.seasonalEncounters)).toBe(before);
   });
+  it("does not count an in-progress visit again after a reload", async () => {
+    begin();
+    await roundTrip();
+    const scene = game.scene;
+    expect(scene.currentBattle.mysteryEncounterType).toBe(id);
+    scene.currentBattle.mysteryEncounter = scene.getMysteryEncounter(id);
+    begin();
+    expect(scene.mysteryEncounterSaveData.encounteredEvents.filter(e => e.type === id)).toHaveLength(1);
+  });
+  it("resumes an old uninitialized event checkpoint as wild when no event is eligible", async () => {
+    const scene = game.scene;
+    vi.spyOn(eventSettings, "isMysteryEncounterEnabledBySettings").mockReturnValue(false);
+    const saved = scene.gameData.getSessionSaveData();
+    saved.battleType = BattleType.MYSTERY_ENCOUNTER;
+    saved.mysteryEncounterType = -1;
+    saved.enemyParty = [];
+    await scene.gameData.loadSessionSnapshot(JSON.stringify(saved, (_key, v) => typeof v === "bigint" ? String(v) : v));
+    expect(scene.currentBattle.battleType).toBe(BattleType.WILD);
+    expect(scene.currentBattle.enemyLevels).toHaveLength(scene.currentBattle.getBattlerCount());
+    expect(scene.currentBattle.enemyLevels!.length).toBeGreaterThan(0);
+  });
   it("will not pick her outside her biomes or after a saved decline, even as the only enabled event", async () => {
     vi.spyOn(eventSettings, "isMysteryEncounterEnabledBySettings").mockImplementation(type => type === id);
+    vi.spyOn(activeOverrides, "MYSTERY_ENCOUNTER_TIER_OVERRIDE", "get").mockReturnValue(MysteryEncounterTier.GREAT);
     const scene = game.scene;
-    expect(scene.getMysteryEncounter().encounterType).toBe(id);
+    const roll = () => scene["rollMysteryEncounterType"](scene.currentBattle.waveIndex);
+    expect(roll()).toBe(id);
     scene.newArena(BiomeId.FOREST, 0, true);
-    expect(scene.getMysteryEncounter().encounterType).not.toBe(id);
+    expect(roll()).toBeUndefined();
     scene.newArena(BiomeId.GRAVEYARD, 0, true);
     const phase = begin();
     phase.handleOptionSelect(encounter.options[1], 1);
@@ -101,7 +125,7 @@ describe("A Spooky Invitation", () => {
     await roundTrip();
     scene.currentBattle.waveIndex += 10;
     scene.newArena(BiomeId.ABYSS, 0, true);
-    expect(scene.getMysteryEncounter().encounterType).not.toBe(id);
+    expect(roll()).toBeUndefined();
   });
   it("accepts in solo without starting a trainer battle or granting a skull", async () => {
     game.scene.configureTwoPlayerMode(false);
